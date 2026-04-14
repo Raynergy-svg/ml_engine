@@ -61,8 +61,16 @@ class SupervisionRuntime:
             max_interval=getattr(self._config, "rearm_max_interval", 1800.0),
         )
 
-        # Execution manager (from scanner)
-        self._em = getattr(scanner, "_execution_manager", None)
+        # Execution manager (from scanner — attribute is _executor, lazy-initialized)
+        # Force scanner to init its executor if it hasn't yet
+        if hasattr(scanner, "_init_executor"):
+            try:
+                scanner._init_executor()
+            except Exception as _init_err:
+                logger.warning("supervision_runtime.executor_init_failed", error=str(_init_err))
+        self._em = getattr(scanner, "_executor", None) or getattr(scanner, "_execution_manager", None)
+        if self._em is None:
+            logger.warning("supervision_runtime.no_execution_manager — trades will not execute")
 
         # Serial executor
         self._executor = SerialExecutor(
@@ -101,7 +109,7 @@ class SupervisionRuntime:
         except Exception:
             pass
 
-        # Supervision tick
+        # Supervision tick — shares the execution manager reference
         self._tick = SupervisionTick(
             execution_manager=self._em,
             scanner=scanner,
@@ -109,8 +117,23 @@ class SupervisionRuntime:
             supervision_core=self._supervision_core,
         )
 
+        if self._em is not None:
+            logger.info(
+                "supervision_runtime.ready",
+                has_em=True,
+                has_core=self._supervision_core is not None,
+                has_control_plane=self._control_plane is not None,
+            )
+        else:
+            logger.warning("supervision_runtime.degraded — no execution manager, will initialize on first scan")
+
         # Max scan passes per hunting phase
-        self._max_scan_passes = getattr(self._config, "max_scan_passes", 2)
+        # Default 1 on memory-constrained hardware (8GB M1): each scan pass
+        # loads the full TCN/Ridge/RF ensemble for 15 pairs (~1.5-2GB peak).
+        # A second pass before GC clears the first = OOM. The rearm timer
+        # (default 5m) gates hunting frequency instead.
+        # Increase via config max_scan_passes=2 only on machines with 16GB+.
+        self._max_scan_passes = getattr(self._config, "max_scan_passes", 1)
 
         # Pairs
         self._pairs: List[str] = []
@@ -136,11 +159,16 @@ class SupervisionRuntime:
 
         if self._console:
             self._console.print(
-                f"\n[bold cyan]SUPERVISION MODE[/bold cyan] — "
-                f"[dim]{self._tick_seconds}s ticks, "
-                f"target {self._capacity.target_open} positions, "
-                f"max {self._capacity.max_open}[/dim]"
+                f"\n[bold cyan]◆ SUPERVISION MODE[/bold cyan] — supervise-first, scan on-demand"
             )
+            self._console.print(
+                f"[dim]  {self._tick_seconds}s ticks · "
+                f"target {self._capacity.target_open} positions · "
+                f"max {self._capacity.max_open} · "
+                f"rearm {self._rearm.base_interval / 60:.0f}m[/dim]"
+            )
+            self._console.print("[dim]  Press Ctrl+C to stop[/dim]")
+            self._console.print("=" * 70)
 
         try:
             while self._running:
@@ -225,7 +253,7 @@ class SupervisionRuntime:
             # Pre-filter pairs
             open_pairs = {
                 getattr(p, "pair", "") for p in
-                (self._supervision_core._slot_manager.open_positions()
+                (self._supervision_core.slot_manager.open_positions()
                  if self._supervision_core else [])
             }
             scannable = self._capacity.get_scannable_pairs(
@@ -255,6 +283,12 @@ class SupervisionRuntime:
 
             if funnel.executed == 0:
                 break  # Nothing executed, don't try again
+
+        # Force GC after scan pass: ML inference (TCN/Ridge/RF) allocates
+        # large numpy arrays that aren't freed until GC runs. On 8GB M1,
+        # these must be reclaimed before the next tick or we OOM.
+        import gc as _gc
+        _gc.collect()
 
         self._rearm.record_scan()
 
@@ -324,16 +358,39 @@ class SupervisionRuntime:
             return None
 
     def _print_status(self) -> None:
-        """Print concise status to console."""
+        """Print supervision status using the watch header for visual consistency."""
         if not self._console:
             return
+
         phase = self._phase.current_phase.value.upper()
         open_n = self._tick.open_trade_count
         scans = self._scan_count
         interval = round(self._rearm.current_interval / 60, 1)
-        self._console.print(
-            f"  [dim]◆ {phase} · {open_n} open · {scans} scans · rearm {interval}m[/dim]"
-        )
+
+        # Use the standard watch header with SUPERVISE mode label
+        try:
+            from src.scanner.cli_display import render_watch_header
+            nav = None
+            pnl = None
+            if self._em:
+                try:
+                    nav = self._em.get_nav() if hasattr(self._em, 'get_nav') else None
+                except Exception:
+                    pass
+            render_watch_header(
+                nav=nav,
+                open_count=open_n,
+                unrealized_pnl=pnl,
+                cycle_num=scans,
+                uptime_s=self._tick.tick_count * self._tick_seconds,
+                next_scan_s=max(0, self._rearm.current_interval - (time.time() - self._rearm._last_scan_time)),
+                mode=f"SUPERVISE · {phase}",
+            )
+        except Exception:
+            # Fallback to simple line if cli_display not available
+            self._console.print(
+                f"  [dim]◆ {phase} · {open_n} open · {scans} scans · rearm {interval}m[/dim]"
+            )
 
     def _handle_signal(self, signum: int, frame: Any) -> None:
         self._running = False
@@ -347,3 +404,127 @@ class SupervisionRuntime:
             ticks=self._tick.tick_count,
         )
         self._running = False
+        self._write_session_handoff()
+
+    def _write_session_handoff(self) -> None:
+        """Write a human-readable session handoff for Claude to read on next invocation.
+
+        This file is raw facts — what happened this session.
+        Claude reads it alongside .claude/brain/briefing.md to get full context.
+        """
+        import os
+        import json
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        handoff_path = Path(__file__).parents[3] / ".claude" / "brain" / "session_handoff.md"
+        handoff_path.parent.mkdir(parents=True, exist_ok=True)
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Gather portfolio state
+        nav = None
+        open_trades = []
+        realized_pl = None
+        try:
+            if self._em and hasattr(self._em, "get_nav"):
+                nav = self._em.get_nav()
+        except Exception:
+            pass
+
+        try:
+            if self._em and hasattr(self._em, "monitor_open_trades"):
+                open_trades = self._em.monitor_open_trades(evaluate_exits=False) or []
+        except Exception:
+            pass
+
+        # Gather recent journal entries (last 10)
+        recent_trades: list = []
+        try:
+            journal_path = Path(__file__).parents[3] / "trained_data" / "trade_journal_rl.json"
+            if journal_path.exists():
+                with open(journal_path, "r") as f:
+                    journal = json.load(f)
+                if isinstance(journal, list):
+                    recent_trades = journal[-10:]
+        except Exception:
+            pass
+
+        # Build handoff markdown
+        lines = [
+            "# Session Handoff",
+            f"> Written by Buddy at shutdown. Raw facts only.",
+            f"> Timestamp: {now}",
+            f"> Read this alongside `.claude/brain/briefing.md`.",
+            "",
+            "---",
+            "",
+            "## Runtime Summary",
+            f"- Phase at shutdown: `{self._phase.current_phase.value}`",
+            f"- Scan passes this session: {self._scan_count}",
+            f"- Supervision ticks: {self._tick.tick_count}",
+            f"- Open trades at shutdown: {len(open_trades)}",
+            "",
+            "## Portfolio State",
+        ]
+
+        if nav is not None:
+            lines.append(f"- NAV: ${nav:,.2f}")
+        else:
+            lines.append("- NAV: (unavailable — EM not connected)")
+
+        if open_trades:
+            lines.append(f"- Open positions: {len(open_trades)}")
+            for t in open_trades:
+                pair = t.get("pair", "?")
+                direction = t.get("direction", "?")
+                pl = t.get("unrealized_pl", t.get("unrealized_pnl", "?"))
+                lines.append(f"  - {pair} {direction} | unrealized P/L: {pl}")
+        else:
+            lines.append("- Open positions: 0")
+
+        lines += [
+            "",
+            "## Last 10 Journal Entries",
+        ]
+
+        if recent_trades:
+            for t in recent_trades:
+                pair = t.get("pair", "?")
+                direction = t.get("direction", "?")
+                conf = t.get("confidence", 0)
+                outcome = t.get("outcome") or {}
+                pl = outcome.get("realized_pl", "?")
+                won = outcome.get("trade_won", None)
+                exit_reason = outcome.get("exit_reason", "?")
+                disagreement = (
+                    t.get("regime", {}).get("model_disagreement")
+                    or (t.get("agents", {}).get("agent_reasons") or [{}])[-1]
+                    .get("metadata", {}).get("model_disagreement", "?")
+                )
+                result_icon = "✅" if won else ("❌" if won is False else "⏳")
+                ts = t.get("timestamp", "?")[:10]
+                lines.append(
+                    f"- {ts} | {pair} {direction} | conf={conf:.0%} | "
+                    f"disagreement={disagreement} | {result_icon} {exit_reason} | P/L: {pl}"
+                )
+        else:
+            lines.append("- (no journal entries found)")
+
+        lines += [
+            "",
+            "## Config State",
+            f"- Rearm interval: {self._rearm.current_interval:.0f}s",
+            f"- Target open positions: {self._capacity.target_open}",
+            f"- Max open positions: {self._capacity.max_open}",
+            "",
+            "---",
+            "_End of handoff. Claude: read briefing.md next._",
+        ]
+
+        try:
+            with open(handoff_path, "w") as f:
+                f.write("\n".join(lines))
+            logger.info("supervision_runtime.handoff_written", path=str(handoff_path))
+        except Exception as e:
+            logger.warning("supervision_runtime.handoff_write_failed", error=str(e))

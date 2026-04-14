@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_outcomes": 1,
+  "total_outcomes": 20,
   "outcomes": {
     "UNKNOWN": [
       {
@@ -10,9 +10,148 @@
         "won": false,
         "timestamp": "2026-03-23T17:37:45.438538+00:00"
       }
+    ],
+    "LOW": [
+      {
+        "confidence": 0.6773681732381829,
+        "momentum": 0.7865,
+        "rr_ratio": 2.635658914728682,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.814042+00:00"
+      },
+      {
+        "confidence": 0.6446426231384288,
+        "momentum": 0.8212,
+        "rr_ratio": 1.178082191780822,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.827135+00:00"
+      },
+      {
+        "confidence": 0.6921612793529159,
+        "momentum": 0.7865,
+        "rr_ratio": 1.2,
+        "won": false,
+        "timestamp": "2026-04-06T20:34:54.208610+00:00"
+      },
+      {
+        "confidence": 0.628967136467435,
+        "momentum": 0.8212,
+        "rr_ratio": 1.3678160919540232,
+        "won": false,
+        "timestamp": "2026-04-08T22:41:57.214630+00:00"
+      }
+    ],
+    "NORMAL": [
+      {
+        "confidence": 0.5774001874477208,
+        "momentum": 0.8714,
+        "rr_ratio": 1.6492146596858637,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.822120+00:00"
+      },
+      {
+        "confidence": 0.530209496283341,
+        "momentum": 0.9036,
+        "rr_ratio": 1.638157894736842,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.837540+00:00"
+      },
+      {
+        "confidence": 0.6165337185933442,
+        "momentum": 0.9036,
+        "rr_ratio": 1.5034246575342465,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.846158+00:00"
+      },
+      {
+        "confidence": 0.6366628428380949,
+        "momentum": 0.8714,
+        "rr_ratio": 1.3945578231292517,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.850516+00:00"
+      },
+      {
+        "confidence": 0.5556750764880776,
+        "momentum": 0.9357,
+        "rr_ratio": 0.6503267973856208,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.869779+00:00"
+      },
+      {
+        "confidence": 0.5983986918430833,
+        "momentum": 0.9036,
+        "rr_ratio": 1.3259911894273129,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.874946+00:00"
+      },
+      {
+        "confidence": 0.5983986918430833,
+        "momentum": 0.9036,
+        "rr_ratio": 1.3259911894273129,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.884553+00:00"
+      },
+      {
+        "confidence": 0.5947610338374847,
+        "momentum": 0.8393,
+        "rr_ratio": 1.322463768115942,
+        "won": false,
+        "timestamp": "2026-04-09T18:16:26.807428+00:00"
+      },
+      {
+        "confidence": 0.5947610338374847,
+        "momentum": 0.8393,
+        "rr_ratio": 1.322463768115942,
+        "won": false,
+        "timestamp": "2026-04-09T18:16:26.832824+00:00"
+      }
+    ],
+    "HIGH": [
+      {
+        "confidence": 0.5220578568710893,
+        "momentum": 0.8661,
+        "rr_ratio": 2.4931506849315066,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.832977+00:00"
+      },
+      {
+        "confidence": 0.5670026276933446,
+        "momentum": 0.8661,
+        "rr_ratio": 3.544973544973545,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.841936+00:00"
+      },
+      {
+        "confidence": 0.7742971886221632,
+        "momentum": 0.8018,
+        "rr_ratio": 1.5999999999999999,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.854323+00:00"
+      },
+      {
+        "confidence": 0.6024558560185291,
+        "momentum": 0.8982,
+        "rr_ratio": 1.1818181818181819,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.858656+00:00"
+      },
+      {
+        "confidence": 0.47771317198201785,
+        "momentum": 0.8982,
+        "rr_ratio": 3.6224489795918364,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.864364+00:00"
+      },
+      {
+        "confidence": 0.6487055722755246,
+        "momentum": 0.8339,
+        "rr_ratio": 1.7305389221556886,
+        "won": false,
+        "timestamp": "2026-04-09T18:16:26.786446+00:00"
+      }
     ]
   },
   "thresholds": {},
   "optimization_log": [],
-  "last_updated": "2026-03-24T22:02:25.663593+00:00"
+  "last_updated": "2026-04-14T12:11:57.445586+00:00"
 }

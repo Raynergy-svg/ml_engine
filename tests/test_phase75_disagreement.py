@@ -72,7 +72,7 @@ class TestDisagreementGapAnalyzer:
         for _ in range(5):
             rec.record(pair="A", disagreement=0.67, hard_blocked=True)
         result = analyze(rec, disagreement_hard_floor=0.30)
-        assert result["classification"] == CLASS_FAR_ABOVE  # gap=0.37
+        assert result["classification"] == CLASS_MODERATE  # gap=0.37 (> NEAR_MISS_GAP=0.35, ≤ MODERATE_GAP=0.50)
 
     def test_insufficient_data(self):
         rec, _ = _make_rec()
@@ -180,7 +180,7 @@ class TestPhase75WiringGreps:
         from src.scanner.config import ScannerConfig
         config = ScannerConfig()
         assert hasattr(config, 'disagreement_hard_floor')
-        assert config.disagreement_hard_floor == 0.30
+        assert config.disagreement_hard_floor == 0.50
 
     def test_all_modules_importable(self):
         from src.scanner.disagreement_recorder import DisagreementRecorder

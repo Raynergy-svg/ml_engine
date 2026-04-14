@@ -77,6 +77,12 @@ def em(config):
         manager._last_regime_name = "NORMAL"
         manager._current_drawdown_pct = 0.0
         manager._adaptive_exit_manager = None
+        manager._dynamic_risk_allocator = None
+        manager._session_detector = None
+        manager._expectancy_tracker = None
+        manager._ewma_correlation = None
+        manager._ewma_price_cache = {}
+        manager._position_timeout = None
         return manager
 
 
@@ -308,7 +314,9 @@ class TestCalculatePositionSizeIntegration:
                 regime_factor=1.0,
                 regime_name="NORMAL",
             )
-        ):
+        ), patch.object(em, '_apply_dynamic_risk_multiplier', side_effect=lambda lots, _: lots), \
+           patch.object(em, '_apply_regime_position_multiplier', side_effect=lambda lots, _: lots), \
+           patch.object(em, '_apply_session_position_multiplier', side_effect=lambda lots: lots):
             lots, risk_pct, sl_pips, tp_pips, conf = em.calculate_position_size(
                 pair="EUR_USD",
                 confidence=0.7,

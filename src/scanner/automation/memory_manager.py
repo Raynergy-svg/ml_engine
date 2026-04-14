@@ -17,7 +17,7 @@ import json
 import logging
 import os
 import shutil
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -44,20 +44,22 @@ class ManagedCache:
         self.name = name
         self._cache = cache_dict
         self.max_size = max_size
-        self._access_order: List[str] = list(cache_dict.keys())
+        # OrderedDict gives O(1) move_to_end + popitem(last=False) vs O(n) list.remove
+        self._access_order: OrderedDict = OrderedDict.fromkeys(cache_dict.keys())
         self.evictions: int = 0
 
     def touch(self, key: str) -> None:
-        """Mark key as recently accessed."""
+        """Mark key as recently accessed — O(1) via OrderedDict.move_to_end."""
         if key in self._access_order:
-            self._access_order.remove(key)
-        self._access_order.append(key)
+            self._access_order.move_to_end(key)
+        else:
+            self._access_order[key] = None
 
     def evict_if_needed(self) -> int:
         """Evict oldest entries if cache exceeds max_size. Returns count evicted."""
         evicted = 0
         while len(self._cache) > self.max_size and self._access_order:
-            oldest_key = self._access_order.pop(0)
+            oldest_key, _ = self._access_order.popitem(last=False)
             if oldest_key in self._cache:
                 del self._cache[oldest_key]
                 evicted += 1
@@ -99,8 +101,9 @@ class MemoryManager:
         # Managed log files
         self._log_files: Dict[str, Dict[str, Any]] = {}
 
-        # Cleanup history
-        self._cleanup_log: List[Dict[str, Any]] = []
+        # Cleanup history — deque(maxlen) gives O(1) append with automatic eviction,
+        # replacing the previous List + manual slicing that created a full copy each trim.
+        self._cleanup_log: deque = deque(maxlen=50)
         self._total_cleanups: int = 0
         self._total_evictions: int = 0
         self._total_rotations: int = 0
@@ -172,10 +175,13 @@ class MemoryManager:
                 config["rotations"] += 1
                 self._total_rotations += 1
 
+        # 3. Prune old backup directories (keep newest 10, delete the rest)
+        pruned = self._prune_backup_dirs(_PROJECT_ROOT / "trained_data" / "backups", keep_n=10)
+        if pruned:
+            report["backup_dirs_pruned"] = pruned
+
         self._total_cleanups += 1
-        self._cleanup_log.append(report)
-        if len(self._cleanup_log) > 100:
-            self._cleanup_log = self._cleanup_log[-50:]
+        self._cleanup_log.append(report)  # deque(maxlen=50) auto-evicts oldest
 
         return report
 
@@ -216,6 +222,33 @@ class MemoryManager:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _prune_backup_dirs(self, backup_root: Path, keep_n: int = 10) -> int:
+        """Delete oldest timestamped backup directories, keeping the newest keep_n.
+
+        backup_root/YYYYMMDD_HHMMSS/ directories accumulate indefinitely.
+        Called every run_cleanup() cycle; safe to call when dir doesn't exist.
+        Returns number of directories deleted.
+        """
+        if not backup_root.exists():
+            return 0
+        try:
+            dirs = sorted(
+                (d for d in backup_root.iterdir() if d.is_dir()),
+                key=lambda d: d.name,
+            )
+            to_remove = dirs[:-keep_n] if len(dirs) > keep_n else []
+            for d in to_remove:
+                try:
+                    shutil.rmtree(d, ignore_errors=True)
+                except Exception as e:
+                    logger.debug(f"Backup dir prune failed for {d}: {e}")
+            if to_remove:
+                logger.info("Pruned %d old backup dirs (kept newest %d)", len(to_remove), keep_n)
+            return len(to_remove)
+        except Exception as e:
+            logger.debug(f"Backup dir prune error: {e}")
+            return 0
 
     def _rotate_log(
         self, path: Path, max_lines: int, keep_lines: int

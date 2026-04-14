@@ -20,6 +20,22 @@ except Exception:  # pragma: no cover
     requests = None
 
 
+def _parse_simple_dotenv(path: "Path") -> None:
+    """Minimal dotenv parser fallback when python-dotenv is unavailable."""
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception:
+        return
+
+
 def _session_label_from_iso(ts: str | None) -> str | None:
     """Map an ISO timestamp to a coarse FX session label."""
     if not ts:
@@ -51,36 +67,47 @@ def _load_project_dotenv() -> None:
     try:
         from pathlib import Path
 
+        load_dotenv = None
         try:
-            from dotenv import load_dotenv  # type: ignore
+            from dotenv import load_dotenv as _load_dotenv  # type: ignore
+            load_dotenv = _load_dotenv
         except Exception:
-            return
+            load_dotenv = None
 
-        candidates = []
+        roots = []
         try:
-            candidates.append(Path.cwd())
+            roots.append(Path.cwd())
         except Exception:
             pass
 
         try:
-            candidates.append(Path(__file__).resolve().parent)
+            roots.append(Path(__file__).resolve().parent)
         except Exception:
             pass
 
         seen: set[str] = set()
-        for base in candidates:
+        candidates = []
+        for root in roots:
             try:
-                base = base.resolve()
+                resolved = root.resolve()
             except Exception:
                 continue
-            if str(base) in seen:
-                continue
-            seen.add(str(base))
+            chain = [resolved, *resolved.parents]
+            for base in chain:
+                key = str(base)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(base)
 
+        for base in candidates:
             for name in (".env.local", ".env"):
                 p = base / name
                 if p.exists() and p.is_file():
-                    load_dotenv(dotenv_path=str(p), override=False)
+                    if load_dotenv is not None:
+                        load_dotenv(dotenv_path=str(p), override=False)
+                    else:
+                        _parse_simple_dotenv(p)
     except Exception:
         return
 
@@ -140,6 +167,23 @@ class OandaPracticeClient:
                 "User-Agent": "ml_engine-oanda-practice/1.0",
             }
         )
+
+    def close(self) -> None:
+        """Close the underlying HTTP session and release socket resources."""
+        if hasattr(self, "_session") and self._session is not None:
+            try:
+                self._session.close()
+            except Exception:
+                pass
+
+    def __del__(self) -> None:
+        self.close()
+
+    def __enter__(self) -> "OandaPracticeClient":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     @classmethod
     def from_env(cls) -> "OandaPracticeClient":

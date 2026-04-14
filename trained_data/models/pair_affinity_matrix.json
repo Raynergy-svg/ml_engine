@@ -1,0 +1,15 @@
+{
+  "matrix": {
+    "AUD_JPY|NZD_USD": {
+      "co_win": 0,
+      "co_loss": 1,
+      "mixed": 0
+    },
+    "EUR_AUD|USD_CHF": {
+      "co_win": 0,
+      "co_loss": 1,
+      "mixed": 0
+    }
+  },
+  "updated": "2026-04-09T18:16:26.823244+00:00"
+}

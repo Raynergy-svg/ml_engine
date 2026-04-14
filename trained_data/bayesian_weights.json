@@ -1,199 +1,199 @@
 {
   "distributions": {
     "EXTREME:execution_quality": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:mean_reversion": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:momentum": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:multi_timeframe": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:news_risk": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:pair_performance": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:risk_sentinel": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:session_timing": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:support_resistance": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:trend": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:uncertainty": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "EXTREME:volatility": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "HIGH:execution_quality": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 3.98
     },
     "HIGH:mean_reversion": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 3.316661472918198,
+      "beta": 3.0330652390438253
     },
     "HIGH:momentum": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 3.98
     },
     "HIGH:multi_timeframe": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 3.98
     },
     "HIGH:news_risk": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 3.98
     },
     "HIGH:pair_performance": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 3.98
     },
     "HIGH:risk_sentinel": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 3.98,
+      "beta": 1.99
     },
     "HIGH:session_timing": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 3.98
     },
     "HIGH:support_resistance": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 3.98
     },
     "HIGH:trend": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 3.4227999999999996,
+      "beta": 3.104400000000001
     },
     "HIGH:uncertainty": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 3.5820000000000003,
+      "beta": 2.8855
     },
     "HIGH:volatility": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 3.7760249999999997,
+      "beta": 2.5108825
     },
     "LOW:execution_quality": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:mean_reversion": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:momentum": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:multi_timeframe": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:news_risk": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:pair_performance": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:risk_sentinel": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:session_timing": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:support_resistance": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:trend": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:uncertainty": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "LOW:volatility": {
-      "alpha": 2.0,
-      "beta": 2.0
+      "alpha": 1.99,
+      "beta": 1.99
     },
     "NORMAL:execution_quality": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 2.6934963483606498,
+      "beta": 6.247049869991583
     },
     "NORMAL:mean_reversion": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 5.83547742041091,
+      "beta": 3.9669982193467304
     },
     "NORMAL:momentum": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 1.99,
+      "beta": 5.97
     },
     "NORMAL:multi_timeframe": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 1.99,
+      "beta": 5.97
     },
     "NORMAL:news_risk": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 1.99,
+      "beta": 5.97
     },
     "NORMAL:pair_performance": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 1.99,
+      "beta": 5.97
     },
     "NORMAL:risk_sentinel": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 5.97,
+      "beta": 1.99
     },
     "NORMAL:session_timing": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 1.99,
+      "beta": 5.97
     },
     "NORMAL:support_resistance": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 1.99,
+      "beta": 5.97
     },
     "NORMAL:trend": {
-      "alpha": 2.7,
-      "beta": 2.0
+      "alpha": 4.855599999999999,
+      "beta": 5.056000000000003
     },
     "NORMAL:uncertainty": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 3.496424124851983,
+      "beta": 5.132548153367299
     },
     "NORMAL:volatility": {
-      "alpha": 2.0,
-      "beta": 3.0
+      "alpha": 4.522772499999999,
+      "beta": 3.9312349999999996
     }
   },
-  "epsilon": 0.149925,
-  "update_count": 1,
+  "epsilon": 0.1484328501185143,
+  "update_count": 21,
   "version": 1
 }

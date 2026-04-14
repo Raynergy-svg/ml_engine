@@ -1,8 +1,189 @@
 {
   "version": 1,
-  "total_routed": 0,
-  "total_sliced": 0,
+  "total_routed": 20,
+  "total_sliced": 20,
   "pair_avg_slippage": {},
-  "decisions": [],
-  "last_updated": "2026-03-23T20:44:57.388562+00:00"
+  "decisions": [
+    {
+      "pair": "USD_JPY",
+      "lot_size": 0.66,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-03-31T18:42:35.398525+00:00"
+    },
+    {
+      "pair": "EUR_AUD",
+      "lot_size": 0.98,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-03-31T20:00:15.352188+00:00"
+    },
+    {
+      "pair": "USD_JPY",
+      "lot_size": 0.79,
+      "regime": "LOW",
+      "threshold": 0.1,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-03-31T23:18:54.675390+00:00"
+    },
+    {
+      "pair": "EUR_USD",
+      "lot_size": 1.5,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-03-31T23:19:21.948460+00:00"
+    },
+    {
+      "pair": "USD_JPY",
+      "lot_size": 0.76,
+      "regime": "LOW",
+      "threshold": 0.1,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-01T00:27:36.978618+00:00"
+    },
+    {
+      "pair": "AUD_USD",
+      "lot_size": 1.5,
+      "regime": "HIGH",
+      "threshold": 0.05,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-01T12:57:25.459370+00:00"
+    },
+    {
+      "pair": "EUR_USD",
+      "lot_size": 1.5,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-01T12:57:54.805164+00:00"
+    },
+    {
+      "pair": "EUR_AUD",
+      "lot_size": 1.5,
+      "regime": "HIGH",
+      "threshold": 0.05,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-01T12:58:33.742656+00:00"
+    },
+    {
+      "pair": "USD_JPY",
+      "lot_size": 0.52,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-01T19:43:23.079526+00:00"
+    },
+    {
+      "pair": "USD_CAD",
+      "lot_size": 2.5,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-01T22:31:56.072846+00:00"
+    },
+    {
+      "pair": "USD_CHF",
+      "lot_size": 4.0,
+      "regime": "HIGH",
+      "threshold": 0.05,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-01T22:31:59.474255+00:00"
+    },
+    {
+      "pair": "GBP_USD",
+      "lot_size": 2.5,
+      "regime": "HIGH",
+      "threshold": 0.05,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-02T01:15:01.354552+00:00"
+    },
+    {
+      "pair": "AUD_USD",
+      "lot_size": 12.5,
+      "regime": "HIGH",
+      "threshold": 0.05,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-02T01:15:30.024555+00:00"
+    },
+    {
+      "pair": "EUR_JPY",
+      "lot_size": 0.6,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-02T01:15:58.355415+00:00"
+    },
+    {
+      "pair": "AUD_JPY",
+      "lot_size": 0.72,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-02T14:19:15.257215+00:00"
+    },
+    {
+      "pair": "GBP_JPY",
+      "lot_size": 0.98,
+      "regime": "LOW",
+      "threshold": 0.1,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-03T02:54:26.679660+00:00"
+    },
+    {
+      "pair": "USD_CHF",
+      "lot_size": 2.5,
+      "regime": "NORMAL",
+      "threshold": 0.07,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-03T19:40:38.393959+00:00"
+    },
+    {
+      "pair": "EUR_GBP",
+      "lot_size": 2.5,
+      "regime": "LOW",
+      "threshold": 0.1,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-03T19:40:39.991411+00:00"
+    },
+    {
+      "pair": "NZD_USD",
+      "lot_size": 2.5,
+      "regime": "LOW",
+      "threshold": 0.1,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-06T09:20:28.266513+00:00"
+    },
+    {
+      "pair": "AUD_JPY",
+      "lot_size": 0.9,
+      "regime": "LOW",
+      "threshold": 0.1,
+      "strategy": "TWAP",
+      "n_slices": 8,
+      "timestamp": "2026-04-06T09:20:36.149193+00:00"
+    }
+  ],
+  "last_updated": "2026-04-06T20:34:54.450215+00:00"
 }

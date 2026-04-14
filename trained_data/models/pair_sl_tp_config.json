@@ -2,13 +2,25 @@
   "NZD_USD": {
     "atr_sl_multiplier": 1.0,
     "atr_tp_multiplier": 1.5,
-    "last_updated": "2026-03-19T14:00:43.591237+00:00",
-    "sample_size": 11
+    "last_updated": "2026-04-06T20:34:54.261593+00:00",
+    "sample_size": 12
   },
   "EUR_USD": {
     "atr_sl_multiplier": 1.0,
     "atr_tp_multiplier": 1.5,
     "last_updated": "2026-03-19T14:00:43.605135+00:00",
     "sample_size": 44
+  },
+  "AUD_JPY": {
+    "atr_sl_multiplier": 1.0,
+    "atr_tp_multiplier": 1.5,
+    "last_updated": "2026-04-08T22:41:57.303579+00:00",
+    "sample_size": 2
+  },
+  "USD_CHF": {
+    "atr_sl_multiplier": 1.0,
+    "atr_tp_multiplier": 1.5,
+    "last_updated": "2026-04-09T18:16:26.882321+00:00",
+    "sample_size": 1
   }
 }

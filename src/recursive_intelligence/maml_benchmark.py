@@ -38,6 +38,7 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -250,9 +251,10 @@ class MAMLBenchmark:
     def __init__(self, config: Optional[BenchmarkConfig] = None):
         self.config = config or BenchmarkConfig()
 
-        # Data stores
-        self._predictions: List[PredictionRecord] = []
-        self._outcomes: List[OutcomeRecord] = []
+        # Data stores — deque(maxlen) gives O(1) bounded append vs list slicing copies.
+        # _transitions and _meta_trains are small/infrequent; left as lists for simplicity.
+        self._predictions: deque = deque(maxlen=self.config.max_predictions)
+        self._outcomes: deque = deque(maxlen=self.config.max_outcomes)
         self._transitions: List[RegimeTransition] = []
         self._meta_trains: List[MetaTrainRecord] = []
 
@@ -294,11 +296,7 @@ class MAMLBenchmark:
             ridge_confidence=float(ridge_confidence),
             scan_cycle=self._scan_cycle,
         )
-        self._predictions.append(rec)
-
-        # Sliding window
-        if len(self._predictions) > self.config.max_predictions:
-            self._predictions = self._predictions[-self.config.max_predictions:]
+        self._predictions.append(rec)  # deque(maxlen) auto-evicts oldest
 
     def record_outcome(
         self,
@@ -330,12 +328,8 @@ class MAMLBenchmark:
             duration_minutes=float(duration_minutes) if duration_minutes is not None else None,
             regime_at_exit=str(regime_at_exit).upper() if regime_at_exit else "",
         )
-        self._outcomes.append(rec)
+        self._outcomes.append(rec)  # deque(maxlen) auto-evicts oldest
         self._trades_since_transition += 1
-
-        # Sliding window
-        if len(self._outcomes) > self.config.max_outcomes:
-            self._outcomes = self._outcomes[-self.config.max_outcomes:]
 
         # Update convergence tracking on active transitions
         self._update_convergence(rec)
@@ -1549,12 +1543,14 @@ class MAMLBenchmark:
             self._trades_since_transition = state.get("trades_since_transition", 0)
             self._scan_cycle = state.get("scan_cycle", 0)
 
-            self._predictions = [
-                PredictionRecord.from_dict(d) for d in state.get("predictions", [])
-            ]
-            self._outcomes = [
-                OutcomeRecord.from_dict(d) for d in state.get("outcomes", [])
-            ]
+            self._predictions = deque(
+                (PredictionRecord.from_dict(d) for d in state.get("predictions", [])),
+                maxlen=self.config.max_predictions,
+            )
+            self._outcomes = deque(
+                (OutcomeRecord.from_dict(d) for d in state.get("outcomes", [])),
+                maxlen=self.config.max_outcomes,
+            )
             self._transitions = [
                 RegimeTransition.from_dict(d) for d in state.get("transitions", [])
             ]

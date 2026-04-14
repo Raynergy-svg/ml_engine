@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "weights": {
+    "TCN": 1.0,
+    "Ridge": 1.0,
+    "RF": 1.0
+  },
+  "selection_counts": {
+    "TCN": 0,
+    "Ridge": 0,
+    "RF": 0
+  },
+  "total_reward": {
+    "TCN": 0.0,
+    "Ridge": 0.0,
+    "RF": 0.0
+  },
+  "rounds": 0,
+  "gamma": 0.1,
+  "reward_history": [],
+  "last_updated": "2026-04-13T22:27:52.508117+00:00"
+}

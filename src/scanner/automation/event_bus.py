@@ -71,6 +71,8 @@ class EventBus:
         self._event_log: List[dict] = []
         self._log_path = log_path or Path(".claude/ralph/event_log.jsonl")
         self._log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._async_threads: set = set()
+        self._async_lock = threading.Lock()
 
     def subscribe(self, event_type: EventType, handler: Callable[[Event], EventResult],
                   name: str = "", priority: int = 100) -> None:
@@ -139,16 +141,35 @@ class EventBus:
     def emit_async(self, event: Event, callback: Optional[Callable[[List[EventResult]], None]] = None) -> threading.Thread:
         """Emit an event on a background thread. Optional callback with results."""
         def _run():
-            results = self.emit(event)
-            if callback:
-                try:
-                    callback(results)
-                except Exception as e:
-                    logger.error(f"EventBus: async callback error: {e}")
+            try:
+                results = self.emit(event)
+                if callback:
+                    try:
+                        callback(results)
+                    except Exception as e:
+                        logger.error(f"EventBus: async callback error: {e}")
+            finally:
+                with self._async_lock:
+                    self._async_threads.discard(thread)
 
         thread = threading.Thread(target=_run, name=f"event-{event.event_type.value}", daemon=True)
+        with self._async_lock:
+            self._async_threads.add(thread)
         thread.start()
         return thread
+
+    def shutdown(self, timeout_secs: float = 5.0) -> int:
+        """Wait for active async threads to finish. Returns count of threads that timed out."""
+        with self._async_lock:
+            threads = list(self._async_threads)
+        timed_out = 0
+        for t in threads:
+            t.join(timeout=timeout_secs)
+            if t.is_alive():
+                timed_out += 1
+        with self._async_lock:
+            self._async_threads.clear()
+        return timed_out
 
     def get_history(self, event_type: Optional[EventType] = None, limit: int = 50) -> List[dict]:
         """Get recent event history, optionally filtered by type."""

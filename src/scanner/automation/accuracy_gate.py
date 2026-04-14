@@ -86,6 +86,7 @@ class AccuracyGate:
         predicted_direction: str,
         actual_outcome: bool,
         confidence: float = 1.0,
+        trade_id: Optional[str] = None,
     ) -> None:
         """Record a trade outcome for accuracy calculation.
 
@@ -112,6 +113,13 @@ class AccuracyGate:
                     "wins": 0,
                 }
 
+            if trade_id is not None:
+                trade_id = str(trade_id)
+                for existing in self._data[pair]["trades"]:
+                    if str(existing.get("trade_id", "")) == trade_id:
+                        logger.debug("%s: skipping duplicate accuracy outcome for trade_id=%s", pair, trade_id)
+                        return
+
             # Append trade record
             trade_record = {
                 "direction": str(predicted_direction),
@@ -119,7 +127,14 @@ class AccuracyGate:
                 "confidence": float(min(1.0, max(0.0, confidence))),
                 "timestamp": datetime.utcnow().isoformat() + "Z",
             }
+            if trade_id is not None:
+                trade_record["trade_id"] = trade_id
             self._data[pair]["trades"].append(trade_record)
+
+            # Prune in-memory list to rolling window (prevent unbounded growth)
+            max_keep = self.rolling_window * 2  # keep 2x window for safety
+            if len(self._data[pair]["trades"]) > max_keep:
+                self._data[pair]["trades"] = self._data[pair]["trades"][-max_keep:]
 
             # Recalculate accuracy
             self._recalculate_accuracy(pair)
@@ -137,6 +152,57 @@ class AccuracyGate:
 
         except Exception as e:
             logger.error(f"Error recording outcome for {pair}: {e}")
+
+    def rebuild_from_journal(self, journal_path: str = "trained_data/trade_journal_rl.json") -> int:
+        """Rebuild canonical pair accuracy state from closed journal entries."""
+        jp = Path(journal_path)
+        if not jp.exists():
+            return 0
+        try:
+            raw = json.loads(jp.read_text())
+        except Exception as e:
+            logger.warning("Failed to rebuild accuracy from journal: %s", e)
+            return 0
+        if not isinstance(raw, list):
+            return 0
+
+        rebuilt: Dict[str, Dict] = {}
+        count = 0
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            outcome = entry.get("outcome")
+            if not isinstance(outcome, dict):
+                continue
+            pair = str(entry.get("pair", "") or "")
+            if not pair:
+                continue
+            rebuilt.setdefault(pair, {
+                "trades": [],
+                "accuracy": None,
+                "total": 0,
+                "wins": 0,
+            })
+            rebuilt[pair]["trades"].append({
+                "trade_id": str(entry.get("trade_id", "") or ""),
+                "direction": str(entry.get("direction", "")),
+                "outcome": bool(outcome.get("trade_won", False)),
+                "confidence": float(min(1.0, max(0.0, float(entry.get("confidence", 0.0) or 0.0)))),
+                "timestamp": str(
+                    outcome.get("close_time")
+                    or outcome.get("exit_time")
+                    or entry.get("timestamp")
+                    or ""
+                ),
+            })
+            count += 1
+
+        self._data = rebuilt
+        for pair in list(self._data.keys()):
+            self._recalculate_accuracy(pair)
+        self._save_data()
+        logger.info("Rebuilt pair accuracy from %d closed journal trade(s) across %d pair(s)", count, len(self._data))
+        return count
 
     def _recalculate_accuracy(self, pair: str) -> None:
         """Recalculate directional accuracy for a pair using rolling window.

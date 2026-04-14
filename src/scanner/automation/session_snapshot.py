@@ -36,6 +36,10 @@ class SessionSnapshot:
     avg_rr_ratio: float = 0.0
     scan_cycles: int = 0
     profile: str = "balanced"
+    # Control plane health summaries (optional, for post-session review)
+    control_plane_summary: Optional[Dict[str, Any]] = None
+    queue_summary: Optional[Dict[str, Any]] = None
+    policy_summary: Optional[Dict[str, Any]] = None
 
 
 class SessionSnapshotManager:
@@ -143,6 +147,9 @@ class SessionSnapshotManager:
                         avg_rr_ratio=float(data.get("avg_rr_ratio", 0.0)),
                         scan_cycles=int(data.get("scan_cycles", 0)),
                         profile=data.get("profile", "balanced"),
+                        control_plane_summary=data.get("control_plane_summary"),
+                        queue_summary=data.get("queue_summary"),
+                        policy_summary=data.get("policy_summary"),
                     ))
                 except Exception as e:
                     logger.debug(f"Skipping malformed snapshot {f.name}: {e}")

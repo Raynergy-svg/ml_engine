@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "total_preflights": 35,
-  "total_postflights": 35,
+  "total_preflights": 211,
+  "total_postflights": 210,
   "cycles_rejected": 0,
   "module_states": {
     "engine": {
@@ -13,6 +13,22 @@
       "last_error": null
     },
     "agents": {
+      "last_check_passed": true,
+      "consecutive_failures": 0,
+      "total_checks": 2,
+      "total_passes": 2,
+      "disabled": false,
+      "last_error": null
+    },
+    "memory_manager": {
+      "last_check_passed": true,
+      "consecutive_failures": 0,
+      "total_checks": 2,
+      "total_passes": 2,
+      "disabled": false,
+      "last_error": null
+    },
+    "module_activation": {
       "last_check_passed": true,
       "consecutive_failures": 0,
       "total_checks": 2,
@@ -36,7 +52,39 @@
       "disabled": false,
       "last_error": null
     },
+    "replay_validator": {
+      "last_check_passed": true,
+      "consecutive_failures": 0,
+      "total_checks": 2,
+      "total_passes": 2,
+      "disabled": false,
+      "last_error": null
+    },
+    "execution_quality_optimizer": {
+      "last_check_passed": true,
+      "consecutive_failures": 0,
+      "total_checks": 2,
+      "total_passes": 2,
+      "disabled": false,
+      "last_error": null
+    },
     "threshold_optimizer": {
+      "last_check_passed": true,
+      "consecutive_failures": 0,
+      "total_checks": 2,
+      "total_passes": 2,
+      "disabled": false,
+      "last_error": null
+    },
+    "dynamic_risk_allocator": {
+      "last_check_passed": true,
+      "consecutive_failures": 0,
+      "total_checks": 2,
+      "total_passes": 2,
+      "disabled": false,
+      "last_error": null
+    },
+    "model_calibration": {
       "last_check_passed": true,
       "consecutive_failures": 0,
       "total_checks": 2,
@@ -51,6 +99,14 @@
       "total_passes": 2,
       "disabled": false,
       "last_error": null
+    },
+    "signal_timing": {
+      "last_check_passed": true,
+      "consecutive_failures": 0,
+      "total_checks": 2,
+      "total_passes": 2,
+      "disabled": false,
+      "last_error": null
     }
   },
   "health_log": [
@@ -59,246 +115,701 @@
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T17:37:45.446184+00:00"
+      "timestamp": "2026-03-31T19:59:44.460810+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T17:37:45.461446+00:00"
+      "timestamp": "2026-03-31T20:07:02.034303+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T18:11:06.850905+00:00"
+      "timestamp": "2026-03-31T20:13:51.778458+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T18:25:19.106848+00:00"
+      "timestamp": "2026-03-31T20:20:28.261143+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T18:31:57.160026+00:00"
+      "timestamp": "2026-03-31T20:27:10.203628+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T18:33:10.689177+00:00"
+      "timestamp": "2026-03-31T20:33:57.983231+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T18:40:35.630324+00:00"
+      "timestamp": "2026-03-31T20:40:34.138491+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T18:50:01.826567+00:00"
+      "timestamp": "2026-03-31T20:47:30.928285+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:04:15.024136+00:00"
+      "timestamp": "2026-03-31T20:53:54.235530+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:13:13.608558+00:00"
+      "timestamp": "2026-03-31T21:00:25.870591+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:22:01.920428+00:00"
+      "timestamp": "2026-03-31T21:05:31.301838+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:26:40.425933+00:00"
+      "timestamp": "2026-03-31T21:10:35.886020+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:30:47.606870+00:00"
+      "timestamp": "2026-03-31T21:15:39.854498+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:32:06.082413+00:00"
+      "timestamp": "2026-03-31T21:20:42.632187+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:34:32.645240+00:00"
+      "timestamp": "2026-03-31T21:25:45.519477+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:39:49.157389+00:00"
+      "timestamp": "2026-03-31T21:30:50.421534+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:44:54.840313+00:00"
+      "timestamp": "2026-03-31T21:35:54.351696+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:50:00.616391+00:00"
+      "timestamp": "2026-03-31T21:40:57.984852+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T19:55:08.128587+00:00"
+      "timestamp": "2026-03-31T21:46:03.184167+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:01:10.179662+00:00"
+      "timestamp": "2026-03-31T21:51:07.471201+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:06:16.886032+00:00"
+      "timestamp": "2026-03-31T21:56:11.332617+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:09:09.858340+00:00"
+      "timestamp": "2026-03-31T22:01:15.056495+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:14:16.207914+00:00"
+      "timestamp": "2026-03-31T22:06:19.971730+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:19:23.568515+00:00"
+      "timestamp": "2026-03-31T22:11:22.864792+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:24:30.540951+00:00"
+      "timestamp": "2026-03-31T22:16:26.736053+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:29:36.512539+00:00"
+      "timestamp": "2026-03-31T22:21:30.753015+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:34:43.276768+00:00"
+      "timestamp": "2026-03-31T22:26:34.771390+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:39:48.717773+00:00"
+      "timestamp": "2026-03-31T22:31:37.673321+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-23T20:44:55.003393+00:00"
+      "timestamp": "2026-03-31T22:36:41.008098+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-24T10:33:12.456101+00:00"
+      "timestamp": "2026-03-31T22:41:46.680302+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-24T19:34:50.008450+00:00"
+      "timestamp": "2026-03-31T22:46:51.250993+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-24T20:05:14.740072+00:00"
+      "timestamp": "2026-03-31T22:51:54.349930+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-24T20:32:00.645104+00:00"
+      "timestamp": "2026-03-31T22:56:58.125428+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-24T20:32:58.618626+00:00"
+      "timestamp": "2026-03-31T23:02:01.002062+00:00"
     },
     {
       "type": "postflight",
       "health_score": 1.0,
       "failed": [],
       "disabled": [],
-      "timestamp": "2026-03-24T22:02:25.640916+00:00"
+      "timestamp": "2026-03-31T23:07:04.785200+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-03-31T23:10:23.935824+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-03-31T23:11:03.909612+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-03-31T23:13:11.751216+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-03-31T23:18:51.071705+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-03-31T23:43:02.696388+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-03-31T23:43:03.033534+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-03-31T23:57:52.239535+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T00:26:05.157762+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T00:27:33.116986+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T00:33:38.507644+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T12:56:56.796187+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T16:42:39.541534+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T19:43:21.059060+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T22:27:39.619185+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T22:31:53.468597+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-01T22:39:45.061375+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-02T01:14:56.696618+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-02T01:55:51.328501+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-02T02:27:45.713821+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-02T03:52:58.821514+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-02T14:18:48.288656+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-02T14:33:41.448275+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-02T21:13:53.916569+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T00:41:29.929156+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T00:41:50.590688+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T00:44:11.428638+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T02:53:58.751084+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T03:19:36.662150+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T04:10:22.828112+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T04:16:41.171647+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T19:36:31.927699+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T19:36:31.973244+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-03T19:40:36.126429+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T04:30:49.040455+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T04:44:06.124806+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T04:50:01.835752+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T04:52:04.382978+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T04:53:57.560041+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T04:55:14.425916+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T05:03:09.053151+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T05:11:16.648851+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T05:24:41.373343+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T14:18:17.517280+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-04T14:18:17.595660+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-05T00:41:21.932290+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T09:20:25.665147+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T09:59:25.632973+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T10:40:08.852391+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T10:48:21.608651+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T11:38:14.403428+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T11:46:28.265397+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T11:55:39.744552+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T12:06:16.246372+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T14:07:25.010270+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T14:16:56.844202+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T14:26:28.348681+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T14:35:47.368378+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T14:44:55.624924+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T14:51:51.427242+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-06T20:34:44.694486+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-08T22:41:21.025726+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-09T18:15:52.506123+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-13T14:01:41.211466+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-13T17:36:28.393653+00:00"
+    },
+    {
+      "type": "postflight",
+      "health_score": 1.0,
+      "failed": [],
+      "disabled": [],
+      "timestamp": "2026-04-13T22:27:52.548908+00:00"
     }
   ],
-  "last_updated": "2026-03-24T22:02:25.640940+00:00"
+  "last_updated": "2026-04-13T22:27:52.548944+00:00"
 }

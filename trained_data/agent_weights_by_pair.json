@@ -1,0 +1,609 @@
+{
+  "version": 1,
+  "pair_distributions": {
+    "EUR_USD:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_USD:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_USD:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_JPY:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CHF:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_USD:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "USD_CAD:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "NZD_USD:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_GBP:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_JPY:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "GBP_JPY:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "AUD_JPY:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:trend": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:mean_reversion": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:volatility": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:risk_sentinel": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:uncertainty": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:execution_quality": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:momentum": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:news_risk": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:multi_timeframe": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:pair_performance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:session_timing": {
+      "alpha": 2.0,
+      "beta": 2.0
+    },
+    "EUR_AUD:support_resistance": {
+      "alpha": 2.0,
+      "beta": 2.0
+    }
+  },
+  "pair_trade_counts": {
+    "EUR_USD": 0,
+    "GBP_USD": 0,
+    "USD_JPY": 0,
+    "USD_CHF": 0,
+    "AUD_USD": 0,
+    "USD_CAD": 0,
+    "NZD_USD": 0,
+    "EUR_GBP": 0,
+    "EUR_JPY": 0,
+    "GBP_JPY": 0,
+    "AUD_JPY": 0,
+    "EUR_AUD": 0
+  },
+  "pair_epsilon": {
+    "EUR_USD": 0.15,
+    "GBP_USD": 0.15,
+    "USD_JPY": 0.15,
+    "USD_CHF": 0.15,
+    "AUD_USD": 0.15,
+    "USD_CAD": 0.15,
+    "NZD_USD": 0.15,
+    "EUR_GBP": 0.15,
+    "EUR_JPY": 0.15,
+    "GBP_JPY": 0.15,
+    "AUD_JPY": 0.15,
+    "EUR_AUD": 0.15
+  }
+}

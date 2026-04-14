@@ -47,14 +47,82 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # Uses configuration defaults (YAML + dataclass); no extra overrides.
     SCAN_PROFILE_BALANCED: {
         "blocked_pairs": [],
-        "sub_inference_min_confidence": 0.48,
-        "min_agent_consensus_ratio": 0.50,  # 6/12 agents minimum (was 0.33)
+        "sub_inference_min_confidence": 0.30,
+        "min_agent_consensus_ratio": 0.50,
         "enable_devil_advocate": True,
         "devil_advocate_block_threshold": 0.60,
         "devil_advocate_warn_threshold": 0.40,
-        # Phase 76: Soft disagreement blocking — penalize confidence instead of hard-block
-        # when heuristic disagreement is between hard_floor (0.30) and max_model_disagreement (0.50)
         "soft_uncertainty_blocking": True,
+        # Phase 81+: Enable ALL trading modules — Tier 6 full stack
+        # Risk & sizing
+        "enable_dynamic_risk_allocation": True,
+        "enable_kelly_sizing": True,
+        "enable_entropy_sizing": True,
+        "enable_market_impact": True,
+        "enable_affinity_portfolio": True,
+        "enable_dynamic_hedging": True,
+        "enable_dynamic_sl_tp": True,
+        "enable_live_position_management": True,
+        "enable_position_timeout": True,
+        # Execution
+        "enable_smart_execution": True,
+        "enable_execution_routing": True,
+        "enable_execution_quality_optimizer": True,
+        "enable_execution_quality_tracking": True,
+        "execution_strategy": "TWAP",
+        # Intelligence & learning
+        "enable_model_calibration": True,
+        "enable_model_bandit": True,
+        "enable_model_routing": True,
+        "enable_confidence_calibration": True,
+        "enable_concept_drift_detection": True,
+        "enable_ensemble_disagreement": True,
+        "enable_trade_outcome_prediction": True,
+        "enable_trade_explainability": True,
+        "enable_lead_lag_detection": True,
+        "enable_observational_learning": True,
+        # Agents & signals
+        "enable_multi_timeframe_agent": True,
+        "enable_pair_performance_agent": True,
+        "enable_session_timing_agent": True,
+        "enable_support_resistance_agent": True,
+        "enable_news_risk_agent": True,
+        "enable_momentum_agent": True,
+        "enable_trader_readiness_agent": True,
+        # Features & attention
+        "enable_feature_attention": True,
+        "enable_temporal_attention": True,
+        "enable_causal_filtering": True,
+        "enable_microstructure_regime": True,
+        "enable_multi_horizon_fusion": True,
+        # Infrastructure
+        "enable_memory_manager": True,
+        "enable_health_registry": True,
+        "enable_module_activation": True,
+        "enable_agent_lifecycle": True,
+        "enable_observation_consumer": True,
+        "enable_replay_validator": True,
+        "enable_agent_accuracy_matrix": True,
+        "enable_pair_regime_agent_matrix": True,
+        "enable_signal_timing": True,
+        "enable_threshold_optimizer": True,
+        "enable_attention_feedback": True,
+        "enable_pair_transfer": True,
+        "enable_regime_broadcast": True,
+        "enable_regime_reward": True,
+        "enable_adversarial_training": True,
+        "enable_adaptive_lr": True,
+        "enable_synthetic_crisis": True,
+        "enable_training_augmentation": True,
+        "enable_agent_trade_promotion": True,
+        # HRP & graph
+        "use_hrp": True,
+        "use_heterogeneous_agents": True,
+        "enable_graph_attention": True,
+        # RL
+        "use_rl_sizer": True,
+        "use_rl_gates": True,
+        "use_rl_exits": True,
     },
     # Fewer trades, higher signal quality requirements.
     "conservative": {
@@ -104,7 +172,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_volatility_regime": 0,
         "weighted_vote_threshold": 0.45,
         "sub_inference_min_confidence": 0.45,
-        "sub_inference_vote_threshold": 0.50,
+        "sub_inference_vote_threshold": 0.34,  # Phase 98: 1/3 vote threshold
         "agent_promotion_min_confidence": 0.50,
         "max_uncertainty_score": 0.48,
         "max_model_disagreement": 0.65,
@@ -207,7 +275,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         # Phase 29 (US-174): Enable trade execution in smart profile
         "enable_execution": True,
         "min_confidence": 42.0,
-        "min_momentum": 0.08,
+        "min_momentum": 0.05,  # Phase 98: was 0.08, killed 35% of signals
         "min_tcn_probability": 0.58,
         "max_drawdown_pct": 0.030,
         "final_score_threshold": 0.44,
@@ -216,8 +284,8 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_volatility_regime": 0,
         "weighted_vote_threshold": 0.45,
         "sub_inference_tradeable_only": False,
-        "sub_inference_min_confidence": 0.48,
-        "sub_inference_vote_threshold": 0.50,
+        "sub_inference_min_confidence": 0.30,
+        "sub_inference_vote_threshold": 0.34,  # Phase 98: 1/3 vote threshold
         "sub_inference_max_candidates": 15,
         "agent_promotion_min_confidence": 0.50,
         "max_uncertainty_score": 0.52,
@@ -363,6 +431,10 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_devil_advocate": True,
         "devil_advocate_block_threshold": 0.60,
         "devil_advocate_warn_threshold": 0.40,
+        # Cross-pair spread tolerance: EUR/AUD, GBP/AUD etc. have 2-4 pip spreads;
+        # default 3.0 is too tight. 4.5 allows cross pairs in normal conditions
+        # while still blocking extreme spread spikes during news/thin markets.
+        "max_spread_pips": 4.5,
     },
     # Futures paper trading profile (Interactive Brokers, indices/commodities)
     "futures_paper": {
@@ -483,7 +555,7 @@ class ScannerConfig:
     model_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "trained_data" / "models")
 
     # Pairs to scan
-    pairs: List[str] = field(default_factory=lambda: MAJOR_PAIRS.copy())
+    pairs: List[str] = field(default_factory=lambda: DEFAULT_PAIRS.copy())  # Phase 81: was MAJOR_PAIRS (7), now all 15 pairs
 
     # Parallel execution
     parallel_workers: int = 4
@@ -511,10 +583,10 @@ class ScannerConfig:
 
     # Position sizing
     account_equity: float = 0.0  # 0 = fetch from OANDA
-    risk_per_trade_pct: float = 0.02  # 2% risk per trade
-    max_open_risk_pct: float = 0.15  # 15% max portfolio risk across all open positions
+    risk_per_trade_pct: float = 0.05  # 5% risk per trade — practice account, $100K
+    max_open_risk_pct: float = 0.30  # 30% max portfolio risk — practice account, allows multiple trades
     leverage: int = 50
-    min_risk_reward_ratio: float = 1.2  # Minimum R:R to allow execution (TP/SL >= 1.2, per trading rules)
+    min_risk_reward_ratio: float = 1.5  # Phase 81: was 2.0, LOW regime can't produce 2:1 consistently. Adaptive R:R targets 2.5:1+
 
     # Session filter (UTC hours)
     # FX markets are open 24/5 (Sun 22:00 UTC – Fri 22:00 UTC).
@@ -579,7 +651,7 @@ class ScannerConfig:
 
     # ATR-based SL/TP (from buddy_scanner)
     atr_sl_multiplier: float = 1.0  # SL = 1.0x ATR (default; overridden by regime_atr_multipliers)
-    atr_tp_multiplier: float = 1.5  # TP = 1.5x ATR (default; overridden by regime_atr_multipliers)
+    atr_tp_multiplier: float = 2.5  # TP = 2.5x ATR — Phase 81: was 1.5, user wants high R:R (wins >> losses)
 
     # Regime-adaptive ATR multipliers (US-050): regime → {sl_mult, tp_mult}
     # LOW=tight stops, EXTREME=wide TP to capture big moves
@@ -594,7 +666,9 @@ class ScannerConfig:
     enable_regime_atr_adaptation: bool = True  # Use regime-adaptive multipliers
     enable_trailing_stop: bool = True  # ATR-based trailing SL for open trades
     trailing_atr_multiplier: float = 1.5  # Trail distance = ATR * this multiplier
-    max_data_age_seconds: float = 60.0  # Max age of analysis data before execution skips
+    max_data_age_seconds: float = 600.0  # Max age of analysis data before execution skips
+    # 600s = 10 min. Batch scans across 15 pairs + model loading take 2-8 min on first
+    # run. Old 60s default silently killed every trade as stale before OANDA ever saw them.
 
     # Execution recovery and fallback params (US-048: extracted from hardcoded values)
     max_order_attempts: int = 2  # Original + N-1 retries on rejection
@@ -607,10 +681,10 @@ class ScannerConfig:
     trailing_stop_breakeven_pct: float = 0.50  # Progress % to move SL to breakeven
     trailing_stop_lock_pct: float = 0.75  # Progress % to lock 50% of profit
 
-    min_sl_pips: float = 15.0
-    max_sl_pips: float = 15.0  # Fixed for tight scalping
+    min_sl_pips: float = 8.0   # Phase 81: was 15, allow tighter SL for higher R:R
+    max_sl_pips: float = 30.0  # Phase 81: was 15 (locked), allow ATR-based dynamic SL
     min_tp_pips: float = 20.0
-    max_tp_pips: float = 30.0
+    max_tp_pips: float = 60.0  # Phase 81: was 30, widened for higher R:R targets
 
     # High probability TP bonus (from buddy_scanner)
     high_prob_threshold: float = 0.65  # Confidence threshold for TP bonus
@@ -626,8 +700,8 @@ class ScannerConfig:
     # Sub-inference agents (scanner opportunity confirmation pass)
     enable_sub_inference_agents: bool = True
     sub_inference_tradeable_only: bool = True
-    sub_inference_min_confidence: float = 0.48
-    sub_inference_vote_threshold: float = 0.50  # Phase 81: was 0.66, resilient to agent timeouts
+    sub_inference_min_confidence: float = 0.30  # Phase 81: was 0.48, most pairs have conf 0.23-0.38
+    sub_inference_vote_threshold: float = 0.34  # Phase 98: was 0.50, 1/3 vote threshold (3 workers)
     sub_inference_window_checks: int = 3
     sub_inference_max_candidates: int = 10
     min_agent_consensus_ratio: float = 0.25  # Hard floor: at least 25% of windows must confirm
@@ -707,7 +781,7 @@ class ScannerConfig:
     # --- Uncertainty Blocking ---
     max_uncertainty_score: float = 0.4  # Block if uncertainty above this
     max_model_disagreement: float = 0.65  # Phase 81: was 0.5, hard-blocked all signals at 0.50
-    disagreement_hard_floor: float = 0.30  # Phase 75: Hard block threshold for heuristic disagreement (was hardcoded 0.30)
+    disagreement_hard_floor: float = 0.50  # Phase 81: was 0.30, too many false blocks. Soft penalty handles the range 0.50-0.65
     soft_uncertainty_blocking: bool = True  # Phase 76: Default True — graduated confidence penalty instead of hard block for disagreement between floor and max
 
     # --- HRP Portfolio Optimization (US-073) ---
@@ -922,11 +996,11 @@ class ScannerConfig:
 
     # --- Execution Quality Thresholds ---
     max_spread_pips: float = 3.0  # Max acceptable spread in pips
+    off_hours_spread_multiplier: float = 3.0  # Widen spread tolerance when --force (off-hours)
     max_slippage_pips: float = 2.0  # Max acceptable slippage in pips
     min_liquidity_score: float = 0.3  # Minimum liquidity score (0-1)
 
     # --- Learning Loop Config (post-trade agent weight updates) ---
-    enable_agent_learning: bool = True
     enable_llm_trade_analysis: bool = True  # LLM deep analysis for losing trades (US-009)
     weight_boost_on_win: float = 0.1  # Weight increase on winning trade
     weight_penalty_on_loss: float = 0.15  # Weight decrease on losing trade
@@ -1108,6 +1182,9 @@ class ScannerConfig:
         for field_name, value in overrides.items():
             if _known_fields and field_name not in _known_fields:
                 logger.warning(f"apply_profile: unknown field '{field_name}' in profile '{resolved}' — skipping")
+                continue
+            # Preserve user-set blocked_pairs — profiles should not overwrite runtime blocks
+            if field_name == "blocked_pairs":
                 continue
             setattr(self, field_name, value)
         # Keep regime in valid classifier range.

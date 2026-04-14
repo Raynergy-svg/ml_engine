@@ -583,6 +583,11 @@ class PlannerRuntime:
         if not tool_results:
             return False
         direct_tools = {
+            "get_status",
+            "get_decisions",
+            "get_model_status",
+            "get_account_summary",
+            "get_journal_summary",
             "override_guardrail",
             "run_runtime_command",
             "configure_pair_sentiment_gate",

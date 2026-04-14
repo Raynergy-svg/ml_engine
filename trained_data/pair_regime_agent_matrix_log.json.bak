@@ -1,6 +1,165 @@
 {
   "version": 1,
-  "total_votes": 0,
-  "matrix": {},
-  "last_updated": "2026-03-24T22:02:25.637103+00:00"
+  "total_votes": 20,
+  "matrix": {
+    "AUD_JPY": {
+      "NORMAL": {
+        "trend": [
+          {
+            "vote": "LONG",
+            "won": true,
+            "timestamp": "2026-04-02T21:13:58.813491+00:00"
+          }
+        ],
+        "volatility": [
+          {
+            "vote": "LONG",
+            "won": true,
+            "timestamp": "2026-04-02T21:13:58.813504+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "LONG",
+            "won": true,
+            "timestamp": "2026-04-02T21:13:58.813508+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "LONG",
+            "won": true,
+            "timestamp": "2026-04-02T21:13:58.813512+00:00"
+          }
+        ]
+      },
+      "LOW": {
+        "trend": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-08T22:41:57.211216+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-08T22:41:57.211279+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-08T22:41:57.211292+00:00"
+          }
+        ],
+        "execution_quality": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-08T22:41:57.211300+00:00"
+          }
+        ]
+      }
+    },
+    "NZD_USD": {
+      "LOW": {
+        "trend": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-06T20:34:54.206235+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-06T20:34:54.206285+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-06T20:34:54.206299+00:00"
+          }
+        ],
+        "execution_quality": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-06T20:34:54.206305+00:00"
+          }
+        ]
+      }
+    },
+    "USD_CHF": {
+      "HIGH": {
+        "trend": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-09T18:16:26.782411+00:00"
+          }
+        ],
+        "volatility": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-09T18:16:26.782531+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-09T18:16:26.782546+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-09T18:16:26.782555+00:00"
+          }
+        ]
+      }
+    },
+    "EUR_AUD": {
+      "NORMAL": {
+        "trend": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-09T18:16:26.782568+00:00"
+          }
+        ],
+        "volatility": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-09T18:16:26.782580+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-09T18:16:26.782587+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-09T18:16:26.782593+00:00"
+          }
+        ]
+      }
+    }
+  },
+  "last_updated": "2026-04-13T22:27:52.462259+00:00"
 }

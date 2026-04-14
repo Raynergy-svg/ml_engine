@@ -28,18 +28,21 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Try to import ib_async; log warning if missing
+# Try to import ib_async (newer name) or ib_insync (older name)
 try:
     from ib_async import IB, Contract, Order, Forex, Future
 except ImportError:
-    IB = None
-    Contract = None
-    Order = None
-    Forex = None
-    Future = None
-    logger.warning(
-        "ib_async not installed. Install with: pip install ib_async --break-system-packages"
-    )
+    try:
+        from ib_insync import IB, Contract, Order, Forex, Future
+    except ImportError:
+        IB = None
+        Contract = None
+        Order = None
+        Forex = None
+        Future = None
+        logger.warning(
+            "ib_async/ib_insync not installed. Install with: pip install ib-insync"
+        )
 
 
 class IBKRBroker(BrokerClient):
@@ -922,7 +925,7 @@ class IBKRBroker(BrokerClient):
                 # Check if order was rejected (error codes 201, 202)
                 error_msg = str(order_error)
                 if any(
-                    error_code in error_msg
+                    str(error_code) in error_msg
                     for error_code in [201, 202]
                 ):
                     logger.warning(

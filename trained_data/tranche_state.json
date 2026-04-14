@@ -1,0 +1,161 @@
+{
+  "trades": {
+    "1002": {
+      "current_sl": 159.63007166557045,
+      "direction": "LONG",
+      "entry_price": 159.762,
+      "original_sl": 159.63007166557045,
+      "pair": "USD_JPY",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "1002",
+      "tranches_closed": []
+    },
+    "1014": {
+      "current_sl": 159.57386401944825,
+      "direction": "LONG",
+      "entry_price": 159.738,
+      "original_sl": 159.57386401944825,
+      "pair": "USD_JPY",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "1014",
+      "tranches_closed": []
+    },
+    "1020": {
+      "current_sl": 158.64449273002091,
+      "direction": "LONG",
+      "entry_price": 158.869,
+      "original_sl": 158.64449273002091,
+      "pair": "USD_JPY",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "1020",
+      "tranches_closed": []
+    },
+    "1024": {
+      "current_sl": 1.6786400000000001,
+      "direction": "SHORT",
+      "entry_price": 1.67516,
+      "original_sl": 1.6786400000000001,
+      "pair": "EUR_AUD",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "1024",
+      "tranches_closed": []
+    },
+    "1189": {
+      "current_sl": 112.99619832945832,
+      "direction": "LONG",
+      "entry_price": 113.151,
+      "original_sl": 112.99619832945832,
+      "pair": "AUD_JPY",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "1189",
+      "tranches_closed": []
+    },
+    "1195": {
+      "current_sl": 0.77974,
+      "direction": "LONG",
+      "entry_price": 0.78086,
+      "original_sl": 0.77974,
+      "pair": "USD_CHF",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "1195",
+      "tranches_closed": []
+    },
+    "1199": {
+      "current_sl": 187.484214643893,
+      "direction": "SHORT",
+      "entry_price": 187.319,
+      "original_sl": 187.484214643893,
+      "pair": "EUR_JPY",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "1199",
+      "tranches_closed": []
+    },
+    "964": {
+      "current_sl": 0.7986000000000001,
+      "direction": "LONG",
+      "entry_price": 0.80018,
+      "original_sl": 0.7986000000000001,
+      "pair": "USD_CHF",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "964",
+      "tranches_closed": []
+    },
+    "974": {
+      "current_sl": 159.581,
+      "direction": "LONG",
+      "entry_price": 159.753,
+      "original_sl": 159.581,
+      "pair": "USD_JPY",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "974",
+      "tranches_closed": []
+    },
+    "978": {
+      "current_sl": 1.3918324547719994,
+      "direction": "LONG",
+      "entry_price": 1.39274,
+      "original_sl": 1.3918324547719994,
+      "pair": "USD_CAD",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "978",
+      "tranches_closed": []
+    },
+    "990": {
+      "current_sl": 159.81492699565794,
+      "direction": "LONG",
+      "entry_price": 159.951,
+      "original_sl": 159.81492699565794,
+      "pair": "USD_JPY",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "990",
+      "tranches_closed": []
+    },
+    "996": {
+      "current_sl": 159.66304585958608,
+      "direction": "LONG",
+      "entry_price": 159.776,
+      "original_sl": 159.66304585958608,
+      "pair": "USD_JPY",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "996",
+      "tranches_closed": []
+    },
+    "test_1": {
+      "current_sl": 1.0835,
+      "direction": "LONG",
+      "entry_price": 1.085,
+      "original_sl": 1.0835,
+      "pair": "EUR_USD",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "test_1",
+      "tranches_closed": []
+    }
+  },
+  "version": 1
+}

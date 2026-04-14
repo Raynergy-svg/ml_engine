@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "history": [
+    {
+      "timestamp": "2026-03-31T21:00:25.881674+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 15,
+        "n_adversarial_samples": 12,
+        "training_rounds": 0
+      }
+    }
+  ],
+  "last_updated": "2026-03-31T21:00:25.881687+00:00"
+}

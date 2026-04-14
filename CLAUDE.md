@@ -24,7 +24,21 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 - Minimum R:R ratio 1.2:1 gate before execution
 - Position sizing scales to account size (5% base risk on practice)
 
-## Self-Improvement
+## Claude Brain (My Memory Layer — Read This First)
+> On every invocation, read these files in order before doing anything else:
+1. `.claude/brain/briefing.md` — my serialized working memory, current situation, next actions
+2. `.claude/brain/session_handoff.md` — raw runtime state written by Buddy at last shutdown
+3. `.claude/brain/open_questions.md` — if any marked URGENT
+
+These files are written by me (Claude), for me. They are the reasoning layer on top of Buddy's mechanical systems.
+
+- `briefing.md` — situation, portfolio, trade narrative, hypotheses, decisions, next actions
+- `session_handoff.md` — NAV, open trades, last 10 journal entries, runtime summary (written by Buddy)
+- `trade_narrative.md` — interpreted trade history (not raw journal data)
+- `strategic_log.md` — my decision ledger, append-only
+- `open_questions.md` — active hypotheses and investigations
+
+## Self-Improvement (Buddy's Mechanical Layer)
 - Learnings: `.claude/learnings.md` — date-stamped insights from trade outcomes
 - Rules: `.claude/rules/` — promoted patterns that actively gate behavior
 - State: `.claude/state.json` — session continuity across context windows
@@ -42,6 +56,33 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 - `src/risk/position_sizing.py` — DynamicPositionSizer + factory functions (create_regime_aware_position_sizer, etc.)
 - `trained_data/trade_journal_rl.json` — Trade outcomes for RL
 - `trained_data/models/agent_weights.json` — Learned agent weights
+
+## TUI Command Bridge
+- `src/tui/app.py` — Textual TUI main app (6 screens, dual-mode live/demo)
+- `src/tui/theme.tcss` — Cyberpunk TCSS theme (neon cyan/magenta/green on void black)
+- `src/tui/data_provider.py` — Thread-safe OANDA data bridge (DashboardSnapshot)
+- `buddy` — Launcher script (auto-sources .env.local, activates venv)
+- Launch: `./buddy` (auto-detects --live if OANDA creds exist, else --demo)
+
+## Agent Specialization Rules — MANDATORY
+> When launching sub-agents via the Agent tool, ALWAYS use a specialized `subagent_type`.
+> NEVER use the default `general-purpose` agent. Every sub-agent MUST have a domain skill.
+
+**Required sub-agent types by task:**
+- UI/UX design decisions → `UX Architect` or `UI Designer`
+- Frontend/TUI code → `Frontend Developer` or `Senior Developer`
+- Code quality review → `Code Reviewer`
+- Architecture decisions → `Software Architect`
+- Performance analysis → `Performance Benchmarker`
+- Testing strategy → `API Tester` or `Test Results Analyzer`
+- Codebase exploration → `Explore` (fast search agent)
+- Implementation planning → `Plan` (architect agent)
+- Security review → `Security Engineer`
+- Database/data work → `Database Optimizer` or `Data Engineer`
+- Documentation → `Technical Writer`
+- DevOps/infra → `DevOps Automator`
+
+**Rationale:** Specialized agents produce higher-quality output because they carry domain-specific knowledge, heuristics, and review criteria. General-purpose agents lack the depth needed for production-grade work.
 
 ## Ralph (Autonomous Dev Loop)
 - `scripts/ralph.sh` — Iterative AI agent loop for PRD stories

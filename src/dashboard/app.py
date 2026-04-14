@@ -21,6 +21,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from src.scanner.automation.background_activity import get_background_activity_tracker
+
 logger = logging.getLogger(__name__)
 
 # Ensure project root is on path
@@ -53,6 +55,11 @@ _watch_thread: Optional[threading.Thread] = None
 _continuous_scanner = None
 _training_running = False
 _training_status: Dict[str, Any] = {"status": "idle", "model": None, "progress": None}
+_watch_activity_id: Optional[str] = None
+
+
+def _background_snapshot(limit: int = 25) -> Dict[str, Any]:
+    return get_background_activity_tracker().get_snapshot(limit=limit)
 
 
 # ── Config Helpers ─────────────────────────────────────────────────────────
@@ -670,7 +677,7 @@ async def get_trade_journal():
 @app.post("/api/watch/start")
 async def start_watch(request: Request):
     """Start continuous scanning (watch mode)."""
-    global _watch_running, _watch_thread, _continuous_scanner
+    global _watch_running, _watch_thread, _continuous_scanner, _watch_activity_id
 
     if _watch_running:
         return JSONResponse({"status": "already_running"})
@@ -680,6 +687,19 @@ async def start_watch(request: Request):
     granularity = body.get("granularity", "H1")
     interval = int(body.get("interval_minutes", 5))
     auto_execute = bool(body.get("auto_execute", False))
+    tracker = get_background_activity_tracker()
+    _watch_activity_id = tracker.start_activity(
+        kind="watch",
+        title="Continuous watch mode",
+        source="dashboard",
+        metadata={
+            "profile": profile,
+            "granularity": granularity,
+            "interval_minutes": interval,
+            "auto_execute": auto_execute,
+        },
+    )
+    tracker.append_event(_watch_activity_id, "Watch mode requested from dashboard")
 
     def _run_watch():
         global _watch_running, _continuous_scanner, _last_scan_results
@@ -713,6 +733,11 @@ async def start_watch(request: Request):
                         "is_tradeable": bool(getattr(a, "is_tradeable", False)),
                         "error": a.error,
                     })
+                tracker.update_activity(
+                    _watch_activity_id,
+                    summary=f"Completed scan #{getattr(_continuous_scanner, '_scan_count', 0)}",
+                    metadata={"scan_count": getattr(_continuous_scanner, "_scan_count", 0)},
+                )
 
             _continuous_scanner.run(
                 auto_execute=auto_execute,
@@ -720,9 +745,15 @@ async def start_watch(request: Request):
             )
         except Exception as e:
             logger.error(f"Watch mode error: {e}")
+            tracker.fail_activity(_watch_activity_id, error=str(e), summary="Watch mode failed")
         finally:
             _watch_running = False
             _continuous_scanner = None
+            if _watch_activity_id:
+                snapshot = tracker.get_snapshot(limit=1)
+                active_ids = {item.get("id") for item in snapshot.get("active", [])}
+                if _watch_activity_id in active_ids:
+                    tracker.complete_activity(_watch_activity_id, summary="Watch mode stopped")
 
     _watch_thread = threading.Thread(target=_run_watch, daemon=True)
     _watch_thread.start()
@@ -732,13 +763,16 @@ async def start_watch(request: Request):
 @app.post("/api/watch/stop")
 async def stop_watch():
     """Stop continuous scanning."""
-    global _watch_running, _continuous_scanner
+    global _watch_running, _continuous_scanner, _watch_activity_id
     if not _watch_running:
         return JSONResponse({"status": "not_running"})
 
     if _continuous_scanner:
         _continuous_scanner.stop()
     _watch_running = False
+    if _watch_activity_id:
+        tracker = get_background_activity_tracker()
+        tracker.update_activity(_watch_activity_id, status="completed", summary="Watch mode stop requested")
     return JSONResponse({"status": "stopping"})
 
 
@@ -752,6 +786,12 @@ async def watch_status():
         "running": _watch_running,
         "scan_count": scan_count,
     })
+
+
+@app.get("/api/background-activity")
+async def background_activity():
+    """Get active and recent background work."""
+    return JSONResponse(_background_snapshot())
 
 
 # ── API: Training ──────────────────────────────────────────────────────────
@@ -777,6 +817,13 @@ async def train_all_models(request: Request, background_tasks: BackgroundTasks):
 
     def _do_train():
         global _training_running, _training_status
+        tracker = get_background_activity_tracker()
+        activity_id = tracker.start_activity(
+            kind="training",
+            title="Train all models",
+            source="dashboard",
+            metadata={"model": "all"},
+        )
         _training_running = True
         _training_status = {"status": "running", "model": "all", "started": time.time()}
         try:
@@ -804,6 +851,7 @@ async def train_all_models(request: Request, background_tasks: BackgroundTasks):
                 "trained": list(trainers.keys()),
                 "completed": time.time(),
             }
+            tracker.complete_activity(activity_id, summary="All-model training completed", metadata={"trained_models": list(trainers.keys())})
         except Exception as e:
             _training_status = {
                 "status": "error",
@@ -811,6 +859,7 @@ async def train_all_models(request: Request, background_tasks: BackgroundTasks):
                 "error": str(e),
                 "traceback": traceback.format_exc(),
             }
+            tracker.fail_activity(activity_id, error=str(e), summary="All-model training failed")
         finally:
             _training_running = False
 
@@ -846,6 +895,13 @@ async def train_single_model(request: Request, background_tasks: BackgroundTasks
 
     def _do_train_single():
         global _training_running, _training_status
+        tracker = get_background_activity_tracker()
+        activity_id = tracker.start_activity(
+            kind="training",
+            title=f"Train model {model_name}",
+            source="dashboard",
+            metadata={"model": model_name},
+        )
         _training_running = True
         _training_status = {"status": "running", "model": model_name, "started": time.time()}
         try:
@@ -947,6 +1003,7 @@ async def train_single_model(request: Request, background_tasks: BackgroundTasks
                 "model": model_name,
                 "completed": time.time(),
             }
+            tracker.complete_activity(activity_id, summary=f"Training completed for {model_name}")
         except Exception as e:
             _training_status = {
                 "status": "error",
@@ -954,6 +1011,7 @@ async def train_single_model(request: Request, background_tasks: BackgroundTasks
                 "error": str(e),
                 "traceback": traceback.format_exc(),
             }
+            tracker.fail_activity(activity_id, error=str(e), summary=f"Training failed for {model_name}")
         finally:
             _training_running = False
 
@@ -1057,16 +1115,26 @@ async def run_orchestration_cycle(request: Request, background_tasks: Background
 
     def _do_cycle():
         global _scan_running, _last_scan_results
+        tracker = get_background_activity_tracker()
+        activity_id = tracker.start_activity(
+            kind="orchestration",
+            title="Dashboard orchestration cycle",
+            source="dashboard",
+            metadata={"profile": profile, "granularity": granularity},
+        )
         _scan_running = True
         try:
             orch = _get_orchestrator()
             if orch:
                 result = orch.run_cycle(profile=profile, granularity=granularity)
                 _last_scan_results = [result.to_dict()]
+                tracker.complete_activity(activity_id, summary="Orchestration cycle completed")
             else:
                 _last_scan_results = [{"error": "Orchestrator not available"}]
+                tracker.fail_activity(activity_id, error="Orchestrator not available", summary="Could not start orchestration")
         except Exception as e:
             _last_scan_results = [{"error": str(e)}]
+            tracker.fail_activity(activity_id, error=str(e), summary="Orchestration cycle failed")
         finally:
             _scan_running = False
 
@@ -1084,11 +1152,13 @@ async def get_system_status():
             # Inject watch mode and training status
             status["watch_mode"] = {"running": _watch_running}
             status["training"] = _training_status
+            status["background_activity"] = _background_snapshot()
             return JSONResponse(status)
         return JSONResponse({
             "error": "Orchestrator not available",
             "watch_mode": {"running": _watch_running},
             "training": _training_status,
+            "background_activity": _background_snapshot(),
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

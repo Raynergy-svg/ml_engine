@@ -84,6 +84,87 @@ class DeploymentValidator:
         )
         self.logger = logging.getLogger(__name__)
 
+    def _get_pair_pip_value(self, pair: str) -> float:
+        """Resolve pip size for a pair with safe fallbacks."""
+        try:
+            if str(self.project_root) not in sys.path:
+                sys.path.insert(0, str(self.project_root))
+            from src.brokers.registry import get_registry
+
+            instrument = get_registry().get(pair)
+            if instrument and getattr(instrument, "pip_value", 0):
+                return float(instrument.pip_value)
+        except Exception:
+            pass
+
+        return 0.01 if str(pair).endswith("JPY") else 0.0001
+
+    def _normalize_trade_entry(self, trade: Dict[str, Any]) -> Dict[str, Any]:
+        """Derive missing pip-distance fields from stored price levels."""
+        if not isinstance(trade, dict):
+            return trade
+
+        normalized = dict(trade)
+        pair = str(normalized.get("pair", ""))
+        pip_value = self._get_pair_pip_value(pair)
+
+        try:
+            entry_price = float(normalized.get("entry_price", 0) or 0)
+        except (TypeError, ValueError):
+            entry_price = 0.0
+        try:
+            sl_price = float(normalized.get("sl_price", 0) or 0)
+        except (TypeError, ValueError):
+            sl_price = 0.0
+        try:
+            tp_price = float(normalized.get("tp_price", 0) or 0)
+        except (TypeError, ValueError):
+            tp_price = 0.0
+
+        if pip_value > 0 and entry_price > 0:
+            if float(normalized.get("sl_pips", 0) or 0) <= 0 and sl_price > 0:
+                normalized["sl_pips"] = round(abs(entry_price - sl_price) / pip_value, 1)
+            if float(normalized.get("tp_pips", 0) or 0) <= 0 and tp_price > 0:
+                normalized["tp_pips"] = round(abs(tp_price - entry_price) / pip_value, 1)
+
+        return normalized
+
+    def _blocked_pairs_snapshot(
+        self, configured_blocked: Optional[List[str]] = None
+    ) -> Tuple[List[str], List[str], List[str]]:
+        """Return configured, dynamically blocked, and unresolved zero-accuracy pairs."""
+        configured = sorted(set(configured_blocked or []))
+        dynamic: List[str] = []
+        unresolved: List[str] = []
+
+        try:
+            if str(self.project_root) not in sys.path:
+                sys.path.insert(0, str(self.project_root))
+            from src.scanner.automation.accuracy_gate import AccuracyGate
+
+            gate = AccuracyGate()
+            dynamic = sorted(set(gate.get_blocked_pairs()))
+
+            zero_accuracy_candidates: List[str] = []
+            for pair in gate._data.keys():
+                stats = gate.get_pair_stats(pair)
+                if not stats:
+                    continue
+                rolling_total = int(stats.get("rolling_total", 0) or 0)
+                _, accuracy, _ = gate.check_pair(pair)
+                if accuracy is None:
+                    accuracy = stats.get("alltime_accuracy")
+                if rolling_total >= gate.min_trades and accuracy == 0:
+                    zero_accuracy_candidates.append(pair)
+
+            unresolved = sorted(
+                p for p in zero_accuracy_candidates if p not in configured and p not in dynamic
+            )
+        except Exception:
+            pass
+
+        return configured, dynamic, unresolved
+
     def run_all(self) -> int:
         """Run all checks, return exit code (0=green, 1=yellow, 2=red)."""
         self._check_module_imports()
@@ -317,6 +398,9 @@ class DeploymentValidator:
                 blocked = set(prof_config.get("blocked_pairs", []))
                 all_blocked.update(blocked)
 
+            _, dynamic_blocked, unresolved_zero_accuracy = self._blocked_pairs_snapshot()
+            all_blocked.update(dynamic_blocked)
+
             if len(all_blocked) > 0:
                 self.results.append(
                     CheckResult(
@@ -329,9 +413,9 @@ class DeploymentValidator:
                 self.results.append(
                     CheckResult(
                         "Config: Blocked pairs",
-                        "WARN",
-                        "No pairs blocked across any profile",
-                        "Consider blocking underperformers (e.g., EUR_USD)"
+                        "WARN" if unresolved_zero_accuracy else "PASS",
+                        "No pairs blocked across any profile" if unresolved_zero_accuracy else "OK (no static blocked pairs; dynamic gate has no blocked pairs)",
+                        "Consider blocking underperformers (e.g., EUR_USD)" if unresolved_zero_accuracy else "Blocked pairs will be managed dynamically by AccuracyGate"
                     )
                 )
 
@@ -755,9 +839,19 @@ class DeploymentValidator:
             required_fields = ["pair", "entry_price", "sl_pips", "tp_pips"]
 
             if len(journal) > 0:
-                sample = journal[0]
+                normalized_journal = [
+                    self._normalize_trade_entry(trade) if isinstance(trade, dict) else trade
+                    for trade in journal
+                ]
+                sample = normalized_journal[0]
                 if isinstance(sample, dict):
-                    missing = [f for f in required_fields if f not in sample]
+                    missing = sorted({
+                        field
+                        for trade in normalized_journal
+                        if isinstance(trade, dict)
+                        for field in required_fields
+                        if field not in trade
+                    })
                     if missing:
                         self.results.append(
                             CheckResult(
@@ -778,7 +872,7 @@ class DeploymentValidator:
 
                     # Check R:R ratio (critical rule from trading.md)
                     low_rr = []
-                    for trade in journal:
+                    for trade in normalized_journal:
                         if isinstance(trade, dict):
                             sl = trade.get("sl_pips", 0)
                             tp = trade.get("tp_pips", 0)
@@ -842,15 +936,18 @@ class DeploymentValidator:
 
             # Check current profile's blocked pairs
             profile_config = SCAN_PROFILES.get(self.profile, {})
-            blocked = profile_config.get("blocked_pairs", [])
+            configured_blocked, dynamic_blocked, unresolved_zero_accuracy = self._blocked_pairs_snapshot(
+                profile_config.get("blocked_pairs", [])
+            )
+            effective_blocked = sorted(set(configured_blocked) | set(dynamic_blocked))
 
-            if not blocked:
+            if not effective_blocked:
                 self.results.append(
                     CheckResult(
                         "Blocked pairs: Profile configuration",
-                        "WARN",
-                        f"No pairs blocked in '{self.profile}' profile",
-                        "Consider blocking underperformers (e.g., EUR_USD)"
+                        "WARN" if unresolved_zero_accuracy else "PASS",
+                        f"No pairs blocked in '{self.profile}' profile" if unresolved_zero_accuracy else f"OK (no blocked pairs needed in '{self.profile}' right now)",
+                        "Consider blocking underperformers (e.g., EUR_USD)" if unresolved_zero_accuracy else "Dynamic accuracy gating will block pairs when enough poor outcomes accumulate"
                     )
                 )
             else:
@@ -858,7 +955,7 @@ class DeploymentValidator:
                     CheckResult(
                         "Blocked pairs: Profile configuration",
                         "PASS",
-                        f"OK ({', '.join(blocked)})"
+                        f"OK ({', '.join(effective_blocked)})"
                     )
                 )
 
@@ -866,40 +963,21 @@ class DeploymentValidator:
             accuracy_path = self.project_root / "trained_data" / "pair_accuracy.json"
             if accuracy_path.exists():
                 try:
-                    with open(accuracy_path) as f:
-                        accuracy = json.load(f)
-
-                    # Extract pairs with 0% accuracy (candidates for blocking)
-                    zero_accuracy_pairs = [
-                        pair for pair, data in accuracy.items()
-                        if isinstance(data, dict) and data.get("accuracy", 1) == 0
-                    ]
-
-                    if zero_accuracy_pairs:
-                        unblocked = [p for p in zero_accuracy_pairs if p not in blocked]
-                        if unblocked:
-                            self.results.append(
-                                CheckResult(
-                                    "Blocked pairs: Accuracy alignment",
-                                    "WARN",
-                                    f"Pairs with 0% accuracy not blocked: {unblocked}",
-                                    "Add to blocked_pairs in config profile"
-                                )
+                    if unresolved_zero_accuracy:
+                        self.results.append(
+                            CheckResult(
+                                "Blocked pairs: Accuracy alignment",
+                                "WARN",
+                                f"Pairs with 0% accuracy not blocked: {unresolved_zero_accuracy}",
+                                "Add to blocked_pairs or investigate why AccuracyGate has not blocked them"
                             )
-                        else:
-                            self.results.append(
-                                CheckResult(
-                                    "Blocked pairs: Accuracy alignment",
-                                    "PASS",
-                                    "OK (zero-accuracy pairs blocked)"
-                                )
-                            )
+                        )
                     else:
                         self.results.append(
                             CheckResult(
                                 "Blocked pairs: Accuracy alignment",
                                 "PASS",
-                                "OK (no zero-accuracy pairs)"
+                                "OK (poor-accuracy pairs are already blocked or below minimum-trade threshold)"
                             )
                         )
                 except Exception:
@@ -960,16 +1038,75 @@ class DeploymentValidator:
     # ========================================================================
     # CHECK 10: OANDA Connectivity
     # ========================================================================
+    def _resolve_oanda_rest_base_url(self, env: str) -> Optional[str]:
+        """Return OANDA REST base URL for the requested environment."""
+        env_key = (env or "").strip().lower()
+        aliases = {
+            "practice": "practice",
+            "fxpractice": "practice",
+            "sandbox": "sandbox",
+            "live": "live",
+            "fxtrade": "live",
+        }
+        normalized = aliases.get(env_key)
+        if normalized == "practice":
+            return "https://api-fxpractice.oanda.com"
+        if normalized == "sandbox":
+            return "https://api-sandbox.oanda.com"
+        if normalized == "live":
+            return "https://api-fxtrade.oanda.com"
+        return None
+
+    def _classify_oanda_connection_error(self, error: Exception) -> Tuple[str, str]:
+        """Classify connection failures into actionable diagnostics."""
+        raw = str(error)
+        message = raw.lower()
+
+        dns_hints = (
+            "name or service not known",
+            "nodename nor servname",
+            "temporary failure in name resolution",
+            "failed to resolve",
+            "getaddrinfo failed",
+        )
+        if any(hint in message for hint in dns_hints):
+            return (
+                f"DNS resolution failed: {raw[:80]}",
+                "Check DNS/network settings and that the OANDA API hostname is reachable",
+            )
+        if "connection refused" in message:
+            return (
+                f"Connection refused: {raw[:80]}",
+                "Remote host refused TCP connection; verify outbound firewall/proxy rules",
+            )
+        if "network is unreachable" in message or "no route to host" in message:
+            return (
+                f"Network unreachable: {raw[:80]}",
+                "Check local network/VPN routing to public internet",
+            )
+        if "timed out" in message:
+            return (
+                f"Connection timed out: {raw[:80]}",
+                "OANDA endpoint may be degraded or blocked by network policy",
+            )
+        return (
+            f"Connection failed: {raw[:80]}",
+            "Check network path, proxy/firewall policy, and OANDA API status",
+        )
+
     def _check_oanda_connectivity(self) -> None:
         """Test OANDA API connection (practice account only)."""
         # Skip if env vars not set
-        if not (os.getenv("OANDA_API_TOKEN") and os.getenv("OANDA_ACCOUNT_ID")):
+        if not (
+            (os.getenv("OANDA_API_TOKEN") or os.getenv("OANDA_API_KEY"))
+            and os.getenv("OANDA_ACCOUNT_ID")
+        ):
             self.results.append(
                 CheckResult(
                     "OANDA: Connectivity",
                     "WARN",
                     "Skipped (env vars not set)",
-                    "Set OANDA_API_TOKEN and OANDA_ACCOUNT_ID to test"
+                    "Set OANDA_API_TOKEN (or OANDA_API_KEY) and OANDA_ACCOUNT_ID to test"
                 )
             )
             return
@@ -977,41 +1114,62 @@ class DeploymentValidator:
         try:
             import requests
 
-            api_token = os.getenv("OANDA_API_TOKEN")
+            api_token = os.getenv("OANDA_API_TOKEN") or os.getenv("OANDA_API_KEY")
             account_id = os.getenv("OANDA_ACCOUNT_ID")
             env = (os.getenv("OANDA_ENVIRONMENT") or os.getenv("OANDA_ENV") or "practice").lower()
 
-            # Ensure we're using practice account
-            if env not in ("practice", "sandbox"):
+            base_url = self._resolve_oanda_rest_base_url(env)
+            if base_url is None:
                 self.results.append(
                     CheckResult(
                         "OANDA: Account type",
                         "FAIL",
-                        f"OANDA_ENVIRONMENT={env} (must be 'practice' or 'sandbox')",
-                        "Set OANDA_ENVIRONMENT=practice for safety"
+                        f"OANDA_ENVIRONMENT={env} (unsupported)",
+                        "Use one of: practice, sandbox, live"
                     )
                 )
                 return
 
-            # Lightweight ping: fetch account summary
-            base_url = "https://api-fxpractice.oanda.com" if env == "practice" else "https://stream-sandbox.oanda.com"
-            url = f"{base_url}/v3/accounts/{account_id}"
+            if env == "live":
+                self.results.append(
+                    CheckResult(
+                        "OANDA: Account type",
+                        "WARN",
+                        "Live environment configured (read-only connectivity probe)",
+                        "Confirm live credentials are intentional before enabling execution"
+                    )
+                )
+
+            # Lightweight read-only ping: account summary
+            url = f"{base_url}/v3/accounts/{account_id}/summary"
             headers = {
                 "Authorization": f"Bearer {api_token}",
-                "Accept-Datetime-Format": "Unix"
+                "Accept": "application/json",
+                "Accept-Datetime-Format": "Unix",
             }
 
             response = requests.get(url, headers=headers, timeout=5)
 
             if response.status_code == 200:
-                data = response.json()
+                try:
+                    data = response.json()
+                except ValueError:
+                    self.results.append(
+                        CheckResult(
+                            "OANDA: Connectivity",
+                            "WARN",
+                            "HTTP 200 but response body is not valid JSON",
+                            f"Verify OANDA/API gateway response from {base_url}"
+                        )
+                    )
+                    return
                 account = data.get("account", {})
                 balance = account.get("balance", "N/A")
                 self.results.append(
                     CheckResult(
                         "OANDA: Connectivity",
                         "PASS",
-                        f"OK (balance: {balance})"
+                        f"OK ({env}, balance: {balance})"
                     )
                 )
             elif response.status_code == 401:
@@ -1032,13 +1190,43 @@ class DeploymentValidator:
                         "Check OANDA_ACCOUNT_ID"
                     )
                 )
-            else:
+            elif response.status_code == 403:
+                self.results.append(
+                    CheckResult(
+                        "OANDA: Connectivity",
+                        "FAIL",
+                        "Forbidden (403) — token lacks access or account is restricted",
+                        "Check account permissions, environment, and token scope"
+                    )
+                )
+            elif response.status_code == 429:
+                retry_after = response.headers.get("Retry-After")
+                retry_hint = f" Retry-After={retry_after}s." if retry_after else ""
                 self.results.append(
                     CheckResult(
                         "OANDA: Connectivity",
                         "WARN",
-                        f"HTTP {response.status_code}: {response.text[:80]}",
-                        "Check OANDA credentials or API status"
+                        f"Rate limited (429).{retry_hint}",
+                        "Reduce polling frequency and retry after cooldown"
+                    )
+                )
+            elif 500 <= response.status_code < 600:
+                self.results.append(
+                    CheckResult(
+                        "OANDA: Connectivity",
+                        "WARN",
+                        f"OANDA server error ({response.status_code})",
+                        "Check OANDA API status and retry later"
+                    )
+                )
+            else:
+                body_snippet = (response.text or "").replace("\n", " ")[:80]
+                self.results.append(
+                    CheckResult(
+                        "OANDA: Connectivity",
+                        "WARN",
+                        f"HTTP {response.status_code}: {body_snippet}",
+                        "Check OANDA credentials, account status, and API service health"
                     )
                 )
 
@@ -1051,13 +1239,41 @@ class DeploymentValidator:
                     "Install: pip install requests"
                 )
             )
-        except requests.Timeout:
+        except requests.exceptions.Timeout:
             self.results.append(
                 CheckResult(
                     "OANDA: Connectivity",
                     "WARN",
                     "Request timeout (5s)",
-                    "OANDA API may be slow or unreachable"
+                    "OANDA API may be slow, blocked by firewall/proxy, or unreachable"
+                )
+            )
+        except requests.exceptions.SSLError as e:
+            self.results.append(
+                CheckResult(
+                    "OANDA: Connectivity",
+                    "WARN",
+                    f"TLS/SSL handshake failed: {str(e)[:80]}",
+                    "Check system CA certificates, TLS inspection proxies, and SSL policy"
+                )
+            )
+        except requests.exceptions.ConnectionError as e:
+            message, fix = self._classify_oanda_connection_error(e)
+            self.results.append(
+                CheckResult(
+                    "OANDA: Connectivity",
+                    "WARN",
+                    message,
+                    fix
+                )
+            )
+        except requests.exceptions.RequestException as e:
+            self.results.append(
+                CheckResult(
+                    "OANDA: Connectivity",
+                    "WARN",
+                    f"HTTP client error: {type(e).__name__}: {str(e)[:80]}",
+                    "Check network path and request configuration"
                 )
             )
         except Exception as e:
@@ -1217,6 +1433,7 @@ class DeploymentValidator:
         Currently fixes:
         1. Missing agent weights → populate from _BASE_WEIGHTS baseline
         2. Missing sl_pips/tp_pips in trade journal → compute from prices
+        3. Closed trades with R:R < 1.2:1 → archive + remove from active journal
 
         Returns:
             Number of fixes applied.
@@ -1287,50 +1504,34 @@ class DeploymentValidator:
         return 0
 
     def _auto_fix_trade_journal(self) -> int:
-        """Compute missing sl_pips/tp_pips from entry/SL/TP prices."""
-        journal_path = self.project_root / "trained_data" / "trade_journal_rl.json"
+        """Repair journal schema and archive closed trades that violate R:R floor.
 
-        if not journal_path.exists():
-            return 0
-
+        Delegates to the shared journal_scrub utility (also called from the
+        continuous scan loop for live self-healing).
+        """
         try:
-            with open(journal_path) as f:
-                content = f.read().strip()
-            if content.startswith("["):
-                journal = json.loads(content)
-            else:
-                journal = [json.loads(line) for line in content.split("\n") if line.strip()]
-        except (json.JSONDecodeError, OSError):
+            from src.scanner.automation.journal_scrub import scrub_trade_journal
+        except ImportError:
+            # Fallback: run from scripts/ where src may not be on path
+            _src = self.project_root / "src" / "scanner" / "automation"
+            import importlib.util
+            _spec = importlib.util.spec_from_file_location(
+                "journal_scrub", str(_src / "journal_scrub.py"),
+            )
+            _mod = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(_mod)
+            scrub_trade_journal = _mod.scrub_trade_journal
+
+        result = scrub_trade_journal(self.project_root)
+        if result.get("error"):
             return 0
-
-        if not isinstance(journal, list):
-            return 0
-
-        # Pip scale: JPY pairs use 0.01, others use 0.0001
-        def _pip_scale(pair: str) -> float:
-            return 0.01 if "JPY" in pair.upper() else 0.0001
-
-        fixed = False
-        for trade in journal:
-            if not isinstance(trade, dict):
-                continue
-            pair = trade.get("pair", "")
-            entry = trade.get("entry_price")
-            sl_price = trade.get("sl_price")
-            tp_price = trade.get("tp_price")
-            pip = _pip_scale(pair)
-
-            if entry is not None and sl_price is not None and "sl_pips" not in trade:
-                trade["sl_pips"] = round(abs(entry - sl_price) / pip, 1)
-                fixed = True
-
-            if entry is not None and tp_price is not None and "tp_pips" not in trade:
-                trade["tp_pips"] = round(abs(tp_price - entry) / pip, 1)
-                fixed = True
-
-        if fixed:
-            with open(journal_path, "w") as f:
-                json.dump(journal, f, indent=2)
+        if result["archived"] > 0:
+            print(
+                f"  {Colors.GREEN}✓ Archived {result['archived']} closed low-R:R trades "
+                f"to trained_data/trade_journal_low_rr_archive.json{Colors.RESET}"
+            )
+            return 1
+        if result["repaired"] > 0:
             print(f"  {Colors.GREEN}✓ Computed missing sl_pips/tp_pips from price data{Colors.RESET}")
             return 1
         return 0

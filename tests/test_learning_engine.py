@@ -635,6 +635,30 @@ class TestCheckPromotions:
         assert isinstance(promoted, list)
         assert len(promoted) > 0
 
+    def test_check_promotions_parses_pattern_markdown_entries(self, tmp_path):
+        """check_promotions: accepts markdown PATTERN entries without warning."""
+        learnings_path = tmp_path / "learnings.md"
+        rules_path = tmp_path / "rules" / "trading.md"
+        engine = LearningEngine(
+            learnings_path=learnings_path, rules_path=rules_path
+        )
+
+        learnings_content = """
+### Phase 65 ScanHealthSynthesizer v2 - 2026-03-29
+- [2026-03-29] **PATTERN/fourth_gate_agent_consensus_has_no_adaptive_mechanism**: Static agent consensus gate became the new bottleneck. **Rule**: Enumerate all gates when adding adaptive thresholds.
+- [2026-03-29] **PATTERN/fourth_gate_agent_consensus_has_no_adaptive_mechanism**: Static agent consensus gate became the new bottleneck. **Rule**: Enumerate all gates when adding adaptive thresholds.
+- [2026-03-29] **PATTERN/fourth_gate_agent_consensus_has_no_adaptive_mechanism**: Static agent consensus gate became the new bottleneck. **Rule**: Enumerate all gates when adding adaptive thresholds.
+"""
+        learnings_path.parent.mkdir(parents=True, exist_ok=True)
+        learnings_path.write_text(learnings_content)
+
+        with patch("src.scanner.automation.learning_engine.logger.warning") as mock_warning:
+            promoted = engine.check_promotions()
+
+        assert len(promoted) == 1
+        assert "PATTERN/fourth_gate_agent_consensus_has_no_adaptive_mechanism" in promoted[0]
+        mock_warning.assert_not_called()
+
 
 class TestConsolidate:
     """Test consolidate() method (US-261 consolidation)."""

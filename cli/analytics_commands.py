@@ -25,6 +25,101 @@ from cli.tf_config import _configure_tf_metal
 from src.utils import load_config
 
 
+def _load_rl_journal_entries(limit_days: int = 30) -> list[dict[str, Any]]:
+    """Load recent trades from the RL journal written by scanner execution."""
+    path = Path("trained_data/trade_journal_rl.json")
+    if not path.exists():
+        return []
+
+    try:
+        raw = json.loads(path.read_text())
+    except Exception:
+        return []
+
+    if not isinstance(raw, list):
+        return []
+
+    cutoff = None
+    if limit_days > 0:
+        cutoff = pd.Timestamp.utcnow() - pd.Timedelta(days=limit_days)
+
+    entries: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ts = item.get("timestamp")
+        if cutoff is not None and ts:
+            try:
+                if pd.Timestamp(ts) < cutoff:
+                    continue
+            except Exception:
+                pass
+        entries.append(item)
+    return entries
+
+
+def _show_rl_journal_fallback(entries: list[dict[str, Any]], *, days: int) -> None:
+    """Render a basic journal view from trade_journal_rl.json.
+
+    This is a local fallback only. Entries without outcomes are pending journal
+    sync records, not verified live OANDA open trades.
+    """
+    total = len(entries)
+    closed = [e for e in entries if isinstance(e.get("outcome"), dict)]
+    open_trades = [e for e in entries if e.get("outcome") is None]
+    wins = sum(1 for e in closed if e["outcome"].get("trade_won", False))
+    total_pnl = sum(float(e["outcome"].get("realized_pl", 0.0) or 0.0) for e in closed)
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold]Source:[/bold] trained_data/trade_journal_rl.json\n"
+            f"[bold]Window:[/bold] last {days} day(s)\n"
+            f"[bold]Trades:[/bold] {total} total, {len(open_trades)} pending local sync, {len(closed)} closed\n"
+            f"[bold]Wins:[/bold] {wins}\n"
+            f"[bold]Net P/L:[/bold] ${total_pnl:,.2f}",
+            title="[bold white]Trade Journal[/bold white]",
+            border_style="blue",
+            padding=(1, 2),
+        )
+    )
+
+    table = Table(show_header=True, header_style="bold white", box=None)
+    table.add_column("Trade ID", style="dim", width=8)
+    table.add_column("Pair", width=10)
+    table.add_column("Direction", width=7)
+    table.add_column("Confidence", justify="right", width=10)
+    table.add_column("Entry", justify="right", width=12)
+    table.add_column("Status", width=10)
+    table.add_column("Time", width=22)
+
+    for trade in sorted(entries, key=lambda e: str(e.get("timestamp", "")), reverse=True)[:10]:
+        pair = str(trade.get("pair", "--"))
+        direction = str(trade.get("direction", "--"))
+        confidence = trade.get("confidence")
+        entry = trade.get("entry_price")
+        outcome = trade.get("outcome")
+        status = "PENDING"
+        if isinstance(outcome, dict):
+            status = "WIN" if outcome.get("trade_won", False) else "LOSS"
+        table.add_row(
+            str(trade.get("trade_id", "--")),
+            pair.replace("_", "/"),
+            direction,
+            f"{float(confidence):.1%}" if confidence is not None else "--",
+            f"{float(entry):.5f}" if entry is not None else "--",
+            status,
+            str(trade.get("timestamp", "--"))[:19].replace("T", " "),
+        )
+
+    console.print(table)
+    console.print(
+        "[dim]Showing local scanner journal fallback because live OANDA data was unavailable "
+        "or the legacy trade_journal.json is empty. 'PENDING' means outcome not yet synced, "
+        "not confirmed open at OANDA.[/dim]"
+    )
+
+
 def suggest_improvements(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
@@ -309,23 +404,38 @@ def buddy_journal(
         except Exception as e:
             console.print(f"[red]Failed to import open trades: {e}[/red]")
 
-    # Get statistics
+    # Get local statistics, but prefer live OANDA state when available.
     stats = journal.get_statistics(days=days)
-
-    if stats["total_trades"] == 0:
-        console.print("\n[red]No trades found in journal.[/red]")
-        console.print("[dim]Journal entries are created when the predictions command runs with --execute.[/dim]")
-        console.print("=" * 70)
-        sys.exit(1)
-
-    # Fetch comprehensive performance data from OANDA
+    perf_data = {}
+    perf_fetch_error = None
     console.print("\n[dim]Fetching account data from OANDA...[/dim]")
-    perf_data = journal.get_full_performance_stats(client, days=days)
+    try:
+        perf_data = journal.get_full_performance_stats(client, days=days)
+    except Exception as e:
+        perf_fetch_error = e
+        perf_data = {}
 
     account = perf_data.get('account')
     open_trades = perf_data.get('open_trades', [])
     closed_trades = perf_data.get('closed_trades', [])
     stats = perf_data.get('stats', {})
+
+    if not open_trades and not closed_trades and not account:
+        if perf_fetch_error is None:
+            rl_entries = _load_rl_journal_entries(limit_days=days)
+            if rl_entries:
+                _show_rl_journal_fallback(rl_entries, days=days)
+                return
+        console.print("\n[red]No trades found in journal or from OANDA.[/red]")
+        if perf_fetch_error is not None:
+            console.print(f"[dim]OANDA fetch failed: {perf_fetch_error}[/dim]")
+        else:
+            console.print(
+                "[dim]Legacy journal entries are created in trained_data/trade_journal.json. "
+                "Scanner executions now write to trained_data/trade_journal_rl.json.[/dim]"
+            )
+        console.print("=" * 70)
+        sys.exit(1)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # HEADER

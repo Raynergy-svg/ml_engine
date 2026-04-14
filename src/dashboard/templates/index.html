@@ -759,6 +759,13 @@
             </div>
             <div class="card">
                 <div class="card-header">
+                    <div><h3>Background Activity</h3><p class="card-subtitle">Live runs plus recent completions for Buddy background work</p></div>
+                </div>
+                <div id="background-active" style="margin-bottom:var(--space-5)"></div>
+                <div id="background-history"></div>
+            </div>
+            <div class="card">
+                <div class="card-header">
                     <div><h3>Improvement Trend</h3><p class="card-subtitle">Win rate, P/L, and learning velocity across sessions</p></div>
                 </div>
                 <div class="grid" id="trend-stats"></div>
@@ -801,6 +808,15 @@ function showToast(msg, type = 'info') {
     setTimeout(() => t.classList.remove('show'), 3500);
 }
 function fmtMoney(v) { return (v >= 0 ? '$' : '-$') + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function escapeHtml(v) {
+    return String(v ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[c]));
+}
 
 // ── Tab switching ─────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
@@ -1596,8 +1612,42 @@ async function loadSystemStatus() {
                 ' \u2022 Auto-execute: <span class="badge ' + (data.session.auto_execute ? 'badge-green' : 'badge-neutral') + '">' + (data.session.auto_execute ? 'ON' : 'OFF') + '</span>' +
                 '</div>';
         }
+
+        const bg = data.background_activity || {};
+        const active = Array.isArray(bg.active) ? bg.active : [];
+        const history = Array.isArray(bg.history) ? bg.history : [];
+        $('background-active').innerHTML = active.length
+            ? '<div class="grid">' + active.map(item =>
+                '<div class="stat-card" style="text-align:left">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);margin-bottom:var(--space-2)">' +
+                '<strong>' + escapeHtml(item.title || item.kind || 'Background task') + '</strong>' +
+                '<span class="badge badge-blue">' + escapeHtml(item.status || 'running') + '</span>' +
+                '</div>' +
+                '<div style="font-size:12px;color:var(--text-secondary)">' + escapeHtml(item.summary || item.source || '') + '</div>' +
+                '<div style="font-size:11px;color:var(--text-tertiary);margin-top:var(--space-2);font-family:var(--font-mono)">' +
+                escapeHtml((item.metadata && item.metadata.pid) ? ('pid=' + item.metadata.pid) : (item.updated_at || '')) +
+                '</div>' +
+                '</div>'
+            ).join('') + '</div>'
+            : '<div class="empty-state"><p>No active background work</p></div>';
+        $('background-history').innerHTML = history.length
+            ? '<div class="table-container"><table><thead><tr><th>Task</th><th>Status</th><th>Summary</th><th>Updated</th></tr></thead><tbody>' +
+                history.slice(0, 8).map(item => {
+                    const status = String(item.status || 'completed');
+                    const badge = status === 'completed' ? 'badge-green' : status === 'failed' ? 'badge-red' : 'badge-yellow';
+                    return '<tr>' +
+                        '<td>' + escapeHtml(item.title || item.kind || 'Background task') + '</td>' +
+                        '<td><span class="badge ' + badge + '">' + escapeHtml(status) + '</span></td>' +
+                        '<td>' + escapeHtml(item.summary || item.error || '--') + '</td>' +
+                        '<td>' + escapeHtml(item.updated_at || '--') + '</td>' +
+                        '</tr>';
+                }).join('') +
+                '</tbody></table></div>'
+            : '<div class="empty-state"><p>No recent background history</p></div>';
     } catch(e) {
         $('module-status').innerHTML = '<div class="empty-state"><p>System status unavailable</p></div>';
+        $('background-active').innerHTML = '<div class="empty-state"><p>Background activity unavailable</p></div>';
+        $('background-history').innerHTML = '';
     }
 
     try {
@@ -1628,6 +1678,8 @@ loadLearning();
 loadPRD();
 loadConfig();
 pollWatchStatus();
+loadSystemStatus();
+setInterval(loadSystemStatus, 5000);
 </script>
 </body>
 </html>

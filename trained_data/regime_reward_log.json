@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "log": [
+    {
+      "timestamp": "2026-04-12T05:49:05.597058+00:00",
+      "result": {
+        "raw_pnl_reward": -114.3397,
+        "shaped_reward": -115.3397,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      },
+      "pnl": -114.3397,
+      "duration_bars": 14,
+      "entry_confidence": 0.5494
+    }
+  ],
+  "summary": {
+    "n_trades": 1,
+    "mean_pnl": -114.3397,
+    "mean_shaped_reward": -115.3397,
+    "pnl_reward_correlation": 1.0,
+    "reward_std": 0.0
+  },
+  "last_updated": "2026-04-12T05:49:07.450566+00:00"
+}

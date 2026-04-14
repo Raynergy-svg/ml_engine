@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "state": {
+    "current_lr": 0.001,
+    "phase": "warmup",
+    "trade_count": 0,
+    "restart_count": 0,
+    "plateau_detected": false,
+    "convergence_score": 0.5
+  },
+  "lr_history": [],
+  "last_updated": "2026-04-03T00:44:27.143981+00:00"
+}

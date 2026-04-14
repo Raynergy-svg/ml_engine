@@ -4,109 +4,44 @@
   "description": "Hot-state memory for the PRD improvement loop. Written by Ralph/user as stories complete. Read by scheduled sweep and chain agents.",
   "current_prd": {
     "file": ".claude/ralph/prd.json",
-    "phase": "ralph/buddy-gap-resolution-phase32",
-    "total_stories": 19,
-    "passed_stories": 0,
+    "phase": "unknown",
+    "total_stories": 6,
+    "passed_stories": 6,
     "story_status": {
-      "US-001": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair"
+      "US-401": {
+        "passed": true,
+        "completed_at": "2026-04-14T12:07:52.629173+00:00",
+        "title": "Audit and recalibrate disagreement_gap_analyzer.py NEAR_MISS_GAP against live qu"
       },
-      "US-002": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Wire save_state() into graceful shutdown for: agent_accuracy_matrix, health_regi"
+      "US-402": {
+        "passed": true,
+        "completed_at": "2026-04-14T12:07:52.629173+00:00",
+        "title": "Verify confidence_penalty_ceiling.py is actively clipping penalties and fix stal"
       },
-      "US-003": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Wire save_state() into graceful shutdown for: execution_quality_optimizer, train"
+      "US-403": {
+        "passed": true,
+        "completed_at": "2026-04-14T12:07:52.629173+00:00",
+        "title": "Add kill_reason field to PairAnalysis to feed gate-kill telemetry"
       },
-      "US-004": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Wire save_state() into graceful shutdown for: temporal_attention, dynamic_risk_a"
+      "US-404": {
+        "passed": true,
+        "completed_at": "2026-04-14T12:07:52.629173+00:00",
+        "title": "Add per-cycle gate-kill breakdown to scan cycle log and console output"
       },
-      "US-005": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Wire save_state() into graceful shutdown for: causal_filter, module_activation, "
+      "US-405": {
+        "passed": true,
+        "completed_at": "2026-04-14T12:07:52.629173+00:00",
+        "title": "Post-Phase-89 adaptive floor activation audit script"
       },
-      "US-006": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, mul"
-      },
-      "US-007": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: entropy_sizer, retrain_trigger, mic"
-      },
-      "US-008": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: confidence_calibrator, memory_manag"
-      },
-      "US-009": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: pair_model_selector, counterfactual"
-      },
-      "US-010": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: health_registry, portfolio_optimize"
-      },
-      "US-011": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: dynamic_drawdown, agent_lifecycle, "
-      },
-      "US-012": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: execution_router, execution_quality"
-      },
-      "US-013": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: regime_reward, training_augmenter, "
-      },
-      "US-014": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: regime_tracker, affinity_portfolio,"
-      },
-      "US-015": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, d"
-      },
-      "US-016": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: market_impact, pair_affinity, seaso"
-      },
-      "US-017": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: execution_quality_tracker, attentio"
-      },
-      "US-018": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, e"
-      },
-      "US-019": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: drift_projector, replay_validator, "
+      "US-406": {
+        "passed": true,
+        "completed_at": "2026-04-14T12:07:52.629173+00:00",
+        "title": "Phase 90 integration and regression test suite"
       }
     },
-    "last_story_completed": null,
-    "last_updated": "2026-03-30T14:42:18.165405+00:00",
-    "all_complete": false
+    "last_story_completed": "US-401",
+    "last_updated": "2026-04-14T12:07:52.629173+00:00",
+    "all_complete": true
   },
   "loop_history": {
     "total_phases_completed": 29,
@@ -161,6 +96,18 @@
       "phase": "unknown",
       "gaps": 93,
       "timestamp": "2026-03-30T14:42:17.910637+00:00"
+    },
+    {
+      "action": "chain_started",
+      "phase": "unknown",
+      "gaps": 93,
+      "timestamp": "2026-03-31T16:13:21.341844+00:00"
+    },
+    {
+      "action": "chain_started",
+      "phase": "unknown",
+      "gaps": 93,
+      "timestamp": "2026-03-31T16:13:21.465120+00:00"
     }
   ],
   "flags": {

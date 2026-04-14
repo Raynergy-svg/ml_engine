@@ -55,7 +55,7 @@ def _ensure_gym_imported():
         except ImportError as e:
             GYM_AVAILABLE = False
             import logging
-            logging.getLogger(__name__).warning(
+            logging.getLogger(__name__).debug(
                 f"gymnasium not available: {e}. "
                 "Install with: pip install gymnasium"
             )
@@ -75,7 +75,7 @@ def _ensure_sb3_imported():
         except ImportError as e:
             SB3_AVAILABLE = False
             import logging
-            logging.getLogger(__name__).warning(
+            logging.getLogger(__name__).debug(
                 f"stable-baselines3 not available: {e}. "
                 "Install with: pip install stable-baselines3"
             )

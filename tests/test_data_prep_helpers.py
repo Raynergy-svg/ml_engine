@@ -57,7 +57,7 @@ def sample_features():
 def sample_ohlcv_dataframe():
     """Create a sample OHLCV DataFrame."""
     np.random.seed(42)
-    dates = pd.date_range("2024-01-01", periods=100, freq="1H")
+    dates = pd.date_range("2024-01-01", periods=100, freq="1h")
     df = pd.DataFrame({
         "time": dates,
         "open": np.random.uniform(1.0, 1.1, 100),

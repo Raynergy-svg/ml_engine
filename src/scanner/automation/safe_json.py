@@ -201,13 +201,14 @@ def safe_json_write(
     """Write JSON data atomically with locking.
 
     Uses temp file + fsync + os.rename to prevent partial writes.
-    Creates a .bak of the previous version before overwriting.
+    Creates a .bak backup of the existing file before each write so that
+    safe_json_read can recover from corruption.
 
     Args:
         path: Path to JSON file.
         data: Data to serialize as JSON.
         indent: JSON indentation level.
-        create_backup: Whether to create .bak of previous version.
+        create_backup: Whether to create .bak of previous version (default False).
 
     Returns:
         True if write succeeded, False otherwise.

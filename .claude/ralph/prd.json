@@ -1,61 +1,113 @@
 {
-  "project": "ML_Engine",
-  "phase": 86,
-  "branchName": "main",
-  "description": "Phase 86: Wire final dormant modules \u2014 HRPOptimizer, ObservationalLearner, LivePositionManager, SmartExecutionEngine. All observational-first (log, not change execution).",
+  "phase": 90,
+  "title": "Profitability Tuning — Disagreement Near-Miss Calibration, Confidence Penalty Verification, Per-Cycle Trade Frequency Telemetry, and Adaptive Floor Activation Audit",
+  "goal": "Fix two under-calibrated analyzer thresholds (disagreement near-miss gap), verify confidence penalty ceiling is correctly scaled, add per-cycle trade frequency and gate-kill telemetry, and verify all three adaptive floors are activating correctly after the Phase 89 cold-start fix.",
+  "context": "Phase 89 fixed the cold-start observe filter that blocked all trades when closed_trade_count==0. This session fixed sub_inference_gap_analyzer.py NEAR_MISS_GAP (0.10→0.35) and MODERATE_GAP (0.25→0.50), and disabled TF Metal to prevent M1 kernel panics. The disagreement_gap_analyzer.py still carries NEAR_MISS_GAP=0.10: the docstring was written at floor=0.30 where 2/5 disagreement produces gap=0.10 exactly. At the current floor=0.50 (Phase 81), 3/5 disagreement produces gap=0.10 and 4/5=0.80 produces gap=0.30 — classified MODERATE instead of NEAR_THRESHOLD, so the adaptive mechanism under-responds. The confidence_penalty_ceiling.py had its constant fixed to 0.40 in Phase 79 but the module docstring still says '40.0 (on 0-100 scale)', creating maintenance confusion; tests should verify ceiling is actually clipping. Trade frequency telemetry is absent from _log_scan_cycle: it records tradeable_count but not trades_attempted vs executed vs the specific gates that killed each scan cycle. The three adaptive floors require trade history; cold-start may have prevented them from accumulating state — a post-Phase-89 activation audit is needed.",
+  "dependencies": [
+    "prd_phase89.json"
+  ],
   "userStories": [
     {
-      "id": "US-P86-001",
-      "title": "Wire HRPOptimizer.get_weights() periodic portfolio weight logging",
-      "description": "Every 50 cycles, compute HRP weights from _pair_returns and log the portfolio allocation.",
+      "id": "US-401",
+      "title": "Audit and recalibrate disagreement_gap_analyzer.py NEAR_MISS_GAP against live quantization at floor=0.50",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-04-04T05:11:38Z",
       "acceptanceCriteria": [
-        "get_weights called every 50 cycles",
-        "weights logged at INFO",
-        "try/except",
-        "syntax OK"
-      ],
-      "priority": 1,
-      "passes": true
+        "src/scanner/disagreement_gap_analyzer.py NEAR_MISS_GAP raised from 0.10 to 0.35 (matching sub_inference_gap_analyzer.py precedent, covering 1-2 quantization steps above floor=0.50)",
+        "MODERATE_GAP raised from 0.25 to 0.50",
+        "Module docstring updated to reflect floor=0.50 (Phase 81) quantization: 3/5=0.60 blocks with gap=0.10, 4/5=0.80 blocks with gap=0.30, 5/5=1.00 blocks with gap=0.50",
+        "Near-miss counting loop uses updated NEAR_MISS_GAP so near_miss_count includes all fails within 0.35 of the floor",
+        "Unit test: analyze() with fail p50=0.60, floor=0.50 → gap_at_p50=0.10 → classification=NEAR_THRESHOLD",
+        "Unit test: analyze() with fail p50=0.80, floor=0.50 → gap_at_p50=0.30 → classification=NEAR_THRESHOLD (was MODERATE with old threshold)",
+        "Unit test: analyze() with fail p50=1.00, floor=0.50 → gap_at_p50=0.50 → classification=MODERATE",
+        "Unit test: analyze() with fail p50 producing gap > 0.50 → classification=FAR_ABOVE",
+        "All existing passing tests in test_disagreement_gap_analyzer.py continue to pass after constant update"
+      ]
     },
     {
-      "id": "US-P86-002",
-      "title": "Wire ObservationalLearner.extract_patterns() from crisis generator output",
-      "description": "Every 100 cycles (after crisis generator runs), feed synthetic scenarios to extract_patterns and log pattern count.",
+      "id": "US-402",
+      "title": "Verify confidence_penalty_ceiling.py is actively clipping penalties and fix stale docstring",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-04-04T05:12:44Z",
       "acceptanceCriteria": [
-        "extract_patterns called after crisis generator",
-        "pattern count logged",
-        "try/except",
-        "syntax OK"
-      ],
-      "priority": 2,
-      "passes": true
+        "src/scanner/confidence_penalty_ceiling.py module-level docstring updated: replace any reference to '40.0 (on 0-100 scale)' with '0.40 (0-1 scale, matching engine.py confidence domain)'",
+        "Unit test: ConfidencePenaltyCeiling(ceiling_floor=0.40).check_subtraction(current_confidence=0.41, proposed_sub=0.05) → applied_penalty <= 0.01 AND ceiling_active=True",
+        "Unit test: ConfidencePenaltyCeiling(ceiling_floor=0.40).check_subtraction(current_confidence=0.70, proposed_sub=0.03) → applied_penalty=0.03 AND ceiling_active=False",
+        "Unit test: ConfidencePenaltyCeiling(ceiling_floor=0.40).check_multiplier(current_confidence=0.41, proposed_mult=0.85) → ceiling_active=True AND result >= 0.40",
+        "Unit test: ConfidencePenaltyCeiling(ceiling_floor=0.40).check_multiplier(current_confidence=0.80, proposed_mult=0.85) → ceiling_active=False",
+        "Integration grep: engine.py contains '_penalty_ceiling.check_subtraction(' at least once",
+        "Integration grep: engine.py contains '_penalty_ceiling.check_multiplier(' OR '_penalty_ceiling' at least once",
+        "Unit test: DEFAULT_CEILING_FLOOR value == 0.40 (regression guard against 40.0 reversion)"
+      ]
     },
     {
-      "id": "US-P86-003",
-      "title": "Wire LivePositionManager.evaluate_position() for open trade monitoring",
-      "description": "In scan() after trailing stop evaluation, iterate open trades and call evaluate_position with PositionContext. Log non-HOLD actions at INFO. Observational only \u2014 do not auto-execute actions.",
+      "id": "US-403",
+      "title": "Add kill_reason field to PairAnalysis to feed gate-kill telemetry",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-04-04T05:13:11Z",
       "acceptanceCriteria": [
-        "evaluate_position called for open trades",
-        "non-HOLD logged at INFO",
-        "save_state in save chain",
-        "try/except",
-        "syntax OK"
-      ],
-      "priority": 3,
-      "passes": true
+        "src/scanner/engine.py PairAnalysis dataclass gains optional field: kill_reason: Optional[str] = None",
+        "In scan_pair() / _scan_pair(), confidence gate rejection sets kill_reason='confidence_gate'",
+        "Momentum gate rejection sets kill_reason='momentum_gate'",
+        "Disagreement hard floor rejection sets kill_reason='disagreement_gate'",
+        "RF drawdown gate rejection sets kill_reason='drawdown_gate'",
+        "Accuracy gate rejection sets kill_reason='accuracy_gate'",
+        "All other non-tradeable exits set kill_reason='other'",
+        "When pair is tradeable (is_tradeable=True), kill_reason remains None",
+        "Unit test: mock scan_pair where confidence < min_confidence → PairAnalysis.kill_reason == 'confidence_gate'",
+        "Unit test: mock scan_pair where pair is tradeable → PairAnalysis.kill_reason is None",
+        "Grep: 'kill_reason' appears in engine.py at least 5 times (field definition + 4 assignment sites)"
+      ]
     },
     {
-      "id": "US-P86-004",
-      "title": "Wire SmartExecutionEngine.should_use_smart_execution() observational logging",
-      "description": "In execute_trade before order placement, call should_use_smart_execution(lots, atr_pips) and log whether slicing would be recommended. Observational only.",
+      "id": "US-404",
+      "title": "Add per-cycle gate-kill breakdown to scan cycle log and console output",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-04-04T05:18:04Z",
       "acceptanceCriteria": [
-        "should_use_smart_execution called in execute_trade",
-        "recommendation logged at DEBUG",
-        "try/except",
-        "syntax OK"
-      ],
-      "priority": 4,
-      "passes": true
+        "src/scanner/automation/continuous.py _log_scan_cycle() extended: record includes 'trades_attempted' (count where direction != HOLD and meets minimum score), 'trades_executed' (count where is_tradeable=True and auto_execute=True), and 'gate_kill_breakdown' dict with keys: confidence_gate, momentum_gate, disagreement_gate, drawdown_gate, accuracy_gate, other — each an int count",
+        "gate_kill_breakdown populated from PairAnalysis.kill_reason (US-403); if kill_reason attribute missing, all values default to 0 and debug log warns",
+        "scan_cycle_log.jsonl records include all new fields",
+        "When trades_attempted > 0 and trades_executed == 0, emit WARNING: 'Cycle {scan_number}: {trades_attempted} attempt(s), 0 executed — kills: {gate_kill_breakdown}'",
+        "Unit test: _log_scan_cycle() with mock ScanResult (3 analyses: 1 tradeable, 2 blocked) writes record containing 'gate_kill_breakdown' key",
+        "Unit test: all analyses non-tradeable and trades_attempted > 0 → WARNING log emitted",
+        "Unit test: record written to JSONL is valid JSON containing 'trades_attempted', 'trades_executed', 'gate_kill_breakdown'",
+        "No existing _log_scan_cycle functionality removed — additive only"
+      ]
+    },
+    {
+      "id": "US-405",
+      "title": "Post-Phase-89 adaptive floor activation audit script",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-04-04T05:19:02Z",
+      "acceptanceCriteria": [
+        "New file src/scanner/tools/adaptive_floor_audit.py that imports AdaptiveConfidenceFloor, AdaptiveMomentumFloor, AdaptiveDrawdownCeiling and loads their persisted state files",
+        "Script prints structured report: for each component: state_file_path, state_file_exists (bool), activation_count (int), and status: 'ACTIVE', 'DORMANT', or 'EXHAUSTED'",
+        "Script exits code 0 if all three components load without error; code 1 if any fails",
+        "Unit test: AdaptiveMomentumFloor with empty state file → activation_count == 0 and status DORMANT",
+        "Unit test: AdaptiveConfidenceFloor with state containing 1 prior adaptation → activation_count == 1",
+        "Unit test: audit run() returns dict with keys 'confidence_floor', 'momentum_floor', 'drawdown_ceiling' each containing 'activation_count' and 'status'",
+        "Grep: adaptive_floor_audit.py imports all three adaptive components",
+        "Grep: adaptive_floor_audit.py references trained_data/ paths for all three state files"
+      ]
+    },
+    {
+      "id": "US-406",
+      "title": "Phase 90 integration and regression test suite",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-04-04T05:21:22Z",
+      "acceptanceCriteria": [
+        "All Phase 90 modules importable without error",
+        "Regression: disagreement_gap_analyzer.analyze() with floor=0.50, fail p50=0.60 → NEAR_THRESHOLD",
+        "Regression: disagreement_gap_analyzer.analyze() with floor=0.50, fail p50=0.80 → NEAR_THRESHOLD (gap=0.30 < new NEAR_MISS_GAP=0.35)",
+        "Regression: ConfidencePenaltyCeiling DEFAULT_CEILING_FLOOR == 0.40",
+        "Regression: ConfidencePenaltyCeiling(0.40).check_subtraction(0.42, 0.05) → ceiling_active=True",
+        "Regression: PairAnalysis accepts kill_reason=None and kill_reason='confidence_gate' without error",
+        "Regression: _log_scan_cycle() produces record with 'gate_kill_breakdown' key",
+        "Regression: adaptive_floor_audit.run() returns dict with all three component keys",
+        "All Phase 62, Phase 64, Phase 57 tests continue to pass with no regressions",
+        "Minimum 8 test assertions in this suite, all passing"
+      ]
     }
   ]
 }

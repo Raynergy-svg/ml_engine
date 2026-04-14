@@ -76,6 +76,7 @@ def em(config):
         manager._current_drawdown_pct = 0.0
         manager._adaptive_exit_manager = None
         manager._ewma_correlation = None
+        manager._dynamic_risk_allocator = None
         return manager
 
 
@@ -346,8 +347,8 @@ def test_portfolio_risk_limit_risk_off_regime(em):
 
     limit = em._get_portfolio_risk_limit()
 
-    # Should be reduced to ~10% (67% of 15%)
-    expected = 0.15 * 0.67
+    # Should be reduced (softened to 85% of base limit)
+    expected = 0.15 * 0.85
     assert abs(limit - expected) < 0.01
 
 

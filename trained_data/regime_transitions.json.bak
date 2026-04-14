@@ -1,7 +1,1008 @@
 {
   "version": 1,
   "current_regime": "NORMAL",
-  "transition_count": 0,
-  "transitions": [],
-  "last_updated": "2026-03-23T20:44:57.390459+00:00"
+  "transition_count": 445,
+  "transitions": [
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7393,
+      "timestamp": "2026-04-03T04:15:40.659051+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7943,
+      "timestamp": "2026-04-03T19:37:44.840975+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8957,
+      "timestamp": "2026-04-03T19:37:52.982574+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7193,
+      "timestamp": "2026-04-03T19:37:59.251490+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8222,
+      "timestamp": "2026-04-03T19:38:05.662582+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_GBP"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-03T19:38:08.288256+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-03T19:38:10.826150+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8815,
+      "timestamp": "2026-04-03T19:38:17.801998+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-03T19:38:23.889600+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8193,
+      "timestamp": "2026-04-03T19:38:30.057475+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8207,
+      "timestamp": "2026-04-03T19:38:36.451431+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7279,
+      "timestamp": "2026-04-04T04:27:42.403539+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-04T04:27:48.690166+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8157,
+      "timestamp": "2026-04-04T04:27:59.748556+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7372,
+      "timestamp": "2026-04-04T04:28:02.349962+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_GBP"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-04T04:28:04.925343+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8886,
+      "timestamp": "2026-04-04T04:28:07.449799+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.88,
+      "timestamp": "2026-04-04T04:28:14.277810+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7472,
+      "timestamp": "2026-04-04T04:28:20.483065+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8165,
+      "timestamp": "2026-04-04T04:28:26.632972+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8165,
+      "timestamp": "2026-04-04T04:28:32.821433+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-04T04:41:12.762438+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7279,
+      "timestamp": "2026-04-04T04:41:23.547145+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8157,
+      "timestamp": "2026-04-04T04:41:31.694963+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7372,
+      "timestamp": "2026-04-04T04:41:34.285020+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_GBP"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-04T04:41:36.888618+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8886,
+      "timestamp": "2026-04-04T04:41:39.466047+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.88,
+      "timestamp": "2026-04-04T04:41:46.359100+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7472,
+      "timestamp": "2026-04-04T04:41:52.580429+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8165,
+      "timestamp": "2026-04-04T04:41:58.881796+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8165,
+      "timestamp": "2026-04-04T04:42:05.123524+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-04T04:54:43.381162+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-04T04:56:16.655631+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8157,
+      "timestamp": "2026-04-04T04:56:23.338180+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7279,
+      "timestamp": "2026-04-04T04:56:31.413919+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7372,
+      "timestamp": "2026-04-04T04:56:37.636721+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_GBP"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8972,
+      "timestamp": "2026-04-04T04:56:40.236763+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8886,
+      "timestamp": "2026-04-04T04:56:42.787196+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.88,
+      "timestamp": "2026-04-04T04:56:51.439339+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7472,
+      "timestamp": "2026-04-04T04:56:57.596756+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8165,
+      "timestamp": "2026-04-04T04:57:03.708248+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8165,
+      "timestamp": "2026-04-04T04:57:09.808357+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7843,
+      "timestamp": "2026-04-06T09:18:09.529377+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.79,
+      "timestamp": "2026-04-06T10:37:46.419576+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7772,
+      "timestamp": "2026-04-06T11:35:59.259482+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8129,
+      "timestamp": "2026-04-06T14:04:01.906750+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8129,
+      "timestamp": "2026-04-06T14:48:49.486610+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.735,
+      "timestamp": "2026-04-06T20:31:22.757726+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.7872,
+      "timestamp": "2026-04-08T22:37:17.970135+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "HIGH",
+      "confidence": 0.8243,
+      "timestamp": "2026-04-08T22:37:32.366143+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "HIGH",
+      "confidence": 0.8172,
+      "timestamp": "2026-04-08T22:37:38.665287+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.8286,
+      "timestamp": "2026-04-08T22:37:47.521367+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.8315,
+      "timestamp": "2026-04-08T22:37:55.746623+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "HIGH",
+      "confidence": 0.8015,
+      "timestamp": "2026-04-08T22:37:58.304466+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.54,
+      "timestamp": "2026-04-08T22:38:04.710662+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_GBP"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.7529,
+      "timestamp": "2026-04-08T22:38:07.288998+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6957,
+      "timestamp": "2026-04-08T22:38:09.831314+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6843,
+      "timestamp": "2026-04-08T22:38:16.714892+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.7579,
+      "timestamp": "2026-04-08T22:38:25.654735+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6629,
+      "timestamp": "2026-04-08T22:38:32.092319+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6572,
+      "timestamp": "2026-04-08T22:38:38.337567+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "HIGH",
+      "confidence": 0.7307,
+      "timestamp": "2026-04-09T18:12:05.500438+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "HIGH",
+      "confidence": 0.7122,
+      "timestamp": "2026-04-09T18:12:24.677396+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.67,
+      "timestamp": "2026-04-09T18:12:27.219727+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_USD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.8057,
+      "timestamp": "2026-04-09T18:12:36.145609+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.8443,
+      "timestamp": "2026-04-09T18:12:44.878543+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "HIGH",
+      "confidence": 0.7929,
+      "timestamp": "2026-04-09T18:12:47.397618+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6222,
+      "timestamp": "2026-04-09T18:12:56.210801+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_GBP"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.7486,
+      "timestamp": "2026-04-09T18:12:58.801349+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.7429,
+      "timestamp": "2026-04-09T18:13:01.532637+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6436,
+      "timestamp": "2026-04-09T18:13:12.035039+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "EXTREME",
+      "confidence": 0.8165,
+      "timestamp": "2026-04-09T18:13:21.212469+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6207,
+      "timestamp": "2026-04-09T18:13:27.696208+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6757,
+      "timestamp": "2026-04-09T18:13:34.278647+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7757,
+      "timestamp": "2026-04-13T13:58:43.662850+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.67,
+      "timestamp": "2026-04-13T13:59:05.168509+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6222,
+      "timestamp": "2026-04-13T13:59:11.600430+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6393,
+      "timestamp": "2026-04-13T13:59:23.080633+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6957,
+      "timestamp": "2026-04-13T13:59:32.656186+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.5215,
+      "timestamp": "2026-04-13T13:59:41.520840+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.7479,
+      "timestamp": "2026-04-13T13:59:47.870427+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.5936,
+      "timestamp": "2026-04-13T13:59:54.318029+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7857,
+      "timestamp": "2026-04-13T17:32:13.664035+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6815,
+      "timestamp": "2026-04-13T17:32:36.595836+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.5907,
+      "timestamp": "2026-04-13T17:32:43.949386+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6565,
+      "timestamp": "2026-04-13T17:32:54.465186+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6022,
+      "timestamp": "2026-04-13T17:33:06.801270+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.6429,
+      "timestamp": "2026-04-13T17:33:15.327675+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_AUD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6093,
+      "timestamp": "2026-04-13T17:33:15.791495+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.725,
+      "timestamp": "2026-04-13T17:33:22.267139+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6886,
+      "timestamp": "2026-04-13T17:33:28.967269+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8186,
+      "timestamp": "2026-04-13T22:23:01.832569+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6943,
+      "timestamp": "2026-04-13T22:23:18.708890+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "NZD_USD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.5836,
+      "timestamp": "2026-04-13T22:23:27.225622+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CAD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6907,
+      "timestamp": "2026-04-13T22:23:40.349525+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_JPY"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.5893,
+      "timestamp": "2026-04-13T22:23:50.261339+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_JPY"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.715,
+      "timestamp": "2026-04-13T22:23:59.813624+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_AUD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.6222,
+      "timestamp": "2026-04-13T22:24:00.332477+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_AUD"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "HIGH",
+      "confidence": 0.7929,
+      "timestamp": "2026-04-13T22:24:07.241480+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_CHF"
+      }
+    },
+    {
+      "old_regime": "LOW",
+      "new_regime": "NORMAL",
+      "confidence": 0.7357,
+      "timestamp": "2026-04-13T22:24:13.996813+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "GBP_CHF"
+      }
+    }
+  ],
+  "last_updated": "2026-04-13T22:27:52.650242+00:00"
 }

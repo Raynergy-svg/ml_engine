@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
 
+from src.scanner.automation.background_activity import get_background_activity_tracker
 from src.scanner.automation.event_bus import Event, EventBus, EventType, get_event_bus
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,7 @@ class PRDWatcher:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._watchdog_observer = None
+        self._activity_id: Optional[str] = None
 
         # State persistence
         self._state_file = self._ralph_dir / ".watcher_state.json"
@@ -207,6 +209,16 @@ class PRDWatcher:
             return
 
         self._running = True
+        tracker = get_background_activity_tracker()
+        self._activity_id = tracker.start_activity(
+            kind="watcher",
+            title="PRD completion watcher",
+            source="prd_watcher",
+            status="running",
+            activity_id=self._activity_id,
+            metadata={"backend": "polling", "path": str(self._ralph_dir), "interval_secs": self._poll_interval},
+        )
+        tracker.append_event(self._activity_id, "Started PRD watcher polling backend")
         self._thread = threading.Thread(
             target=self._poll_loop, name="prd-watcher-poll", daemon=True
         )
@@ -255,6 +267,16 @@ class PRDWatcher:
                     watcher.scan_all()
 
         self._running = True
+        tracker = get_background_activity_tracker()
+        self._activity_id = tracker.start_activity(
+            kind="watcher",
+            title="PRD completion watcher",
+            source="prd_watcher",
+            status="running",
+            activity_id=self._activity_id,
+            metadata={"backend": "watchdog", "path": str(self._ralph_dir)},
+        )
+        tracker.append_event(self._activity_id, "Started PRD watcher watchdog backend")
         observer = Observer()
         observer.schedule(PRDFileHandler(), str(self._ralph_dir), recursive=False)
         observer.start()
@@ -281,6 +303,9 @@ class PRDWatcher:
         if self._thread:
             self._thread.join(timeout=5)
             self._thread = None
+        if self._activity_id:
+            tracker = get_background_activity_tracker()
+            tracker.update_activity(self._activity_id, status="completed", summary="PRD watcher stopped")
         self._save_state()
         logger.info("PRDWatcher: stopped")
 

@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.scanner.automation.background_activity import get_background_activity_tracker
 from src.scanner.automation.safe_json import safe_json_read, safe_json_write
 
 logger = logging.getLogger(__name__)
@@ -548,16 +549,28 @@ class PerformancePRDGenerator:
                 log_dir = self._project_root / "logs"
                 log_dir.mkdir(parents=True, exist_ok=True)
                 log_path = log_dir / f"ralph_auto_{timestamp}.log"
+                tracker = get_background_activity_tracker()
 
                 with open(log_path, "w") as log_file:
                     # Use Popen to spawn in background
                     # --tool claude ensures non-interactive autonomous execution (no amp approval gate)
-                    subprocess.Popen(
+                    proc = subprocess.Popen(
                         ["bash", str(self._ralph_script_path), "--tool", "claude"],
                         stdout=log_file,
                         stderr=subprocess.STDOUT,
                         cwd=str(self._project_root),
                     )
+                activity_id = tracker.start_activity(
+                    kind="ralph",
+                    title="Performance PRD Ralph run",
+                    source="performance_prd_generator",
+                    metadata={
+                        "pid": proc.pid,
+                        "log_path": str(log_path),
+                        "command": ["bash", str(self._ralph_script_path), "--tool", "claude"],
+                    },
+                )
+                tracker.append_event(activity_id, "Spawned autonomous Ralph run", details={"pid": proc.pid})
 
                 logger.info("Spawned ralph.sh in background, logs: %s", log_path)
                 return True

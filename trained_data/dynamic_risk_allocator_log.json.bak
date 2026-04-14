@@ -1,7 +1,116 @@
 {
   "version": 1,
-  "total_trades": 0,
-  "trades": {},
+  "total_trades": 17,
+  "trades": {
+    "LOW": [
+      {
+        "pnl": -12.9,
+        "duration": 11,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.814055+00:00"
+      },
+      {
+        "pnl": 25.9,
+        "duration": 5,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.827139+00:00"
+      },
+      {
+        "pnl": -11.6,
+        "duration": 70,
+        "won": false,
+        "timestamp": "2026-04-06T20:34:54.208637+00:00"
+      },
+      {
+        "pnl": -17.7,
+        "duration": 195,
+        "won": false,
+        "timestamp": "2026-04-08T22:41:57.214689+00:00"
+      }
+    ],
+    "NORMAL": [
+      {
+        "pnl": -19.2,
+        "duration": 85,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.822126+00:00"
+      },
+      {
+        "pnl": -15.3,
+        "duration": 7,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.837543+00:00"
+      },
+      {
+        "pnl": -29.8,
+        "duration": 21,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.846161+00:00"
+      },
+      {
+        "pnl": 20.8,
+        "duration": 34,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.850519+00:00"
+      },
+      {
+        "pnl": 20.0,
+        "duration": 57,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.869783+00:00"
+      },
+      {
+        "pnl": 30.2,
+        "duration": 32,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.874949+00:00"
+      },
+      {
+        "pnl": -27.6,
+        "duration": 17,
+        "won": false,
+        "timestamp": "2026-04-09T18:16:26.807440+00:00"
+      }
+    ],
+    "HIGH": [
+      {
+        "pnl": -14.8,
+        "duration": 60,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.832981+00:00"
+      },
+      {
+        "pnl": -19.0,
+        "duration": 14,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.841940+00:00"
+      },
+      {
+        "pnl": 22.7,
+        "duration": 41,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.854326+00:00"
+      },
+      {
+        "pnl": 35.1,
+        "duration": 1,
+        "won": true,
+        "timestamp": "2026-04-02T21:13:58.858659+00:00"
+      },
+      {
+        "pnl": -10.3,
+        "duration": 1,
+        "won": false,
+        "timestamp": "2026-04-02T21:13:58.864367+00:00"
+      },
+      {
+        "pnl": -16.8,
+        "duration": 178,
+        "won": false,
+        "timestamp": "2026-04-09T18:16:26.786486+00:00"
+      }
+    ]
+  },
   "allocation_log": [],
-  "last_updated": "2026-03-23T20:44:54.642167+00:00"
+  "last_updated": "2026-04-13T22:27:52.413414+00:00"
 }

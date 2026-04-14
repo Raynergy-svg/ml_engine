@@ -90,7 +90,7 @@ class PairAnalysis:
     recommended_lots: float = 0.0
     sl_pips: float = 15.0
     tp_pips: float = 30.0
-    risk_pct: float = 0.02
+    risk_pct: float = 0.05  # Phase 81: was 0.02, practice account $100K
     risk_amount: float = 0.0
 
     # Model info
@@ -134,6 +134,15 @@ class PairAnalysis:
     circuit_breakers_triggered: List[str] = field(default_factory=list)
     master_pair: Optional[str] = None
 
+    # Phase 98: Soft agent gate — when agent_passed=False but confidence is
+    # above threshold, apply penalty instead of hard-blocking.
+    agent_soft_penalty_applied: bool = False
+
+    # Gate kill reason (Phase 90 US-403): set at each gate rejection site.
+    # None when pair is tradeable. Values: 'confidence_gate', 'momentum_gate',
+    # 'disagreement_gate', 'drawdown_gate', 'accuracy_gate', 'other'.
+    kill_reason: Optional[str] = None
+
     # Error handling
     error: Optional[str] = None
     scan_time_ms: float = 0.0
@@ -147,22 +156,45 @@ class PairAnalysis:
         """Check if this pair has a valid trade signal.
 
         Safety invariants enforced here (last line of defense before execute_trades):
-        - agent_passed must be True (agents voted YES)
+        - agent_passed must be True OR soft agent gate applies (Phase 98)
         - model_disagreement must be <= max_model_disagreement (from config, default 0.50)
         - volatility_regime must not be UNKNOWN
 
         Phase 76: Uses _max_model_disagreement (set by agent team from config) instead
         of hardcoded 0.30. When soft_uncertainty_blocking=True, disagreement between
         the hard_floor and max is penalized (confidence reduced) rather than blocked.
+
+        Phase 98: agent_passed is now a soft gate. When agent_passed=False but
+        confidence > _agent_soft_min (default 0.40), apply 0.80x penalty instead
+        of hard-blocking. The pair is tradeable if penalized confidence still
+        exceeds the minimum threshold.
         """
         _max_disagree = float(getattr(self, "_max_model_disagreement", 0.50))
+
+        # Phase 98: Soft agent gate — penalty instead of hard block
+        _agent_soft_min = float(getattr(self, "_agent_soft_min_confidence", 0.40))
+        _agent_soft_penalty = float(getattr(self, "_agent_soft_penalty_factor", 0.80))
+        if self.agent_passed:
+            agent_ok = True
+        elif self.confidence >= _agent_soft_min:
+            # Apply penalty: confidence * 0.80 must still exceed the min threshold
+            penalized_confidence = self.confidence * _agent_soft_penalty
+            if penalized_confidence >= _agent_soft_min:
+                agent_ok = True
+                if not self.agent_soft_penalty_applied:
+                    self.agent_soft_penalty_applied = True
+            else:
+                agent_ok = False
+        else:
+            agent_ok = False
+
         return (
             self.gates_passed
             and self.direction in {"LONG", "SHORT"}
             and self.error is None
             and not self.blocked_by_circuit_breaker
             and bool(self.execution_quality_passed)
-            and self.agent_passed
+            and agent_ok
             and self.model_disagreement <= _max_disagree
             and self.volatility_regime.upper() != "UNKNOWN"
         )
@@ -227,6 +259,7 @@ class PairAnalysis:
             "agent_total": self.agent_total,
             "agent_score": self.agent_score,
             "agent_passed": self.agent_passed,
+            "agent_soft_penalty_applied": self.agent_soft_penalty_applied,
             "agent_promoted": self.agent_promoted,
             "weighted_vote_score": self.weighted_vote_score,
             "weighted_vote_threshold": self.weighted_vote_threshold,

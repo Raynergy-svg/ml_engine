@@ -1,0 +1,31 @@
+{
+  "ewma_prev_prices": {},
+  "last_prices": {},
+  "last_scan_times": {
+    "AUD_JPY": 1775278611.443522,
+    "EUR_CHF": 1775278623.7143428,
+    "EUR_GBP": 1775278597.6452339,
+    "EUR_JPY": 1775278600.244299,
+    "GBP_AUD": 1775278617.6041548,
+    "GBP_CHF": 1775278629.8124511,
+    "GBP_JPY": 1775278602.790529,
+    "GBP_USD": 1775278583.341938,
+    "NZD_USD": 1775278591.426259,
+    "USD_CAD": 1775278576.661168,
+    "USD_CHF": 1775278574.173119
+  },
+  "pair_last_regime": {
+    "AUD_JPY": "LOW",
+    "EUR_CHF": "LOW",
+    "EUR_GBP": "LOW",
+    "EUR_JPY": "LOW",
+    "GBP_AUD": "LOW",
+    "GBP_CHF": "LOW",
+    "GBP_JPY": "LOW",
+    "GBP_USD": "LOW",
+    "NZD_USD": "LOW",
+    "USD_CAD": "LOW",
+    "USD_CHF": "NORMAL"
+  },
+  "scan_cycle_count": 3
+}

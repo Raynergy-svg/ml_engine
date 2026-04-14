@@ -147,7 +147,7 @@ class TestMTFConfluenceIntegration:
 
     def _make_test_dataframes(self):
         """Helper to create test dataframes."""
-        dates = pd.date_range("2026-03-01", periods=100, freq="H")
+        dates = pd.date_range("2026-03-01", periods=100, freq="h")
         data = {
             "open": 1.1 + np.random.randn(100) * 0.001,
             "high": 1.101 + np.random.randn(100) * 0.001,
@@ -621,7 +621,7 @@ class TestPhase47Integration:
 
     def _make_test_dataframes(self):
         """Helper to create test dataframes."""
-        dates = pd.date_range("2026-03-01", periods=100, freq="H")
+        dates = pd.date_range("2026-03-01", periods=100, freq="h")
         data = {
             "open": 1.1 + np.random.randn(100) * 0.001,
             "high": 1.101 + np.random.randn(100) * 0.001,
@@ -780,7 +780,7 @@ class TestRegressionAndEdgeCases:
 
         team = ScannerAgentTeam(config)
 
-        dates = pd.date_range("2026-03-01", periods=100, freq="H")
+        dates = pd.date_range("2026-03-01", periods=100, freq="h")
         df_raw = pd.DataFrame({
             "close": [1.1] * 100,
             "high": [1.101] * 100,
@@ -825,7 +825,7 @@ class TestRegressionAndEdgeCases:
 
         team = ScannerAgentTeam(config)
 
-        dates = pd.date_range("2026-03-01", periods=100, freq="H")
+        dates = pd.date_range("2026-03-01", periods=100, freq="h")
         df_raw = pd.DataFrame({
             "open": 1.1 + np.random.randn(100) * 0.001,
             "high": 1.101 + np.random.randn(100) * 0.001,

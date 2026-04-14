@@ -182,6 +182,41 @@ class TestWeightSampling(unittest.TestCase):
         sample = self.weights.sample_weights()
         self.assertEqual(sample.epsilon, self.weights._epsilon)
 
+    def test_load_state_migrates_nested_legacy_schema(self):
+        """Legacy nested regime->agent state should be migrated instead of reset."""
+        weights = create_default_bayesian_weights()
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "bayesian_weights.json"
+            path.write_text(json.dumps({
+                "version": 0,
+                "regimes": {
+                    "NORMAL": {
+                        "trend": {"alpha": 7.0, "beta": 3.0},
+                    }
+                },
+                "epsilon": 0.07,
+            }))
+
+            weights.load_state(str(path))
+
+            self.assertEqual(weights._distributions[("NORMAL", "trend")], (7.0, 3.0))
+            # Missing entries should be filled from priors, not wiped/reset.
+            self.assertEqual(weights._distributions[("LOW", "trend")], (2.0, 2.0))
+            self.assertAlmostEqual(weights._epsilon, 0.07)
+
+    def test_load_state_quarantines_bad_schema(self):
+        """Unrecoverable schema should be moved aside and reset cleanly."""
+        weights = create_default_bayesian_weights()
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "bayesian_weights.json"
+            path.write_text(json.dumps({"version": 1, "foo": "bar"}))
+
+            weights.load_state(str(path))
+
+            backups = list(Path(td).glob("bayesian_weights.json.bad.schema.*.json"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(weights._distributions[("NORMAL", "trend")], (2.0, 2.0))
+
 
 class TestBayesianUpdates(unittest.TestCase):
     """Test Bayesian update logic."""

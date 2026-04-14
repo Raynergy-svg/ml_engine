@@ -248,13 +248,48 @@ class ScannerAgentTeam:
                     "NORMAL": dict(legacy_weights),
                     "HIGH": dict(legacy_weights),
                     "EXTREME": dict(legacy_weights),
+                    "LOW": dict(legacy_weights),
                     "_meta": {"min_trades_per_regime": 10},
                 }
+                self._learned_weights, _ = self._ensure_complete_weight_schema(self._learned_weights)
                 self._save_learned_weights()
                 logger.info("Migrated agent weights to regime-aware format")
             except Exception as e:
                 logger.warning(f"Failed to migrate legacy weights: {e}")
                 self._learned_weights = self._init_regime_weights()
+
+    def _ensure_complete_weight_schema(self, data: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
+        """Normalize regime-aware weights to include all baseline agent keys.
+
+        This keeps persisted weights compatible with health checks that expect a
+        complete agent map, while preserving learned values where present.
+        """
+        if not isinstance(data, dict):
+            return self._init_regime_weights(), True
+
+        changed = False
+
+        for regime in self._REGIME_NAMES + ["_global"]:
+            regime_weights = data.get(regime)
+            if not isinstance(regime_weights, dict):
+                data[regime] = dict(self._BASE_WEIGHTS)
+                changed = True
+                continue
+
+            for agent_name, base_weight in self._BASE_WEIGHTS.items():
+                if agent_name not in regime_weights:
+                    regime_weights[agent_name] = base_weight
+                    changed = True
+
+        meta = data.get("_meta")
+        if not isinstance(meta, dict):
+            data["_meta"] = {"min_trades_per_regime": 10}
+            changed = True
+        elif "min_trades_per_regime" not in meta:
+            meta["min_trades_per_regime"] = 10
+            changed = True
+
+        return data, changed
 
     def _load_learned_weights(self) -> Dict[str, Any]:
         """Load learned agent weights from disk with corruption recovery.
@@ -276,7 +311,8 @@ class ScannerAgentTeam:
                     # Validate weight values
                     validated = self._validate_weights(data)
                     if validated:
-                        return validated
+                        normalized, _ = self._ensure_complete_weight_schema(validated)
+                        return normalized
                 # Legacy flat dict
                 elif isinstance(data, dict) and any(k in data for k in self._BASE_WEIGHTS.keys()):
                     return data
@@ -353,8 +389,11 @@ class ScannerAgentTeam:
         """
         self._learned_weights = self._load_learned_weights()
         self._migrate_legacy_weights()
+        self._learned_weights, schema_repaired = self._ensure_complete_weight_schema(self._learned_weights)
         self._apply_time_decay()
         self._apply_confidence_scaling()
+        if schema_repaired:
+            self._save_learned_weights()
         self._regime_weights = {}  # Clear cache to force fresh load
 
     def _apply_time_decay(self) -> None:
@@ -596,6 +635,9 @@ class ScannerAgentTeam:
         # Ensure regime-aware structure
         if "_global" not in self._learned_weights:
             self._learned_weights = self._init_regime_weights()
+        self._learned_weights, schema_repaired = self._ensure_complete_weight_schema(self._learned_weights)
+        if schema_repaired:
+            changed = True
 
         # Decay all regime weights
         for regime in self._REGIME_NAMES + ["_global"]:
@@ -607,9 +649,7 @@ class ScannerAgentTeam:
                 base = self._BASE_WEIGHTS.get(name, 1.0)
                 current = _safe_float(regime_weights.get(name), 1.0)
                 if abs(current - base) < 1e-4:
-                    # Already at base – remove from learned dict
-                    del regime_weights[name]
-                    changed = True
+                    # Keep baseline keys persisted for health-check completeness.
                     continue
                 # Use selective decay rate if available, otherwise default
                 agent_decay = selective_rates.get(name, decay_rate)
@@ -1749,13 +1789,14 @@ class ScannerAgentTeam:
         # and max_model_disagreement applies graduated confidence penalty instead of
         # hard-blocking. Only hard-blocks when above max_model_disagreement.
         DISAGREEMENT_HARD_FLOOR = _clip01(_safe_float(
-            getattr(ctx.config, "disagreement_hard_floor", 0.30), 0.30
+            getattr(ctx.config, "disagreement_hard_floor", 0.50), 0.50
         ))
-        disagreement_above_floor = model_disagreement > DISAGREEMENT_HARD_FLOOR
+        # Phase 91: >= not > — 0.50 means 50/50 heuristic split (coin flip), must not trade
+        disagreement_above_floor = model_disagreement >= DISAGREEMENT_HARD_FLOOR
         # Hard block only when above max_model_disagreement, OR when soft blocking is off
         disagreement_dangerous = (
             disagreement_above_floor
-            and (not soft_blocking or model_disagreement > max_disagreement)
+            and (not soft_blocking or model_disagreement >= max_disagreement)
         )
 
         # Soft blocking: penalize confidence instead of hard-blocking for uncertainty.

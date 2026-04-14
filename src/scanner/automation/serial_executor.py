@@ -117,13 +117,77 @@ class SerialExecutor:
         return funnel
 
     def _execute_single(self, analysis: Any) -> Dict[str, Any]:
-        """Execute a single trade via ExecutionManager."""
+        """Execute a single trade via ExecutionManager.
+
+        Unpacks the PairAnalysis dataclass into execute_trade() kwargs,
+        mirroring the pattern used by ExecutionManager.execute_trades().
+        """
         if self._em is None:
             return {"success": False, "reason": "no_execution_manager"}
 
         try:
-            # Use execute_trade which handles all gates internally
-            result = self._em.execute_trade(analysis)
+            a = analysis
+
+            # Map volatility_regime string -> int expected by execute_trade
+            regime_str = str(getattr(a, "volatility_regime", "") or "").upper()
+            regime_map = {"LOW": 0, "NORMAL": 1, "HIGH": 2, "EXTREME": 3}
+            vol_regime = regime_map.get(regime_str)
+
+            # Meta confidence (prefer TCN, fallback to weighted vote score)
+            meta_conf = (
+                getattr(a, "tcn_confidence", None)
+                or getattr(a, "weighted_vote_score", None)
+            )
+            meta_conf_f = float(meta_conf) if meta_conf is not None else None
+
+            # recommended_lots: only pass if > 0, else let execute_trade size it
+            rec_lots = getattr(a, "recommended_lots", None)
+            try:
+                lots = float(rec_lots) if rec_lots and float(rec_lots) > 0 else None
+            except (TypeError, ValueError):
+                lots = None
+
+            # Build analysis_context for journal + downstream logic
+            agent_reasons = getattr(a, "agent_reasons", None) or []
+            analysis_context: Dict[str, Any] = {
+                "momentum_passed": getattr(a, "momentum_passed", None),
+                "confidence_passed": getattr(a, "confidence_passed", None),
+                "risk_passed": getattr(a, "risk_passed", None),
+                "gate_summary": getattr(a, "gate_summary", None),
+                "agent_votes": getattr(a, "agent_votes", None),
+                "agent_total": getattr(a, "agent_total", None),
+                "agent_passed": getattr(a, "agent_passed", None),
+                "agent_promoted": getattr(a, "agent_promoted", None),
+                "fasttrack": getattr(a, "fasttrack", False),
+                "weighted_vote_score": getattr(a, "weighted_vote_score", None),
+                "agent_reasons": agent_reasons[:5] if agent_reasons else [],
+                "volatility_regime": getattr(a, "volatility_regime", None),
+                "atr_pips": getattr(a, "atr_pips", None),
+                "uncertainty_score": getattr(a, "uncertainty_score", None),
+                "model_disagreement": getattr(a, "model_disagreement", None),
+                "tcn_confidence": getattr(a, "tcn_confidence", None),
+                "ridge_confidence": getattr(a, "ridge_confidence", None),
+                "momentum": getattr(a, "momentum", None),
+                "drawdown": getattr(a, "drawdown", None),
+                "overall_score": getattr(a, "overall_score", None),
+                "risk_pct": getattr(a, "risk_pct", None),
+                "source": "serial_executor",
+            }
+
+            result = self._em.execute_trade(
+                pair=getattr(a, "pair", ""),
+                direction=getattr(a, "direction", "HOLD"),
+                confidence=float(getattr(a, "confidence", 0.0) or 0.0),
+                current_price=float(getattr(a, "current_price", 0.0) or 0.0),
+                atr=float(getattr(a, "atr", 0.0) or 0.0),
+                sl_pips=getattr(a, "sl_pips", None),
+                tp_pips=getattr(a, "tp_pips", None),
+                lots=lots,
+                volatility_regime=vol_regime,
+                meta_confidence=meta_conf_f,
+                analysis_context=analysis_context,
+            )
+
             if result is None:
                 return {"success": False, "reason": "execute_trade_returned_none"}
             # ExecutionManager.execute_trade returns a journal entry dict on success
@@ -133,9 +197,14 @@ class SerialExecutor:
             # Some code paths return ExecutionResult-like objects
             success = getattr(result, "success", False)
             tid = getattr(result, "trade_id", "")
-            reason = getattr(result, "reason", "unknown")
+            reason = getattr(result, "reason", getattr(result, "error", "unknown"))
             return {"success": success, "trade_id": tid, "reason": reason}
         except Exception as e:
+            logger.warning(
+                "serial_executor.execute_single_error",
+                pair=getattr(analysis, "pair", "UNKNOWN"),
+                error=str(e),
+            )
             return {"success": False, "reason": str(e)}
 
     def _is_correlated(self, pair: str, executed_pairs: List[str]) -> bool:
@@ -144,8 +213,13 @@ class SerialExecutor:
             # Check against broker open positions
             try:
                 if hasattr(self._em, "_check_correlation_exposure"):
-                    is_blocked = self._em._check_correlation_exposure(pair)
-                    return bool(is_blocked)
+                    result = self._em._check_correlation_exposure(pair)
+                    # _check_correlation_exposure returns Tuple[bool, str]
+                    # where bool = allowed (True = OK to trade, False = blocked)
+                    if isinstance(result, tuple):
+                        allowed, _reason = result
+                        return not allowed
+                    return not bool(result)
             except Exception:
                 pass
             return False

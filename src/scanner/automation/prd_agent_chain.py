@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.scanner.automation.background_activity import get_background_activity_tracker
 from src.scanner.automation.event_bus import (
     Event, EventBus, EventResult, EventType, get_event_bus,
 )
@@ -166,15 +167,24 @@ class PRDAgentChain:
             return EventResult(success=True, handler_name="chain_ralph_spawner")
 
         try:
+            tracker = get_background_activity_tracker()
             # Memory: record chain start + sync PRD state
             phase = gap_data.get("branch_name", gap_data.get("phase", "unknown"))
             self._memory.record_chain_start(phase=phase, gaps=total_gaps)
             self._memory.sync_from_prd()
+            self._active_chain_activity_id = tracker.start_activity(
+                kind="agent_chain",
+                title=f"PRD agent chain for {phase}",
+                source="prd_agent_chain",
+                metadata={"phase": phase, "gaps": total_gaps, "generated_prd": generated_prd},
+            )
+            tracker.append_event(self._active_chain_activity_id, f"Detected {total_gaps} gap(s) and started chain")
 
             # Step 2a: Spawn Ralph to implement the gap PRD
             if self._auto_spawn:
                 logger.info(f"🚀 PRDAgentChain: spawning Ralph for {total_gaps} gaps")
                 self._memory.set_flag("ralph_in_progress", True)
+                tracker.append_event(self._active_chain_activity_id, "Spawning Ralph for gap implementation")
                 ralph_success = self._run_ralph(generated_prd)
                 self._memory.set_flag("ralph_in_progress", False)
                 self._memory.sync_from_prd()  # Refresh after Ralph finishes
@@ -192,6 +202,7 @@ class PRDAgentChain:
             if self._auto_review:
                 self._memory.set_flag("review_in_progress", True)
                 logger.info("🔍 PRDAgentChain: spawning code review agent")
+                tracker.append_event(self._active_chain_activity_id, "Starting code review")
                 review_result = self._code_reviewer.review_prd_changes(
                     generated_prd, trigger="chain_post_ralph"
                 )
@@ -209,6 +220,13 @@ class PRDAgentChain:
             )
         except Exception as e:
             logger.error(f"PRDAgentChain: Ralph/review error: {e}")
+            if getattr(self, "_active_chain_activity_id", None):
+                tracker = get_background_activity_tracker()
+                tracker.fail_activity(
+                    self._active_chain_activity_id,
+                    error=str(e),
+                    summary="PRD agent chain failed before review completion",
+                )
             return EventResult(
                 success=False,
                 handler_name="chain_ralph_spawner",
@@ -227,6 +245,7 @@ class PRDAgentChain:
         review_data = event.payload
 
         try:
+            tracker = get_background_activity_tracker()
             passed = review_data.get("passed", True)
             followup_prd = review_data.get("followup_prd")
             blockers = review_data.get("blockers", 0)
@@ -247,6 +266,11 @@ class PRDAgentChain:
                         f"🔧 PRDAgentChain: review cycle {self._current_review_cycle}/{self._max_review_cycles} — "
                         f"{blockers} blockers — spawning Ralph to fix via {followup_prd}"
                     )
+                    if getattr(self, "_active_chain_activity_id", None):
+                        tracker.append_event(
+                            self._active_chain_activity_id,
+                            f"Review found {blockers} blocker(s); spawning Ralph fix cycle {self._current_review_cycle}",
+                        )
                     ralph_success = self._run_ralph(followup_prd)
 
                     if ralph_success and self._auto_review:
@@ -254,6 +278,11 @@ class PRDAgentChain:
                         logger.info(
                             f"🔍 PRDAgentChain: re-reviewing after fix cycle {self._current_review_cycle}"
                         )
+                        if getattr(self, "_active_chain_activity_id", None):
+                            tracker.append_event(
+                                self._active_chain_activity_id,
+                                f"Fix cycle {self._current_review_cycle} complete; re-reviewing",
+                            )
                         re_review = self._code_reviewer.review_prd_changes(
                             followup_prd, trigger=f"fix_cycle_{self._current_review_cycle}"
                         )
@@ -312,6 +341,12 @@ class PRDAgentChain:
 
             status = "✓ PASSED" if passed else f"✗ {blockers} BLOCKERS (max cycles reached)"
             logger.info(f"🏁 CHAIN COMPLETE: review {status} | memory: {self._memory.summary()}")
+            if getattr(self, "_active_chain_activity_id", None):
+                final_summary = "PRD agent chain completed cleanly" if passed else f"PRD agent chain stopped with {blockers} blocker(s)"
+                if passed:
+                    tracker.complete_activity(self._active_chain_activity_id, summary=final_summary, metadata={"blockers": blockers})
+                else:
+                    tracker.fail_activity(self._active_chain_activity_id, error=f"{blockers} blocker(s) remain", summary=final_summary)
 
             # Re-entry: reset watcher fired state so the next poll picks up
             # PRDs that Ralph just marked as complete. This closes the outer loop:
@@ -335,6 +370,9 @@ class PRDAgentChain:
         except Exception as e:
             logger.error(f"PRDAgentChain: finalization error: {e}")
             self._current_review_cycle = 0  # Reset on error to not corrupt state
+            if getattr(self, "_active_chain_activity_id", None):
+                tracker = get_background_activity_tracker()
+                tracker.fail_activity(self._active_chain_activity_id, error=str(e), summary="PRD agent chain finalization failed")
             return EventResult(
                 success=False,
                 handler_name="chain_finalizer",
@@ -356,6 +394,8 @@ class PRDAgentChain:
             return self._run_claude_direct(prd_path)
 
         logger.info(f"Running Ralph: {ralph_script} --tool {self._ralph_tool} {self._ralph_max_iters}")
+        tracker = get_background_activity_tracker()
+        activity_id = getattr(self, "_active_chain_activity_id", None)
 
         try:
             proc = subprocess.run(
@@ -368,12 +408,22 @@ class PRDAgentChain:
             success = proc.returncode == 0
             if "<promise>COMPLETE</promise>" in (proc.stdout or ""):
                 success = True
+            if activity_id:
+                tracker.append_event(
+                    activity_id,
+                    "Ralph subprocess completed" if success else "Ralph subprocess returned non-zero",
+                    details={"returncode": proc.returncode},
+                )
             return success
         except subprocess.TimeoutExpired:
             logger.warning("PRDAgentChain: Ralph timed out")
+            if activity_id:
+                tracker.append_event(activity_id, "Ralph subprocess timed out", level="warning")
             return False
         except Exception as e:
             logger.error(f"PRDAgentChain: Ralph execution error: {e}")
+            if activity_id:
+                tracker.append_event(activity_id, f"Ralph execution error: {e}", level="error")
             return False
 
     def _run_claude_direct(self, prd_path: str) -> bool:

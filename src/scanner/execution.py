@@ -144,6 +144,12 @@ class ExecutionConfig:
     # Smart profile overrides to 4.5 to allow cross pairs.
     max_spread_pips: float = 3.0
 
+    # Broker selection (mirrors ScannerConfig broker fields for lazy init)
+    broker_type: str = "oanda"
+    ibkr_host: str = "127.0.0.1"
+    ibkr_port: int = 7497
+    ibkr_client_id: int = 1
+
 
 @dataclass
 class ExecutionResult:
@@ -575,6 +581,8 @@ class ExecutionManager:
     def _init_broker(self) -> bool:
         """Initialize broker client (lazy initialization).
 
+        Respects config.broker_type to select OANDA or IBKR.
+
         Returns:
             True if broker initialized successfully
         """
@@ -592,7 +600,34 @@ class ExecutionManager:
                 self._broker = self._legacy_oanda  # fallback to raw client
             return True
 
-        # Lazy-init OandaBroker from environment
+        # Check config for broker_type (may be set via ScannerConfig or env)
+        broker_type = getattr(self.config, "broker_type", "oanda")
+
+        if broker_type == "ibkr":
+            try:
+                from src.brokers.ibkr import IBKRBroker
+                ibkr_host = getattr(self.config, "ibkr_host", "127.0.0.1")
+                ibkr_port = getattr(self.config, "ibkr_port", 7497)
+                ibkr_client_id = getattr(self.config, "ibkr_client_id", 1)
+                self._broker = IBKRBroker(
+                    host=ibkr_host,
+                    port=ibkr_port,
+                    client_id=ibkr_client_id,
+                )
+                self._broker.connect()
+                logger.info(
+                    "ExecutionManager: IBKRBroker initialized (%s:%d, client_id=%d)",
+                    ibkr_host, ibkr_port, ibkr_client_id,
+                )
+                return True
+            except ImportError:
+                logger.error("IBKRBroker not available - install ib-insync")
+                return False
+            except Exception as e:
+                logger.error("Failed to initialize IBKR broker: %s", e)
+                return False
+
+        # Default: Lazy-init OandaBroker from environment
         try:
             from src.brokers.oanda import OandaBroker
             self._broker = OandaBroker.from_env()
@@ -1776,10 +1811,11 @@ class ExecutionManager:
             )
         _ctx_disagreement = float(ctx.get("model_disagreement", 0.0))
         _max_disagreement = getattr(self.config, "max_model_disagreement", 0.65)
-        if _ctx_disagreement > _max_disagreement:
+        # Phase 91: >= not > — exact boundary must block (0.50 = coin flip)
+        if _ctx_disagreement >= _max_disagreement:
             return ExecutionResult(
                 success=False,
-                error=f"BLOCKED: model_disagreement={_ctx_disagreement:.2f} > {_max_disagreement:.2f}",
+                error=f"BLOCKED: model_disagreement={_ctx_disagreement:.2f} >= {_max_disagreement:.2f}",
             )
         _ctx_regime = str(ctx.get("volatility_regime", "UNKNOWN")).upper()
         if _ctx_regime == "UNKNOWN":

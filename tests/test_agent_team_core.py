@@ -165,6 +165,53 @@ class TestAgentTeamWeights:
         assert team._learned_weights["_global"]["trend"] == 1.20
         assert team._learned_weights["NORMAL"]["trend"] == 1.18
 
+    def test_load_backfills_missing_scanner_agents(self):
+        """Regime-aware loads should backfill missing scanner agent keys."""
+        data = {
+            "_global": {"trend": 1.20},
+            "NORMAL": {"trend": 1.18},
+            "HIGH": {},
+            "EXTREME": {},
+            "_meta": {"min_trades_per_regime": 10},
+        }
+        expected_scanner_agents = {
+            "trend", "mean_reversion", "volatility", "risk_sentinel",
+            "uncertainty", "execution_quality", "momentum", "news_risk",
+            "multi_timeframe", "pair_performance", "session_timing",
+            "support_resistance",
+        }
+
+        team, _ = self._create_team_with_weights(data)
+        loaded_agents = set(team._learned_weights.get("_global", {}).keys())
+        assert expected_scanner_agents.issubset(loaded_agents)
+
+    def test_reload_persists_backfilled_agent_weights(self):
+        """reload_learned_weights should repair sparse files on disk."""
+        data = {
+            "_global": {"trend": 1.20},
+            "NORMAL": {"trend": 1.18},
+            "HIGH": {},
+            "EXTREME": {},
+            "_meta": {"min_trades_per_regime": 10, "total_trades": 0},
+        }
+        expected_scanner_agents = {
+            "trend", "mean_reversion", "volatility", "risk_sentinel",
+            "uncertainty", "execution_quality", "momentum", "news_risk",
+            "multi_timeframe", "pair_performance", "session_timing",
+            "support_resistance",
+        }
+        team, tmpdir = self._create_team_with_weights(data)
+        weights_file = os.path.join(tmpdir, "trained_data", "models", "agent_weights.json")
+
+        with patch.object(ScannerAgentTeam, "_WEIGHTS_FILE", weights_file):
+            team.reload_learned_weights()
+
+        with open(weights_file) as f:
+            repaired = json.load(f)
+
+        persisted_agents = set(repaired.get("_global", {}).keys())
+        assert expected_scanner_agents.issubset(persisted_agents)
+
     def test_migrate_legacy_flat_weights(self):
         """Legacy flat dict is migrated to regime-aware format."""
         legacy = {"trend": 1.30, "volatility": 0.80}

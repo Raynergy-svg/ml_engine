@@ -161,12 +161,14 @@ class TestRunInferencePipeline:
         # Disable ensemble so we fall through to gates
         scanner._modular_ensemble = None
 
-        # Mock _init_gate_evaluator to return True (already initialized)
-        with patch.object(scanner, '_init_gate_evaluator', return_value=True):
-            # Mock volatility check to allow
-            with patch.object(scanner, '_check_volatility_regime', return_value=(True, 1)):
-                direction, conf, tcn, ridge, gates, regime, succeeded, details = \
-                    scanner._run_inference(df_raw, df_feat, "EUR_USD")
+        # Mock _init_modular_ensemble to return False so it doesn't re-init the ensemble
+        with patch.object(scanner, '_init_modular_ensemble', return_value=False):
+            # Mock _init_gate_evaluator to return True (already initialized)
+            with patch.object(scanner, '_init_gate_evaluator', return_value=True):
+                # Mock volatility check to allow
+                with patch.object(scanner, '_check_volatility_regime', return_value=(True, 1)):
+                    direction, conf, tcn, ridge, gates, regime, succeeded, details = \
+                        scanner._run_inference(df_raw, df_feat, "EUR_USD")
 
         assert direction == "LONG"
         assert gates is True

@@ -50,7 +50,7 @@ class AdaptiveRRConfig:
     bad_form_adjustment: float = 0.2
 
     # Safety floor (from trading rules)
-    min_rr_ratio: float = 1.2  # Never go below 1.2:1
+    min_rr_ratio: float = 1.2  # Trading rule: minimum R:R floor
 
 
 @dataclass

@@ -681,6 +681,12 @@ def _build_inference_config_from_yaml(
 
     # Apply CLI inference profile overrides last so they intentionally win.
     resolved_profile = str(profile).strip().lower() if profile is not None else INFERENCE_PROFILE_BALANCED
+    # Scanner-level profiles (smart, futures_paper, futures_live) are not inference
+    # profiles — map them to balanced so the full scanner config still applies.
+    _SCANNER_ONLY_PROFILES = {"smart", "futures_paper", "futures_live"}
+    if resolved_profile in _SCANNER_ONLY_PROFILES:
+        logger.info("Scanner profile '%s' mapped to inference profile 'balanced'", resolved_profile)
+        resolved_profile = INFERENCE_PROFILE_BALANCED
     if resolved_profile not in INFERENCE_PROFILE_OVERRIDES:
         valid = ", ".join(sorted(INFERENCE_PROFILE_OVERRIDES.keys()))
         raise ValueError(f"Unknown inference profile '{resolved_profile}'. Valid profiles: {valid}")

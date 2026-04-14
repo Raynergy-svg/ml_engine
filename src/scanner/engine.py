@@ -11,6 +11,8 @@ from copy import deepcopy
 import json as _json
 import logging
 import math
+import os
+import platform
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -31,6 +33,95 @@ from .analysis import QuickBacktester, CorrelationAnalyzer, DriftDetector
 from .filters import VolatilityFilter, DiversificationFilter
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# M1 Metal / TensorFlow environment defaults (set before TF is imported)
+# ---------------------------------------------------------------------------
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')       # Suppress TF info/warning spam
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')      # Disable oneDNN (x86 only, noise on arm64)
+
+_m1_metal_configured = False
+
+
+def _configure_m1_metal() -> bool:
+    """Configure TensorFlow for optimal M1 Metal GPU usage.
+
+    Safe to call multiple times (idempotent via module-level flag).
+    Must be called BEFORE any model loading or tf.function compilation.
+
+    On Apple Silicon with 8 GB unified memory the Metal GPU shares the same
+    pool as WindowServer.  Without memory growth limits TF can allocate the
+    entire pool, starving the OS and triggering a kernel panic (userspace
+    watchdog timeout).
+
+    Returns True if M1 Metal configuration was applied, False otherwise.
+    """
+    global _m1_metal_configured
+    if _m1_metal_configured:
+        return True
+    _m1_metal_configured = True
+
+    if not (platform.machine() == 'arm64' and platform.system() == 'Darwin'):
+        return False
+
+    try:
+        import tensorflow as tf
+    except ImportError:
+        return False
+
+    try:
+        # 1. Threading — M1 has 4 perf + 4 efficiency cores.
+        #    Keep TF on performance cores; leave efficiency for OS / Python.
+        tf.config.threading.set_inter_op_parallelism_threads(2)
+        tf.config.threading.set_intra_op_parallelism_threads(4)
+
+        # 2. GPU memory growth — prevent TF from grabbing all Metal memory.
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            for gpu in gpus:
+                try:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                except RuntimeError:
+                    pass  # Already initialized
+            logger.info(
+                "M1 Metal GPU detected: %d device(s). Memory growth enabled.",
+                len(gpus),
+            )
+
+            # Hard cap Metal memory — default 1536 MB on 8GB M1 to leave room
+            # for OS, WindowServer, and Python heap.  Override via env var.
+            mem_limit = os.environ.get('BUDDY_GPU_MEMORY_LIMIT_MB', '1536')
+            if mem_limit:
+                try:
+                    tf.config.set_logical_device_configuration(
+                        gpus[0],
+                        [tf.config.LogicalDeviceConfiguration(memory_limit=int(mem_limit))],
+                    )
+                    logger.info("M1 Metal: GPU memory hard-capped at %s MB", mem_limit)
+                except (RuntimeError, ValueError):
+                    pass  # memory_growth and logical config can conflict
+        else:
+            logger.info("M1 Apple Silicon detected (CPU-only — tensorflow-metal not installed)")
+
+        # 3. Mixed precision for Metal — halves memory, ~1.5x speedup.
+        #    Only enable when GPU is available (no benefit on CPU-only).
+        if gpus:
+            try:
+                policy = tf.keras.mixed_precision.Policy('mixed_float16')
+                tf.keras.mixed_precision.set_global_policy(policy)
+                logger.info("M1 Metal: mixed precision (float16) enabled")
+            except Exception as e:
+                logger.debug("M1 Metal: mixed precision not available: %s", e)
+
+        logger.info(
+            "M1 Metal: threading set to 2 inter-op, 4 intra-op (TF %s)",
+            tf.__version__,
+        )
+        return True
+
+    except Exception as e:
+        logger.debug("M1 Metal config failed (non-fatal): %s", e)
+        return False
 
 
 class Scanner:
@@ -57,9 +148,34 @@ class Scanner:
             oanda_client: OANDA API client (created if None, deprecated — use broker instead)
             broker: BrokerClient instance for data fetching (created if None)
         """
+        # M1 Metal / TF configuration — MUST run before any model loading
+        _configure_m1_metal()
+
         self.config = config or ScannerConfig()
         self._oanda = oanda_client
         self._broker = broker
+
+        # M1 memory safety: detect low-RAM systems and cap resource usage
+        try:
+            import psutil as _psutil
+            _mem = _psutil.virtual_memory()
+            _available_mb = _mem.available / (1024 * 1024)
+            _total_mb = _mem.total / (1024 * 1024)
+        except ImportError:
+            _available_mb = 4096  # Assume enough if can't check
+            _total_mb = 8192
+        self._is_low_memory = _available_mb < 2048  # Less than 2GB free
+        if self._is_low_memory:
+            logger.warning(
+                "Low memory detected: %.0fMB available of %.0fMB total. "
+                "Limiting module loading and thread workers.",
+                _available_mb, _total_mb,
+            )
+            # Cap parallel workers to reduce concurrent memory pressure
+            if self.config.parallel_workers > 2:
+                self.config.parallel_workers = 2
+            if getattr(self.config, 'sub_inference_workers', 3) > 2:
+                self.config.sub_inference_workers = 2
 
         # Phase 69: TF/Keras warm-up — eagerly load the ensemble models
         # before heavy Scanner init. Prevents segfault on Apple Silicon
@@ -137,6 +253,45 @@ class Scanner:
         self._ensemble_lock = threading.Lock()
         self._agent_team = ScannerAgentTeam(self.config)
 
+        # Init automation modules (regime tracker, chain memory, etc.)
+        self._init_automation_modules()
+
+    def clear_scan_caches(self) -> int:
+        """Clear inter-scan caches to free memory. Returns number of entries freed."""
+        freed = 0
+        for cache in (self._cached_results, self._cache_contexts,
+                      self._pair_returns, self._feature_snapshots, self._raw_snapshots):
+            freed += len(cache)
+            cache.clear()
+        return freed
+
+    def shutdown_rl_workers(self) -> None:
+        """Terminate RL subprocess workers if running."""
+        mei = getattr(self, "_modular_ensemble", None)
+        if mei is None:
+            return
+        for attr in ("_rl_gates_proc", "_rl_exits_proc"):
+            proc = getattr(mei, attr, None)
+            if proc is None or not proc.is_alive():
+                continue
+            try:
+                proc.terminate()
+                proc.join(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            finally:
+                setattr(mei, attr, None)
+
+    def _init_automation_modules(self) -> None:
+        """Initialize all automation/Phase-50+ modules.
+
+        Previously this code was accidentally nested inside shutdown_rl_workers
+        due to indentation, meaning none of these attributes were set during
+        __init__. Now called explicitly from __init__.
+        """
         # Shared observation logger for feedback hooks (lazy-init)
         self._feedback_observer = None
 
@@ -845,9 +1000,6 @@ class Scanner:
                 logger.debug(f"Adaptive LR scheduler init deferred: {e}")
 
         # Adversarial trainer (US-089: adversarial robustness training for ensemble models)
-        # TODO: Wire adversarial_trainer feedback hook — module is initialized but has no
-        # call site in the scan loop. Needs a call site (e.g. periodic adversarial test
-        # after ensemble inference) before feedback can be logged. Another agent is handling init.
         self._adversarial_trainer = None
         if getattr(self.config, "enable_adversarial_training", False):
             try:
@@ -1282,8 +1434,12 @@ class Scanner:
                 # Preserve CLI overrides (e.g. --force disables session filter)
                 # before apply_profile re-applies profile defaults.
                 _prev_session_filter = self.config.enable_session_filter
+                _prev_blocked_pairs = list(self.config.blocked_pairs)
                 self.config.apply_profile(self.config.profile)
                 self.config.enable_session_filter = _prev_session_filter
+                # Restore blocked_pairs if user/CLI explicitly set them
+                if _prev_blocked_pairs:
+                    self.config.blocked_pairs = _prev_blocked_pairs
 
                 logger.debug(f"Loaded config from {self.config.config_path}")
 
@@ -1316,7 +1472,8 @@ class Scanner:
     def _init_broker_client(self) -> bool:
         """Initialize BrokerClient for data fetching.
 
-        Attempts to create OandaBroker from environment if no broker was passed.
+        Uses config.broker_type to select the correct broker via factory.
+        Falls back to OandaBroker.from_env() for backward compatibility.
 
         Returns:
             True if broker initialized successfully
@@ -1324,6 +1481,33 @@ class Scanner:
         if self._broker is not None:
             return True
 
+        broker_type = getattr(self.config, "broker_type", "oanda")
+
+        if broker_type == "ibkr":
+            try:
+                from src.brokers.ibkr import IBKRBroker
+                ibkr_host = getattr(self.config, "ibkr_host", "127.0.0.1")
+                ibkr_port = getattr(self.config, "ibkr_port", 7497)
+                ibkr_client_id = getattr(self.config, "ibkr_client_id", 1)
+                self._broker = IBKRBroker(
+                    host=ibkr_host,
+                    port=ibkr_port,
+                    client_id=ibkr_client_id,
+                )
+                self._broker.connect()
+                logger.info(
+                    "Scanner: IBKRBroker initialized (%s:%d, client_id=%d)",
+                    ibkr_host, ibkr_port, ibkr_client_id,
+                )
+                return True
+            except ImportError:
+                logger.error("IBKRBroker not available - check src/brokers/ibkr imports")
+                return False
+            except Exception as e:
+                logger.error("Failed to initialize IBKR broker: %s", e)
+                return False
+
+        # Default: OANDA
         try:
             from src.brokers.oanda import OandaBroker
             self._broker = OandaBroker.from_env()
@@ -2736,7 +2920,8 @@ class Scanner:
             else:
                 # Hard block: consensus below absolute minimum safety threshold
                 analysis.gates_passed = False
-                analysis.is_tradeable = False
+                # Note: is_tradeable is a @property — setting gates_passed=False
+                # already makes it return False. No need to set is_tradeable directly.
                 why = getattr(analysis, "why_no_trade", None) or []
                 if isinstance(why, list):
                     why.append(
@@ -2946,6 +3131,7 @@ class Scanner:
                             direction="HOLD",
                             confidence=0.0,
                             error=f"Accuracy gate: {_ag_reason}",
+                            kill_reason="accuracy_gate",
                         )
                 except Exception as _ag_err:
                     logger.debug(f"Phase 78: Accuracy gate check error for {pair}: {_ag_err}")
@@ -3910,6 +4096,25 @@ class Scanner:
             _drawdown_used = float(_drawdown_model) if _drawdown_model is not None else _drawdown_val
             _vol_gate_ok = bool(gate_details.get("volatility_gate_passed", False)) if gate_details else False
             _final_gates_passed = bool(gates_passed) and error_msg is None
+
+            # Phase 90 US-403: Determine kill_reason for gate telemetry
+            _disagree_val = float(gate_details.get("model_disagreement", 0.0)) if gate_details else 0.0
+            _disagree_floor = float(getattr(self.config, "disagreement_hard_floor", 0.50))
+            if _final_gates_passed and direction in {"LONG", "SHORT"} and error_msg is None:
+                _kill_reason = None  # tradeable — no kill reason
+            elif _disagree_val > _disagree_floor:
+                _kill_reason = "disagreement_gate"
+            elif not _confidence_ok and not _final_gates_passed:
+                _kill_reason = "confidence_gate"
+            elif not _momentum_ok and not _final_gates_passed:
+                _kill_reason = "momentum_gate"
+            elif not _risk_ok and not _final_gates_passed:
+                _kill_reason = "drawdown_gate"
+            elif error_msg is not None:
+                _kill_reason = "other"
+            else:
+                _kill_reason = "other"
+
             result = PairAnalysis(
                 pair=pair,
                 direction=direction,
@@ -3942,6 +4147,7 @@ class Scanner:
                 master_pair=str(gate_details.get("model_source_pair", pair)).upper().replace("/", "_")
                 if gate_details else str(pair).upper().replace("/", "_"),
                 error=error_msg,
+                kill_reason=_kill_reason,
             )
             # Tier 6: Stash ensemble component scores for downstream feedback
             if gate_details:
@@ -3970,11 +4176,38 @@ class Scanner:
                 except Exception as _vsr_err:
                     logger.debug(f"Phase 70: _vote_recorder.record() in _scan_pair failed: {_vsr_err}")
 
+            # Phase 61+63: Record momentum/risk scores in _scan_pair for non-ensemble inference paths
+            if self._momentum_recorder is not None:
+                try:
+                    self._momentum_recorder.record(
+                        pair=pair,
+                        momentum_score=float(getattr(result, "xgb_momentum", 0.0)),
+                        momentum_passed=bool(getattr(result, "momentum_passed", False)),
+                        scan_id=str(getattr(self, "_scan_cycle", 0)),
+                    )
+                except Exception as _msr_sp_err:
+                    logger.debug(f"Phase 61: momentum_recorder.record in _scan_pair failed: {_msr_sp_err}")
+
+            if self._risk_recorder is not None:
+                try:
+                    _rf_dd = float(getattr(result, "rf_drawdown", 0.0))
+                    _rf_dd_pct = _rf_dd / 10000.0 if _rf_dd > 1.0 else _rf_dd
+                    self._risk_recorder.record(
+                        pair=pair,
+                        rf_drawdown_pct=_rf_dd_pct,
+                        rf_streak_prob=0.0,  # Not available outside ensemble signal
+                        risk_passed=bool(getattr(result, "risk_passed", False)),
+                        max_drawdown_pct=float(self.config.max_drawdown_pct),
+                        scan_id=str(getattr(self, "_scan_cycle", 0)),
+                    )
+                except Exception as _rrr_sp_err:
+                    logger.debug(f"Phase 63: risk_recorder.record in _scan_pair failed: {_rrr_sp_err}")
+
             # Phase 75: Record heuristic disagreement for ALL pairs
             if self._disagreement_recorder is not None:
                 try:
                     _disagree = float(getattr(result, "model_disagreement", 0.0))
-                    _hard_floor = float(getattr(self.config, "disagreement_hard_floor", 0.30))
+                    _hard_floor = float(getattr(self.config, "disagreement_hard_floor", 0.50))
                     self._disagreement_recorder.record(
                         pair=pair,
                         disagreement=_disagree,
@@ -4054,17 +4287,6 @@ class Scanner:
                                     f"{pair}: Flocking detected (agreement={_flock['agreement_ratio']:.2f}) "
                                     f"— no penalty (accuracy={_flock_acc})"
                                 )
-                    # Phase 58 (US-358): Record raw pre-penalty confidence
-                    if self._raw_conf_recorder is not None:
-                        try:
-                            self._raw_conf_recorder.record(
-                                pair=pair,
-                                raw_confidence=confidence,
-                                scan_id=str(getattr(self, "_scan_cycle", 0)),
-                            )
-                        except Exception as _rcr_err:
-                            logger.debug(f"Phase 58: raw_conf_recorder.record failed: {_rcr_err}")
-
                     # Phase 30 (US-184): Consume calibration ECE for dynamic confidence adj
                     _oc_applied = False
                     # Phase 57 (US-354): Skip overconfidence penalty during stall recovery
@@ -4125,6 +4347,17 @@ class Scanner:
 
                 except Exception as _cal_track_err:
                     logger.debug(f"{pair}: Model calibration tracking skipped: {_cal_track_err}")
+
+            # Phase 58 (US-358): Record raw pre-penalty confidence for ALL pairs (not just tradeable)
+            if self._raw_conf_recorder is not None:
+                try:
+                    self._raw_conf_recorder.record(
+                        pair=pair,
+                        raw_confidence=confidence,
+                        scan_id=str(getattr(self, "_scan_cycle", 0)),
+                    )
+                except Exception as _rcr_err:
+                    logger.debug(f"Phase 58: raw_conf_recorder.record failed: {_rcr_err}")
 
             # Phase 18: Pair-regime-agent matrix — record agent votes
             if self._pair_regime_agent_matrix is not None and direction != "HOLD":
@@ -4470,6 +4703,7 @@ class Scanner:
                 direction="HOLD",
                 confidence=0.0,
                 error=friendly,
+                kill_reason="other",
             )
 
     def scan(
@@ -4528,6 +4762,14 @@ class Scanner:
 
         pair_list = pairs if pairs is not None else (self.config.pairs or self.config.default_pairs)
         worker_count = max(1, int(max_workers or self.config.parallel_workers))
+
+        # M1 memory safety: cap thread workers to prevent CPU/memory starvation
+        if getattr(self, '_is_low_memory', False) and worker_count > 2:
+            logger.info("Low-memory mode: capping scan workers from %d to 2", worker_count)
+            worker_count = 2
+        # Hard cap: never exceed 4 workers regardless of config (M1 has 8 cores
+        # but TensorFlow inference + GC already saturates them)
+        worker_count = min(worker_count, 4)
 
         # Check session before starting
         if not self.config.non_interactive:
@@ -4755,6 +4997,10 @@ class Scanner:
             model_type = "ensemble"
         elif self._gate_evaluator is not None and self._gate_evaluator.is_loaded:
             model_type = self._gate_evaluator.momentum_model_type
+
+        # Free DataFrame caches after every scan (not just continuous mode)
+        # to prevent OOM on 8GB M1 when running single-scan commands.
+        self.clear_scan_caches()
 
         return ScanResult(
             analyses=analyses,
@@ -6306,15 +6552,30 @@ class Scanner:
             return {"error": "OANDA client not available"}
 
         try:
-            account = self._oanda.get_account_summary()
+            raw = self._oanda.get_account_summary()
+            # OANDA v20 nests data under {"account": {...}} — unwrap it.
+            account = raw.get("account", raw) if isinstance(raw, dict) else raw
+            balance = account.get("balance", 0)
+            nav = account.get("NAV", account.get("nav", 0))
+            unrealized = account.get("unrealizedPL", account.get("unrealized_pl", 0))
+            margin_used = account.get("marginUsed", account.get("margin_used", 0))
+            margin_available = account.get("marginAvailable", account.get("margin_available", 0))
+            open_positions = account.get("openPositionCount", account.get("open_positions", 0))
+            open_trades = account.get("openTradeCount", account.get("open_trades", 0))
             return {
-                "balance": account.get("balance", 0),
-                "nav": account.get("NAV", 0),
-                "unrealized_pl": account.get("unrealizedPL", 0),
-                "margin_used": account.get("marginUsed", 0),
-                "margin_available": account.get("marginAvailable", 0),
-                "open_positions": account.get("openPositionCount", 0),
-                "open_trades": account.get("openTradeCount", 0),
+                "balance": balance,
+                "NAV": nav,
+                "nav": nav,
+                "unrealizedPL": unrealized,
+                "unrealized_pl": unrealized,
+                "marginUsed": margin_used,
+                "margin_used": margin_used,
+                "marginAvailable": margin_available,
+                "margin_available": margin_available,
+                "openPositionCount": open_positions,
+                "open_positions": open_positions,
+                "openTradeCount": open_trades,
+                "open_trades": open_trades,
             }
         except Exception as e:
             return {"error": str(e)}
@@ -6353,9 +6614,28 @@ class Scanner:
                 max_lot_size=getattr(self.config, "max_lot_size", 50.0),
                 trailing_stop_breakeven_pct=getattr(self.config, "trailing_stop_breakeven_pct", 0.50),
                 trailing_stop_lock_pct=getattr(self.config, "trailing_stop_lock_pct", 0.75),
+                # Pass max_data_age_seconds so batch scans (15 pairs, 2-5 min) don't
+                # silently block every trade as stale.  Old default 60s was too tight.
+                max_data_age_seconds=getattr(self.config, "max_data_age_seconds", 300.0),
+                # Pass max_spread_pips so profile overrides reach the spread filter.
+                # Default 3.0 works for majors; smart profile uses 4.5 for AUD/GBP crosses.
+                # When --force (session filter off), widen by off_hours_spread_multiplier
+                # to tolerate thinner off-hours liquidity.
+                max_spread_pips=(
+                    getattr(self.config, "max_spread_pips", 3.0)
+                    * getattr(self.config, "off_hours_spread_multiplier", 3.0)
+                    if not getattr(self.config, "enable_session_filter", True)
+                    else getattr(self.config, "max_spread_pips", 3.0)
+                ),
+                # Broker config passthrough for ExecutionManager lazy init
+                broker_type=getattr(self.config, "broker_type", "oanda"),
+                ibkr_host=getattr(self.config, "ibkr_host", "127.0.0.1"),
+                ibkr_port=getattr(self.config, "ibkr_port", 7497),
+                ibkr_client_id=getattr(self.config, "ibkr_client_id", 1),
             )
             self._executor = ExecutionManager(
                 config=exec_config,
+                broker=self._broker,
                 oanda_client=self._oanda,
             )
             # Phase 81 (US-P81-002): Inject PositionTimeoutManager reference into executor
@@ -6457,7 +6737,14 @@ class Scanner:
                 continue
             # R:R ratio gate (rules/trading.md: minimum 1.2:1)
             rr = float(a.tp_pips) / float(a.sl_pips)
-            if rr < getattr(self.config, "min_risk_reward_ratio", 1.2):
+            # Hard safety floor from trading rules: enforce >= 1.2:1 even if
+            # configured threshold is tuned lower.
+            configured_min_rr = getattr(self.config, "min_risk_reward_ratio", 1.2)
+            try:
+                min_rr = max(1.2, float(configured_min_rr))
+            except (TypeError, ValueError):
+                min_rr = 1.2
+            if rr < min_rr:
                 logger.warning(f"Pre-flight skip {a.pair}: R:R {rr:.2f} < minimum")
                 continue
             validated.append(a)

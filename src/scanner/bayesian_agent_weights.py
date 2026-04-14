@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -472,11 +473,7 @@ class BayesianAgentWeights:
             with open(path, "r") as f:
                 state = json.load(f)
 
-            # Validate schema
-            if "version" not in state:
-                raise ValueError("State missing 'version' field")
-            if "distributions" not in state:
-                raise ValueError("State missing 'distributions' field")
+            state = self._normalize_loaded_state(state)
 
             # Restore distributions
             self._distributions = {}
@@ -493,6 +490,8 @@ class BayesianAgentWeights:
                 except (ValueError, KeyError) as e:
                     logger.warning(f"Skipping invalid distribution entry {key_str}: {e}")
 
+            self._fill_missing_distributions()
+
             self._update_count = state.get("update_count", 0)
             self._epsilon = state.get("epsilon", self.config.epsilon_initial)
 
@@ -501,14 +500,109 @@ class BayesianAgentWeights:
                 f"(update_count={self._update_count}, epsilon={self._epsilon:.4f})"
             )
 
+            # Normalize older schemas in place so future loads are clean.
+            if state.get("version", 1) != 1 or len(self._distributions) != len(self.config.agent_names) * len(self.config.regime_names):
+                try:
+                    self.save_state(path)
+                except Exception:
+                    logger.debug("Failed to normalize Bayesian state in place: %s", path)
+
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON state file {path}: {e}")
             logger.warning("Reinitializing to prior")
-            self._reset_distributions()
+            self._quarantine_bad_state_file(path, reason="json")
+            self.reset()
         except Exception as e:
             logger.error(f"Unexpected error loading state from {path}: {e}")
             logger.warning("Reinitializing to prior")
-            self._reset_distributions()
+            self._quarantine_bad_state_file(path, reason="schema")
+            self.reset()
+
+    def _normalize_loaded_state(self, state: Any) -> Dict[str, Any]:
+        """Normalize/migrate persisted state into the current schema."""
+        if not isinstance(state, dict):
+            raise ValueError("State must be a dictionary")
+
+        if "distributions" in state:
+            if "version" not in state:
+                state["version"] = 1
+            return state
+
+        # Backward-compatibility: older snapshots may persist flat alpha/beta maps
+        # under keys like `weights`, `stats`, or regime->agent nests.
+        migrated = self._migrate_legacy_state(state)
+        if migrated is not None:
+            logger.warning("Migrated legacy Bayesian weights state to current schema")
+            return migrated
+
+        raise ValueError("State missing 'distributions' field")
+
+    def _migrate_legacy_state(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Try to recover older persisted state layouts."""
+        candidate_maps = [
+            state.get("weights"),
+            state.get("stats"),
+            state.get("regimes"),
+            state,
+        ]
+
+        distributions: Dict[str, Dict[str, float]] = {}
+        for candidate in candidate_maps:
+            if not isinstance(candidate, dict):
+                continue
+
+            for key, value in candidate.items():
+                # Already normalized format under a nested map.
+                if isinstance(value, dict) and "alpha" in value and "beta" in value and ":" in str(key):
+                    distributions[str(key)] = {
+                        "alpha": float(value["alpha"]),
+                        "beta": float(value["beta"]),
+                    }
+                    continue
+
+                # Nested regime -> agent -> {alpha,beta}
+                if str(key) in self.config.regime_names and isinstance(value, dict):
+                    for agent, dist in value.items():
+                        if (
+                            isinstance(dist, dict)
+                            and "alpha" in dist
+                            and "beta" in dist
+                            and str(agent) in self.config.agent_names
+                        ):
+                            distributions[f"{key}:{agent}"] = {
+                                "alpha": float(dist["alpha"]),
+                                "beta": float(dist["beta"]),
+                            }
+
+        if not distributions:
+            return None
+
+        return {
+            "version": int(state.get("version", 1) or 1),
+            "update_count": int(state.get("update_count", 0) or 0),
+            "epsilon": float(state.get("epsilon", self.config.epsilon_initial) or self.config.epsilon_initial),
+            "distributions": distributions,
+        }
+
+    def _fill_missing_distributions(self) -> None:
+        """Ensure every configured regime/agent pair has a distribution."""
+        for regime in self.config.regime_names:
+            for agent in self.config.agent_names:
+                self._distributions.setdefault(
+                    (regime, agent),
+                    (self.config.prior_alpha, self.config.prior_beta),
+                )
+
+    def _quarantine_bad_state_file(self, path: str, *, reason: str) -> None:
+        """Best-effort move aside of unreadable legacy/corrupt state."""
+        try:
+            if not os.path.exists(path):
+                return
+            backup = f"{path}.bad.{reason}.{int(time.time())}.json"
+            os.rename(path, backup)
+            logger.warning("Moved unreadable Bayesian state to %s", backup)
+        except Exception:
+            logger.debug("Failed to quarantine bad Bayesian state file: %s", path)
 
     def reset(self) -> None:
         """Reset all distributions to prior and bookkeeping to initial state."""

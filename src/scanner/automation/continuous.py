@@ -337,31 +337,49 @@ class ContinuousScanner:
         # Tier 7.5: Supervision mode — replaces legacy scan loop
         _supervision_mode = getattr(self.scanner.config, "enable_supervision_mode", False)
         if _supervision_mode:
+            # Step 1: Import (separate try so we distinguish import vs runtime errors)
+            _SupervisionRuntime = None
             try:
-                from src.scanner.automation.supervision_runtime import SupervisionRuntime
+                from src.scanner.automation.supervision_runtime import SupervisionRuntime as _SupervisionRuntime
+            except ImportError as _imp_err:
                 if console:
-                    console.print("\n[bold cyan]◆ SUPERVISION MODE[/bold cyan]")
-                runtime = SupervisionRuntime(
-                    scanner=self.scanner,
-                    config=self.scanner.config,
-                    console=console,
-                )
-                result = runtime.run(
-                    pairs=pairs,
-                    auto_execute=auto_execute,
-                    top_n=top_n,
-                    interval_minutes=interval_minutes,
-                )
-                self._scan_count = result
-                return self._scan_count
-            except ImportError:
-                logger.warning("SupervisionRuntime not available, falling back to legacy loop")
-            except Exception as _sr_err:
-                logger.error("SupervisionRuntime failed: %s — falling back to legacy loop", _sr_err)
+                    console.print(f"[bold red]⚠ SUPERVISION MODE UNAVAILABLE[/bold red] — {_imp_err}")
+                logger.warning("SupervisionRuntime import failed: %s", _imp_err)
 
-        # Legacy scan loop
+            # Step 2: Init + run (all other errors get full traceback)
+            if _SupervisionRuntime is not None:
+                try:
+                    if console:
+                        console.print("\n[bold cyan]◆ SUPERVISION MODE — supervise-first, scan on-demand[/bold cyan]")
+                    runtime = _SupervisionRuntime(
+                        scanner=self.scanner,
+                        config=self.scanner.config,
+                        console=console,
+                    )
+                    result = runtime.run(
+                        pairs=pairs,
+                        auto_execute=auto_execute,
+                        top_n=top_n,
+                        interval_minutes=interval_minutes,
+                    )
+                    self._scan_count = result
+                    return self._scan_count
+                except Exception as _sr_err:
+                    import traceback as _tb
+                    _sr_trace = _tb.format_exc()
+                    logger.error("SupervisionRuntime failed: %s\n%s", _sr_err, _sr_trace)
+                    if console:
+                        console.print(f"\n[bold red]⚠ SUPERVISION MODE CRASHED — falling back to watch mode[/bold red]")
+                        console.print(f"[red]  Error: {_sr_err}[/red]")
+                        console.print(f"[dim red]{_sr_trace}[/dim red]")
+
+        # Legacy continuous scan loop
         if console:
-            console.print("\n[bold cyan]🔄 CONTINUOUS SCAN MODE[/bold cyan]")
+            if _supervision_mode:
+                # We only reach here if supervision failed — show degraded mode
+                console.print("\n[bold yellow]🔄 CONTINUOUS SCAN MODE (supervision fallback)[/bold yellow]")
+            else:
+                console.print("\n[bold cyan]🔄 CONTINUOUS SCAN MODE[/bold cyan]")
             console.print(f"[dim]Scanning every {interval_minutes} minutes. Press Ctrl+C to stop.[/dim]")
             console.print("=" * 70)
 

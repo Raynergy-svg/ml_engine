@@ -1,52 +1,52 @@
 {
   "version": 1,
-  "total_cleanups": 15,
+  "total_cleanups": 141,
   "total_evictions": 0,
   "total_rotations": 4,
   "cleanup_log": [
     {
-      "timestamp": "2026-03-23T19:34:44.651530+00:00",
+      "timestamp": "2026-03-31T21:56:12.869126+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 794624.0,
+        "rss_mb": 520096.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           }
         },
         "log_files": {
@@ -62,48 +62,48 @@
       }
     },
     {
-      "timestamp": "2026-03-23T19:39:52.178147+00:00",
+      "timestamp": "2026-03-31T22:01:18.489426+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 794624.0,
+        "rss_mb": 520096.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           }
         },
         "log_files": {
@@ -119,48 +119,48 @@
       }
     },
     {
-      "timestamp": "2026-03-23T19:44:58.654198+00:00",
+      "timestamp": "2026-03-31T22:06:21.574665+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 794624.0,
+        "rss_mb": 520096.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           }
         },
         "log_files": {
@@ -176,48 +176,48 @@
       }
     },
     {
-      "timestamp": "2026-03-23T19:50:06.203455+00:00",
+      "timestamp": "2026-03-31T22:11:25.321518+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 794624.0,
+        "rss_mb": 520096.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           }
         },
         "log_files": {
@@ -233,48 +233,48 @@
       }
     },
     {
-      "timestamp": "2026-03-23T19:55:13.464052+00:00",
+      "timestamp": "2026-03-31T22:16:28.988312+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 794624.0,
+        "rss_mb": 520096.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           }
         },
         "log_files": {
@@ -290,50 +290,733 @@
       }
     },
     {
-      "timestamp": "2026-03-23T20:01:14.678658+00:00",
+      "timestamp": "2026-03-31T22:21:33.295833+00:00",
       "evictions": {},
-      "rotations": {
-        "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": true
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T22:26:36.099843+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T22:31:39.180557+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T22:36:44.766711+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T22:41:49.377747+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T22:41:49.379109+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T22:46:52.906791+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T22:51:56.702380+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T22:56:59.634031+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T23:02:03.117792+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T23:07:06.646038+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 520096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-03-31T23:19:25.437130+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 662240.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
       },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-01T00:27:37.705695+00:00",
+      "evictions": {},
+      "rotations": {},
       "memory": {
-        "rss_mb": 794624.0,
+        "rss_mb": 766384.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 6,
+            "size": 3,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.015
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 6,
+            "size": 3,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.015
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 6,
+            "size": 3,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.015
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 6,
+            "size": 3,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.015
           }
         },
         "log_files": {
@@ -341,58 +1024,57 @@
             "rotations": 0,
             "exists": true
           },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
             "rotations": 0,
             "exists": true
           }
         }
-      }
-    },
-    {
-      "timestamp": "2026-03-23T20:06:20.215552+00:00",
-      "evictions": {},
-      "rotations": {
-        "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": true
       },
+      "backup_dirs_pruned": 2
+    },
+    {
+      "timestamp": "2026-04-01T00:33:40.388235+00:00",
+      "evictions": {},
+      "rotations": {},
       "memory": {
-        "rss_mb": 794624.0,
+        "rss_mb": 766384.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 6,
+            "size": 3,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.015
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 6,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 6,
+            "size": 3,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.015
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 6,
+            "size": 3,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.015
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 6,
+            "size": 3,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.03
+            "utilization": 0.015
           }
         },
         "log_files": {
@@ -400,115 +1082,114 @@
             "rotations": 0,
             "exists": true
           },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
-            "rotations": 1,
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
             "exists": true
           }
         }
       }
     },
     {
-      "timestamp": "2026-03-23T20:09:13.408788+00:00",
+      "timestamp": "2026-04-01T12:58:35.121739+00:00",
       "evictions": {},
-      "rotations": {
-        "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": true
+      "rotations": {},
+      "memory": {
+        "rss_mb": 760096.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
       },
-      "memory": {
-        "rss_mb": 769136.0,
-        "rss_warning": true,
-        "rss_critical": true,
-        "caches": {
-          "cached_results": {
-            "name": "cached_results",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "last_prices": {
-            "name": "last_prices",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "feature_snapshots": {
-            "name": "feature_snapshots",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "raw_snapshots": {
-            "name": "raw_snapshots",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "pair_returns": {
-            "name": "pair_returns",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          }
-        },
-        "log_files": {
-          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
-            "rotations": 0,
-            "exists": true
-          },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
-            "rotations": 0,
-            "exists": true
-          }
-        }
-      }
+      "backup_dirs_pruned": 3
     },
     {
-      "timestamp": "2026-03-23T20:14:20.386610+00:00",
+      "timestamp": "2026-04-01T16:43:01.364846+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 769136.0,
+        "rss_mb": 692992.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 14,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           }
         },
         "log_files": {
@@ -516,172 +1197,57 @@
             "rotations": 0,
             "exists": true
           },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
-            "rotations": 1,
-            "exists": true
-          }
-        }
-      }
-    },
-    {
-      "timestamp": "2026-03-23T20:19:26.428427+00:00",
-      "evictions": {},
-      "rotations": {},
-      "memory": {
-        "rss_mb": 769136.0,
-        "rss_warning": true,
-        "rss_critical": true,
-        "caches": {
-          "cached_results": {
-            "name": "cached_results",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "last_prices": {
-            "name": "last_prices",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "feature_snapshots": {
-            "name": "feature_snapshots",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "raw_snapshots": {
-            "name": "raw_snapshots",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "pair_returns": {
-            "name": "pair_returns",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          }
-        },
-        "log_files": {
-          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
             "rotations": 0,
             "exists": true
-          },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
-            "rotations": 1,
-            "exists": true
           }
         }
-      }
-    },
-    {
-      "timestamp": "2026-03-23T20:24:33.563389+00:00",
-      "evictions": {},
-      "rotations": {},
-      "memory": {
-        "rss_mb": 769136.0,
-        "rss_warning": true,
-        "rss_critical": true,
-        "caches": {
-          "cached_results": {
-            "name": "cached_results",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "last_prices": {
-            "name": "last_prices",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "feature_snapshots": {
-            "name": "feature_snapshots",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "raw_snapshots": {
-            "name": "raw_snapshots",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          },
-          "pair_returns": {
-            "name": "pair_returns",
-            "size": 14,
-            "max_size": 200,
-            "total_evictions": 0,
-            "utilization": 0.07
-          }
-        },
-        "log_files": {
-          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
-            "rotations": 0,
-            "exists": true
-          },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
-            "rotations": 1,
-            "exists": true
-          }
-        }
-      }
-    },
-    {
-      "timestamp": "2026-03-23T20:29:39.954874+00:00",
-      "evictions": {},
-      "rotations": {
-        "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": true
       },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-01T19:43:27.759305+00:00",
+      "evictions": {},
+      "rotations": {},
       "memory": {
-        "rss_mb": 769136.0,
+        "rss_mb": 709152.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 14,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           }
         },
         "log_files": {
@@ -689,56 +1255,230 @@
             "rotations": 0,
             "exists": true
           },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
-            "rotations": 1,
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-01T22:27:42.364302+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 706656.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-01T22:32:00.655532+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 771456.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-01T22:39:46.693425+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 771456.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
             "exists": true
           }
         }
       }
     },
     {
-      "timestamp": "2026-03-23T20:34:46.311875+00:00",
+      "timestamp": "2026-04-02T01:16:02.235760+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 769136.0,
+        "rss_mb": 762688.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 14,
+            "size": 0,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 14,
+            "size": 15,
             "max_size": 200,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.075
           }
         },
         "log_files": {
@@ -746,56 +1486,1332 @@
             "rotations": 0,
             "exists": true
           },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
-            "rotations": 2,
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-02T01:55:54.325628+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 679712.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-02T02:27:51.418908+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 666528.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-02T03:53:03.369543+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 672944.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 15,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.075
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-02T14:19:18.565143+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 577200.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 2
+    },
+    {
+      "timestamp": "2026-04-02T14:33:47.081349+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 650864.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-02T21:13:59.049632+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 676752.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 2
+    },
+    {
+      "timestamp": "2026-04-03T00:41:30.041377+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 181056.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-03T00:41:50.693509+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 186704.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-03T00:44:11.535157+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 189008.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-03T02:54:31.226402+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 670320.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 3
+    },
+    {
+      "timestamp": "2026-04-03T03:19:45.263593+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 707584.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-03T04:10:55.061510+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 706208.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-03T04:16:53.903521+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 780032.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 11,
+            "max_size": 200,
+            "total_evictions": 0,
+            "utilization": 0.055
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-03T19:40:41.990254+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 694864.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 3
+    },
+    {
+      "timestamp": "2026-04-04T04:30:52.352697+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 673056.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-04T04:44:09.946940+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 783248.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 2
+    },
+    {
+      "timestamp": "2026-04-04T05:03:13.025978+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 785664.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 2
+    },
+    {
+      "timestamp": "2026-04-04T05:24:45.510309+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 789584.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 3
+    },
+    {
+      "timestamp": "2026-04-05T00:41:24.152973+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 774144.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-06T09:20:51.900328+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 768672.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-06T10:40:36.318993+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 699744.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
+            "exists": true
+          }
+        }
+      },
+      "backup_dirs_pruned": 1
+    },
+    {
+      "timestamp": "2026-04-06T10:49:02.606711+00:00",
+      "evictions": {},
+      "rotations": {},
+      "memory": {
+        "rss_mb": 699744.0,
+        "rss_warning": true,
+        "rss_critical": true,
+        "caches": {
+          "cached_results": {
+            "name": "cached_results",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "last_prices": {
+            "name": "last_prices",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "feature_snapshots": {
+            "name": "feature_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "raw_snapshots": {
+            "name": "raw_snapshots",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          },
+          "pair_returns": {
+            "name": "pair_returns",
+            "size": 0,
+            "max_size": 50,
+            "total_evictions": 0,
+            "utilization": 0.0
+          }
+        },
+        "log_files": {
+          "/Users/buddy/Documents/ml_engine/trained_data/observations.jsonl": {
+            "rotations": 0,
+            "exists": true
+          },
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
+            "rotations": 0,
             "exists": true
           }
         }
       }
     },
     {
-      "timestamp": "2026-03-23T20:39:50.614715+00:00",
+      "timestamp": "2026-04-06T20:34:54.424164+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 632912.0,
+        "rss_mb": 786832.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           }
         },
         "log_files": {
@@ -803,56 +2819,57 @@
             "rotations": 0,
             "exists": true
           },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
             "rotations": 0,
             "exists": true
           }
         }
-      }
+      },
+      "backup_dirs_pruned": 9
     },
     {
-      "timestamp": "2026-03-23T20:44:57.384701+00:00",
+      "timestamp": "2026-04-08T22:41:57.483099+00:00",
       "evictions": {},
       "rotations": {},
       "memory": {
-        "rss_mb": 632912.0,
+        "rss_mb": 647712.0,
         "rss_warning": true,
         "rss_critical": true,
         "caches": {
           "cached_results": {
             "name": "cached_results",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "last_prices": {
             "name": "last_prices",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "feature_snapshots": {
             "name": "feature_snapshots",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "raw_snapshots": {
             "name": "raw_snapshots",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           },
           "pair_returns": {
             "name": "pair_returns",
-            "size": 14,
-            "max_size": 200,
+            "size": 0,
+            "max_size": 50,
             "total_evictions": 0,
-            "utilization": 0.07
+            "utilization": 0.0
           }
         },
         "log_files": {
@@ -860,13 +2877,14 @@
             "rotations": 0,
             "exists": true
           },
-          "/Users/buddy/Documents/ml_engine/trained_data/trade_journal_rl.json": {
+          "/Users/buddy/Documents/ml_engine/trained_data/scan_cycle_log.jsonl": {
             "rotations": 0,
             "exists": true
           }
         }
-      }
+      },
+      "backup_dirs_pruned": 2
     }
   ],
-  "last_updated": "2026-03-23T20:44:57.385251+00:00"
+  "last_updated": "2026-04-13T22:27:52.573873+00:00"
 }

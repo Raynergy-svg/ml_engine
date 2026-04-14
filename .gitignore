@@ -30,11 +30,17 @@ tensorboard/
 .claude/ralph/prd_aura_phase*.json
 .claude/ralph/event_log.jsonl
 .claude/ralph/memory.json
+.claude/litellm.openrouter.yaml
 .claude/ralph/reports/
 .claude/ralph/archive/
 .claude/ralph/watcher.pid
 .claude/ralph/.watcher_state.json
 .claude/ralph/.last-branch
+.claude/brain/
+.claude/settings.json
+.claude/state.json.bak
+.claude/state.json.lock
+.aura/
 
 # Local runtime artifacts
 cache/
@@ -42,6 +48,7 @@ output/
 .pytest_cache/
 .ruff_cache/
 node_modules
+tmp_test_background_activity/
 
 # ===========================================
 # Trained models — COMMITTED for reproducibility
@@ -51,6 +58,11 @@ node_modules
 # But exclude raw market data CSVs and large intermediaries
 trained_data/cache/
 trained_data/*.tmp
+trained_data/*.lock
+trained_data/**/*.lock
+trained_data/backups/
+trained_data/backtest_results/
+trained_data/observations.*.jsonl
 market_data/*.csv
 
 # Exclude large non-model binaries elsewhere

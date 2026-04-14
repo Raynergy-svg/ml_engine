@@ -11,7 +11,7 @@ import pickle
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 from rich.console import Console
 
@@ -21,7 +21,7 @@ from memory_client import MLEngineMemory
 console = Console()
 
 
-def _format_recorded_age(timestamp: Any) -> str | None:
+def _format_recorded_age(timestamp: Any) -> Optional[str]:
     """Render a compact relative age label for persisted runtime records."""
     if not timestamp:
         return None
@@ -49,7 +49,7 @@ def _format_recorded_age(timestamp: Any) -> str | None:
     return f"recorded {age}"
 
 
-def _render_runtime_decision(title: str, payload: dict[str, Any] | None) -> None:
+def _render_runtime_decision(title: str, payload: Optional[Dict[str, Any]]) -> None:
     freshness = _format_recorded_age(payload.get("timestamp")) if isinstance(payload, dict) else None
     title_line = f"\n[bold cyan]{title}[/bold cyan]"
     if freshness:

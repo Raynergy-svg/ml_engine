@@ -1,0 +1,57 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/tier7-pr6-event-history",
+  "description": "Tier 7 PR 6: Paged event history API over trading_events.jsonl and session_snapshot.py extension with control plane summary fields. Depends on PR 1 (trading_events.py) being merged. Low risk — read-only new file + minor schema extension.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create event_history.py with paged JSONL reader",
+      "description": "As an operator, I need a paged history API to answer 'what happened around this trade?' without loading the entire event log into memory.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/event_history.py",
+        "HistoryPage dataclass has fields: events (list), first_id (str or None), has_more (bool)",
+        "EventHistory class has __init__(jsonl_path='trained_data/trading_events.jsonl')",
+        "get_latest(n=20) returns the N most recent events as a HistoryPage — reads from tail of JSONL, does NOT load entire file",
+        "get_before(cursor_id, n=20) returns N events older than cursor_id as a HistoryPage with has_more flag",
+        "filter_by(event_type=None, pair=None, trade_id=None, session_id=None) returns matching events (scans file, applies all non-None filters with AND logic)",
+        "All methods return TradingEvent objects (imported from trading_events.py) parsed from JSONL lines",
+        "Gracefully handles: missing file (returns empty HistoryPage), corrupted JSON lines (skips them with structlog warning), empty file",
+        "python -c 'from src.scanner.automation.event_history import EventHistory, HistoryPage' succeeds",
+        "Syntax validation passes: python -m py_compile src/scanner/automation/event_history.py"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "For get_latest(), read the file in reverse (seek to end, read backwards in chunks) to avoid loading the whole file. A simpler approach for v1: readlines()[-n:] is acceptable if file size stays under ~50MB. For get_before(), scan backwards from the cursor_id position. Each JSONL line should be a dict with at least an 'event_id' key for cursor-based pagination. Import TradingEvent and TradingEventType from src.scanner.automation.trading_events. Use structlog for logging."
+    },
+    {
+      "id": "US-002",
+      "title": "Unit tests for event_history.py",
+      "description": "As a developer, I need tests for the history API covering pagination, filters, and edge cases.",
+      "acceptanceCriteria": [
+        "File created at tests/test_event_history.py",
+        "At least 8 tests covering: get_latest returns N most recent events, get_latest on empty file returns empty HistoryPage, get_before with valid cursor returns older events, get_before sets has_more=True when more events exist, get_before sets has_more=False at beginning of file, filter_by event_type returns only matching events, filter_by pair returns only matching pair, filter_by with multiple filters uses AND logic, corrupted JSONL line is skipped gracefully (no crash)",
+        "Tests use tmp_path fixture to create temporary JSONL files with known content",
+        "Tests pass: python -m pytest tests/test_event_history.py -v"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Create test helper that writes N TradingEvent dicts as JSONL lines to a tmp file. Use create_trade_closed_event() from trading_events.py to generate realistic events. For the cursor test: write 30 events, get_latest(10) returns last 10, get_before(first_id_from_page, 10) returns events 11-20, has_more=True. For corruption test: insert a line like '{invalid json' between valid lines."
+    },
+    {
+      "id": "US-003",
+      "title": "Extend session_snapshot.py with control plane summary fields",
+      "description": "As an operator, I need session snapshots to include control plane health so that post-session review shows queue depth, reconnects, and policy blocks.",
+      "acceptanceCriteria": [
+        "src/scanner/automation/session_snapshot.py is modified (not replaced)",
+        "Snapshot schema extended with optional fields: control_plane_summary (dict with keys: transport_state, degraded_mode, degraded_duration_seconds, reconnect_count), queue_summary (dict with keys: depth, failed_count, handlers_completed), policy_summary (dict with keys: blocks_count, last_block_action, last_block_reason)",
+        "All new fields default to None or empty dict so existing code is not broken",
+        "Existing snapshot creation and persistence behavior is unchanged",
+        "Existing tests still pass: python -m pytest tests/ -k snapshot -v --timeout=30 (if any exist, otherwise verify no import errors)",
+        "Syntax validation passes: python -m py_compile src/scanner/automation/session_snapshot.py"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Read the existing session_snapshot.py first to understand the current schema. Add the new fields as optional dict parameters to the snapshot creation function/class. Use field(default_factory=dict) or default=None for dataclass fields. Do NOT change existing field names or types. The control plane and queue modules don't exist yet — these fields will be populated later in PR 5. For now they just need to exist in the schema with safe defaults."
+    }
+  ]
+}

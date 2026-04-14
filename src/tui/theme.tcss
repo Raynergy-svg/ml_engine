@@ -1,0 +1,724 @@
+/* ═══════════════════════════════════════════════════════════════════
+   BUDDY — CYBERPUNK COMMAND BRIDGE THEME
+   Blade Runner 2049 meets Bloomberg Terminal
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Global ─────────────────────────────────────────────────────── */
+
+Screen {
+    background: #0a0a0f;
+    color: #e0e0ff;
+}
+
+/* ── Header Bar ─────────────────────────────────────────────────── */
+
+#header-bar {
+    dock: top;
+    height: 3;
+    background: #1a1a2e;
+    color: #00ffcc;
+    padding: 0 1;
+    border-bottom: solid #2a2a4a;
+}
+
+#header-bar .title {
+    color: #00ffcc;
+    text-style: bold;
+}
+
+#header-bar .nav-value {
+    color: #00ff41;
+    text-style: bold;
+}
+
+#header-bar .nav-label {
+    color: #6666aa;
+}
+
+/* ── Tab Bar ────────────────────────────────────────────────────── */
+
+TabbedContent {
+    height: 1fr;
+}
+
+Tabs {
+    background: #131320;
+    dock: top;
+    height: 3;
+    border-bottom: solid #2a2a4a;
+}
+
+Tab {
+    background: #131320;
+    color: #6666aa;
+    padding: 0 2;
+}
+
+Tab:hover {
+    background: #1a1a2e;
+    color: #00ffcc;
+}
+
+Tab.-active {
+    background: #1a1a2e;
+    color: #00ffcc;
+    text-style: bold;
+    border-bottom: tall #00ffcc;
+}
+
+Underline {
+    color: #00ffcc;
+}
+
+TabPane {
+    padding: 1;
+}
+
+/* ── Panels (generic containers) ────────────────────────────────── */
+
+.panel {
+    border: solid #2a2a4a;
+    background: #131320;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+.panel:focus-within {
+    border: solid #00ffcc;
+}
+
+.panel-title {
+    color: #00ffcc;
+    text-style: bold;
+    background: #131320;
+}
+
+/* ── Brain Stream (RichLog) ─────────────────────────────────────── */
+
+#brain-stream {
+    border: solid #7c4dff;
+    background: #0d0d18;
+    height: 1fr;
+    min-height: 10;
+}
+
+#brain-stream:focus {
+    border: solid #ff00ff;
+}
+
+RichLog {
+    background: #0d0d18;
+    color: #e0e0ff;
+    scrollbar-color: #7c4dff;
+    scrollbar-color-active: #ff00ff;
+    scrollbar-background: #0a0a0f;
+}
+
+/* ── Live Trades Table ──────────────────────────────────────────── */
+
+DataTable {
+    background: #131320;
+    color: #e0e0ff;
+    height: auto;
+    max-height: 15;
+}
+
+DataTable > .datatable--header {
+    background: #1a1a2e;
+    color: #00ffcc;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: #2a2a4a;
+    color: #00ffcc;
+}
+
+DataTable > .datatable--hover {
+    background: #1a1a2e;
+}
+
+/* ── Sparkline ──────────────────────────────────────────────────── */
+
+Sparkline {
+    min-height: 2;
+}
+
+/* ── Agent Bars ─────────────────────────────────────────────────── */
+
+ProgressBar {
+    padding: 0;
+    margin: 0;
+}
+
+ProgressBar > .bar--bar {
+    color: #00ffcc;
+    background: #2a2a4a;
+}
+
+ProgressBar > .bar--complete {
+    color: #00ff41;
+}
+
+Bar {
+    color: #00ffcc;
+    background: #2a2a4a;
+}
+
+/* ── Status Indicators ──────────────────────────────────────────── */
+
+.status-ok {
+    color: #00ff41;
+    text-style: bold;
+}
+
+.status-warn {
+    color: #ffab00;
+    text-style: bold;
+}
+
+.status-error {
+    color: #ff1744;
+    text-style: bold;
+}
+
+.status-dim {
+    color: #6666aa;
+}
+
+/* ── Profit/Loss Colors ─────────────────────────────────────────── */
+
+.profit {
+    color: #00ff41;
+}
+
+.loss {
+    color: #ff1744;
+}
+
+.neutral {
+    color: #6666aa;
+}
+
+/* ── Overview Layout ────────────────────────────────────────────── */
+
+#overview-container {
+    height: 1fr;
+}
+
+#overview-top {
+    height: 55%;
+    min-height: 15;
+}
+
+#overview-bottom {
+    height: 45%;
+    min-height: 12;
+}
+
+#overview-top > .panel,
+#overview-bottom > .panel,
+#overview-bottom > Vertical {
+    width: 1fr;
+}
+
+/* MTF Confluence Panel */
+#mtf-panel {
+    border: solid #7c4dff;
+    background: #131320;
+    padding: 0 1;
+}
+
+#mtf-panel:focus-within {
+    border: solid #ff00ff;
+}
+
+.mtf-screen {
+    width: 1fr;
+    height: auto;
+    padding: 0 1;
+    border-right: solid #2a2a4a;
+}
+
+.mtf-screen:last-child {
+    border-right: none;
+}
+
+.mtf-label {
+    color: #7c4dff;
+    text-style: bold;
+    text-align: center;
+}
+
+.mtf-score {
+    text-align: center;
+}
+
+#confluence-bar {
+    height: 3;
+    padding: 0 1;
+}
+
+/* ── Risk Panel ─────────────────────────────────────────────────── */
+
+#risk-panel {
+    border: solid #ffab00;
+    background: #131320;
+    padding: 0 1;
+}
+
+#risk-panel:focus-within {
+    border: solid #ffab00;
+}
+
+/* ── System Health ──────────────────────────────────────────────── */
+
+#system-health {
+    dock: bottom;
+    height: 3;
+    background: #1a1a2e;
+    color: #6666aa;
+    padding: 0 1;
+    border-top: solid #2a2a4a;
+}
+
+/* ── Agent Consensus Panel ──────────────────────────────────────── */
+
+.agent-row {
+    height: 1;
+    layout: horizontal;
+}
+
+.agent-name {
+    width: 12;
+    color: #6666aa;
+}
+
+.agent-score {
+    width: 6;
+    color: #00ffcc;
+    text-style: bold;
+}
+
+.agent-signal {
+    width: 10;
+}
+
+/* ── Scrollbar Styling ──────────────────────────────────────────── */
+
+* {
+    scrollbar-color: #2a2a4a;
+    scrollbar-color-active: #00ffcc;
+    scrollbar-color-hover: #7c4dff;
+    scrollbar-background: #0a0a0f;
+    scrollbar-corner-color: #0a0a0f;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────── */
+
+Footer {
+    background: #1a1a2e;
+    color: #6666aa;
+}
+
+Footer > .footer--key {
+    color: #00ffcc;
+    background: #2a2a4a;
+}
+
+Footer > .footer--description {
+    color: #6666aa;
+}
+
+/* ── Placeholder Screens ────────────────────────────────────────── */
+
+.placeholder-screen {
+    align: center middle;
+    color: #6666aa;
+}
+
+.placeholder-screen .coming-soon {
+    color: #7c4dff;
+    text-style: bold italic;
+    text-align: center;
+}
+
+/* ── Input / Command ────────────────────────────────────────────── */
+
+Input {
+    background: #131320;
+    color: #e0e0ff;
+    border: solid #2a2a4a;
+}
+
+Input:focus {
+    border: solid #00ffcc;
+}
+
+/* ── Button ─────────────────────────────────────────────────────── */
+
+Button {
+    background: #2a2a4a;
+    color: #00ffcc;
+    border: none;
+}
+
+Button:hover {
+    background: #00ffcc;
+    color: #0a0a0f;
+}
+
+Button:focus {
+    border: tall #ff00ff;
+}
+
+/* ── Rule (divider) ─────────────────────────────────────────────── */
+
+Rule {
+    color: #2a2a4a;
+}
+
+/* ── Loading ────────────────────────────────────────────────────── */
+
+LoadingIndicator {
+    color: #00ffcc;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TRADES SCREEN -- The Trading Floor (F2)
+   ═══════════════════════════════════════════════════════════════════ */
+
+TradesScreen {
+    height: 1fr;
+}
+
+#trades-open-panel {
+    height: auto;
+    max-height: 40%;
+    min-height: 6;
+}
+
+#trades-drilldown {
+    border: solid #7c4dff;
+    background: #131320;
+    height: auto;
+    min-height: 3;
+    max-height: 45%;
+    margin: 0 0 1 0;
+    padding: 0 1;
+}
+
+#trades-drilldown:focus {
+    border: solid #ff00ff;
+}
+
+#trades-closed-panel {
+    height: auto;
+    max-height: 35%;
+    min-height: 6;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   AGENTS SCREEN -- The Agent Lab (F3)
+   ═══════════════════════════════════════════════════════════════════ */
+
+AgentsScreen {
+    height: 1fr;
+}
+
+#agents-weight-panel {
+    height: auto;
+    max-height: 45%;
+    min-height: 8;
+}
+
+#agents-middle-row {
+    height: auto;
+    max-height: 40%;
+    min-height: 8;
+}
+
+#agents-middle-row > .panel {
+    width: 1fr;
+}
+
+#agents-accuracy-panel {
+    width: 1fr;
+}
+
+#agents-voting-panel {
+    width: 1fr;
+}
+
+#agents-disagreement-panel {
+    height: auto;
+    max-height: 20%;
+    min-height: 5;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONFIG SCREEN -- The Control Room (F5)
+   ═══════════════════════════════════════════════════════════════════ */
+
+ConfigScreen {
+    height: 1fr;
+}
+
+#config-profile-panel {
+    height: auto;
+    max-height: 6;
+    min-height: 4;
+}
+
+#config-profile-row {
+    height: auto;
+    padding: 0 1;
+    align: left middle;
+}
+
+#config-profile-radios {
+    width: auto;
+    height: auto;
+    layout: horizontal;
+}
+
+#config-profile-radios RadioButton {
+    background: #131320;
+    color: #6666aa;
+    height: auto;
+    padding: 0 1;
+}
+
+#config-profile-radios RadioButton:hover {
+    color: #00ffcc;
+}
+
+#btn-apply-profile {
+    margin: 0 1;
+    min-width: 16;
+    background: #2a2a4a;
+    color: #00ffcc;
+}
+
+#btn-apply-profile:hover {
+    background: #00ffcc;
+    color: #0a0a0f;
+}
+
+#btn-save-config {
+    margin: 0 1;
+    min-width: 10;
+    background: #2a2a4a;
+    color: #00ff41;
+}
+
+#btn-save-config:hover {
+    background: #00ff41;
+    color: #0a0a0f;
+}
+
+#btn-reset-config {
+    margin: 0 1;
+    min-width: 18;
+    background: #2a2a4a;
+    color: #ffab00;
+}
+
+#btn-reset-config:hover {
+    background: #ffab00;
+    color: #0a0a0f;
+}
+
+#config-status-label {
+    width: auto;
+    margin: 0 1;
+    color: #6666aa;
+}
+
+#config-middle-row {
+    height: 1fr;
+    min-height: 12;
+}
+
+#config-middle-row > .panel {
+    width: 1fr;
+}
+
+#config-gates-panel {
+    width: 1fr;
+}
+
+#config-agents-panel {
+    width: 1fr;
+}
+
+#config-gates-scroll {
+    height: 1fr;
+    min-height: 8;
+}
+
+#config-agents-scroll {
+    height: 1fr;
+    min-height: 8;
+}
+
+/* Gate section headers */
+#gate-section-conf,
+#gate-section-uncert,
+#gate-section-risk,
+#gate-section-trade,
+#gate-section-filter {
+    color: #7c4dff;
+    text-style: bold;
+    padding: 1 0 0 0;
+}
+
+/* Config field rows */
+.config-field-row {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+.config-field-label {
+    width: 20;
+    color: #6666aa;
+}
+
+.config-field-input {
+    width: 16;
+    height: 3;
+    background: #131320;
+    color: #00ffcc;
+    border: solid #2a2a4a;
+}
+
+.config-field-input:focus {
+    border: solid #00ffcc;
+}
+
+/* Agent toggle rows */
+.config-toggle-row {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+.config-toggle-label {
+    width: 18;
+    color: #6666aa;
+}
+
+.config-toggle-switch {
+    width: auto;
+}
+
+Switch {
+    background: #2a2a4a;
+}
+
+Switch.-on > .switch--slider {
+    color: #00ff41;
+}
+
+Switch.-off > .switch--slider {
+    color: #ff1744;
+}
+
+#config-history-panel {
+    height: auto;
+    max-height: 30%;
+    min-height: 6;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DIAGNOSTICS SCREEN -- The Engine Room (F6)
+   ═══════════════════════════════════════════════════════════════════ */
+
+DiagnosticsScreen {
+    height: 1fr;
+}
+
+#diag-row-0 {
+    height: auto;
+    max-height: 38%;
+    min-height: 10;
+}
+
+#diag-row-0 > .panel {
+    width: 1fr;
+}
+
+#diag-vitals-panel {
+    width: 1fr;
+}
+
+#diag-oanda-panel {
+    width: 1fr;
+}
+
+#diag-test-btn {
+    margin: 0 1;
+    width: auto;
+    min-width: 20;
+    background: #2a2a4a;
+    color: #00ffcc;
+}
+
+#diag-test-btn:hover {
+    background: #00ffcc;
+    color: #0a0a0f;
+}
+
+#diag-row-1 {
+    height: auto;
+    max-height: 38%;
+    min-height: 8;
+}
+
+#diag-row-1 > .panel {
+    width: 1fr;
+}
+
+#diag-models-panel {
+    width: 1fr;
+}
+
+#diag-errors-panel {
+    width: 1fr;
+}
+
+#diag-error-header {
+    height: auto;
+    max-height: 3;
+}
+
+#diag-error-header .panel-title {
+    width: 1fr;
+}
+
+#diag-severity-filter {
+    width: 12;
+    height: 3;
+    margin: 0 1;
+    background: #1a1a2e;
+    color: #00ffcc;
+    border: solid #2a2a4a;
+}
+
+#diag-error-log {
+    border: solid #7c4dff;
+    background: #0d0d18;
+    height: 1fr;
+    min-height: 5;
+}
+
+#diag-error-log:focus {
+    border: solid #ff00ff;
+}
+
+#diag-maint-panel {
+    height: auto;
+    max-height: 25%;
+    min-height: 6;
+}

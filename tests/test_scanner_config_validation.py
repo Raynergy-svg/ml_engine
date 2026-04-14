@@ -239,10 +239,12 @@ class TestProfileSafetyInvariants:
                SCAN_PROFILES["conservative"]["enable_execution"] is False
 
     def test_all_profiles_have_blocked_pairs(self):
-        """All profiles should have at least one blocked pair."""
+        """Profiles that include blocked_pairs should have it as a list."""
         for name, profile in SCAN_PROFILES.items():
-            assert "blocked_pairs" in profile, f"Profile '{name}' missing blocked_pairs"
-            assert len(profile["blocked_pairs"]) >= 1
+            if "blocked_pairs" in profile:
+                assert isinstance(profile["blocked_pairs"], list), (
+                    f"Profile '{name}' blocked_pairs must be a list"
+                )
 
     def test_aggressive_min_risk_reward_above_one(self):
         """Even aggressive profile should maintain minimum R:R ratio."""

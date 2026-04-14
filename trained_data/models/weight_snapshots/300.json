@@ -1,0 +1,103 @@
+{
+  "trade_count": 300,
+  "timestamp": "2026-03-30T08:14:11.441944+00:00",
+  "weights": {
+    "_global": {
+      "trend": 1.8079,
+      "mean_reversion": 0.7231,
+      "volatility": 0.8031,
+      "risk_sentinel": 1.0042,
+      "uncertainty": 0.8835,
+      "execution_quality": 0.8434,
+      "news_risk": 0.7631,
+      "multi_timeframe": 0.8835,
+      "pair_performance": 0.6828,
+      "momentum": 1.3273,
+      "session_timing": 0.6428,
+      "support_resistance": 0.8031,
+      "invalid_agent_xyz": 0.5652
+    },
+    "NORMAL": {
+      "trend": 1.7441,
+      "momentum": 1.4203,
+      "invalid_agent_xyz": 0.6297
+    },
+    "HIGH": {},
+    "EXTREME": {},
+    "_meta": {
+      "min_trades_per_regime": 10,
+      "last_updated": "2026-03-30T08:14:11.441371+00:00",
+      "trades_NORMAL": 300.0,
+      "total_trades": 300,
+      "last_trade_per_agent": {
+        "trend": 300,
+        "momentum": 285
+      },
+      "weight_history_trend": [
+        1.8785,
+        1.6985,
+        1.8435,
+        1.9135,
+        1.9835,
+        2.0,
+        2.0,
+        2.0,
+        1.8487,
+        1.9937,
+        2.0,
+        1.8391,
+        1.9841,
+        1.8041,
+        1.9491,
+        1.7691,
+        1.9141,
+        1.7341,
+        1.8791,
+        1.6991
+      ],
+      "weight_variance_trend": 0.010363,
+      "weight_history_invalid_agent_xyz": [
+        0.95,
+        0.915,
+        0.88,
+        0.845,
+        0.81,
+        0.775,
+        0.74,
+        0.7069,
+        0.6719,
+        0.7216,
+        0.7882,
+        0.7532,
+        0.7182,
+        0.6832,
+        0.6488,
+        0.6147
+      ],
+      "weight_history_momentum": [
+        1.21,
+        1.325,
+        1.2431,
+        1.3581,
+        1.2781,
+        1.3931,
+        1.2284,
+        1.3434,
+        1.1618,
+        1.2768,
+        1.1968,
+        1.3118,
+        1.2318,
+        1.3468,
+        1.2668,
+        1.3818,
+        1.3012,
+        1.4162,
+        1.3353,
+        1.4503
+      ],
+      "weight_variance_momentum": 0.005687,
+      "weight_variance_invalid_agent_xyz": 0.008666
+    }
+  }
+}

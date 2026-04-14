@@ -3,12 +3,13 @@
 Analyzes heuristic disagreement distribution relative to disagreement_hard_floor.
 
 With 5 heuristics (Phase 76), disagreement is quantized: 0.0, 0.2, 0.4, 0.6, 0.8, 1.0.
-With hard_floor=0.30:
-  - 1/5=0.20 passes naturally (single indicator disagreement is harmless)
-  - 2/5=0.40 blocks → NEAR_THRESHOLD (gap=0.10, within NEAR_MISS_GAP)
-  - 3/5=0.60 blocks → MODERATE/FAR_ABOVE depending on threshold
+With hard_floor=0.50 (Phase 81):
+  - 1/5=0.20, 2/5=0.40 pass naturally (harmless disagreement)
+  - 3/5=0.60 blocks → NEAR_THRESHOLD (gap=0.10, within NEAR_MISS_GAP=0.35)
+  - 4/5=0.80 blocks → NEAR_THRESHOLD (gap=0.30, within NEAR_MISS_GAP=0.35)
+  - 5/5=1.00 blocks → MODERATE (gap=0.50, within MODERATE_GAP=0.50)
 
-Near-miss gap is 0.10 (half of one 0.20 quantization step — catches 2/5 blocks at floor=0.30).
+Near-miss gap is 0.35 (covers two full quantization steps above floor=0.50).
 """
 
 from __future__ import annotations
@@ -24,12 +25,12 @@ CLASS_FAR_ABOVE = "FAR_ABOVE"
 CLASS_INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
 # Gap direction is INVERTED: gap = score - threshold (positive = blocked)
-NEAR_MISS_GAP = 0.10
-MODERATE_GAP = 0.25
+NEAR_MISS_GAP = 0.35
+MODERATE_GAP = 0.50
 MIN_FAIL_COUNT = 3
 
 _RECS = {
-    CLASS_NEAR_THRESHOLD: "Raise disagreement_hard_floor to next quantized boundary (e.g. 0.30→0.34 to allow 1/3 disagreement)",
+    CLASS_NEAR_THRESHOLD: "Raise disagreement_hard_floor to next quantized boundary (e.g. 0.50→0.61 to allow 3/5 disagreement)",
     CLASS_MODERATE: "2/3 heuristics oppose — investigate signal quality or reduce heuristic weight",
     CLASS_FAR_ABOVE: "All heuristics oppose direction — ML models may need retraining",
     CLASS_INSUFFICIENT_DATA: "Insufficient data — accumulate more scans",

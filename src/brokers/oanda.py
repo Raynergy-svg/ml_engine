@@ -532,7 +532,7 @@ class OandaBroker(BrokerClient):
             # OANDA account summary format: {account: {balance, nav, unrealizedPL, marginUsed, ...}}
             account_data = response.get("account", {})
 
-            nav = float(account_data.get("nav", 0.0) or 0.0)
+            nav = float(account_data.get("NAV") or account_data.get("nav") or 0.0)
             balance = float(account_data.get("balance", 0.0) or 0.0)
             unrealized_pnl = float(account_data.get("unrealizedPL", 0.0) or 0.0)
             margin_used = float(account_data.get("marginUsed", 0.0) or 0.0)

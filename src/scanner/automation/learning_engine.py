@@ -512,6 +512,25 @@ class LearningEngine:
         logger.info("Appended %d learning entries to %s", len(entries), self.learnings_path)
         return len(entries)
 
+    def _extract_pattern_key_from_line(self, line: str) -> Optional[tuple[str, str]]:
+        """Extract a promotable pattern key from a learnings.md line.
+
+        Supports both the engine-authored format:
+        - **[YYYY-MM-DD]** `category` | pattern_key → *action*
+
+        And markdown pattern notes such as:
+        - [YYYY-MM-DD] **PATTERN/some_key**: explanation ...
+        """
+        standard_match = re.search(r"`(\w+)`\s*\|\s*(\S+)", line)
+        if standard_match:
+            return standard_match.group(1), standard_match.group(2)
+
+        pattern_match = re.search(r"\*\*PATTERN/([^*:\n]+)\*\*\s*:", line)
+        if pattern_match:
+            return "pattern", f"PATTERN/{pattern_match.group(1).strip()}"
+
+        return None
+
     # ------------------------------------------------------------------
     # US-004: Rule promotion
     # ------------------------------------------------------------------
@@ -530,10 +549,9 @@ class LearningEngine:
         pattern_lines: Dict[str, List[int]] = {}
 
         for idx, line in enumerate(lines):
-            match = re.search(r"`(\w+)`\s*\|\s*(\S+)", line)
-            if match and "[PROMOTED]" not in line:
-                category = match.group(1)
-                pattern_key = match.group(2)
+            parsed = self._extract_pattern_key_from_line(line)
+            if parsed and "[PROMOTED]" not in line:
+                category, pattern_key = parsed
                 full_key = f"{category}:{pattern_key}"
                 pattern_counter[full_key] += 1
                 pattern_lines.setdefault(full_key, []).append(idx)
@@ -550,7 +568,7 @@ class LearningEngine:
 
             category, pattern = key.split(":", 1)
 
-            # Build promotion rule
+            # Build promotion rule — only promote patterns with actionable rules
             if "sl_too_tight" in pattern:
                 pair = pattern.replace("sl_too_tight for ", "").strip()
                 rule = f"Increase atr_sl_multiplier by 0.1 for {pair} (SL too tight observed {count} times)"
@@ -563,8 +581,23 @@ class LearningEngine:
                 rule = f"Prefer weighted_vote_score > 0.7 (high consensus won {count} times)"
             elif "disagreement_predicted_loss" in pattern:
                 rule = f"Lower max_model_disagreement by 0.02 (disagreement predicted {count} losses)"
+            elif "low_rr_ratio" in pattern:
+                rule = f"Enforce R:R >= 1.2 gate — low R:R lost {count} times"
+            elif "override_type_loss_rate" in pattern:
+                rule = f"Review override pattern: {pattern} — losses in {count} occurrences"
             else:
-                rule = f"{pattern} observed {count} times — review and adapt"
+                # Generic pair_behavior / exit_accountability patterns are
+                # informational, not actionable rules. Mark source entries as
+                # promoted (so they get archived) but do NOT append a rule line
+                # to trading.md — these just create noise.
+                logger.info(
+                    "Archiving non-actionable pattern %s (%d occurrences) without rule promotion",
+                    key, count,
+                )
+                for line_idx in pattern_lines.get(key, []):
+                    if line_idx < len(lines):
+                        lines[line_idx] = lines[line_idx] + " [PROMOTED]"
+                continue
 
             promotion_line = f"- [{now}] {category}: {rule} (promoted from {count} observations)"
 
@@ -894,8 +927,31 @@ class LearningEngine:
             logger.info("Audit results: %s", results["actions"])
         return results
 
+    def _extract_date_from_line(self, line: str) -> Optional[str]:
+        """Extract YYYY-MM-DD date from a learning entry line."""
+        m = re.search(r"\[(\d{4}-\d{2}-\d{2})\]", line)
+        return m.group(1) if m else None
+
+    def _is_stale(self, line: str, max_age_days: int = 7) -> bool:
+        """Check if a learning entry is older than max_age_days."""
+        date_str = self._extract_date_from_line(line)
+        if not date_str:
+            return False
+        try:
+            entry_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - entry_date).days
+            return age > max_age_days
+        except ValueError:
+            return False
+
     def consolidate(self) -> int:
-        """Group learnings by category, archive promoted/old, keep active."""
+        """Archive promoted and stale learnings, keep recent active ones.
+
+        Archival criteria:
+        1. [PROMOTED] entries — already captured in rules/trading.md
+        2. Entries older than 7 days — value has been absorbed or is stale
+        3. Orphaned section headers with no entries below them
+        """
         if not self.learnings_path.exists():
             return 0
 
@@ -904,18 +960,54 @@ class LearningEngine:
 
         active: List[str] = []
         archived: List[str] = []
+        current_section_header: Optional[str] = None
+        section_has_active_entries = False
 
         for line in lines:
             stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
+
+            # Preserve top-level header and preamble (lines before first entry)
+            if not stripped:
                 active.append(line)
                 continue
+            if stripped.startswith("# ") and not stripped.startswith("### "):
+                active.append(line)
+                continue
+
+            # Track section headers (### Phase XX ... or ### Auto-extracted ...)
+            if stripped.startswith("###") or stripped.startswith("## "):
+                # Flush previous section header if it had no active entries
+                if current_section_header and not section_has_active_entries:
+                    archived.append(current_section_header)
+                current_section_header = line
+                section_has_active_entries = False
+                continue
+
+            # Non-entry lines (preamble text, promotion log, ---)
+            if not stripped.startswith("-"):
+                active.append(line)
+                continue
+
+            # Entry lines — check if promoted or stale
             if "[PROMOTED]" in line:
                 archived.append(line)
+            elif self._is_stale(line):
+                archived.append(line)
             else:
+                # Active entry — keep it and its section header
+                if current_section_header:
+                    active.append(current_section_header)
+                    current_section_header = None
+                    section_has_active_entries = True
+                else:
+                    section_has_active_entries = True
                 active.append(line)
 
-        # Archive promoted entries
+        # Flush final section header if orphaned
+        if current_section_header and not section_has_active_entries:
+            archived.append(current_section_header)
+
+        # Archive entries
         if archived:
             LEARNINGS_ARCHIVE_PATH.parent.mkdir(parents=True, exist_ok=True)
             archive_content = ""
@@ -923,11 +1015,22 @@ class LearningEngine:
                 archive_content = LEARNINGS_ARCHIVE_PATH.read_text()
             now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             archive_content += f"\n### Archived {now}\n"
-            archive_content += "\n".join(archived) + "\n"
+            archive_content += "\n".join(a for a in archived if a.strip()) + "\n"
             LEARNINGS_ARCHIVE_PATH.write_text(archive_content)
 
-            self.learnings_path.write_text("\n".join(active))
-            logger.info("Consolidated: archived %d promoted entries", len(archived))
+            # Remove consecutive blank lines from active
+            cleaned: List[str] = []
+            for line in active:
+                if not line.strip() and cleaned and not cleaned[-1].strip():
+                    continue
+                cleaned.append(line)
+            self.learnings_path.write_text("\n".join(cleaned))
+            logger.info(
+                "Consolidated: archived %d entries (%d promoted, %d stale)",
+                len(archived),
+                sum(1 for a in archived if "[PROMOTED]" in a),
+                sum(1 for a in archived if "[PROMOTED]" not in a),
+            )
 
         return len(archived)
 

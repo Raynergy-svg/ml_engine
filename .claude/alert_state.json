@@ -1,7 +1,8 @@
 {
   "last_fired": {
     "win_rate_drop": 1774296074.6708229,
-    "consecutive_losses": 1774296380.2077062
+    "consecutive_losses": 1776168717.491898,
+    "drawdown": 1775176910.690363
   },
   "active_alerts": [
     {
@@ -23,7 +24,77 @@
       "threshold": 3.0,
       "pair": "",
       "acknowledged": false
+    },
+    {
+      "alert_type": "drawdown",
+      "severity": "CRITICAL",
+      "message": "Portfolio drawdown 100.0% exceeds 5.0% threshold",
+      "timestamp": "2026-04-03T00:41:50.690219",
+      "value": 1.0,
+      "threshold": 0.05,
+      "pair": "",
+      "acknowledged": false
+    },
+    {
+      "alert_type": "consecutive_losses",
+      "severity": "WARNING",
+      "message": "3 consecutive losses (threshold: 3)",
+      "timestamp": "2026-04-08T22:41:57.478127",
+      "value": 3.0,
+      "threshold": 3.0,
+      "pair": "",
+      "acknowledged": false
+    },
+    {
+      "alert_type": "consecutive_losses",
+      "severity": "WARNING",
+      "message": "3 consecutive losses (threshold: 3)",
+      "timestamp": "2026-04-09T18:15:52.519595",
+      "value": 3.0,
+      "threshold": 3.0,
+      "pair": "",
+      "acknowledged": false
+    },
+    {
+      "alert_type": "consecutive_losses",
+      "severity": "WARNING",
+      "message": "6 consecutive losses (threshold: 3)",
+      "timestamp": "2026-04-13T14:01:41.237663",
+      "value": 6.0,
+      "threshold": 3.0,
+      "pair": "",
+      "acknowledged": false
+    },
+    {
+      "alert_type": "consecutive_losses",
+      "severity": "WARNING",
+      "message": "6 consecutive losses (threshold: 3)",
+      "timestamp": "2026-04-13T17:36:28.484790",
+      "value": 6.0,
+      "threshold": 3.0,
+      "pair": "",
+      "acknowledged": false
+    },
+    {
+      "alert_type": "consecutive_losses",
+      "severity": "WARNING",
+      "message": "6 consecutive losses (threshold: 3)",
+      "timestamp": "2026-04-13T22:27:52.701449",
+      "value": 6.0,
+      "threshold": 3.0,
+      "pair": "",
+      "acknowledged": false
+    },
+    {
+      "alert_type": "consecutive_losses",
+      "severity": "WARNING",
+      "message": "6 consecutive losses (threshold: 3)",
+      "timestamp": "2026-04-14T12:11:57.490842",
+      "value": 6.0,
+      "threshold": 3.0,
+      "pair": "",
+      "acknowledged": false
     }
   ],
-  "last_updated": "2026-03-28T04:21:12.565266"
+  "last_updated": "2026-04-14T12:11:57.492725"
 }

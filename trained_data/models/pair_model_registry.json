@@ -1,0 +1,102 @@
+{
+  "USD_JPY": {
+    "pair": "USD_JPY",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 3,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "EUR_USD": {
+    "pair": "EUR_USD",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 2,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "AUD_USD": {
+    "pair": "AUD_USD",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 2,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "EUR_AUD": {
+    "pair": "EUR_AUD",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 2,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "USD_CAD": {
+    "pair": "USD_CAD",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 1,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "USD_CHF": {
+    "pair": "USD_CHF",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 2,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "GBP_USD": {
+    "pair": "GBP_USD",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 1,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "EUR_JPY": {
+    "pair": "EUR_JPY",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 1,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "AUD_JPY": {
+    "pair": "AUD_JPY",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 2,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "NZD_USD": {
+    "pair": "NZD_USD",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 1,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  }
+}

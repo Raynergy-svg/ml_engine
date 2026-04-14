@@ -4,7 +4,8 @@ Prevents stacked confidence penalties from pushing all signals below
 execution threshold. Three independent penalty systems (overconfidence,
 concept drift, ensemble disagreement) currently operate without awareness
 of each other. This module enforces a hard floor: no pair can be penalized
-below confidence=40.0 (on 0-100 scale) by stacking alone.
+below confidence=0.40 (0-1 scale, matching engine.py confidence domain)
+by stacking alone.
 
 The ceiling is NOT a gate bypass — a pair still must clear all gates.
 It prevents denominator collapse where 0.70→0.67 from overconfidence, then
@@ -92,8 +93,8 @@ class ConfidencePenaltyCeiling:
         """Check an additive subtraction penalty against the ceiling floor.
 
         Args:
-            current_confidence: Current confidence on 0-100 scale.
-            proposed_sub: Amount to subtract (positive number, e.g. 3.0).
+            current_confidence: Current confidence on 0-1 scale (matching engine.py domain).
+            proposed_sub: Amount to subtract (positive number, e.g. 0.03).
             pair: Pair name for logging.
             source: Penalty source name for logging.
 
@@ -140,11 +141,11 @@ class ConfidencePenaltyCeiling:
         If not, we compute the minimum multiplier that keeps us at the floor.
 
         Args:
-            current_confidence: Current confidence on 0-100 scale (or 0-1 if scale='0-1').
+            current_confidence: Current confidence on 0-1 scale (matching engine.py domain).
             proposed_mult: Proposed confidence multiplier (0 < mult <= 1.0).
             pair: Pair name for logging.
             source: Penalty source name for logging.
-            scale: '0-100' (default) or '0-1' — determines which floor to use.
+            scale: '0-100' (legacy, uses ceiling_floor) or '0-1' (uses ceiling_floor_norm).
 
         Returns:
             CeilingResult where applied_penalty is the safe multiplier to use.

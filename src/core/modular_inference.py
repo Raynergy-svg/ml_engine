@@ -178,6 +178,37 @@ def _allow_rl_gates_exits_autoload() -> bool:
     return True
 
 
+_tf_cpu_only_configured = False
+
+
+def _configure_tf_cpu_only() -> None:
+    """Force TF to CPU-only when ML_ENGINE_DISABLE_METAL=1.
+
+    Must be called before any TF model load. Safe to call multiple times — uses a
+    module-level flag to avoid redundant calls after TF is already initialized.
+    On M1 with 8GB unified memory, Metal GPU shares the same pool as WindowServer;
+    uncapped TF inference causes kernel panics (userspace watchdog timeout).
+    """
+    global _tf_cpu_only_configured
+    if _tf_cpu_only_configured:
+        return
+    _tf_cpu_only_configured = True
+
+    if not _env_flag_true("ML_ENGINE_DISABLE_METAL"):
+        return
+
+    try:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            tf.config.set_visible_devices([], 'GPU')
+            logger.info("🛡️  TF Metal disabled — CPU-only inference active (ML_ENGINE_DISABLE_METAL=1)")
+        else:
+            logger.debug("TF Metal: no GPU devices detected, already CPU-only")
+    except Exception as e:
+        logger.debug(f"TF CPU-only configuration skipped: {e}")
+
+
 def _normalize_sentiment_directions(values: Optional[List[str]]) -> set[str]:
     """Normalize configured sentiment-gate direction names."""
     normalized: set[str] = set()
@@ -1499,6 +1530,9 @@ class ModularEnsembleInference:
         2. trained_data/models/joint/ (joint training)
         3. trained_data/models/ (generic fallback)
         """
+        # Enforce CPU-only TF before any model ops (prevents M1 Metal memory panic)
+        _configure_tf_cpu_only()
+
         # Update instrument if provided
         if instrument:
             self.instrument = instrument

@@ -103,7 +103,7 @@ class TestProfileKeyValidation:
         cfg = ScannerConfig()
         cfg.apply_profile("aggressive")
         # min_confidence is a known field in the aggressive profile
-        assert cfg.min_confidence == 45.0
+        assert cfg.min_confidence == 40.0
 
 
 class TestProfileFeatureParity:

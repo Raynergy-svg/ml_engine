@@ -77,8 +77,8 @@ class TestSubInferenceGapAnalyzer_Classification:
         rec = _make_recorder()
         for _ in range(5):
             rec.record(pair="EUR_USD", votes=1, total=3, agent_passed=False)  # ratio=0.333
-        result = analyze(rec, sub_inference_vote_threshold=0.50)
-        # gap = 0.50 - 0.333 = 0.167 → MODERATE
+        result = analyze(rec, sub_inference_vote_threshold=0.75)
+        # gap = 0.75 - 0.333 = 0.417 → MODERATE (0.35 < 0.417 <= 0.50)
         assert result["classification"] == CLASS_MODERATE
 
     def test_far_below(self):

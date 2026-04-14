@@ -1,0 +1,88 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/tier7-pr1-trading-events",
+  "description": "Tier 7 PR 1: Trading event schemas (TradingEventType, TradingEvent, payloads) and blinker-based TradingEventBus with cachetools idempotency and structlog logging. Pure new files, zero existing code modified.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Install Tier 7 PR 1-2 dependencies",
+      "description": "As a developer, I need blinker, cachetools, structlog, and tenacity available for import so Tier 7 modules can use them.",
+      "acceptanceCriteria": [
+        "pip install blinker cachetools structlog tenacity succeeds",
+        "requirements.txt (or equivalent) updated with: blinker>=1.7, cachetools>=5.0, structlog>=24.0, tenacity>=8.0",
+        "Python can import all four: blinker, cachetools, structlog, tenacity",
+        "Existing tests still pass (python -m pytest tests/ -x -q --timeout=30 runs without import errors)"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Check if requirements.txt exists. If not, check setup.py or pyproject.toml. Add to whichever dependency file the project uses. Run a quick pip install to verify."
+    },
+    {
+      "id": "US-002",
+      "title": "Create trading_events.py with event enums and dataclasses",
+      "description": "As a developer, I need strongly-typed trading event definitions so that the event bus and queue can validate payloads.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/trading_events.py",
+        "TradingEventType enum has 8 members: TRADE_OPENED, TRADE_CLOSED, TRADE_MODIFIED, POLICY_BLOCKED, RETRAIN_REQUESTED, DEGRADED_MODE_ENTERED, DEGRADED_MODE_EXITED, QUEUE_FAILURE",
+        "TradingEvent dataclass has fields: event_id (str), event_type (TradingEventType), timestamp (str), source (str), payload_version (int, default=1), session_id (str), correlation_id (str), payload (dict)",
+        "TradeClosedPayload dataclass has at least 18 fields: trade_id, pair, direction, entry_price, exit_price, realized_pl, pnl_pips, trade_won, exit_reason, duration_minutes, confidence, regime, agent_reasons, model, analysis_context, close_time, sl_pips, tp_pips",
+        "TradeOpenedPayload dataclass has fields: trade_id, pair, direction, entry_price, sl_pips, tp_pips, lots, confidence, regime, model",
+        "PolicyBlockedPayload dataclass has fields: action_type, decision, reasons, matched_rules, environment_snapshot",
+        "create_trade_closed_event(outcome_data: dict, session_id: str) -> TradingEvent factory function exists and generates a UUID event_id",
+        "validate_event(event: TradingEvent) -> bool function exists and checks required fields are non-empty",
+        "python -c 'from src.scanner.automation.trading_events import TradingEventType, TradingEvent, TradeClosedPayload, create_trade_closed_event, validate_event' succeeds",
+        "Syntax validation passes: python -m py_compile src/scanner/automation/trading_events.py"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Use @dataclass(frozen=True) for immutable events. Use uuid.uuid4().hex for event_id generation. Use datetime.utcnow().isoformat() for timestamps. Import patterns: from dataclasses import dataclass, field; from enum import Enum; import uuid. The payload_version field enables forward compatibility. All fields should have type hints."
+    },
+    {
+      "id": "US-003",
+      "title": "Create trading_event_bus.py with blinker-based pub/sub",
+      "description": "As a developer, I need a thread-safe trading event bus that supports priority-ordered handlers, idempotent processing, and JSONL history so that post-trade fan-out is reliable and inspectable.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/trading_event_bus.py",
+        "TradingEventBus class exists with methods: subscribe(event_type, handler_fn, priority, handler_name), unsubscribe(handler_name), emit(event), emit_to_queue(event), get_history(event_type=None, limit=50)",
+        "subscribe() uses blinker.Signal per event_type for thread-safe dispatch",
+        "Idempotency uses cachetools.LRUCache(maxsize=10000) to track processed event_ids — emit() skips already-processed events",
+        "emit() calls handlers in priority order (lower number = higher priority)",
+        "History appends to trained_data/trading_events.jsonl using safe_jsonl_append from src.scanner.automation.safe_json",
+        "Logging uses structlog with bound context (event_type, event_id) on each emit",
+        "get_trading_event_bus() singleton function exists and returns same instance",
+        "reset_trading_event_bus() function exists for testing",
+        "python -c 'from src.scanner.automation.trading_event_bus import TradingEventBus, get_trading_event_bus' succeeds",
+        "Syntax validation passes: python -m py_compile src/scanner/automation/trading_event_bus.py"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Import blinker.Signal for per-event-type signals. Use cachetools.LRUCache for bounded idempotency set. Use structlog.get_logger() for structured logging. Import safe_jsonl_append from src.scanner.automation.safe_json for history persistence. The emit_to_queue() method should accept an optional queue parameter — for now it can just call emit() since the queue doesn't exist yet. Handlers should be sorted by priority before dispatch. Each handler call should be wrapped in try/except to isolate failures."
+    },
+    {
+      "id": "US-004",
+      "title": "Unit tests for trading_events.py",
+      "description": "As a developer, I need comprehensive tests for event schemas to catch regressions in the event contract.",
+      "acceptanceCriteria": [
+        "File created at tests/test_trading_events.py",
+        "At least 8 tests covering: TradingEventType has 8 members, TradingEvent creation with all fields, TradeClosedPayload has 18+ fields, TradeOpenedPayload has 10 fields, PolicyBlockedPayload has 5 fields, create_trade_closed_event generates unique event_ids, create_trade_closed_event maps outcome_data keys correctly, validate_event rejects events with empty event_id or event_type",
+        "Tests pass: python -m pytest tests/test_trading_events.py -v"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Test create_trade_closed_event with a realistic outcome_data dict containing: trade_id, pair, direction, entry_price, exit_price, realized_pl, pnl_pips, trade_won, exit_reason, duration_minutes, confidence, regime, agent_reasons (list), model, analysis_context (dict), close_time. Verify the factory sets event_type=TRADE_CLOSED and generates a unique event_id. Test validate_event with both valid and invalid events (missing fields, wrong types)."
+    },
+    {
+      "id": "US-005",
+      "title": "Unit tests for trading_event_bus.py",
+      "description": "As a developer, I need tests for the event bus to verify thread safety, priority ordering, idempotency, and history persistence.",
+      "acceptanceCriteria": [
+        "File created at tests/test_trading_event_bus.py",
+        "At least 8 tests covering: subscribe and emit delivers to handler, unsubscribe stops delivery, priority ordering (lower number fires first), idempotency (same event_id emitted twice only fires handler once), get_history returns emitted events, singleton get_trading_event_bus returns same instance, reset_trading_event_bus creates fresh instance, handler exception does not crash bus (other handlers still fire)",
+        "Tests pass: python -m pytest tests/test_trading_event_bus.py -v"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Use reset_trading_event_bus() in setUp/tearDown to isolate tests. For idempotency test: create event, emit twice, verify handler called exactly once. For priority test: subscribe handler_a at priority=10, handler_b at priority=5 — verify handler_b fires first. Use tmp_path fixture for JSONL history file. For exception isolation: subscribe a handler that raises, then another that doesn't — verify second handler still executes."
+    }
+  ]
+}

@@ -1,16 +1,8 @@
 {
   "version": 1,
-  "total_dispatches": 96,
+  "total_dispatches": 0,
   "dispatch_errors": 0,
-  "cycle_count": 10,
-  "dispatch_log": [
-    {
-      "cycle": 10,
-      "dispatched": 23,
-      "succeeded": 23,
-      "failed": 0,
-      "timestamp": "2026-03-23T20:21:37.725742+00:00"
-    }
-  ],
-  "last_updated": "2026-03-23T20:21:37.725753+00:00"
+  "cycle_count": 0,
+  "dispatch_log": [],
+  "last_updated": "2026-04-04T04:57:31.693971+00:00"
 }

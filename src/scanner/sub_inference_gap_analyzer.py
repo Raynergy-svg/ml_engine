@@ -11,13 +11,14 @@ consensus_ratio = votes/total is in 0.0-1.0 range.
 sub_inference_vote_threshold is typically 0.60-0.72.
 
 Classification (mirrors MomentumGapAnalyzer):
-  NEAR_THRESHOLD    — gap_at_p50 <= 0.10  → small threshold change may help
-  MODERATE          — 0.10 < gap_at_p50 <= 0.25 → investigate model agreement
-  FAR_BELOW         — gap_at_p50 > 0.25   → structural disagreement
+  NEAR_THRESHOLD    — gap_at_p50 <= 0.35  → small threshold change may help
+  MODERATE          — 0.35 < gap_at_p50 <= 0.50 → investigate model agreement
+  FAR_BELOW         — gap_at_p50 > 0.50   → structural disagreement
   INSUFFICIENT_DATA — fewer than 3 fail records
 
-Note: near-miss thresholds are wider (0.10/0.25) because consensus_ratio
-is quantized (0, 0.33, 0.67, 1.0 for 3 window checks) — 0.05 is too tight.
+Note: near-miss thresholds are wider (0.35/0.50) because consensus_ratio
+is quantized (0, 0.33, 0.67, 1.0 for 3 window checks) — minimum observable
+gap when failing with 3 agents is 0.327, so 0.10 was unreachable (Phase 72 bug).
 """
 
 from __future__ import annotations
@@ -36,8 +37,8 @@ CLASS_INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
 # ─── gap thresholds (consensus ratio is 0-1 scale, quantized) ─────────────────
 
-NEAR_MISS_GAP = 0.10    # ≤ 0.10 gap → near miss (wider than momentum due to quantization)
-MODERATE_GAP = 0.25     # ≤ 0.25 gap → moderate
+NEAR_MISS_GAP = 0.35    # ≤ 0.35 gap → near miss (Phase 72 fix: min gap with 3 agents = 0.327)
+MODERATE_GAP = 0.50     # ≤ 0.50 gap → moderate
 
 # ─── recommendations ─────────────────────────────────────────────────────────
 

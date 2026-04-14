@@ -90,11 +90,15 @@ class WalkForwardRetrainer:
         Returns:
             List of WFEpoch results.
         """
+        total_entries, closed_entries, pending_entries = self._inspect_journal(journal_path)
         trades = self._load_trades(journal_path)
         if len(trades) < self.config.train_window + self.config.test_window:
-            logger.warning(
-                "Phase 51 US-320: Only %d trades — need %d+ for walk-forward",
+            level = logger.info if len(trades) == 0 else logger.warning
+            level(
+                "Phase 51 US-320: Only %d closed RL trades — need %d+ for walk-forward "
+                "(journal_entries=%d, pending_outcomes=%d)",
                 len(trades), self.config.train_window + self.config.test_window,
+                total_entries, pending_entries,
             )
             return []
 
@@ -243,6 +247,30 @@ class WalkForwardRetrainer:
             elif isinstance(outcome, str):
                 valid.append(entry)
         return valid
+
+    def _inspect_journal(self, path: str) -> Tuple[int, int, int]:
+        """Return (total_entries, closed_entries, pending_entries) for logging."""
+        try:
+            with open(path, "r") as f:
+                raw = json.load(f)
+        except Exception:
+            return 0, 0, 0
+
+        if not isinstance(raw, list):
+            return 0, 0, 0
+
+        total = len(raw)
+        closed = 0
+        pending = 0
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            outcome = entry.get("outcome")
+            if isinstance(outcome, dict) or isinstance(outcome, str):
+                closed += 1
+            elif outcome is None:
+                pending += 1
+        return total, closed, pending
 
     def _load_weights(self, path: str) -> Dict[str, float]:
         """Load current agent weights."""

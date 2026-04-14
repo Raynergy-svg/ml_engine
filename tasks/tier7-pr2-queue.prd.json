@@ -1,0 +1,75 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/tier7-pr2-event-queue",
+  "description": "Tier 7 PR 2: Serialized event queue with tenacity retry and FlushGate for transport-safe buffering. Pure new files, zero existing code modified. Depends on PR 1 (trading_events.py) being merged.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create EventQueue class with serial drain and tenacity retry",
+      "description": "As a developer, I need a bounded, serial event queue that processes handlers one at a time with automatic retry so that post-trade fan-out is reliable without blocking the scanner.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/event_queue.py",
+        "EventQueue class has __init__(max_size=1000, max_retries=3, base_delay=1.0, max_delay=30.0)",
+        "enqueue(handler_name, handler_fn, event, priority=0) adds work item to internal queue.Queue",
+        "start() launches a single daemon threading.Thread that drains the queue serially",
+        "stop(flush_first=True) signals shutdown — if flush_first=True, drains remaining items before stopping; if False, drops them",
+        "flush() blocks calling thread until queue is empty",
+        "get_status() returns dict with keys: depth, in_flight, failed_count, retry_count, last_failure",
+        "Handler execution uses tenacity @retry decorator with wait_exponential + wait_random jitter, stop_after_attempt(max_retries)",
+        "Failed handlers after max retries are logged via structlog and counted in failed_count — they do NOT crash the consumer thread",
+        "Each handler invocation logs via structlog with bound context: handler_name, event_id, attempt_number",
+        "python -c 'from src.scanner.automation.event_queue import EventQueue' succeeds",
+        "Syntax validation passes: python -m py_compile src/scanner/automation/event_queue.py"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Use queue.Queue(maxsize=max_size) for bounded backpressure. The consumer thread should loop: get item from queue, execute handler with retry, mark task_done. Use threading.Event for shutdown signaling. The tenacity retry should use retry_if_exception_type(Exception) but NOT retry on KeyboardInterrupt. Import structlog for logging. Import BackgroundActivityTracker from src.scanner.automation.background_activity and call start_activity/complete_activity/fail_activity for each handler execution if tracker is available (optional integration, don't crash if import fails)."
+    },
+    {
+      "id": "US-002",
+      "title": "Add FlushGate class for transport-safe buffering",
+      "description": "As a developer, I need a gate that buffers operations during broker reconnection and drains them in order after reconnect so that no writes are lost during transport transitions.",
+      "acceptanceCriteria": [
+        "FlushGate class added to src/scanner/automation/event_queue.py (same file as EventQueue)",
+        "FlushGate.__init__() starts with is_active=False and empty buffer list",
+        "start() sets is_active=True — subsequent enqueue() calls buffer items instead of passing through",
+        "enqueue(item) returns True if gated (item buffered), False if not active (caller should send directly)",
+        "end() sets is_active=False, returns list of all buffered items in FIFO order, clears internal buffer",
+        "drop() discards all buffered items and sets is_active=False",
+        "is_active property returns current gate state",
+        "FlushGate is thread-safe (uses threading.Lock internally)",
+        "python -c 'from src.scanner.automation.event_queue import FlushGate' succeeds",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "FlushGate is ~25 lines. Use a threading.Lock to protect the buffer list and is_active flag. The end() method must return items AND clear the buffer atomically under the lock. This is a simple but critical pattern — the donor repo (FlushGate.ts) uses it to buffer writes during transport rebuilds."
+    },
+    {
+      "id": "US-003",
+      "title": "Unit tests for EventQueue",
+      "description": "As a developer, I need thorough tests for the queue to verify ordering, retry, shutdown, and status reporting.",
+      "acceptanceCriteria": [
+        "File created at tests/test_event_queue.py",
+        "At least 10 tests covering: FIFO ordering (3 handlers enqueued execute in order), serial execution (only 1 handler runs at a time — use threading.Event to verify), bounded capacity (enqueue blocks or raises when full), retry on failure (handler fails once then succeeds — verify called twice), max retries exhaustion (handler always fails — verify failed_count incremented and consumer continues), flush blocks until empty, stop with flush_first=True drains remaining, stop with flush_first=False drops remaining, handler exception isolation (failing handler doesn't block next handler), get_status returns accurate depth and failed_count",
+        "Tests pass: python -m pytest tests/test_event_queue.py -v --timeout=30"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Use short delays in tests (base_delay=0.01, max_delay=0.1) to keep tests fast. Use threading.Event barriers to verify serial execution: handler_a sets event_a before blocking on event_b — if handler_b runs before event_b is set, serial execution is violated. For the FIFO test: use a shared list that handlers append to, verify final order. Mock the BackgroundActivityTracker if needed."
+    },
+    {
+      "id": "US-004",
+      "title": "Unit tests for FlushGate",
+      "description": "As a developer, I need tests for the flush gate state machine to catch buffer/ordering bugs.",
+      "acceptanceCriteria": [
+        "File created at tests/test_flush_gate.py",
+        "At least 6 tests covering: inactive gate returns False on enqueue (pass-through), active gate returns True on enqueue (buffered), end() returns buffered items in FIFO order, end() clears buffer (second end() returns empty list), drop() discards all items (subsequent end() returns empty), re-activation after end works (start again, buffer new items)",
+        "Tests pass: python -m pytest tests/test_flush_gate.py -v"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Simple tests — FlushGate is ~25 lines. Test the state transitions: inactive->start->active->enqueue->enqueue->end->inactive with items returned. Also test inactive->start->active->drop->inactive with items discarded."
+    }
+  ]
+}

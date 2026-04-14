@@ -10,6 +10,7 @@ This module provides common utilities including:
 
 import time
 import logging
+from logging.handlers import RotatingFileHandler
 import sys
 from pathlib import Path
 from typing import Any, Dict, Callable
@@ -149,7 +150,9 @@ def setup_logging(
     # This captures verbose output even in quiet mode
     train_log_path = base_dir / "train.log"
     try:
-        train_fh = logging.FileHandler(str(train_log_path), mode='a')
+        train_fh = RotatingFileHandler(
+            str(train_log_path), maxBytes=10 * 1024 * 1024, backupCount=3,
+        )
         train_fh.setLevel(logging.DEBUG)
         train_fh.setFormatter(formatter)
         logger.addHandler(train_fh)
@@ -157,25 +160,25 @@ def setup_logging(
         pass  # Skip if can't create log file
 
     if log_file:
-        fh = logging.FileHandler(log_file)
+        fh = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=3)
         fh.setLevel(logging.DEBUG if quiet else level)  # Full logs to file
         fh.setFormatter(formatter)
         logger.addHandler(fh)
     if enable_wandb_logging:
         wandb_log_path = base_dir / "wandb.log"
-        wh = logging.FileHandler(str(wandb_log_path))
+        wh = RotatingFileHandler(str(wandb_log_path), maxBytes=10 * 1024 * 1024, backupCount=3)
         wh.setLevel(level)
         wh.setFormatter(formatter)
         logger.addHandler(wh)
     if enable_checkpointing_logging:
         cp_log_path = base_dir / "checkpoint.log"
-        cph = logging.FileHandler(str(cp_log_path))
+        cph = RotatingFileHandler(str(cp_log_path), maxBytes=10 * 1024 * 1024, backupCount=3)
         cph.setLevel(level)
         cph.setFormatter(formatter)
         logger.addHandler(cph)
     if enable_tensorboard_logging:
         tb_log_path = base_dir / "tensorboard.log"
-        tbh = logging.FileHandler(str(tb_log_path))
+        tbh = RotatingFileHandler(str(tb_log_path), maxBytes=10 * 1024 * 1024, backupCount=3)
         tbh.setLevel(level)
         tbh.setFormatter(formatter)
         logger.addHandler(tbh)

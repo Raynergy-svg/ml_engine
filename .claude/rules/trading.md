@@ -23,3 +23,8 @@ Imperative rules that actively gate Buddy's trading behavior. Promoted from repe
 - Update .claude/state.json before session ends
 - Extract learnings from every trade outcome (win or loss)
 - Never re-enter a position at the same SL/TP if the entry price has changed — recalculate
+
+## Promoted Rules
+- [2026-04-02] agent_accuracy: Lower max_uncertainty_score by 0.02 (uncertainty predicted 6 losses)
+- [2026-04-02] agent_accuracy: Lower max_model_disagreement by 0.02 (disagreement predicted 24 losses)
+- [2026-04-02] sl_tp: Increase atr_tp_multiplier by 0.1 (TP hit too fast 6 times)

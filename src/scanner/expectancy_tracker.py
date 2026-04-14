@@ -34,6 +34,7 @@ class ExpectancyConfig:
     min_trades_for_calc: int = 5  # Minimum trades before expectancy is meaningful
     persistence_path: str = "trained_data/expectancy_tracker.json"
     version: str = "1.0.0"
+    stale_warning_hours: float = 24.0
 
 
 @dataclass
@@ -65,6 +66,7 @@ def create_default_expectancy_tracker(
 
 class ExpectancyTracker:
     """Tracks expectancy per agent per regime using rolling windows."""
+    _warned_stale_paths: set[str] = set()
 
     # Standard agent names from ScannerAgentTeam._BASE_WEIGHTS
     _AGENT_NAMES = [
@@ -301,17 +303,24 @@ class ExpectancyTracker:
             logger.debug(f"Expectancy state file not found: {target_path}")
             return False
 
-        # Check freshness
-        file_mtime = os.path.getmtime(target_path)
-        file_age_seconds = time.time() - file_mtime
-        if file_age_seconds > 3600:  # 1 hour
-            logger.warning(
-                f"Expectancy state file is stale ({file_age_seconds / 3600:.1f}h old): {target_path}"
-            )
-
         try:
             with open(target_path, "r") as f:
                 data = json.load(f)
+
+            # Prefer the payload timestamp to avoid false positives from copied files.
+            state_ts = data.get("timestamp")
+            if isinstance(state_ts, (int, float)):
+                age_seconds = time.time() - float(state_ts)
+            else:
+                age_seconds = time.time() - os.path.getmtime(target_path)
+
+            stale_after_seconds = max(3600.0, float(self._config.stale_warning_hours) * 3600.0)
+            if age_seconds > stale_after_seconds and target_path not in self._warned_stale_paths:
+                self._warned_stale_paths.add(target_path)
+                logger.warning(
+                    f"Expectancy state file is stale ({age_seconds / 3600:.1f}h old): {target_path}"
+                )
+
             loaded = ExpectancyTracker.from_dict(data, config=self._config)
             # Copy loaded state into self
             self._windows = loaded._windows

@@ -26,16 +26,16 @@ class TestScannerConfig:
     """Test ScannerConfig dataclass."""
 
     def test_default_pairs(self):
-        from src.scanner.config import ScannerConfig, MAJOR_PAIRS
+        from src.scanner.config import ScannerConfig, DEFAULT_PAIRS
         cfg = ScannerConfig()
-        assert cfg.pairs == MAJOR_PAIRS
+        assert cfg.pairs == DEFAULT_PAIRS
 
     def test_default_thresholds(self):
         from src.scanner.config import ScannerConfig
         cfg = ScannerConfig()
         assert cfg.min_tcn_probability == 0.60
-        assert cfg.min_confidence == 50.0  # 0-100 scale (Ridge ADX score)
-        assert cfg.min_momentum == 0.20
+        assert cfg.min_confidence == 42.0  # 0-100 scale (Ridge ADX score)
+        assert cfg.min_momentum == 0.06
         assert cfg.max_drawdown_pct == 0.025
         assert cfg.final_score_threshold == 0.45
         assert cfg.max_uncertainty_std == 0.15
@@ -90,14 +90,14 @@ class TestScannerConfig:
         cfg.apply_profile("aggressive")
         assert cfg.profile == "aggressive"
         assert cfg.min_tcn_probability == 0.58
-        assert cfg.min_confidence == 45.0
-        assert cfg.min_momentum == 0.12
+        assert cfg.min_confidence == 40.0
+        assert cfg.min_momentum == 0.06
         assert cfg.final_score_threshold == 0.42
         assert cfg.max_uncertainty_std == 0.18
         assert cfg.min_atr_pips == 3.0
         assert cfg.min_volatility_regime == 0
-        assert cfg.weighted_vote_threshold == 0.52
-        assert cfg.sub_inference_vote_threshold == 0.60
+        assert cfg.weighted_vote_threshold == 0.45
+        assert cfg.sub_inference_vote_threshold == 0.34
         assert cfg.agent_promotion_min_confidence == 0.50
         assert cfg.max_uncertainty_score == 0.48
 
@@ -114,7 +114,7 @@ class TestScannerConfig:
         assert cfg.min_atr_pips == 6.0
         assert cfg.min_volatility_regime == 2
         assert cfg.weighted_vote_threshold == 0.58
-        assert cfg.sub_inference_vote_threshold == 0.72
+        assert cfg.sub_inference_vote_threshold == 0.55
         assert cfg.agent_promotion_min_confidence == 0.56
         assert cfg.max_uncertainty_score == 0.35
 
@@ -148,6 +148,8 @@ def _make_pair_analysis(**kwargs):
         confidence_passed=True,
         momentum_passed=True,
         risk_passed=True,
+        agent_passed=True,
+        volatility_regime="NORMAL",
     )
     defaults.update(kwargs)
     return PairAnalysis(**defaults)
@@ -415,14 +417,22 @@ class TestScannerEngine:
         real_import = builtins.__import__
 
         def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-            if name == "src.core.modular_inference":
+            if name in ("src.core.modular_inference", "modular_inference"):
                 raise ImportError("forced primary import failure")
             return real_import(name, globals, locals, fromlist, level)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
+        # Remove cached modules so the monkeypatched __import__ can intercept
+        monkeypatch.delitem(sys.modules, "src.core.modular_inference", raising=False)
+        monkeypatch.delitem(sys.modules, "modular_inference", raising=False)
 
         cfg = ScannerConfig(pairs=["AUD_NZD"])
         scanner = FallbackScanner(cfg)
+        # Force ensemble to None to bypass Phase 69 eager warm-up (which may
+        # have loaded the real ensemble before monkeypatch was active)
+        scanner._modular_ensemble = None
+        scanner._ensemble_loaded = False
+        scanner._ensemble_type = None
 
         assert scanner._init_modular_ensemble() is True
         assert scanner._ensemble_type == "MultiPairInference"
@@ -457,8 +467,8 @@ class TestScannerEngine:
 
         ensemble_cfg = scanner._modular_ensemble.config
         assert ensemble_cfg.min_tcn_probability == 0.58
-        assert ensemble_cfg.min_confidence == 45.0
-        assert ensemble_cfg.min_momentum == 0.12
+        assert ensemble_cfg.min_confidence == 40.0
+        assert ensemble_cfg.min_momentum == 0.06
         assert ensemble_cfg.max_drawdown_pct == 0.035
         assert ensemble_cfg.max_uncertainty_std == 0.18
         assert ensemble_cfg.min_volatility_regime == 0
@@ -529,6 +539,7 @@ class TestScannerEngine:
         cfg.enable_session_filter = False
         cfg.incremental_enabled = True
         cfg.price_change_threshold = 1.0
+        cfg.enable_sub_inference_agents = False  # cache only active without sub-inference
         scanner = CacheAwareScanner(cfg)
 
         scanner._scan_pair("EUR_USD")
@@ -604,6 +615,7 @@ class TestScannerEngine:
         cfg.enable_session_filter = False
         cfg.incremental_enabled = True
         cfg.price_change_threshold = 1.0
+        cfg.enable_sub_inference_agents = False  # cache only active without sub-inference
         scanner = CacheIsolationScanner(cfg)
 
         first = scanner._scan_pair("EUR_USD")

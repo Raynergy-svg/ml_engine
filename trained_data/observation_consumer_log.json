@@ -1,9 +1,556 @@
 {
   "version": 1,
-  "total_consumed": 183,
-  "last_consumed_count": 183,
-  "patterns": [],
-  "recommendations": [],
-  "alerts": [],
-  "last_updated": "2026-03-24T22:02:25.677934+00:00"
+  "total_consumed": 4032,
+  "last_consumed_count": 95,
+  "patterns": [
+    {
+      "type": "concept_drift",
+      "count": 30,
+      "frequency": 0.1235,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "adversarial_robustness",
+      "count": 30,
+      "frequency": 0.1235,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "concept_drift",
+      "count": 30,
+      "frequency": 0.1235,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "adversarial_robustness",
+      "count": 30,
+      "frequency": 0.1235,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "causal_filter",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "ensemble_disagreement",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "lead_lag_signal",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "multi_horizon_fusion",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "confidence_calibration",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "causal_filter",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "ensemble_disagreement",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "lead_lag_signal",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "multi_horizon_fusion",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "confidence_calibration",
+      "count": 29,
+      "frequency": 0.1193,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "microstructure_regime",
+      "count": 13,
+      "frequency": 0.0535,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "microstructure_regime",
+      "count": 13,
+      "frequency": 0.0535,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "regime_change",
+      "count": 10,
+      "frequency": 0.0412,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "regime_change",
+      "count": 10,
+      "frequency": 0.0412,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "trade_block_reason",
+      "count": 6,
+      "frequency": 0.0247,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "trade_block_reason",
+      "count": 6,
+      "frequency": 0.0247,
+      "level": "regime",
+      "details": {
+        "regime": "unknown"
+      }
+    },
+    {
+      "type": "causal_filter",
+      "count": 5,
+      "frequency": 0.0206,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "type": "ensemble_disagreement",
+      "count": 5,
+      "frequency": 0.0206,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "type": "lead_lag_signal",
+      "count": 5,
+      "frequency": 0.0206,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "type": "multi_horizon_fusion",
+      "count": 5,
+      "frequency": 0.0206,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "type": "confidence_calibration",
+      "count": 5,
+      "frequency": 0.0206,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "type": "concept_drift",
+      "count": 5,
+      "frequency": 0.0206,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "type": "adversarial_robustness",
+      "count": 5,
+      "frequency": 0.0206,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "type": "kelly_portfolio",
+      "count": 4,
+      "frequency": 0.0165,
+      "level": "type",
+      "details": null
+    },
+    {
+      "type": "microstructure_regime",
+      "count": 4,
+      "frequency": 0.0165,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "type": "kelly_portfolio",
+      "count": 4,
+      "frequency": 0.0165,
+      "level": "pair",
+      "details": {
+        "pair": "EUR_USD"
+      }
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "reduce_position_size",
+      "delta": -0.15,
+      "reason": "Concept drift detected frequently \u2014 model predictions may be stale, reduce exposure",
+      "pattern_count": 30,
+      "pattern_frequency": 0.1235,
+      "pattern_level": "type",
+      "pattern_details": null,
+      "timestamp": "2026-03-31T21:51:08.348838+00:00"
+    },
+    {
+      "action": "reduce_position_size",
+      "delta": -0.15,
+      "reason": "Concept drift detected frequently \u2014 model predictions may be stale, reduce exposure",
+      "pattern_count": 30,
+      "pattern_frequency": 0.1235,
+      "pattern_level": "regime",
+      "pattern_details": {
+        "regime": "unknown"
+      },
+      "timestamp": "2026-03-31T21:51:08.348845+00:00"
+    },
+    {
+      "action": "tighten_causal_threshold",
+      "delta": -0.05,
+      "reason": "Frequent causal inconsistencies \u2014 tighten causal consistency threshold",
+      "pattern_count": 29,
+      "pattern_frequency": 0.1193,
+      "pattern_level": "type",
+      "pattern_details": null,
+      "timestamp": "2026-03-31T21:51:08.348850+00:00"
+    },
+    {
+      "action": "increase_uncertainty_weight",
+      "delta": 0.08,
+      "reason": "Ensemble members frequently disagree \u2014 increase uncertainty penalty weight",
+      "pattern_count": 29,
+      "pattern_frequency": 0.1193,
+      "pattern_level": "type",
+      "pattern_details": null,
+      "timestamp": "2026-03-31T21:51:08.348854+00:00"
+    },
+    {
+      "action": "review_timeframe_alignment",
+      "delta": 0.0,
+      "reason": "Frequent fusion grade changes \u2014 review multi-timeframe signal quality",
+      "pattern_count": 29,
+      "pattern_frequency": 0.1193,
+      "pattern_level": "type",
+      "pattern_details": null,
+      "timestamp": "2026-03-31T21:51:08.348858+00:00"
+    },
+    {
+      "action": "review_calibration_fit",
+      "delta": 0.0,
+      "reason": "Frequent calibration adjustments \u2014 check if Platt scaling model needs refit",
+      "pattern_count": 29,
+      "pattern_frequency": 0.1193,
+      "pattern_level": "type",
+      "pattern_details": null,
+      "timestamp": "2026-03-31T21:51:08.348861+00:00"
+    },
+    {
+      "action": "tighten_causal_threshold",
+      "delta": -0.05,
+      "reason": "Frequent causal inconsistencies \u2014 tighten causal consistency threshold",
+      "pattern_count": 29,
+      "pattern_frequency": 0.1193,
+      "pattern_level": "regime",
+      "pattern_details": {
+        "regime": "unknown"
+      },
+      "timestamp": "2026-03-31T21:51:08.348865+00:00"
+    },
+    {
+      "action": "increase_uncertainty_weight",
+      "delta": 0.08,
+      "reason": "Ensemble members frequently disagree \u2014 increase uncertainty penalty weight",
+      "pattern_count": 29,
+      "pattern_frequency": 0.1193,
+      "pattern_level": "regime",
+      "pattern_details": {
+        "regime": "unknown"
+      },
+      "timestamp": "2026-03-31T21:51:08.348869+00:00"
+    },
+    {
+      "action": "review_timeframe_alignment",
+      "delta": 0.0,
+      "reason": "Frequent fusion grade changes \u2014 review multi-timeframe signal quality",
+      "pattern_count": 29,
+      "pattern_frequency": 0.1193,
+      "pattern_level": "regime",
+      "pattern_details": {
+        "regime": "unknown"
+      },
+      "timestamp": "2026-03-31T21:51:08.348872+00:00"
+    },
+    {
+      "action": "review_calibration_fit",
+      "delta": 0.0,
+      "reason": "Frequent calibration adjustments \u2014 check if Platt scaling model needs refit",
+      "pattern_count": 29,
+      "pattern_frequency": 0.1193,
+      "pattern_level": "regime",
+      "pattern_details": {
+        "regime": "unknown"
+      },
+      "timestamp": "2026-03-31T21:51:08.348876+00:00"
+    },
+    {
+      "action": "adjust_microstructure_sensitivity",
+      "delta": 0.02,
+      "reason": "Frequent microstructure regime signals \u2014 consider adjusting detection sensitivity",
+      "pattern_count": 13,
+      "pattern_frequency": 0.0535,
+      "pattern_level": "type",
+      "pattern_details": null,
+      "timestamp": "2026-03-31T21:51:08.348879+00:00"
+    },
+    {
+      "action": "adjust_microstructure_sensitivity",
+      "delta": 0.02,
+      "reason": "Frequent microstructure regime signals \u2014 consider adjusting detection sensitivity",
+      "pattern_count": 13,
+      "pattern_frequency": 0.0535,
+      "pattern_level": "regime",
+      "pattern_details": {
+        "regime": "unknown"
+      },
+      "timestamp": "2026-03-31T21:51:08.348882+00:00"
+    },
+    {
+      "action": "reduce_position_size",
+      "delta": -0.1,
+      "reason": "Frequent regime changes indicate unstable market \u2014 reduce exposure",
+      "pattern_count": 10,
+      "pattern_frequency": 0.0412,
+      "pattern_level": "type",
+      "pattern_details": null,
+      "timestamp": "2026-03-31T21:51:08.348885+00:00"
+    },
+    {
+      "action": "reduce_position_size",
+      "delta": -0.1,
+      "reason": "Frequent regime changes indicate unstable market \u2014 reduce exposure",
+      "pattern_count": 10,
+      "pattern_frequency": 0.0412,
+      "pattern_level": "regime",
+      "pattern_details": {
+        "regime": "unknown"
+      },
+      "timestamp": "2026-03-31T21:51:08.348888+00:00"
+    },
+    {
+      "action": "tighten_causal_threshold",
+      "delta": -0.05,
+      "reason": "Frequent causal inconsistencies \u2014 tighten causal consistency threshold",
+      "pattern_count": 5,
+      "pattern_frequency": 0.0206,
+      "pattern_level": "pair",
+      "pattern_details": {
+        "pair": "EUR_USD"
+      },
+      "timestamp": "2026-03-31T21:51:08.348892+00:00"
+    },
+    {
+      "action": "increase_uncertainty_weight",
+      "delta": 0.08,
+      "reason": "Ensemble members frequently disagree \u2014 increase uncertainty penalty weight",
+      "pattern_count": 5,
+      "pattern_frequency": 0.0206,
+      "pattern_level": "pair",
+      "pattern_details": {
+        "pair": "EUR_USD"
+      },
+      "timestamp": "2026-03-31T21:51:08.348895+00:00"
+    },
+    {
+      "action": "review_timeframe_alignment",
+      "delta": 0.0,
+      "reason": "Frequent fusion grade changes \u2014 review multi-timeframe signal quality",
+      "pattern_count": 5,
+      "pattern_frequency": 0.0206,
+      "pattern_level": "pair",
+      "pattern_details": {
+        "pair": "EUR_USD"
+      },
+      "timestamp": "2026-03-31T21:51:08.348898+00:00"
+    },
+    {
+      "action": "review_calibration_fit",
+      "delta": 0.0,
+      "reason": "Frequent calibration adjustments \u2014 check if Platt scaling model needs refit",
+      "pattern_count": 5,
+      "pattern_frequency": 0.0206,
+      "pattern_level": "pair",
+      "pattern_details": {
+        "pair": "EUR_USD"
+      },
+      "timestamp": "2026-03-31T21:51:08.348902+00:00"
+    },
+    {
+      "action": "reduce_position_size",
+      "delta": -0.15,
+      "reason": "Concept drift detected frequently \u2014 model predictions may be stale, reduce exposure",
+      "pattern_count": 5,
+      "pattern_frequency": 0.0206,
+      "pattern_level": "pair",
+      "pattern_details": {
+        "pair": "EUR_USD"
+      },
+      "timestamp": "2026-03-31T21:51:08.348905+00:00"
+    },
+    {
+      "action": "adjust_microstructure_sensitivity",
+      "delta": 0.02,
+      "reason": "Frequent microstructure regime signals \u2014 consider adjusting detection sensitivity",
+      "pattern_count": 4,
+      "pattern_frequency": 0.0165,
+      "pattern_level": "pair",
+      "pattern_details": {
+        "pair": "EUR_USD"
+      },
+      "timestamp": "2026-03-31T21:51:08.348909+00:00"
+    }
+  ],
+  "alerts": [
+    {
+      "type": "concept_drift",
+      "count": 30,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349121+00:00"
+    },
+    {
+      "type": "adversarial_robustness",
+      "count": 30,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349126+00:00"
+    },
+    {
+      "type": "causal_filter",
+      "count": 29,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349129+00:00"
+    },
+    {
+      "type": "ensemble_disagreement",
+      "count": 29,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349131+00:00"
+    },
+    {
+      "type": "lead_lag_signal",
+      "count": 29,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349134+00:00"
+    },
+    {
+      "type": "multi_horizon_fusion",
+      "count": 29,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349136+00:00"
+    },
+    {
+      "type": "microstructure_regime",
+      "count": 13,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349139+00:00"
+    },
+    {
+      "type": "confidence_calibration",
+      "count": 29,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349142+00:00"
+    },
+    {
+      "type": "trade_block_reason",
+      "count": 6,
+      "window_hours": 6,
+      "severity": "warning",
+      "timestamp": "2026-03-31T21:51:08.349145+00:00"
+    },
+    {
+      "type": "regime_change",
+      "count": 10,
+      "window_hours": 6,
+      "severity": "critical",
+      "timestamp": "2026-03-31T21:51:08.349147+00:00"
+    }
+  ],
+  "last_updated": "2026-04-14T12:11:57.479572+00:00"
 }

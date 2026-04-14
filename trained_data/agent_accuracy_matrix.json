@@ -1,6 +1,123 @@
 {
   "version": 1,
-  "total_records": 0,
-  "matrix": {},
-  "last_updated": "2026-03-23T20:29:39.966292+00:00"
+  "total_records": 20,
+  "matrix": {
+    "NORMAL": {
+      "AUD_JPY": {
+        "trend": {
+          "correct": 1,
+          "total": 1,
+          "accuracy": 1.0
+        },
+        "volatility": {
+          "correct": 1,
+          "total": 1,
+          "accuracy": 1.0
+        },
+        "risk_sentinel": {
+          "correct": 1,
+          "total": 1,
+          "accuracy": 1.0
+        },
+        "uncertainty": {
+          "correct": 1,
+          "total": 1,
+          "accuracy": 1.0
+        }
+      },
+      "EUR_AUD": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "volatility": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      }
+    },
+    "LOW": {
+      "NZD_USD": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "execution_quality": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      },
+      "AUD_JPY": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "execution_quality": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      }
+    },
+    "HIGH": {
+      "USD_CHF": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "volatility": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      }
+    }
+  },
+  "last_updated": "2026-04-09T18:16:26.777453+00:00"
 }

@@ -322,14 +322,17 @@ class TestCreateAugmentationFn:
 
     def test_create_augmentation_fn_with_zero_time_mask_prob(self):
         """Should skip time masking when time_mask_prob = 0."""
-        augment_fn = create_augmentation_fn(noise_std=0.0, time_mask_prob=0.0)
+        # Also set scale_range=(1.0,1.0) to disable random scaling
+        augment_fn = create_augmentation_fn(
+            noise_std=0.0, time_mask_prob=0.0, scale_range=(1.0, 1.0),
+        )
 
         X = tf.constant(np.ones((10, 5), dtype=np.float32))
         y = tf.constant(np.array([1.0]))
 
         x_aug, y_aug = augment_fn(X, y)
 
-        # No time mask, should match original (after 0 noise)
+        # No time mask, no noise, no scaling — should match original
         np.testing.assert_array_almost_equal(x_aug.numpy(), X.numpy(), decimal=5)
 
     def test_create_augmentation_fn_shapes_preserved(self):
@@ -667,7 +670,7 @@ class TestStochasticWeightAveraging:
     def test_swa_ignores_early_epochs(self):
         """Should not average weights in epochs before start_epoch."""
         callback = StochasticWeightAveraging(start_epoch=50, verbose=0)
-        callback.model = Mock()
+        callback.set_model(Mock())
         callback.model.get_weights = Mock(return_value=[np.array([1.0])])
 
         # Epoch 30 (before start_epoch)
@@ -679,7 +682,7 @@ class TestStochasticWeightAveraging:
     def test_swa_initializes_on_first_averaging_epoch(self):
         """Should initialize swa_weights on first epoch >= start_epoch."""
         callback = StochasticWeightAveraging(start_epoch=50, verbose=0)
-        callback.model = Mock()
+        callback.set_model(Mock())
         initial_weights = [np.array([1.0, 2.0]), np.array([3.0])]
         callback.model.get_weights = Mock(return_value=initial_weights)
 
@@ -694,7 +697,7 @@ class TestStochasticWeightAveraging:
     def test_swa_averages_weights(self):
         """Should average weights using online mean formula."""
         callback = StochasticWeightAveraging(start_epoch=50, verbose=0)
-        callback.model = Mock()
+        callback.set_model(Mock())
 
         # First call - initialize with [1.0]
         callback.model.get_weights = Mock(return_value=[np.array([1.0])])
@@ -723,7 +726,7 @@ class TestStochasticWeightAveraging:
     def test_swa_applies_weights_on_train_end(self):
         """Should set model weights to averaged weights at end of training."""
         callback = StochasticWeightAveraging(start_epoch=50, verbose=0)
-        callback.model = Mock()
+        callback.set_model(Mock())
         callback.model.get_weights = Mock(return_value=[np.array([1.0])])
 
         # Initialize SWA
@@ -740,7 +743,7 @@ class TestStochasticWeightAveraging:
     def test_swa_multiple_weight_tensors(self):
         """Should handle models with multiple weight tensors."""
         callback = StochasticWeightAveraging(start_epoch=50, verbose=0)
-        callback.model = Mock()
+        callback.set_model(Mock())
 
         weights_1 = [np.array([1.0, 2.0]), np.array([3.0]), np.array([[4.0, 5.0]])]
         callback.model.get_weights = Mock(return_value=weights_1)
@@ -749,13 +752,13 @@ class TestStochasticWeightAveraging:
 
         assert len(callback.swa_weights) == 3
         assert callback.swa_weights[0].shape == (2,)
-        assert callback.swa_weights[1].shape == ()
-        assert callback.swa_weights[2].shape == (2,)
+        assert callback.swa_weights[1].shape == (1,)  # np.array([3.0]) has shape (1,)
+        assert callback.swa_weights[2].shape == (1, 2)
 
     def test_swa_no_weights_on_early_train_end(self):
         """Should not set weights if training ended before start_epoch."""
         callback = StochasticWeightAveraging(start_epoch=50, verbose=0)
-        callback.model = Mock()
+        callback.set_model(Mock())
 
         # No epochs processed
         callback.on_train_end(logs={})
@@ -796,16 +799,15 @@ class TestMetalPerformanceMonitor:
             monitor.on_train_batch_end(0, logs={})
 
             assert len(monitor.batch_times) == 1
-            assert monitor.batch_times[0] == 0.1
+            assert monitor.batch_times[0] == pytest.approx(0.1)
 
     def test_monitor_logs_periodic_stats(self):
         """Should log stats every n batches."""
         monitor = MetalPerformanceMonitor(log_every_n_batches=5)
         monitor.params = {'batch_size': 32}
 
-        times = [0.0]
-        for i in range(1, 12):
-            times.append(times[-1] + 0.1)
+        # Need 20 time values: 10 begin + 10 end calls to time.time()
+        times = [i * 0.05 for i in range(21)]
 
         with patch('time.time', side_effect=times):
             for batch in range(10):
@@ -819,14 +821,16 @@ class TestMetalPerformanceMonitor:
         """Should calculate epoch stats on epoch end."""
         monitor = MetalPerformanceMonitor(log_every_n_batches=50)
 
-        with patch('time.time', side_effect=[100.0, 100.1, 100.2]):
+        # 4 calls: epoch_begin(time.time), batch_begin(time.time),
+        #          batch_end(time.time), epoch_end(time.time)
+        with patch('time.time', side_effect=[100.0, 100.1, 100.2, 100.3]):
             monitor.on_epoch_begin(0)
             monitor.on_train_batch_begin(0)
             monitor.on_train_batch_end(0, logs={})
             monitor.on_epoch_end(0, logs={})
 
         # Should have calculated epoch time
-        # epoch_time = 100.2 - 100.0 = 0.2
+        # epoch_time = 100.3 - 100.0 = 0.3
         # avg_batch_time should be computed from batch_times
 
     def test_monitor_variance_warning(self):
@@ -860,20 +864,21 @@ class TestMetalPerformanceMonitor:
             monitor.on_train_batch_end(0, logs={})
 
             assert len(monitor.batch_times) == 1
-            assert monitor.batch_times[0] == 0.05
+            assert monitor.batch_times[0] == pytest.approx(0.05)
 
             monitor.on_train_batch_begin(1)
             monitor.on_train_batch_end(1, logs={})
 
             assert len(monitor.batch_times) == 2
-            assert monitor.batch_times[1] == 0.1
+            assert monitor.batch_times[1] == pytest.approx(0.1)
 
     def test_monitor_samples_per_sec_calculation(self):
         """Should calculate samples/sec correctly."""
         monitor = MetalPerformanceMonitor(log_every_n_batches=2)
         monitor.params = {'batch_size': 32}
 
-        times = [0.0, 0.1, 0.2]
+        # 4 calls: batch_begin(0), batch_end(0), batch_begin(1), batch_end(1)
+        times = [0.0, 0.1, 0.2, 0.3]
         with patch('time.time', side_effect=times):
             for batch in range(2):
                 monitor.on_train_batch_begin(batch)

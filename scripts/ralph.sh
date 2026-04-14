@@ -80,7 +80,7 @@ get_story_field() {
 # Helper: Get acceptance criteria as newline-separated list
 get_story_criteria() {
   local story_id="$1"
-  jq -r --arg id "$story_id" '.userStories[] | select(.id == $id) | .acceptanceCriteria[]' "$PRD_FILE" 2>/dev/null || echo ""
+  jq -r --arg id "$story_id" '.userStories[] | select(.id == $id) | (.acceptanceCriteria // .acceptance_criteria // [])[]' "$PRD_FILE" 2>/dev/null || echo ""
 }
 
 # Helper: Mark a story as complete in prd.json (atomic write)

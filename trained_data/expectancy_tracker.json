@@ -1,30 +1,163 @@
 {
-  "timestamp": 1774389728.801231,
+  "timestamp": 1775972945.662644,
   "version": "1.0.0",
   "windows": {
     "execution_quality": {
       "EXTREME": [],
       "HIGH": [],
-      "LOW": [],
+      "LOW": [
+        {
+          "pnl": -64.5982,
+          "timestamp": 1775105521.016908,
+          "won": false
+        },
+        {
+          "pnl": 123.3353,
+          "timestamp": 1775105521.017226,
+          "won": true
+        },
+        {
+          "pnl": -99.9535,
+          "timestamp": 1775238592.645665,
+          "won": false
+        },
+        {
+          "pnl": -381.5015,
+          "timestamp": 1775276791.19211,
+          "won": false
+        },
+        {
+          "pnl": -290.0,
+          "timestamp": 1775507692.1952,
+          "won": false
+        },
+        {
+          "pnl": -100.1479,
+          "timestamp": 1775688115.2657468,
+          "won": false
+        }
+      ],
       "NORMAL": []
     },
     "mean_reversion": {
       "EXTREME": [],
-      "HIGH": [],
-      "LOW": [],
-      "NORMAL": []
+      "HIGH": [
+        {
+          "pnl": -222.0,
+          "timestamp": 1775105521.017288,
+          "won": false
+        },
+        {
+          "pnl": -198.6186,
+          "timestamp": 1775105521.0175989,
+          "won": false
+        },
+        {
+          "pnl": 1134.2875,
+          "timestamp": 1775105521.01808,
+          "won": true
+        },
+        {
+          "pnl": 877.5,
+          "timestamp": 1775105521.018243,
+          "won": true
+        },
+        {
+          "pnl": -1287.5,
+          "timestamp": 1775105521.018395,
+          "won": false
+        },
+        {
+          "pnl": -534.5677,
+          "timestamp": 1775758583.028586,
+          "won": false
+        }
+      ],
+      "LOW": [
+        {
+          "pnl": -64.5982,
+          "timestamp": 1775105521.016809,
+          "won": false
+        },
+        {
+          "pnl": 123.3353,
+          "timestamp": 1775105521.0171342,
+          "won": true
+        },
+        {
+          "pnl": -99.9535,
+          "timestamp": 1775238592.645508,
+          "won": false
+        },
+        {
+          "pnl": -381.5015,
+          "timestamp": 1775276791.1920252,
+          "won": false
+        },
+        {
+          "pnl": -290.0,
+          "timestamp": 1775507692.195194,
+          "won": false
+        },
+        {
+          "pnl": -100.1479,
+          "timestamp": 1775688115.265741,
+          "won": false
+        }
+      ],
+      "NORMAL": [
+        {
+          "pnl": -288.0,
+          "timestamp": 1775105521.016978,
+          "won": false
+        },
+        {
+          "pnl": -229.5,
+          "timestamp": 1775105521.017441,
+          "won": false
+        },
+        {
+          "pnl": -98.1675,
+          "timestamp": 1775105521.0177531,
+          "won": false
+        },
+        {
+          "pnl": 372.3441,
+          "timestamp": 1775105521.0179079,
+          "won": true
+        },
+        {
+          "pnl": 74.9115,
+          "timestamp": 1775132357.417598,
+          "won": true
+        },
+        {
+          "pnl": 135.5947,
+          "timestamp": 1775164438.785812,
+          "won": true
+        },
+        {
+          "pnl": -426.949,
+          "timestamp": 1775276791.1918762,
+          "won": false
+        },
+        {
+          "pnl": -292.5388,
+          "timestamp": 1775758583.028596,
+          "won": false
+        },
+        {
+          "pnl": -114.3397,
+          "timestamp": 1775972945.662292,
+          "won": false
+        }
+      ]
     },
     "momentum": {
       "EXTREME": [],
       "HIGH": [],
       "LOW": [],
-      "NORMAL": [
-        {
-          "pnl": 150.0,
-          "timestamp": 1774389728.801034,
-          "won": true
-        }
-      ]
+      "NORMAL": []
     },
     "multi_timeframe": {
       "EXTREME": [],
@@ -46,9 +179,117 @@
     },
     "risk_sentinel": {
       "EXTREME": [],
-      "HIGH": [],
-      "LOW": [],
-      "NORMAL": []
+      "HIGH": [
+        {
+          "pnl": -222.0,
+          "timestamp": 1775105521.017349,
+          "won": false
+        },
+        {
+          "pnl": -198.6186,
+          "timestamp": 1775105521.01766,
+          "won": false
+        },
+        {
+          "pnl": 1134.2875,
+          "timestamp": 1775105521.0181482,
+          "won": true
+        },
+        {
+          "pnl": 877.5,
+          "timestamp": 1775105521.018304,
+          "won": true
+        },
+        {
+          "pnl": -1287.5,
+          "timestamp": 1775105521.018456,
+          "won": false
+        },
+        {
+          "pnl": -534.5677,
+          "timestamp": 1775758583.02859,
+          "won": false
+        }
+      ],
+      "LOW": [
+        {
+          "pnl": -64.5982,
+          "timestamp": 1775105521.016844,
+          "won": false
+        },
+        {
+          "pnl": 123.3353,
+          "timestamp": 1775105521.017165,
+          "won": true
+        },
+        {
+          "pnl": -99.9535,
+          "timestamp": 1775238592.6455638,
+          "won": false
+        },
+        {
+          "pnl": -381.5015,
+          "timestamp": 1775276791.192054,
+          "won": false
+        },
+        {
+          "pnl": -290.0,
+          "timestamp": 1775507692.195196,
+          "won": false
+        },
+        {
+          "pnl": -100.1479,
+          "timestamp": 1775688115.265743,
+          "won": false
+        }
+      ],
+      "NORMAL": [
+        {
+          "pnl": -288.0,
+          "timestamp": 1775105521.0170398,
+          "won": false
+        },
+        {
+          "pnl": -229.5,
+          "timestamp": 1775105521.017502,
+          "won": false
+        },
+        {
+          "pnl": -98.1675,
+          "timestamp": 1775105521.017814,
+          "won": false
+        },
+        {
+          "pnl": 372.3441,
+          "timestamp": 1775105521.017982,
+          "won": true
+        },
+        {
+          "pnl": 74.9115,
+          "timestamp": 1775132357.417702,
+          "won": true
+        },
+        {
+          "pnl": 135.5947,
+          "timestamp": 1775164438.785818,
+          "won": true
+        },
+        {
+          "pnl": -426.949,
+          "timestamp": 1775276791.191937,
+          "won": false
+        },
+        {
+          "pnl": -292.5388,
+          "timestamp": 1775758583.028598,
+          "won": false
+        },
+        {
+          "pnl": -114.3397,
+          "timestamp": 1775972945.662372,
+          "won": false
+        }
+      ]
     },
     "session_timing": {
       "EXTREME": [],
@@ -70,31 +311,312 @@
     },
     "trend": {
       "EXTREME": [],
-      "HIGH": [],
-      "LOW": [],
+      "HIGH": [
+        {
+          "pnl": -222.0,
+          "timestamp": 1775105521.017258,
+          "won": false
+        },
+        {
+          "pnl": -198.6186,
+          "timestamp": 1775105521.017565,
+          "won": false
+        },
+        {
+          "pnl": 1134.2875,
+          "timestamp": 1775105521.018044,
+          "won": true
+        },
+        {
+          "pnl": 877.5,
+          "timestamp": 1775105521.018212,
+          "won": true
+        },
+        {
+          "pnl": -1287.5,
+          "timestamp": 1775105521.018365,
+          "won": false
+        },
+        {
+          "pnl": -534.5677,
+          "timestamp": 1775758583.028577,
+          "won": false
+        }
+      ],
+      "LOW": [
+        {
+          "pnl": -64.5982,
+          "timestamp": 1775105521.0167649,
+          "won": false
+        },
+        {
+          "pnl": 123.3353,
+          "timestamp": 1775105521.0171032,
+          "won": true
+        },
+        {
+          "pnl": -99.9535,
+          "timestamp": 1775238592.6454358,
+          "won": false
+        },
+        {
+          "pnl": -381.5015,
+          "timestamp": 1775276791.1919959,
+          "won": false
+        },
+        {
+          "pnl": -290.0,
+          "timestamp": 1775507692.195185,
+          "won": false
+        },
+        {
+          "pnl": -100.1479,
+          "timestamp": 1775688115.2657301,
+          "won": false
+        }
+      ],
       "NORMAL": [
         {
-          "pnl": 150.0,
-          "timestamp": 1774389728.8010283,
+          "pnl": -288.0,
+          "timestamp": 1775105521.016947,
+          "won": false
+        },
+        {
+          "pnl": -229.5,
+          "timestamp": 1775105521.01741,
+          "won": false
+        },
+        {
+          "pnl": -98.1675,
+          "timestamp": 1775105521.0177228,
+          "won": false
+        },
+        {
+          "pnl": 372.3441,
+          "timestamp": 1775105521.017876,
           "won": true
+        },
+        {
+          "pnl": 74.9115,
+          "timestamp": 1775132357.4175339,
+          "won": true
+        },
+        {
+          "pnl": 135.5947,
+          "timestamp": 1775164438.785801,
+          "won": true
+        },
+        {
+          "pnl": -426.949,
+          "timestamp": 1775276791.191839,
+          "won": false
+        },
+        {
+          "pnl": -292.5388,
+          "timestamp": 1775758583.028594,
+          "won": false
+        },
+        {
+          "pnl": -114.3397,
+          "timestamp": 1775972945.662246,
+          "won": false
         }
       ]
     },
     "uncertainty": {
       "EXTREME": [],
-      "HIGH": [],
-      "LOW": [],
-      "NORMAL": []
+      "HIGH": [
+        {
+          "pnl": -222.0,
+          "timestamp": 1775105521.017378,
+          "won": false
+        },
+        {
+          "pnl": -198.6186,
+          "timestamp": 1775105521.0176902,
+          "won": false
+        },
+        {
+          "pnl": 1134.2875,
+          "timestamp": 1775105521.018181,
+          "won": true
+        },
+        {
+          "pnl": 877.5,
+          "timestamp": 1775105521.018334,
+          "won": true
+        },
+        {
+          "pnl": -1287.5,
+          "timestamp": 1775105521.018486,
+          "won": false
+        },
+        {
+          "pnl": -534.5677,
+          "timestamp": 1775758583.0285912,
+          "won": false
+        }
+      ],
+      "LOW": [
+        {
+          "pnl": -64.5982,
+          "timestamp": 1775105521.016876,
+          "won": false
+        },
+        {
+          "pnl": 123.3353,
+          "timestamp": 1775105521.017195,
+          "won": true
+        },
+        {
+          "pnl": -99.9535,
+          "timestamp": 1775238592.645616,
+          "won": false
+        },
+        {
+          "pnl": -381.5015,
+          "timestamp": 1775276791.192082,
+          "won": false
+        },
+        {
+          "pnl": -290.0,
+          "timestamp": 1775507692.195198,
+          "won": false
+        },
+        {
+          "pnl": -100.1479,
+          "timestamp": 1775688115.265745,
+          "won": false
+        }
+      ],
+      "NORMAL": [
+        {
+          "pnl": -288.0,
+          "timestamp": 1775105521.01707,
+          "won": false
+        },
+        {
+          "pnl": -229.5,
+          "timestamp": 1775105521.0175328,
+          "won": false
+        },
+        {
+          "pnl": -98.1675,
+          "timestamp": 1775105521.017844,
+          "won": false
+        },
+        {
+          "pnl": 372.3441,
+          "timestamp": 1775105521.0180118,
+          "won": true
+        },
+        {
+          "pnl": 74.9115,
+          "timestamp": 1775132357.4177501,
+          "won": true
+        },
+        {
+          "pnl": 135.5947,
+          "timestamp": 1775164438.78582,
+          "won": true
+        },
+        {
+          "pnl": -426.949,
+          "timestamp": 1775276791.1919649,
+          "won": false
+        },
+        {
+          "pnl": -292.5388,
+          "timestamp": 1775758583.0286,
+          "won": false
+        },
+        {
+          "pnl": -114.3397,
+          "timestamp": 1775972945.662411,
+          "won": false
+        }
+      ]
     },
     "volatility": {
       "EXTREME": [],
-      "HIGH": [],
+      "HIGH": [
+        {
+          "pnl": -222.0,
+          "timestamp": 1775105521.017319,
+          "won": false
+        },
+        {
+          "pnl": -198.6186,
+          "timestamp": 1775105521.0176299,
+          "won": false
+        },
+        {
+          "pnl": 1134.2875,
+          "timestamp": 1775105521.0181172,
+          "won": true
+        },
+        {
+          "pnl": 877.5,
+          "timestamp": 1775105521.018273,
+          "won": true
+        },
+        {
+          "pnl": -1287.5,
+          "timestamp": 1775105521.0184262,
+          "won": false
+        },
+        {
+          "pnl": -534.5677,
+          "timestamp": 1775758583.028588,
+          "won": false
+        }
+      ],
       "LOW": [],
       "NORMAL": [
         {
-          "pnl": 150.0,
-          "timestamp": 1774389728.8010364,
+          "pnl": -288.0,
+          "timestamp": 1775105521.0170088,
+          "won": false
+        },
+        {
+          "pnl": -229.5,
+          "timestamp": 1775105521.017471,
+          "won": false
+        },
+        {
+          "pnl": -98.1675,
+          "timestamp": 1775105521.017783,
+          "won": false
+        },
+        {
+          "pnl": 372.3441,
+          "timestamp": 1775105521.017946,
           "won": true
+        },
+        {
+          "pnl": 74.9115,
+          "timestamp": 1775132357.417652,
+          "won": true
+        },
+        {
+          "pnl": 135.5947,
+          "timestamp": 1775164438.785815,
+          "won": true
+        },
+        {
+          "pnl": -426.949,
+          "timestamp": 1775276791.1919072,
+          "won": false
+        },
+        {
+          "pnl": -292.5388,
+          "timestamp": 1775758583.0285969,
+          "won": false
+        },
+        {
+          "pnl": -114.3397,
+          "timestamp": 1775972945.662333,
+          "won": false
         }
       ]
     }
