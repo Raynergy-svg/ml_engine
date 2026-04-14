@@ -229,7 +229,9 @@ class CycleAutonomyTriggers:
         )
         trade_id = f"PERIODIC-C{scan_count}"
         self._brain(f"[cyan]  ▸ Periodic reflection firing (cycle #{scan_count})...[/]")
-        self._invoke(prompt, trade_id, mode="lightweight", timeout=90)
+        # 180s — real Claude needs tool-call + analysis time for a periodic
+        # review. 90s was too aggressive; saw timeouts even in calm states.
+        self._invoke(prompt, trade_id, mode="lightweight", timeout=180)
 
     def _fire_rejection(self, scan_count: int, tradeable_count: int) -> None:
         """All tradeable setups rejected for N cycles in a row — diagnose."""
@@ -246,7 +248,7 @@ class CycleAutonomyTriggers:
             f"[yellow]  ▸ Rejection reflection firing "
             f"({streak} consecutive no-trade cycles)...[/]"
         )
-        self._invoke(prompt, trade_id, mode="lightweight", timeout=120)
+        self._invoke(prompt, trade_id, mode="lightweight", timeout=240)
 
     def _fire_self_heal(self, scan_count: int) -> None:
         """PostTradeDiagnostics says DEGRADED/CRITICAL — spawn deep Claude."""
@@ -270,27 +272,37 @@ def _build_periodic_prompt(
     trades_executed: int,
 ) -> str:
     ts = datetime.now(timezone.utc).isoformat()
-    return f"""Use the trade-reflection skill for a PERIODIC review.
+    # Tight prompt — lightweight mode should be fast. NO tool calls, NO
+    # multi-file reads, just ONE learning entry based on the current state
+    # summary. Deep analysis is the job of the deep-mode self-heal path.
+    return f"""You are Buddy's periodic reflection agent. A scan cycle completed.
+Do a FAST situational check and write ONE learning entry. Do NOT use
+MCP tools. Do NOT read many files. Just append one line.
 
-TRIGGER: periodic (every N cycles, not tied to a specific trade close)
-TIMESTAMP: {ts}
-CYCLE: #{scan_count}
-RECENT: scanned {scanned_count} pairs, {tradeable_count} passed gates, \
-{trades_executed} actually executed
+STATE:
+  timestamp: {ts}
+  cycle: #{scan_count}
+  scanned: {scanned_count} pairs
+  tradeable: {tradeable_count}
+  executed: {trades_executed}
 
-This is a cycle-level situational review, NOT a post-trade analysis.
-Look at the trade_journal_rl.json tail, recent learnings, and agent weights.
-Ask yourself:
-  - Is buddy's behaviour matching expectations?
-  - Are any patterns emerging that justify a new learning entry?
-  - Is any agent's weight drifting toward extremes?
+ACTION (required):
+  1. Append ONE line to .claude/learnings.md in this exact format:
+     `- [YYYY-MM-DD] **PATTERN/<snake_case_key>**: <one-sentence observation>`
+     If nothing interesting happened, write:
+     `- [YYYY-MM-DD] **PATTERN/quiet_cycle_N{scan_count}**: scanned N pairs, M tradeable, K executed`
 
-If no actionable insight exists, write ONE learning entry noting the state
-and stop. Do NOT propose weight changes or rule edits unless you see clear
-evidence across multiple trades.
+  2. End your response with EXACTLY:
+     <reflection-result>
+     artifacts_written:
+       - .claude/learnings.md
+     cost_usd: 0.01
+     hypothesis: "<one-sentence takeaway>"
+     </reflection-result>
+     <promise>REFLECTION_COMPLETE</promise>
 
-End with the standard <reflection-result>...</reflection-result> block
-and <promise>REFLECTION_COMPLETE</promise>.
+Keep total response under 300 tokens. No analysis prose. Just the append
+and the result block.
 """
 
 

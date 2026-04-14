@@ -34,7 +34,50 @@ logger = structlog.get_logger(__name__)
 
 # Default Claude CLI invocation — matches existing patterns in the repo
 CLAUDE_CLI = "claude"
-DEFAULT_FLAGS = ["--dangerously-skip-permissions", "--print"]
+
+
+def _default_flags() -> List[str]:
+    """Compose CLI flags for headless Claude invocation.
+
+    Two non-negotiable safety requirements:
+
+    1. `--no-session-persistence`: each reflection gets a fresh session.
+       Without this, Claude CLI can inherit/resume state from whatever
+       terminal session invoked it, producing off-topic responses that
+       reference the parent user's prior work instead of the trade context.
+
+    2. `--dangerously-skip-permissions`: required for automation (skips
+       interactive permission prompts). Blocked when running as root for
+       security reasons — in that case we fall back to plain `--print`
+       and rely on the user having set permissions via `--allow-tools`.
+
+    Users can force-include the skip flag even as root via
+    BUDDY_CLAUDE_ALLOW_ROOT_SKIP=1 (useful in containers where root is
+    the normal user).
+    """
+    # Always-on isolation
+    flags = ["--print", "--no-session-persistence"]
+
+    # Optional --bare: skip CLAUDE.md auto-discovery, hooks, plugin sync.
+    # Useful when a parent Claude Code session is leaking context into the
+    # subprocess (e.g. running buddy from inside a Claude Code terminal).
+    # Skills still resolve via /skill-name so trade-reflection still works.
+    if os.environ.get("BUDDY_CLAUDE_BARE", "").lower() in ("1", "true", "yes"):
+        flags.append("--bare")
+
+    force_skip = os.environ.get("BUDDY_CLAUDE_ALLOW_ROOT_SKIP", "").lower() in (
+        "1", "true", "yes"
+    )
+    try:
+        is_root = hasattr(os, "geteuid") and os.geteuid() == 0
+    except Exception:
+        is_root = False
+    if not is_root or force_skip:
+        flags = ["--dangerously-skip-permissions", *flags]
+    return flags
+
+
+DEFAULT_FLAGS = _default_flags()
 
 # Single-flight lock prevents two reflections from running in parallel.
 # Burst trade closes (e.g., 3 positions hit SL simultaneously) would otherwise

@@ -91,6 +91,23 @@ class ContinuousScanner:
         self._signal_count = 0
         self._original_signal_handlers: Dict[int, Any] = {}
 
+        # Cycle-level autonomy (periodic / self-heal / rejection) — same
+        # triggers as EmbeddedScanner so `main.py scan --watch` also gets
+        # autonomous Claude invocation, not just the TUI path.
+        try:
+            from src.scanner.automation.cycle_autonomy import CycleAutonomyTriggers
+
+            def _brain_to_console(markup: str) -> None:
+                if console is not None:
+                    try:
+                        console.print(markup)
+                    except Exception:
+                        pass
+
+            self._autonomy = CycleAutonomyTriggers(brain_callback=_brain_to_console)
+        except ImportError:
+            self._autonomy = None
+
         # Journal cache: avoid re-reading trade_journal_rl.json on every cycle.
         # Invalidated by file mtime — only re-reads when a trade actually closes.
         self._journal_cache: list = []
@@ -521,6 +538,23 @@ class ContinuousScanner:
 
                 # Smart trading loop: monitor, drawdown guardian, RL sync, learning
                 self._run_smart_loop()
+
+                # Cycle-level autonomy (periodic / self-heal / rejection)
+                # Fires Claude on schedule regardless of trade closes so the
+                # --watch loop isn't silent when OANDA is quiet.
+                if getattr(self, "_autonomy", None) is not None:
+                    try:
+                        _tradeable_now = [
+                            a for a in (result.analyses or []) if getattr(a, "is_tradeable", False)
+                        ]
+                        self._autonomy.on_cycle_complete(
+                            scan_count=self._scan_count,
+                            scan_result=result,
+                            trades_executed=0,  # updated post-execute below if we can
+                            tradeable_count=len(_tradeable_now),
+                        )
+                    except Exception as _aut_err:
+                        logger.debug("cycle_autonomy trigger error: %s", _aut_err)
 
                 try:
                     # Display results
