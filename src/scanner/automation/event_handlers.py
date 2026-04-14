@@ -15,6 +15,8 @@ Design rules:
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
 import structlog
@@ -1004,6 +1006,234 @@ class StatePersistenceHandler:
         return True
 
 
+class ClaudeReflectionHandler:
+    """Spawn headless Claude CLI on trade close to analyze outcome and
+    write self-improvement artifacts (learnings, proposed weights, rules).
+
+    Hybrid cadence:
+      - Lightweight mode (every close): 60s timeout, ≤500 output tokens
+      - Deep mode (loss > $50 OR win > 3R OR 3 consecutive losses): 300s, full MCP
+
+    Priority 100 — runs AFTER state persistence (priority 95) so all mechanical
+    RL updates have already flushed to disk before Claude reads the journal.
+
+    Safety:
+      - SingleFlightLock prevents parallel spawns when batch sync closes N trades
+      - ReflectionBudget enforces daily $ cap ($5/day default)
+      - Never raises — all failures logged and return False (handler chain isolation)
+    """
+    name = "claude_reflection"
+    priority = 100
+
+    # Class-level caches — shared across all handler instances within a process
+    _recent_outcomes: List[bool] = []  # True=win, False=loss (last 10)
+    _RECENT_WINDOW = 10
+
+    def __init__(self, enabled: bool = True, max_journal_tail: int = 20):
+        self._enabled = enabled
+        self._max_journal_tail = max_journal_tail
+        # Lazy import to avoid circular dependency at module load time
+        self._invoker = None
+        self._budget = None
+        self._lock_cls = None
+
+    def _ensure_deps(self) -> None:
+        if self._invoker is None:
+            from src.scanner.automation.claude_subprocess import (
+                invoke_claude_reflection,
+                ReflectionBudget,
+                SingleFlightLock,
+            )
+            self._invoker = invoke_claude_reflection
+            self._budget = ReflectionBudget()
+            self._lock_cls = SingleFlightLock
+
+    def _decide_mode(self, context: SyncContext) -> str:
+        """Lightweight by default. Deep when loss > $50, win > 3R, or 3 consecutive losses."""
+        realized_pl = float(context.realized_pl or 0.0)
+        if realized_pl <= -50.0:
+            return "deep"
+        # Big win = win with R-multiple > 3. R = tp_pips/sl_pips approximation via
+        # pnl_pips vs sl_pips if available.
+        entry = context.entry or {}
+        sl_pips = float(entry.get("sl_pips", 0) or 0)
+        pnl_pips = float(context.pnl_pips or 0)
+        if context.trade_won and sl_pips > 0 and pnl_pips >= 3.0 * sl_pips:
+            return "deep"
+        # 3 consecutive losses
+        recent = ClaudeReflectionHandler._recent_outcomes[-3:]
+        if len(recent) >= 3 and not any(recent):
+            return "deep"
+        return "lightweight"
+
+    def _build_prompt(self, context: SyncContext, mode: str) -> str:
+        """Construct the trade-reflection prompt. Keep it compact to stay in budget."""
+        entry = context.entry or {}
+        outcome = context.outcome_data or {}
+        # Journal tail — last N entries for pattern reference (skip the current one)
+        all_entries = context.entries or []
+        tail = all_entries[-self._max_journal_tail :] if all_entries else []
+
+        # Minimal-but-grounded snapshot — NEVER invent fields that aren't here
+        entry_snapshot = {
+            "pair": entry.get("pair"),
+            "direction": entry.get("direction"),
+            "confidence": entry.get("confidence"),
+            "sl_pips": entry.get("sl_pips"),
+            "tp_pips": entry.get("tp_pips"),
+            "rr_ratio": entry.get("rr_ratio"),
+            "gates": entry.get("gates"),
+            "agents": entry.get("agents", {}).get("agent_reasons", []),
+            "weighted_vote_score": entry.get("agents", {}).get("weighted_vote_score"),
+            "regime": entry.get("regime"),
+        }
+        import json as _json
+
+        prompt_lines = [
+            "Use the trade-reflection skill to analyze this just-closed trade.",
+            "",
+            f"MODE: {mode}",
+            f"TRADE_ID: {context.trade_id}",
+            f"PAIR: {context.pair}",
+            f"DIRECTION: {entry.get('direction', '')}",
+            f"CONFIDENCE: {entry.get('confidence', '')}",
+            "",
+            "OUTCOME:",
+            f"  won: {context.trade_won}",
+            f"  realized_pl: {context.realized_pl}",
+            f"  pnl_pips: {context.pnl_pips}",
+            f"  exit_reason: {outcome.get('exit_reason', '')}",
+            f"  duration_minutes: {outcome.get('duration_minutes', '')}",
+            "",
+            "ENTRY_SNAPSHOT:",
+            _json.dumps(entry_snapshot, indent=2, default=str),
+            "",
+            "JOURNAL_TAIL (last entries for pattern reference, read-only):",
+            _json.dumps(
+                [
+                    {
+                        "trade_id": e.get("trade_id"),
+                        "pair": e.get("pair"),
+                        "direction": e.get("direction"),
+                        "confidence": e.get("confidence"),
+                        "outcome": e.get("outcome"),
+                    }
+                    for e in tail
+                ],
+                indent=2,
+                default=str,
+            ),
+            "",
+            "Follow the trade-reflection skill's SAFETY RULES and OUTPUT FORMAT exactly.",
+            "End with <reflection-result>...</reflection-result> then <promise>REFLECTION_COMPLETE</promise>.",
+        ]
+        return "\n".join(prompt_lines)
+
+    def handle(self, event: Dict[str, Any], context: SyncContext) -> bool:
+        if not self._enabled:
+            return True
+
+        # Track outcome for consecutive-loss detection (class-level)
+        try:
+            ClaudeReflectionHandler._recent_outcomes.append(bool(context.trade_won))
+            if len(ClaudeReflectionHandler._recent_outcomes) > ClaudeReflectionHandler._RECENT_WINDOW:
+                ClaudeReflectionHandler._recent_outcomes.pop(0)
+        except Exception as e:
+            logger.debug("claude_reflection.outcome_track_failed", error=str(e))
+
+        try:
+            self._ensure_deps()
+        except ImportError as e:
+            # Missing claude_subprocess module — handler is opt-in, don't break chain
+            logger.warning("claude_reflection.deps_missing", error=str(e))
+            return True
+
+        # Budget check
+        mode = self._decide_mode(context)
+        if not self._budget.allows(mode):
+            logger.info(
+                "claude_reflection.skipped_budget",
+                trade_id=context.trade_id,
+                mode=mode,
+            )
+            return True  # Not an error — just out of budget
+
+        # Single-flight — if another reflection is running, skip this trade.
+        # It will be picked up in the next batch sync via journal_tail context.
+        lock = self._lock_cls()
+        if not lock.acquire():
+            logger.info(
+                "claude_reflection.skipped_inflight",
+                trade_id=context.trade_id,
+                mode=mode,
+            )
+            return True
+
+        try:
+            timeout = 300 if mode == "deep" else 60
+            prompt = self._build_prompt(context, mode)
+            result = self._invoker(
+                prompt=prompt,
+                trade_id=str(context.trade_id),
+                mode=mode,
+                timeout_seconds=timeout,
+                cwd=Path.cwd(),
+            )
+
+            # Record spend regardless of success (we paid for the spawn)
+            try:
+                self._budget.record(cost_usd=float(result.cost_usd or 0.0), mode=mode)
+            except Exception as e:
+                logger.debug("claude_reflection.budget_record_failed", error=str(e))
+
+            if result.success:
+                logger.info(
+                    "claude_reflection.completed",
+                    trade_id=context.trade_id,
+                    mode=mode,
+                    duration=result.duration_seconds,
+                    artifacts=result.artifacts_written,
+                    hypothesis=result.hypothesis,
+                )
+                # Tier 2: git commit + push the artifacts (wired below if git_sync exists)
+                self._maybe_git_sync(result)
+            else:
+                logger.warning(
+                    "claude_reflection.failed",
+                    trade_id=context.trade_id,
+                    mode=mode,
+                    error=result.error,
+                    returncode=result.returncode,
+                )
+        finally:
+            lock.release()
+
+        # Always return True — reflection failure must not poison the handler chain.
+        # The error is logged + persisted in logs/reflection_log.jsonl for audit.
+        return True
+
+    def _maybe_git_sync(self, result) -> None:
+        """If git_sync module present, commit+push whitelisted artifacts.
+
+        Tier 2 wiring — graceful no-op when git_sync not yet installed.
+        """
+        try:
+            from src.scanner.automation.git_sync import commit_and_push_self_improvements
+        except ImportError:
+            return  # Tier 1 deployment — git sync not yet available
+        try:
+            commit_and_push_self_improvements(
+                artifacts=result.artifacts_written,
+                trade_id=result.trade_id,
+                hypothesis=result.hypothesis or "",
+                mode=result.mode,
+            )
+        except Exception as e:
+            # Git failures must not crash the handler chain.
+            # commit_and_push_self_improvements internally logs with context.
+            logger.warning("claude_reflection.git_sync_failed", error=str(e))
+
+
 # ── Registry ───────────────────────────────────────────────────────────
 
 # All per-trade handlers (run once per closed trade)
@@ -1025,6 +1255,7 @@ PER_TRADE_HANDLERS: List[type] = [
     TrancheHandler,
     AdaptiveRRHandler,
     AdaptiveSizerHandler,
+    ClaudeReflectionHandler,
 ]
 
 # Post-sync handlers (run once after ALL trades processed)

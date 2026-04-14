@@ -387,6 +387,18 @@ class ContinuousScanner:
             while self._running:
                 self._scan_count += 1
 
+                # Autonomous self-improvement: pull latest artifacts at cycle start.
+                # Picks up learnings / rules / proposed_weights pushed by another
+                # Buddy instance or by this Buddy's own post-trade reflection commits.
+                # Skipped cleanly if working tree is dirty outside the whitelist.
+                try:
+                    from src.scanner.automation.git_sync import pull_latest as _gs_pull
+                    _gs_pull()
+                except ImportError:
+                    pass  # git_sync not installed — OK, cycle continues
+                except Exception as _gs_err:
+                    logger.warning("git_sync cycle pull failed: %s", _gs_err)
+
                 # Tier 7: Control plane health check each cycle
                 if self._control_plane is not None:
                     try:
