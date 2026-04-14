@@ -486,6 +486,16 @@ class ContinuousScanner:
                         pairs=scan_pairs,
                         max_workers=4,
                     )
+                except Exception as _scan_err:
+                    # Upstream merge orphaned this try (line 420); restore
+                    # the matching except so the scan failure is surfaced
+                    # instead of bubbling as a SyntaxError at import time.
+                    error_class = type(_scan_err).__name__
+                    logger.error("Scan setup failed (%s): %s", error_class, _scan_err)
+                    if console:
+                        console.print(f"  [red]Scan setup failed: {error_class}: {_scan_err}[/red]")
+                    time.sleep(max(1, interval_minutes) * 60)
+                    continue
 
                 # Log observations from scan results (US-008)
                 try:
@@ -512,6 +522,7 @@ class ContinuousScanner:
                 # Smart trading loop: monitor, drawdown guardian, RL sync, learning
                 self._run_smart_loop()
 
+                try:
                     # Display results
                     account_info = self.scanner.get_account_info()
                     if _HAS_CLI_DISPLAY:
