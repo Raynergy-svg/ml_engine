@@ -63,6 +63,7 @@ mlflow==3.8.1
 structlog==25.5.0
 wandb>=0.18.0  # W&B Observatory - experiment tracking and visualization
 weave>=0.51.0  # W&B Weave - agent/function tracing (gated by BUDDY_WEAVE_ENABLED=1)
+chromadb>=0.5,<2  # Agent memory store (embedded mode, bring-your-own embeddings, no LLM required)
 
 # ============================================================
 # API and Web

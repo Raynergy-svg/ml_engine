@@ -25,6 +25,11 @@ from src.observability import (
     op as weave_op,
     patch_instance_methods,
 )
+from src.scanner.agents.memory import (
+    cache_verdicts_for_trade_open as _cache_verdicts_for_trade_open_mem,
+    get_memory_store as _get_agent_memory,
+    is_enabled as _agent_memory_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1352,6 +1357,69 @@ class ScannerAgentTeam:
         if regime_name == "LOW":
             regime_name = "NORMAL"
         verdicts = self._apply_regime_multipliers(verdicts, regime_name)
+
+        # Agent memory — nudge each verdict's confidence_delta based on similar
+        # past decisions for this agent + pair + regime. Read-only at scan time;
+        # writes happen on TRADE_OPENED (below). Safe no-op unless
+        # BUDDY_AGENT_MEMORY_ENABLED=1.
+        if _agent_memory_enabled():
+            try:
+                _mem = _get_agent_memory()
+                _pair_name = str(getattr(analysis, "pair", "UNKNOWN"))
+                for v in verdicts:
+                    mem_ctx = {
+                        "score": v.score,
+                        "confidence": getattr(analysis, "confidence", 0.0),
+                        "adx": _last_value(df_feat, "adx_14"),
+                        "rsi": _last_value(df_feat, "rsi_14"),
+                        "atr_pips": _last_value(df_feat, "atr_pips"),
+                        "spread_pips": getattr(analysis, "spread_pips", 0.0),
+                        "uncertainty_score": getattr(analysis, "uncertainty_score", 0.0),
+                        "model_disagreement": getattr(analysis, "model_disagreement", 0.0),
+                        "weighted_vote_score": getattr(analysis, "weighted_vote_score", 0.0),
+                        "regime": regime_name,
+                        "direction": getattr(analysis, "direction", "HOLD"),
+                    }
+                    hits = _mem.query_and_score(
+                        agent_name=v.name,
+                        pair=_pair_name,
+                        context=mem_ctx,
+                        n_results=20,
+                        scope="self",
+                    )
+                    if hits.confidence_delta != 0.0 and hits.n_with_outcome >= 5:
+                        v.confidence_delta = float(v.confidence_delta) + hits.confidence_delta
+                        v.metadata = dict(v.metadata or {})
+                        v.metadata["memory_n_outcomes"] = hits.n_with_outcome
+                        v.metadata["memory_avg_pnl"] = hits.avg_pnl_pips
+                        v.metadata["memory_hit_rate"] = hits.hit_rate
+                        v.metadata["memory_delta"] = hits.confidence_delta
+                        logger.info(
+                            "memory: agent=%s pair=%s nudged confidence_delta by %+.3f "
+                            "(avg_pnl=%.1f, hit_rate=%.2f, n=%d)",
+                            v.name, _pair_name, hits.confidence_delta,
+                            hits.avg_pnl_pips or 0.0, hits.hit_rate, hits.n_with_outcome,
+                        )
+                # Cache verdicts keyed by pair+direction so the TRADE_OPENED
+                # subscriber can persist them to memory once a trade is taken.
+                _cache_verdicts_for_trade_open_mem(
+                    pair=_pair_name,
+                    direction=str(getattr(analysis, "direction", "HOLD")),
+                    regime=regime_name,
+                    context={
+                        "adx": _last_value(df_feat, "adx_14"),
+                        "rsi": _last_value(df_feat, "rsi_14"),
+                        "atr_pips": _last_value(df_feat, "atr_pips"),
+                        "spread_pips": getattr(analysis, "spread_pips", 0.0),
+                        "uncertainty_score": getattr(analysis, "uncertainty_score", 0.0),
+                        "model_disagreement": getattr(analysis, "model_disagreement", 0.0),
+                        "weighted_vote_score": getattr(analysis, "weighted_vote_score", 0.0),
+                        "confidence": getattr(analysis, "confidence", 0.0),
+                    },
+                    verdicts=verdicts,
+                )
+            except Exception as _mem_err:  # noqa: BLE001 — memory must never block trading
+                logger.debug("agent memory nudge failed: %s", _mem_err)
 
         # US-076: Graph-attention heterogeneous agent consensus
         if getattr(self.config, "enable_graph_attention", False):
