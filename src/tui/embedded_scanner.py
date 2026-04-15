@@ -208,6 +208,29 @@ class EmbeddedScanner:
                         continue  # cascade fallback — only show the active one
                     icon = "[green]✓[/]" if is_loaded else "[dim]✗[/]"
                     self._brain(f"[dim]    {icon} {name}[/]")
+
+                # Model training freshness — surface stale models loudly
+                freshness = mh.get("freshness", {}) or {}
+                f_status = freshness.get("status", "UNKNOWN")
+                f_oldest = freshness.get("oldest_age_days")
+                f_stale = freshness.get("stale_models") or []
+                if f_status == "CRITICAL":
+                    self._brain(
+                        f"[red]▸ MODELS CRITICAL — oldest {f_oldest:.0f}d, "
+                        f"retrain immediately: {', '.join(f_stale)}[/]"
+                    )
+                elif f_status == "STALE":
+                    self._brain(
+                        f"[yellow]▸ Models stale — oldest {f_oldest:.0f}d: "
+                        f"{', '.join(f_stale)}[/]"
+                    )
+                elif f_status == "AGING":
+                    self._brain(
+                        f"[dim]▸ Models aging — oldest {f_oldest:.0f}d "
+                        f"(retrain within 7 days)[/]"
+                    )
+                elif f_status == "FRESH" and f_oldest is not None:
+                    self._brain(f"[dim]▸ Models fresh — oldest {f_oldest:.0f}d[/]")
             except Exception as _mh_err:
                 logger.debug("Model health broadcast skipped: %s", _mh_err)
 

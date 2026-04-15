@@ -190,6 +190,10 @@ class PostTradeDiagnostics:
                 "rl_model_staleness", self._check_rl_model_staleness,
                 None, issues, actions,
             )
+            self._safe_check(
+                "model_training_freshness", self._check_model_training_freshness,
+                None, issues, actions,
+            )
 
             status = self._aggregate_status(issues)
 
@@ -514,6 +518,84 @@ class PostTradeDiagnostics:
             actions.append("reduce_risk_per_trade_pct")
             return True
         return False
+
+    def _check_model_training_freshness(
+        self,
+        issues: List[Dict[str, Any]],
+        actions: List[str],
+    ) -> bool:
+        """Age of the core ML models (modular ensemble + joint gates).
+
+        Stale models are a major cause of losing streaks. The mechanical
+        RL feedback loop slowly degrades agent weights but doesn't know
+        to retrain — only this diagnostic surfaces "models are X days old"
+        so SelfHeal/Claude can recommend retraining.
+
+        Thresholds are read from model_freshness module (single source of truth).
+        """
+        try:
+            from src.scanner.automation.model_freshness import (
+                get_model_freshness, STALE_DAYS, CRITICAL_DAYS,
+            )
+            freshness = get_model_freshness()
+        except Exception as err:
+            issues.append({
+                "check": "model_training_freshness",
+                "severity": "skipped",
+                "detail": "freshness lookup failed: {0}".format(repr(err)),
+                "value": None,
+                "threshold": None,
+            })
+            return False
+
+        oldest = freshness.get("oldest_age_days")
+        status = freshness.get("status", "UNKNOWN")
+        stale_models = freshness.get("stale_models") or []
+
+        if oldest is None:
+            issues.append({
+                "check": "model_training_freshness",
+                "severity": "skipped",
+                "detail": "no model training metadata found",
+                "value": None,
+                "threshold": None,
+            })
+            return False
+
+        if status == "CRITICAL":
+            issues.append({
+                "check": "model_training_freshness",
+                "severity": "critical",
+                "detail": (
+                    "oldest model is {0:.0f} days old "
+                    "(>{1}d critical threshold) — models are likely drifting "
+                    "from current market regime: {2}"
+                ).format(oldest, CRITICAL_DAYS, ", ".join(stale_models)),
+                "value": oldest,
+                "threshold": CRITICAL_DAYS,
+            })
+            actions.append(
+                "Retrain core models: python main.py train-joint "
+                "--instruments EUR_USD,GBP_USD,USD_JPY"
+            )
+            return True
+        if status == "STALE":
+            issues.append({
+                "check": "model_training_freshness",
+                "severity": "warning",
+                "detail": (
+                    "oldest model is {0:.0f} days old "
+                    "(>{1}d stale threshold): {2}"
+                ).format(oldest, STALE_DAYS, ", ".join(stale_models)),
+                "value": oldest,
+                "threshold": STALE_DAYS,
+            })
+            actions.append(
+                "Schedule retraining of stale models within the next 7 days"
+            )
+            return True
+        # FRESH or AGING — no issue raised, but record for transparency
+        return True
 
     def _check_rl_model_staleness(
         self,

@@ -6612,11 +6612,22 @@ class Scanner:
             adjusted_total = total - (momentum_total_slots - 1)
             adjusted_loaded = loaded_count
 
+        # Model freshness — when was each group last trained? Stale models
+        # are a major cause of losing streaks; surface this in every snapshot
+        # so Claude reflections (and TUI) can act on it.
+        try:
+            from src.scanner.automation.model_freshness import get_model_freshness
+            freshness = get_model_freshness()
+        except Exception as _fr_err:
+            logger.debug("model freshness lookup failed: %s", _fr_err)
+            freshness = {"status": "UNKNOWN", "oldest_age_days": None, "groups": []}
+
         return {
             "loaded": health,
             "count": int(adjusted_loaded),
             "total": int(adjusted_total),
             "momentum_type": getattr(ge, "_momentum_model_type", "none") if ge else "none",
+            "freshness": freshness,
         }
 
     def get_account_info(self) -> Dict[str, Any]:

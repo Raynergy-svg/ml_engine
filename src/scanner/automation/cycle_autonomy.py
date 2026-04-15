@@ -44,6 +44,12 @@ DEFAULT_PERIODIC_EVERY_N_CYCLES = 12
 # executions despite having tradeable setups → fire rejection reflection.
 DEFAULT_REJECTION_STREAK = 3
 
+# Consecutive-loss threshold: N back-to-back closed losing trades →
+# fire deep losing-streak reflection. Critical: the user has trades
+# executing, but they all lose. Different from REJECTION (where trades
+# are blocked before execution).
+DEFAULT_LOSING_STREAK = 3
+
 
 class CycleAutonomyTriggers:
     """Shared state for cycle-level Claude triggers.
@@ -58,15 +64,21 @@ class CycleAutonomyTriggers:
         brain_callback,  # Callable[[str], None] — TUI brain log emitter
         periodic_every_n: int = DEFAULT_PERIODIC_EVERY_N_CYCLES,
         rejection_streak_threshold: int = DEFAULT_REJECTION_STREAK,
+        losing_streak_threshold: int = DEFAULT_LOSING_STREAK,
     ):
         self._brain = brain_callback
         self._periodic_every_n = periodic_every_n
         self._rejection_streak_threshold = rejection_streak_threshold
+        self._losing_streak_threshold = losing_streak_threshold
         self._rejection_streak = 0
         self._last_periodic_cycle = -1
         # Track last DEGRADED/CRITICAL diagnosis so we don't spam Claude
         # every cycle on the same unresolved issue.
         self._last_heal_signature: Optional[str] = None
+        # Track journal hash for losing-streak detection (changes when new
+        # trade closes); avoid recomputing/re-firing on every cycle.
+        self._last_journal_hash: Optional[str] = None
+        self._last_losing_fire_signature: Optional[str] = None
 
         # Feature flags (env-controlled for quick kill-switch)
         self._enable_periodic = os.environ.get(
@@ -77,6 +89,9 @@ class CycleAutonomyTriggers:
         ).lower() not in ("1", "true", "yes")
         self._enable_rejection = os.environ.get(
             "BUDDY_DISABLE_REJECTION_REFLECTION", ""
+        ).lower() not in ("1", "true", "yes")
+        self._enable_losing = os.environ.get(
+            "BUDDY_DISABLE_LOSING_STREAK_REFLECTION", ""
         ).lower() not in ("1", "true", "yes")
 
     # ── Trigger logic (called once per cycle) ──────────────────────────
@@ -99,11 +114,17 @@ class CycleAutonomyTriggers:
             self._rejection_streak = 0
         # (If tradeable_count == 0, streak unchanged — no rejection, just dry scan)
 
-        # Decide priority. Only one reflection per cycle — self-heal wins,
-        # then rejection, then periodic. The single-flight lock inside
-        # invoke_claude_reflection enforces this at the process level too.
+        # Decide priority. Only one reflection per cycle:
+        #   self-heal > losing-streak > rejection > periodic
+        # Self-heal wins because diagnostics aggregate everything; losing
+        # streak is highest user-visible pain (real money losing); rejection
+        # is medium; periodic is the steady-state heartbeat.
         if self._enable_self_heal and self._should_fire_self_heal():
             self._fire_self_heal(scan_count)
+            return
+
+        if self._enable_losing and self._should_fire_losing_streak():
+            self._fire_losing_streak(scan_count)
             return
 
         if self._enable_rejection and self._should_fire_rejection():
@@ -124,6 +145,66 @@ class CycleAutonomyTriggers:
 
     def _should_fire_rejection(self) -> bool:
         return self._rejection_streak >= self._rejection_streak_threshold
+
+    def _should_fire_losing_streak(self) -> bool:
+        """Read trade_journal_rl.json for the last N closed trades. If the
+        most recent N are all losses, fire deep reflection.
+
+        Critical: this is the user's "I'm losing 6+ in a row" pain point.
+        Different from rejection: trades ARE executing, but they all lose.
+        Cause is usually stale models or regime shift the agents missed.
+        """
+        try:
+            from pathlib import Path as _Path
+            journal_path = _Path("trained_data/trade_journal_rl.json")
+            if not journal_path.exists():
+                return False
+            data = json.loads(journal_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug("losing_streak.read_failed", error=str(e))
+            return False
+
+        if not isinstance(data, list):
+            return False
+
+        # Look at closed trades only (outcome populated), most recent first
+        closed = [e for e in data if isinstance(e, dict) and e.get("outcome")]
+        if len(closed) < self._losing_streak_threshold:
+            return False
+
+        # Sort by close_time / timestamp descending so we get the latest N
+        def _ts(entry: Dict[str, Any]) -> str:
+            return str(
+                entry.get("outcome", {}).get("close_time")
+                or entry.get("timestamp")
+                or ""
+            )
+        closed.sort(key=_ts, reverse=True)
+        recent = closed[: self._losing_streak_threshold]
+
+        def _is_loss(entry: Dict[str, Any]) -> bool:
+            outcome = entry.get("outcome", {}) or {}
+            # trade_won is the canonical field; fallback to pnl_pips < 0
+            if "trade_won" in outcome:
+                return not bool(outcome.get("trade_won"))
+            try:
+                return float(outcome.get("pnl_pips", 0)) < 0
+            except (TypeError, ValueError):
+                return False
+
+        if not all(_is_loss(e) for e in recent):
+            return False
+
+        # Dedup: don't re-fire on the same streak signature. Signature is
+        # the trade IDs of the streak — once new trades close (winning or
+        # losing) the signature changes.
+        signature = "|".join(str(e.get("trade_id", "?")) for e in recent)
+        if signature == self._last_losing_fire_signature:
+            return False
+        self._last_losing_fire_signature = signature
+        # Stash for prompt
+        self._pending_losing_streak = recent
+        return True
 
     def _should_fire_self_heal(self) -> bool:
         """Ask PostTradeDiagnostics for a health snapshot. Fire Claude only
@@ -250,6 +331,20 @@ class CycleAutonomyTriggers:
         )
         self._invoke(prompt, trade_id, mode="lightweight", timeout=240)
 
+    def _fire_losing_streak(self, scan_count: int) -> None:
+        """Last N closed trades all losses → spawn deep Claude reflection
+        with full context (recent trades + model freshness + agent weights)."""
+        recent = getattr(self, "_pending_losing_streak", []) or []
+        prompt = _build_losing_streak_prompt(
+            scan_count=scan_count, recent_losses=recent,
+        )
+        trade_id = f"LOSING-C{scan_count}"
+        self._brain(
+            f"[red]  ▸ LOSING STREAK reflection firing — last {len(recent)} trades all lost[/]"
+        )
+        # Deep mode: full MCP access, 5min timeout, can propose weights/config
+        self._invoke(prompt, trade_id, mode="deep", timeout=300)
+
     def _fire_self_heal(self, scan_count: int) -> None:
         """PostTradeDiagnostics says DEGRADED/CRITICAL — spawn deep Claude."""
         diag = getattr(self, "_pending_diag", {}) or {}
@@ -343,11 +438,22 @@ def _build_self_heal_prompt(scan_count: int, diag: Dict[str, Any]) -> str:
         for i in issues
     )
     action_lines = "\n".join(f"  - {a}" for a in actions)
+    try:
+        from src.scanner.automation.model_freshness import (
+            format_freshness_for_prompt,
+            get_model_freshness,
+        )
+        freshness_block = format_freshness_for_prompt(get_model_freshness())
+    except Exception:
+        freshness_block = "MODEL_FRESHNESS: (lookup failed)"
+
     return f"""Use the trade-reflection skill in DEEP mode — self-heal triggered.
 
 TRIGGER: self_heal ({status})
 TIMESTAMP: {ts}
 CYCLE: #{scan_count}
+
+{freshness_block}
 
 DIAGNOSTIC REPORT:
   status: {status}
@@ -357,11 +463,14 @@ DIAGNOSTIC REPORT:
 {action_lines or '    (none listed)'}
 
 This is a health degradation event. Your job:
-  1. Review each issue against recent journal entries and gate health
-  2. Write a learning entry explaining the ROOT CAUSE (not just the symptom)
-  3. If safe, propose a config adjustment OR a proposed_weights delta to
+  1. Check MODEL_FRESHNESS first — if any group is STALE (>14d) or
+     CRITICAL (>30d), that may be the root cause. Recommend retraining
+     in the learning entry.
+  2. Review each issue against recent journal entries and gate health
+  3. Write a learning entry explaining the ROOT CAUSE (not just the symptom)
+  4. If safe, propose a config adjustment OR a proposed_weights delta to
      correct the imbalance
-  4. If the issue is structural (code/config defect), write a rule draft
+  5. If the issue is structural (code/config defect), write a rule draft
      describing the pattern so future occurrences get caught
 
 Use MCP tools aggressively: get_agent_weights, get_gate_health,
@@ -372,8 +481,74 @@ End with <reflection-result>...</reflection-result> and <promise>.
 """
 
 
+def _build_losing_streak_prompt(
+    scan_count: int, recent_losses: List[Dict[str, Any]]
+) -> str:
+    """Deep-mode prompt for the highest-priority autonomous trigger.
+    Includes model freshness front-and-center because stale models are
+    the #1 cause of losing streaks.
+    """
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        from src.scanner.automation.model_freshness import (
+            format_freshness_for_prompt,
+            get_model_freshness,
+        )
+        freshness_block = format_freshness_for_prompt(get_model_freshness())
+    except Exception:
+        freshness_block = "MODEL_FRESHNESS: (lookup failed)"
+
+    # Compact one-line summary per losing trade
+    loss_lines = []
+    for t in recent_losses:
+        outcome = t.get("outcome", {}) or {}
+        loss_lines.append(
+            f"  - {t.get('trade_id', '?')} {t.get('pair', '?')} "
+            f"{t.get('direction', '?')} conf={t.get('confidence', '?')} "
+            f"pnl_pips={outcome.get('pnl_pips', '?')} "
+            f"exit={outcome.get('exit_reason', '?')} "
+            f"regime={t.get('regime', {}).get('volatility_regime', '?')}"
+        )
+
+    return f"""You are Buddy's emergency reflection agent. The last {len(recent_losses)} \
+closed trades were ALL LOSSES.
+
+TRIGGER: losing_streak ({len(recent_losses)} consecutive losses)
+TIMESTAMP: {ts}
+CYCLE: #{scan_count}
+
+{freshness_block}
+
+RECENT_LOSSES (newest first):
+{chr(10).join(loss_lines) if loss_lines else '  (no detail available)'}
+
+YOUR JOB:
+  1. Look at MODEL_FRESHNESS first. If oldest_age_days > 14, the most likely
+     root cause is model staleness (regime drift since training). Write a
+     learning entry naming the stale model + age + recommend retraining.
+  2. Cross-reference the losses against agent_reasons in the journal — is
+     one agent over-confident on bad signals? If so, propose a weight
+     reduction in .claude/proposed_weights.json.
+  3. Look at regime field across the losses — is buddy losing in a regime
+     it wasn't trained for? (e.g., trained on NORMAL but market is now
+     EXTREME). Note this.
+  4. Look at exit_reason — are all losses hitting SL? If yes, SL might be
+     too tight for current ATR. If they're hitting time-stop or partial
+     close, that's a different problem.
+  5. If safe, propose a short-term defensive config adjustment via
+     .claude/config_adjustments.json (e.g., raise min_confidence,
+     tighten max_uncertainty_score) until models can be retrained.
+
+Use MCP tools aggressively (get_agent_weights, get_gate_health,
+get_closed_trades, get_learnings). Don't guess — ground in data.
+
+End with <reflection-result>...</reflection-result> and <promise>REFLECTION_COMPLETE</promise>.
+"""
+
+
 __all__ = [
     "CycleAutonomyTriggers",
     "DEFAULT_PERIODIC_EVERY_N_CYCLES",
     "DEFAULT_REJECTION_STREAK",
+    "DEFAULT_LOSING_STREAK",
 ]
