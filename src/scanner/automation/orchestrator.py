@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from src.observability import init_weave, op as weave_op, thread as weave_thread
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +97,8 @@ class Orchestrator:
     """
 
     def __init__(self, project_root: Optional[str] = None, auto_execute: bool = False):
+        # Observability: initialize Weave once. No-op unless BUDDY_WEAVE_ENABLED=1.
+        init_weave()
         self._root = Path(project_root) if project_root else Path.cwd()
         self._auto_execute = auto_execute
         self._cycle_count = 0
@@ -610,6 +614,7 @@ class Orchestrator:
         ))
         logger.debug("Orchestrator: registered dispatch step '%s'", name)
 
+    @weave_op
     def run_cycle(
         self,
         profile: str = "balanced",

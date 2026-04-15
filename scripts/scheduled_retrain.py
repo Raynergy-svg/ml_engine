@@ -23,6 +23,7 @@ Email Alerts:
 import argparse
 import logging
 import os
+import re
 import smtplib
 import sys
 import traceback
@@ -30,7 +31,7 @@ from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -110,33 +111,40 @@ def run_train_joint(
     pairs: List[str],
     granularity: str = "H1",
     candles: int = 7500,
+    force_per_pair: bool = False,
 ) -> tuple[bool, str, Optional[dict]]:
     """Run joint training for specified pairs.
-    
+
     Args:
         pairs: List of currency pairs
         granularity: Timeframe
         candles: Number of candles to fetch
-        
+        force_per_pair: If True, fine-tune EVERY pair regardless of perf
+            threshold. Needed when per-pair models are stale relative to
+            the joint ensemble — the default `should_fine_tune()` gate
+            skips pairs whose joint perf is "good enough", leaving their
+            per-pair transformer/histgb artifacts untouched for weeks.
+
     Returns:
         Tuple of (success, message, result_dict)
     """
     logger.info(f"Starting joint training for {len(pairs)} pairs...")
     logger.info(f"Pairs: {', '.join(pairs)}")
-    logger.info(f"Granularity: {granularity}, Candles: {candles}")
-    
+    logger.info(f"Granularity: {granularity}, Candles: {candles}, force_per_pair={force_per_pair}")
+
     try:
         from src.training.buddy_training_helpers import train_joint_multi_pair_ensemble
         from rich.console import Console
-        
+
         console = Console(file=sys.stdout, force_terminal=True)
-        
+
         result = train_joint_multi_pair_ensemble(
             instruments=pairs,
             granularity=granularity,
             candles=candles,
             fine_tune=True,
             fine_tune_threshold=0.05,
+            fine_tune_all=force_per_pair,
             console=console,
         )
         
@@ -207,6 +215,110 @@ def validate_models(model_dir: Path) -> tuple[bool, str]:
     return True, msg
 
 
+def _parse_holdout_message(msg: str) -> tuple[Optional[float], Optional[int]]:
+    """Extract (accuracy, total_samples) from validate_holdout_accuracy's message.
+
+    Expected format: "Hold-out validation: 55.2% accuracy (110/199) PASSED ..."
+    Returns (None, None) on parse failure — callers treat as "metrics unknown".
+    """
+    try:
+        pct = re.search(r"([\d.]+)%\s+accuracy", msg)
+        counts = re.search(r"\((\d+)/(\d+)\)", msg)
+        accuracy = float(pct.group(1)) / 100.0 if pct else None
+        samples = int(counts.group(2)) if counts else None
+        return accuracy, samples
+    except Exception:
+        return None, None
+
+
+def _log_and_maybe_promote(
+    pairs: List[str],
+    model_dir: Path,
+    holdout_metrics: Dict[str, Any],
+) -> None:
+    """Log joint model dir as a W&B artifact, consult promotion policy, promote.
+
+    `holdout_metrics` must contain:
+        accuracy            — aggregate accuracy across timeframes
+        holdout_samples     — total samples across timeframes
+        timeframes_passed   — count of TFs that cleared min_accuracy
+        per_timeframe       — per-TF breakdown (for audit/metadata)
+
+    No-op unless BUDDY_WANDB_REGISTRY_ENABLED=1. All failures logged and swallowed
+    — this pipeline must never block a successful retrain from completing.
+    """
+    from src.training.model_artifact import (
+        is_enabled,
+        log_model_artifact,
+        get_production_metrics,
+        promote_to_production,
+        mark_staging,
+    )
+    from src.training.promotion_policy import should_promote
+
+    if not is_enabled():
+        logger.debug("Registry disabled — skipping artifact log + promotion check")
+        return
+
+    artifact_name = "buddy-joint-models"
+    # Candidate metrics consumed by policy gates 1-8.
+    # 1: accuracy, 2: holdout_samples, 3: accuracy (vs prod), 4: brier,
+    # 5: timeframes_passed, 7: max_component_age_days, 8: ensemble_complete.
+    metrics = {
+        "accuracy": holdout_metrics.get("accuracy"),
+        "holdout_samples": holdout_metrics.get("holdout_samples"),
+        "timeframes_passed": holdout_metrics.get("timeframes_passed"),
+        "timeframes_tested": holdout_metrics.get("timeframes_tested"),
+        "max_component_age_days": holdout_metrics.get("max_component_age_days"),
+        "ensemble_complete": holdout_metrics.get("ensemble_complete"),
+        "ensemble_stale_groups": holdout_metrics.get("ensemble_stale_groups"),
+        "pairs": len(pairs),
+    }
+    metadata = {
+        "pairs": pairs,
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "model_dir": str(model_dir),
+        "per_timeframe": holdout_metrics.get("per_timeframe", {}),
+    }
+
+    # 1. Log as :staging candidate.
+    ref = log_model_artifact(
+        name=artifact_name,
+        paths=[model_dir],
+        metrics={k: v for k, v in metrics.items() if v is not None},
+        metadata=metadata,
+        aliases=["staging"],
+    )
+    if ref is None:
+        logger.warning("Artifact log returned None — skipping promotion check")
+        return
+
+    mark_staging(ref)
+
+    # 2. Compare candidate vs current production.
+    production = get_production_metrics(artifact_name, alias="production")
+    decision = should_promote(candidate=metrics, production=production)
+
+    # 3. Log the decision prominently — this is audit-grade output.
+    logger.info("=" * 60)
+    logger.info("PROMOTION POLICY VERDICT")
+    logger.info("  candidate metrics : %s", metrics)
+    logger.info("  production metrics: %s", production)
+    logger.info("  decision          : %s", "PROMOTE" if decision.promote else "HOLD")
+    logger.info("  reason            : %s", decision.reason)
+    logger.info("=" * 60)
+
+    # 4. Promote if policy says yes.
+    if decision.promote:
+        ok = promote_to_production(ref)
+        if ok:
+            logger.info("✓ %s promoted to :production", ref.qualified)
+        else:
+            logger.error("Promotion API call failed; model stays at :staging")
+    else:
+        logger.info("Model remains at :staging pending policy re-evaluation")
+
+
 def reset_accuracy_gate_for_pairs(pairs: List[str]) -> None:
     """Reset AccuracyGate rolling window for retrained pairs.
 
@@ -236,6 +348,7 @@ def validate_holdout_accuracy(
     pairs: List[str],
     min_accuracy: float = 0.52,
     holdout_candles: int = 500,
+    granularity: str = "H1",
 ) -> tuple[bool, str]:
     """Validate new model accuracy on a hold-out set before promoting.
 
@@ -244,7 +357,8 @@ def validate_holdout_accuracy(
     the retrain is rejected.
 
     Returns:
-        Tuple of (passed, message)
+        Tuple of (passed, message). Message format includes granularity so
+        the multi-TF wrapper + `_parse_holdout_message` can extract it.
     """
     try:
         from src.core.modular_data_loaders import compute_normalized_features
@@ -261,7 +375,7 @@ def validate_holdout_accuracy(
 
         for pair in pairs[:3]:  # Validate on up to 3 pairs (speed)
             try:
-                candles_df = get_candles(pair, granularity="H1", count=holdout_candles)
+                candles_df = get_candles(pair, granularity=granularity, count=holdout_candles)
                 if candles_df is None or len(candles_df) < 100:
                     continue
 
@@ -299,7 +413,7 @@ def validate_holdout_accuracy(
         accuracy = correct / total
         passed = accuracy >= min_accuracy
         msg = (
-            f"Hold-out validation: {accuracy:.1%} accuracy ({correct}/{total}) "
+            f"Hold-out validation [{granularity}]: {accuracy:.1%} accuracy ({correct}/{total}) "
             f"{'PASSED' if passed else 'FAILED'} (threshold: {min_accuracy:.0%})"
         )
         if passed:
@@ -309,13 +423,151 @@ def validate_holdout_accuracy(
         return passed, msg
 
     except ImportError as e:
-        msg = f"Hold-out validation skipped (import error): {e}"
+        msg = f"Hold-out validation [{granularity}] skipped (import error): {e}"
         logger.warning(msg)
         return True, msg  # Don't block on import failures
     except Exception as e:
-        msg = f"Hold-out validation error (non-fatal): {e}"
+        msg = f"Hold-out validation [{granularity}] error (non-fatal): {e}"
         logger.warning(msg)
         return True, msg
+
+
+def verify_ensemble_refreshed(
+    retrain_start_ts: datetime,
+    models_root: Path,
+) -> Dict[str, Any]:
+    """Verify every ensemble meta file's mtime is >= retrain_start_ts.
+
+    Source: learnings.md (2026-04-15) — partial-retrain bug where
+    transformer_direction_best.keras refreshed but modular_ensemble.meta.json +
+    per-pair models stayed at March mtimes while "RETRAINING COMPLETED" fired.
+
+    Checks:
+      * `trained_data/models/modular_ensemble.meta.json`
+      * `trained_data/models/joint/*.keras` + meta files
+      * per-pair subdirs that have a `tcn_volatility_regime.arch.json` present
+
+    Returns dict with:
+      ensemble_complete: bool — True iff every checked artifact mtime >= start_ts
+      ensemble_stale_groups: List[str] — names of groups that failed the check
+      max_component_age_days: float — oldest artifact age at time of check,
+        against wall-clock now (used by Gate 7)
+    """
+    import time as _time
+
+    checks: List[tuple[str, Path]] = []
+
+    # Top-level ensemble meta
+    top = models_root / "modular_ensemble.meta.json"
+    if top.exists():
+        checks.append(("modular_ensemble", top))
+
+    # Joint models directory (transformer + tcn + ridge etc.)
+    joint_dir = models_root / "joint"
+    if joint_dir.exists():
+        for name in ("transformer_direction.keras", "tcn_volatility_regime.keras", "ridge_confidence.pkl"):
+            p = joint_dir / name
+            if p.exists():
+                checks.append((f"joint/{name}", p))
+
+    # Per-pair directories (any that look like an FX pair: 3-letter_3-letter)
+    pair_pattern = re.compile(r"^[A-Z]{3}_[A-Z]{3}$")
+    for sub in models_root.iterdir() if models_root.exists() else []:
+        if sub.is_dir() and pair_pattern.match(sub.name):
+            # Use any meta file present as the "this pair's models got refreshed" proxy.
+            for candidate in sub.glob("*.arch.json"):
+                checks.append((f"{sub.name}/{candidate.name}", candidate))
+                break  # one probe per pair is enough
+
+    stale: List[str] = []
+    max_age_days: float = 0.0
+    now = _time.time()
+    start_epoch = retrain_start_ts.timestamp()
+
+    for label, path in checks:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            stale.append(f"{label} (stat failed)")
+            continue
+        age_days = max(0.0, (now - mtime) / 86400.0)
+        if age_days > max_age_days:
+            max_age_days = age_days
+        if mtime < start_epoch:
+            stale.append(f"{label} (mtime={datetime.fromtimestamp(mtime, timezone.utc).isoformat()})")
+
+    complete = len(stale) == 0 and len(checks) > 0
+    if not complete:
+        logger.warning(
+            "Ensemble completeness check: %d/%d artifacts stale. Stale: %s",
+            len(stale), len(checks), stale,
+        )
+    else:
+        logger.info("Ensemble completeness: %d/%d artifacts refreshed post-retrain", len(checks), len(checks))
+
+    return {
+        "ensemble_complete": complete,
+        "ensemble_stale_groups": stale,
+        "ensemble_artifacts_checked": len(checks),
+        "max_component_age_days": round(max_age_days, 2),
+    }
+
+
+def validate_holdout_multi_timeframe(
+    pairs: List[str],
+    min_accuracy: float = 0.52,
+    holdout_candles: int = 500,
+    granularities: Optional[List[str]] = None,
+) -> tuple[bool, str, Dict[str, Any]]:
+    """Run `validate_holdout_accuracy` across multiple granularities.
+
+    Rationale: a model that wins on H1 but loses on M15/H4 is regime-fragile.
+    The promotion policy's Gate 5 (multi-timeframe coverage) consumes the
+    `timeframes_passed` count this returns.
+
+    Returns:
+        (overall_passed, combined_message, metrics_dict)
+        where overall_passed = at least one TF passed (so pipeline isn't blocked
+        by a single missing data feed), and metrics_dict contains per-TF results
+        plus `timeframes_passed` count for the policy gate.
+    """
+    granularities = granularities or ["H1", "M15", "H4"]
+    per_tf: Dict[str, Any] = {}
+    passed_count = 0
+    messages: List[str] = []
+
+    for gran in granularities:
+        ok, msg = validate_holdout_accuracy(
+            pairs=pairs,
+            min_accuracy=min_accuracy,
+            holdout_candles=holdout_candles,
+            granularity=gran,
+        )
+        acc, samples = _parse_holdout_message(msg)
+        per_tf[gran] = {"passed": ok, "accuracy": acc, "samples": samples}
+        if ok and acc is not None and acc >= min_accuracy:
+            passed_count += 1
+        messages.append(msg)
+
+    overall_passed = passed_count >= 1  # at least one TF must pass for pipeline to continue
+    # Aggregate accuracy = weighted average across TFs that returned numbers.
+    accs = [per_tf[g]["accuracy"] for g in granularities if per_tf[g]["accuracy"] is not None]
+    agg_acc = sum(accs) / len(accs) if accs else None
+    tot_samples = sum((per_tf[g]["samples"] or 0) for g in granularities)
+
+    metrics = {
+        "timeframes_passed": passed_count,
+        "timeframes_tested": len(granularities),
+        "per_timeframe": per_tf,
+        "accuracy": agg_acc,           # aggregate (mean across TFs) — used by absolute + relative gates
+        "holdout_samples": tot_samples,  # summed samples across TFs
+    }
+    combined_msg = (
+        f"Multi-TF holdout: {passed_count}/{len(granularities)} timeframes passed. "
+        + " | ".join(messages)
+    )
+    logger.info(combined_msg)
+    return overall_passed, combined_msg, metrics
 
 
 def check_drift_retrain_request() -> Optional[list]:
@@ -375,6 +627,15 @@ def main():
         action="store_true",
         help="Log what would be done without actually training",
     )
+    parser.add_argument(
+        "--force-per-pair",
+        action="store_true",
+        help=(
+            "Fine-tune EVERY pair regardless of performance threshold. "
+            "Use when per-pair models are stale relative to joint ensemble "
+            "(autonomous retrainer sets this by default)."
+        ),
+    )
     args = parser.parse_args()
 
     # Determine pairs: check for drift request first, then args, then defaults
@@ -420,6 +681,7 @@ def main():
         pairs=pairs,
         granularity=args.granularity,
         candles=args.candles,
+        force_per_pair=args.force_per_pair,
     )
     
     # Validate models
@@ -430,13 +692,46 @@ def main():
             success = False
             message = f"{message}\n\nValidation failed: {valid_msg}"
 
-    # Hold-out validation: new model must beat threshold before promotion
+    # Hold-out validation across H1/M15/H4 — multi-timeframe coverage feeds
+    # Gate 5 of the promotion policy (catches H1-overfit models).
+    holdout_metrics: Dict[str, Any] = {}
     if success:
-        holdout_ok, holdout_msg = validate_holdout_accuracy(pairs)
+        holdout_ok, holdout_msg, holdout_metrics = validate_holdout_multi_timeframe(pairs)
         message = f"{message}\n\n{holdout_msg}"
         if not holdout_ok:
             success = False
-            logger.error("Retrain REJECTED: new model failed hold-out validation")
+            logger.error("Retrain REJECTED: no timeframe passed hold-out validation")
+
+    # Ensemble completeness — feeds Gates 7 (freshness) and 8 (partial retrain).
+    # Always runs; never blocks success at this layer (policy handles rejection).
+    if success:
+        models_root = PROJECT_ROOT / "trained_data" / "models"
+        ensemble_metrics = verify_ensemble_refreshed(start_time, models_root)
+        holdout_metrics.update(ensemble_metrics)
+        message = (
+            f"{message}\n\nEnsemble completeness: "
+            f"{'OK' if ensemble_metrics['ensemble_complete'] else 'STALE'} "
+            f"({ensemble_metrics['ensemble_artifacts_checked']} checked, "
+            f"max_age={ensemble_metrics['max_component_age_days']:.1f}d)"
+        )
+
+    # Close the autonomy loop via Tier 7 trading event bus:
+    #   publish TRAINING_COMPLETED → subscribed handler logs artifact, runs
+    #   promotion_policy, emits MODEL_PROMOTED or MODEL_HELD.
+    # Every hop lands in trained_data/trading_events.jsonl for audit. No-op
+    # unless BUDDY_WANDB_REGISTRY_ENABLED=1 (handler short-circuits internally).
+    if success:
+        try:
+            from src.training.training_events import publish_training_completed
+            event_id = publish_training_completed(
+                pairs=pairs,
+                model_dir=model_dir,
+                holdout_metrics=holdout_metrics,
+                reason="scheduled",
+            )
+            logger.info("Published TRAINING_COMPLETED event_id=%s", event_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Training-event publish failed (non-fatal): %s", exc, exc_info=True)
 
     # Log completion
     end_time = datetime.now(timezone.utc)

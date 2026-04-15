@@ -19,6 +19,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from src.scanner.results import PairAnalysis
+from src.observability import (
+    attributes as weave_attrs,
+    init_weave,
+    op as weave_op,
+    patch_instance_methods,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +118,12 @@ class ScannerAgentTeam:
 
     def __init__(self, config: Any):
         self.config = config
+        # Weave tracing: init is idempotent; safe even when Scanner bypasses Orchestrator.
+        # Then wrap every _evaluate_* method so each agent call appears in the trace tree.
+        # No-op when BUDDY_WEAVE_ENABLED is unset.
+        init_weave()
+        # Exclude _evaluate_body (the top-level dispatch wrapped by evaluate()).
+        patch_instance_methods(self, prefix="_evaluate_", exclude={"_evaluate_body"})
         self._learned_weights: Dict[str, Any] = self._load_learned_weights()
         self._regime_weights: Dict[str, Dict[str, float]] = {}  # Cache of regime-specific weights
         self._global_weights: Dict[str, float] = {}  # Cross-regime running average
@@ -1181,6 +1193,7 @@ class ScannerAgentTeam:
         self._meta_overrides = meta_overrides  # store for use during vote()
         logger.debug("AgentTeam: applied meta overrides for %d agents", len(meta_overrides))
 
+    @weave_op
     def evaluate(
         self,
         analysis: PairAnalysis,
@@ -1192,6 +1205,27 @@ class ScannerAgentTeam:
         if analysis.error is not None or analysis.direction not in {"LONG", "SHORT"}:
             return analysis
 
+        # Tag this entire evaluation (and every nested _evaluate_* call) with
+        # filterable attributes for the Weave UI.
+        trace_attrs = {
+            "pair": str(getattr(analysis, "pair", "UNKNOWN")),
+            "direction": str(getattr(analysis, "direction", "HOLD")),
+            "regime": str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper(),
+            "profile": str(getattr(self.config, "profile", "unknown")),
+            "confidence": float(getattr(analysis, "confidence", 0.0) or 0.0),
+        }
+
+        with weave_attrs(trace_attrs):
+            return self._evaluate_body(analysis, df_raw, df_feat, gate_details)
+
+    def _evaluate_body(
+        self,
+        analysis: PairAnalysis,
+        df_raw: pd.DataFrame,
+        df_feat: pd.DataFrame,
+        gate_details: Optional[Dict[str, Any]] = None,
+    ) -> PairAnalysis:
+        """Original evaluate() body, wrapped by attribute-tagged `evaluate()`."""
         ctx = AgentDecisionContext(
             analysis=analysis,
             df_raw=df_raw,

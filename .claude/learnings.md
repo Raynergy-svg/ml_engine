@@ -4,6 +4,24 @@ Date-stamped insights extracted from trade outcomes, scan analysis, and system b
 
 ---
 
+### Self-Heal #1: 10-Loss Streak Root Cause — 2026-04-15
+
+- [2026-04-15] **PATTERN/stale_model_total_directional_failure**: 10/10 closed trades lost via sl_hit with MFE=0 (price NEVER moved in predicted direction). modular_ensemble age=28d, joint_gates age=22d. Models trained on March market regime are predicting directions in an April regime that has fundamentally shifted. The RL agent weight layer adapted (updated today) but cannot fix wrong directional predictions from stale upstream models — RL tunes *which agents to trust*, not *what the models predict*. Total PL=-$2,637. **Root cause: model staleness, not agent miscalibration.**
+
+- [2026-04-15] [PROMOTED] **PATTERN/soft_uncertainty_penalty_insufficient_during_model_drift**: Uncertainty agent flagged 8/10 trades (uncertainty>0.45) and model_disagreement=0.5 on 6/10 trades, but the soft penalty only reduced confidence by ~0.13 (from ~0.69 to ~0.56) — still above the 0.50 execution threshold. During extended model staleness, soft penalties cannot compensate for fundamentally wrong directional models. The uncertainty agent correctly identified the problem but lacked the authority to block execution. **Implication: need a hard-block threshold for uncertainty during CRITICAL model freshness.**
+
+### Self-Heal #2: 3 More Losses (Cycle 2, Trades 1220/1199/1195) — 2026-04-15
+
+- [2026-04-15] **PATTERN/pending_config_adjustments_never_applied**: Cycle 1 proposed 4 CRITICAL config adjustments (max_model_disagreement=0.25, max_uncertainty_score=0.40, weighted_vote_threshold=0.85, min_confidence raise). ALL remain in "pending" state with total_adjustments=0. The self-heal loop diagnosed the problem correctly but the config consumption pipeline is broken — proposals sit in config_adjustments.json but nothing reads and applies them. **Implication: the entire self-heal feedback loop is open-circuit. Fix the consumer side of config_adjustments.json or the reflection system is write-only dead code.**
+
+- [2026-04-15] [PROMOTED] **PATTERN/trend_agent_fail_does_not_block_execution**: Trade 1220 EUR_AUD had ADX=1 (no trend whatsoever). Trend agent correctly returned passed=False. Yet the trade executed with WVS=0.76 because other agents (risk_sentinel, execution_quality) compensated. A trend-following directional trade entered with ADX=1 is fundamentally unsound regardless of what other agents think. **Implication: trend agent failure should be a hard-block for directional trades, not just a WVS weight reduction.**
+
+- [2026-04-15] **PATTERN/model_staleness_persists_through_partial_retrain**: transformer_direction_best.keras was updated at 19:03 UTC today, but modular_ensemble.meta.json still shows trained_at=2026-03-18. The autonomous trainer partially ran (transformer only?) but did not retrain the full ensemble. Per-pair models (EUR_USD, GBP_USD, etc.) all show mtimes from March 19-24. The system is trading on 22-28 day old ensemble predictions. **Implication: autonomous_trainer must verify ALL model groups are refreshed, not just the transformer checkpoint.**
+
+- [2026-04-15] [PROMOTED] **PATTERN/low_regime_sl_too_tight_for_ranging_market**: Trade 1220 in LOW regime had SL/ATR=1.17x (19.6 pips SL on 16.8 ATR). LOW regime applies sl_mult=0.8, which TIGHTENS the SL further in a ranging market where price noise is high relative to directional movement. This is backwards — LOW volatility ranging markets need WIDER relative SL to survive chop. **Implication: LOW regime sl_mult should be >= 1.2, not 0.8.**
+
+- [2026-04-15] **PATTERN/autonomous_trainer_status_unknown_after_completion**: Retrain spawned at 19:01 UTC, ran 22.3min, completed at 19:24 UTC, but last_status=unknown. The trainer process likely completed but the status-polling mechanism did not capture success/failure. Without verified retraining success, the system may continue trading on stale models indefinitely. **Implication: autonomous_trainer must verify model meta.json timestamps changed post-retrain, not just that the subprocess exited.**
+
 ## Promotion Log
   - JSON Safety Gates (31 observations across Phases 4-34)
   - Retry & Robustness Gates (27 observations across Phases 4-34)
@@ -243,3 +261,9 @@ Key closures this session:
 - **[2026-04-12]** `sl_tp` | low_rr_ratio_loss for EUR_JPY: R:R=1.08 (<1.2), lost $114.34 → *Reject trades with R:R < 1.2 — gate is enforced but log for pattern tracking*
 - **[2026-04-12]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $114.34 → *Lower max_model_disagreement threshold*
 - **[2026-04-12]** `pair_behavior` | EUR_JPY SHORT lost: 20.8p (conf=55%) → *Track EUR_JPY directional accuracy*
+
+- [2026-04-15] **PATTERN/per_pair_models_not_retrained_despite_global_retrain**: transformer_direction_best.keras updated today (Apr 15) but ALL per-pair models (EUR_GBP, USD_CHF, EUR_JPY, AUD_JPY, EUR_AUD, NZD_USD) still show Mar 24 timestamps. The autonomous trainer may only retrain the global model, not per-pair models. Per-pair ridge_confidence, lgbm_risk, lgbm_momentum, histgb_direction all stale at 22d. **Implication: retrain command must include per-pair model refresh or the ensemble still runs on stale sub-models.**
+
+- [2026-04-15] **PATTERN/rr_gate_violated_on_eur_jpy_trade_6**: EUR_JPY trade #6 (2026-04-09) closed with rr_ratio=1.08, below the hard 1.2:1 minimum R:R gate. Either ATR shifted between gate evaluation and order placement, or the gate check uses pre-execution values. 1 of 10 trades violated a supposedly hard gate. **Implication: R:R must be re-validated at execution time.**
+
+- [2026-04-15] **PATTERN/mfe_zero_on_all_10_proves_directional_model_failure**: Every closed trade (10/10) has MFE=0.0 pips. Price never moved even 1 pip in predicted direction before SL hit. This is not risk management failure. The models predict wrong direction with 100% frequency at 0.549-0.702 confidence. No SL/TP tuning or agent weight adjustment fixes wrong-direction predictions.

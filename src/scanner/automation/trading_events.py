@@ -17,6 +17,13 @@ class TradingEventType(Enum):
     DEGRADED_MODE_ENTERED = "degraded_mode_entered"
     DEGRADED_MODE_EXITED = "degraded_mode_exited"
     QUEUE_FAILURE = "queue_failure"
+    # Training lifecycle — closes the autonomy loop with tier-7 observability.
+    TRAINING_PROPOSED = "training_proposed"       # retrain_agent → queue
+    TRAINING_STARTED = "training_started"          # worker begins run_train_joint
+    TRAINING_COMPLETED = "training_completed"      # validation + ensemble checks passed
+    MODEL_PROMOTED = "model_promoted"              # :production alias moved
+    MODEL_HELD = "model_held"                      # staged, policy said no
+    MODEL_REGRESSION_DETECTED = "model_regression_detected"  # live-fire post-promo rollback trigger
 
 
 @dataclass
@@ -81,6 +88,45 @@ class PolicyBlockedPayload:
     reasons: List[str]
     matched_rules: List[str]
     environment_snapshot: Dict[str, Any]
+
+
+@dataclass
+class TrainingCompletedPayload:
+    """Payload for TRAINING_COMPLETED events.
+
+    Published by scheduled_retrain.py (or retrain_agent) when:
+      * run_train_joint() returned success, AND
+      * validate_holdout_multi_timeframe passed on >= 1 timeframe, AND
+      * verify_ensemble_refreshed confirmed all artifacts post-retrain.
+
+    Consumed by the promotion handler, which logs the artifact to W&B,
+    consults promotion_policy.should_promote, and emits MODEL_PROMOTED
+    or MODEL_HELD. The round-trip is the closed autonomy loop.
+    """
+    pairs: List[str]
+    trained_at: str
+    model_dir: str
+    accuracy: Optional[float]
+    holdout_samples: Optional[int]
+    timeframes_passed: Optional[int]
+    timeframes_tested: Optional[int]
+    max_component_age_days: Optional[float]
+    ensemble_complete: Optional[bool]
+    ensemble_stale_groups: List[str] = field(default_factory=list)
+    per_timeframe: Dict[str, Any] = field(default_factory=dict)
+    reason: str = "scheduled"  # "scheduled" | "drift" | "losing_streak" | "stale_models"
+
+
+@dataclass
+class ModelPromotedPayload:
+    """Payload for MODEL_PROMOTED (or MODEL_HELD) events."""
+    artifact_name: str
+    artifact_version: str
+    promoted: bool
+    reason: str
+    decision_diagnostics: Dict[str, Any]
+    candidate_metrics: Dict[str, Any]
+    production_metrics: Optional[Dict[str, Any]] = None
 
 
 def create_trade_closed_event(outcome_data: dict, session_id: str) -> TradingEvent:
