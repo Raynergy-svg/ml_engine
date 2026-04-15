@@ -31,7 +31,8 @@ def _iso(days_ago: float) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
 
 
-def test_freshness_fresh_when_recent(tmp_models):
+def test_freshness_fresh_when_under_3_days(tmp_models):
+    """New thresholds for forex weekly cadence: FRESH ≤3d."""
     from src.scanner.automation.model_freshness import get_model_freshness
 
     (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
@@ -44,15 +45,16 @@ def test_freshness_fresh_when_recent(tmp_models):
     f = get_model_freshness()
     assert f["status"] == "FRESH"
     assert f["oldest_age_days"] is not None
-    assert f["oldest_age_days"] < 7
+    assert f["oldest_age_days"] < 3
     assert f["stale_models"] == []
 
 
-def test_freshness_aging_at_10_days(tmp_models):
+def test_freshness_aging_at_4_days(tmp_models):
+    """AGING band: 3-5d (warn but no auto-trigger)."""
     from src.scanner.automation.model_freshness import get_model_freshness
 
     (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(10)})
+        json.dumps({"trained_at": _iso(4)})
     )
     (tmp_models / "trained_data" / "models" / "joint" / "joint_training_meta.json").write_text(
         json.dumps({"trained_at": _iso(2)})
@@ -60,17 +62,18 @@ def test_freshness_aging_at_10_days(tmp_models):
 
     f = get_model_freshness()
     assert f["status"] == "AGING"
-    assert f["stale_models"] == []  # AGING does not yet count as stale (>14d)
+    assert f["stale_models"] == []  # AGING is below STALE_DAYS (5)
 
 
-def test_freshness_stale_at_20_days(tmp_models):
+def test_freshness_stale_at_6_days(tmp_models):
+    """STALE band: 5-7d. Now triggers auto-retrain by default (forex)."""
     from src.scanner.automation.model_freshness import get_model_freshness
 
     (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(20)})
+        json.dumps({"trained_at": _iso(6)})
     )
     (tmp_models / "trained_data" / "models" / "joint" / "joint_training_meta.json").write_text(
-        json.dumps({"trained_at": _iso(2)})
+        json.dumps({"trained_at": _iso(1)})
     )
 
     f = get_model_freshness()
@@ -78,17 +81,17 @@ def test_freshness_stale_at_20_days(tmp_models):
     assert any("modular_ensemble" in s for s in f["stale_models"])
 
 
-def test_freshness_critical_at_45_days(tmp_models):
-    """User's exact failure mode — models 28-45 days old."""
+def test_freshness_critical_above_7_days(tmp_models):
+    """User's exact failure mode — models 27d old (now CRITICAL)."""
     from src.scanner.automation.model_freshness import get_model_freshness
 
     (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(45)})
+        json.dumps({"trained_at": _iso(27)})
     )
 
     f = get_model_freshness()
     assert f["status"] == "CRITICAL"
-    assert f["oldest_age_days"] >= 30
+    assert f["oldest_age_days"] > 7
 
 
 def test_freshness_unknown_when_no_metadata(tmp_models):
@@ -143,10 +146,11 @@ def test_freshness_format_for_prompt():
 
 
 def test_diagnostics_flags_stale_models_as_warning(tmp_models):
+    """6 days = STALE band → warning issue."""
     from src.scanner.feedback.diagnostics import PostTradeDiagnostics
 
     (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(20)})
+        json.dumps({"trained_at": _iso(6)})
     )
     diag = PostTradeDiagnostics()
     result = diag.run()
@@ -159,10 +163,11 @@ def test_diagnostics_flags_stale_models_as_warning(tmp_models):
 
 
 def test_diagnostics_flags_critical_age(tmp_models):
+    """8+ days = CRITICAL → critical severity + retrain action."""
     from src.scanner.feedback.diagnostics import PostTradeDiagnostics
 
     (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(45)})
+        json.dumps({"trained_at": _iso(10)})
     )
     result = PostTradeDiagnostics().run()
     freshness_issues = [

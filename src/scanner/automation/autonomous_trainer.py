@@ -36,8 +36,44 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-# Default 24h cooldown — retraining costs ~10min and isn't free; one per day max.
-DEFAULT_COOLDOWN_SECONDS = 24 * 3600
+# Default 12h cooldown — retraining costs ~10min and isn't free, but
+# Mon+Fri scheduling means we may legitimately want two training sessions
+# in the same week. 12h still prevents thrashing within a single day.
+DEFAULT_COOLDOWN_SECONDS = 12 * 3600
+
+# Days of the week (UTC) when scheduled training fires. Forex convention:
+#   Monday — train on weekend's data + last week, before NY open
+#   Friday — train mid-day, before weekend gap
+# Override via env: BUDDY_TRAIN_DAYS=mon,fri or "0,4" (0=Mon)
+_DEFAULT_TRAIN_DAYS = "mon,fri"
+
+
+def _parse_train_days(spec: str) -> set:
+    """Parse 'mon,fri' or '0,4' into a set of weekday integers (0=Mon..6=Sun)."""
+    name_to_idx = {
+        "mon": 0, "tue": 1, "wed": 2, "thu": 3,
+        "fri": 4, "sat": 5, "sun": 6,
+    }
+    out: set = set()
+    for tok in spec.split(","):
+        tok = tok.strip().lower()
+        if not tok:
+            continue
+        if tok in name_to_idx:
+            out.add(name_to_idx[tok])
+        else:
+            try:
+                idx = int(tok)
+                if 0 <= idx <= 6:
+                    out.add(idx)
+            except ValueError:
+                continue
+    return out
+
+
+SCHEDULED_TRAIN_DAYS = _parse_train_days(
+    os.environ.get("BUDDY_TRAIN_DAYS", _DEFAULT_TRAIN_DAYS)
+)
 
 # State file persists cooldown across process restarts.
 STATE_PATH = Path("trained_data/.autonomous_retrain_state.json")
@@ -60,6 +96,7 @@ class RetrainState:
     last_status: Optional[str] = None  # "running" | "success" | "failed" | "timeout"
     last_reason: Optional[str] = None  # what triggered the retrain
     last_oldest_age_days: Optional[float] = None
+    last_schedule_day_iso: Optional[str] = None  # "YYYY-MM-DD" — last scheduled fire
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -70,6 +107,7 @@ class RetrainState:
             "last_status": self.last_status,
             "last_reason": self.last_reason,
             "last_oldest_age_days": self.last_oldest_age_days,
+            "last_schedule_day_iso": self.last_schedule_day_iso,
         }
 
     @classmethod
@@ -82,6 +120,7 @@ class RetrainState:
             last_status=d.get("last_status"),
             last_reason=d.get("last_reason"),
             last_oldest_age_days=d.get("last_oldest_age_days"),
+            last_schedule_day_iso=d.get("last_schedule_day_iso"),
         )
 
 
@@ -171,28 +210,54 @@ def maybe_spawn_autonomous_retrain(
     status = str(freshness.get("status", "UNKNOWN"))
     oldest = freshness.get("oldest_age_days")
 
-    # Decide whether to spawn
-    if not force:
-        if status not in ("CRITICAL",):
-            # STALE alone does NOT auto-trigger by default — too aggressive.
-            # User can set BUDDY_AUTOTRAIN_ON_STALE=1 to lower the bar.
-            on_stale = os.environ.get("BUDDY_AUTOTRAIN_ON_STALE", "").lower() in ("1", "true", "yes")
-            if status == "STALE" and on_stale:
-                pass  # proceed
-            else:
-                result["skipped_reason"] = f"status={status} (need CRITICAL or force=True)"
-                return result
-
-    # Cooldown
+    # Schedule check FIRST — Mon/Fri once per day, regardless of staleness.
+    # Forex models genuinely need weekly retraining; the scheduled cadence
+    # is the canonical trigger. Staleness fires only fill gaps when the
+    # schedule was missed (process down, weekend rollover, etc.).
     state = _load_state()
     now = time.time()
+    today_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    weekday = datetime.now(timezone.utc).weekday()
+    on_train_day = weekday in SCHEDULED_TRAIN_DAYS
+    schedule_already_fired_today = state.last_schedule_day_iso == today_iso
+
+    schedule_fire = on_train_day and not schedule_already_fired_today
+    triggered_by = None  # "schedule" | "stale" | "critical" | "force"
+
+    if force:
+        triggered_by = "force"
+    elif schedule_fire:
+        triggered_by = "schedule"
+    elif status == "CRITICAL":
+        triggered_by = "critical"
+    elif status == "STALE":
+        # STALE now fires by default — forex models past 5d old need refresh.
+        # Opt out via BUDDY_DISABLE_AUTOTRAIN_ON_STALE=1 if you want to
+        # hold off until CRITICAL.
+        if os.environ.get("BUDDY_DISABLE_AUTOTRAIN_ON_STALE", "").lower() in ("1", "true", "yes"):
+            result["skipped_reason"] = f"status=STALE (autotrain on stale disabled)"
+            return result
+        triggered_by = "stale"
+    else:
+        result["skipped_reason"] = (
+            f"status={status} weekday={weekday} (no trigger condition met)"
+        )
+        return result
+
+    # Cooldown — but scheduled fires get a softer cooldown (6h) so a Mon
+    # fire doesn't get blocked by a Sat manual run.
+    effective_cooldown = cooldown_seconds
+    if triggered_by == "schedule":
+        effective_cooldown = min(cooldown_seconds, 6 * 3600)
     if state.last_started_at and not force:
         elapsed = now - float(state.last_started_at)
-        if elapsed < cooldown_seconds:
-            remaining = cooldown_seconds - elapsed
-            result["skipped_reason"] = f"cooldown ({remaining/3600:.1f}h remaining)"
+        if elapsed < effective_cooldown:
+            remaining = effective_cooldown - elapsed
+            result["skipped_reason"] = (
+                f"cooldown ({remaining/3600:.1f}h remaining, trigger={triggered_by})"
+            )
             brain_callback(
-                f"[dim]  ▸ retrain cooldown active ({remaining/3600:.1f}h remaining)[/]"
+                f"[dim]  ▸ retrain cooldown ({remaining/3600:.1f}h remaining, trigger={triggered_by})[/]"
             )
             return result
 
@@ -209,7 +274,11 @@ def maybe_spawn_autonomous_retrain(
         "--pairs",
         pairs_str,
     ]
-    reason = f"freshness={status}, oldest={oldest}d"
+    weekday_name = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday]
+    reason = (
+        f"trigger={triggered_by}, weekday={weekday_name}, "
+        f"freshness={status}, oldest={oldest}d"
+    )
 
     if dry_run:
         brain_callback(f"[yellow]  ▸ AUTONOMOUS RETRAIN dry-run: would spawn {cmd}[/]")
@@ -253,6 +322,8 @@ def maybe_spawn_autonomous_retrain(
     state.last_status = "running"
     state.last_reason = reason
     state.last_oldest_age_days = oldest
+    if triggered_by == "schedule":
+        state.last_schedule_day_iso = today_iso
     _save_state(state)
 
     brain_callback(

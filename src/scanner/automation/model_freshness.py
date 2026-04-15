@@ -34,10 +34,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-# Threshold defaults — tunable via env later if needed
-AGING_DAYS = 7
-STALE_DAYS = 14
-CRITICAL_DAYS = 30
+# Threshold defaults — tuned for forex weekly retraining cadence.
+# Forex regime drift is real on a weekly timescale; default Mon+Fri
+# retraining means models should never be more than ~3-4 days old in
+# steady state. Anything beyond a week is a degraded state.
+#
+# Override via env: BUDDY_FRESHNESS_AGING_DAYS / STALE_DAYS / CRITICAL_DAYS
+AGING_DAYS = int(os.environ.get("BUDDY_FRESHNESS_AGING_DAYS", "3"))
+STALE_DAYS = int(os.environ.get("BUDDY_FRESHNESS_STALE_DAYS", "5"))
+CRITICAL_DAYS = int(os.environ.get("BUDDY_FRESHNESS_CRITICAL_DAYS", "7"))
 
 MODELS_DIR = Path("trained_data/models")
 

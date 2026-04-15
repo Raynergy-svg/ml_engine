@@ -24,6 +24,7 @@ logs/trade_feedback.jsonl
 logs/system_decisions.jsonl
 logs/reflection_log.jsonl
 logs/autonomous_retrain/
+logs/ALERT_*.txt
 .claude/reflection_budget.json
 .claude/.reflection.lock
 .claude/proposed_weights.json
