@@ -294,7 +294,9 @@ class RetrainAgent:
 # ── Module-level singleton + registration ───────────────────────
 
 _agent_instance: Optional[RetrainAgent] = None
-_agent_lock = threading.Lock()
+# RLock: register_retrain_agent holds this while calling get_retrain_agent,
+# which would deadlock on a plain Lock.
+_agent_lock = threading.RLock()
 _REGISTERED = False
 
 
