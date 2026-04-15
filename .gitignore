@@ -23,10 +23,12 @@ venv/
 logs/trade_feedback.jsonl
 logs/system_decisions.jsonl
 logs/reflection_log.jsonl
+logs/autonomous_retrain/
 .claude/reflection_budget.json
 .claude/.reflection.lock
 .claude/proposed_weights.json
 .claude/proposed_weights_archive/
+trained_data/.autonomous_retrain_state.json
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag
 trained_data/retrain_requests/

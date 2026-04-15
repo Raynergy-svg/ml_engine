@@ -107,6 +107,24 @@ class CycleAutonomyTriggers:
 
         Called at the END of run_one_cycle, AFTER post-scan automation.
         """
+        # Autonomous retrainer: poll any in-flight retrain, then check if a
+        # new one should spawn (only when freshness is CRITICAL by default).
+        # Bypasses the broken Orchestrator → DriftRemediator chain that
+        # never instantiated in production.
+        try:
+            from src.scanner.automation import autonomous_trainer as _at
+            from src.scanner.automation.model_freshness import get_model_freshness
+
+            _at.poll_completion(self._brain)
+            if not _at.is_retrain_running():
+                freshness = get_model_freshness()
+                _at.maybe_spawn_autonomous_retrain(
+                    freshness=freshness,
+                    brain_callback=self._brain,
+                )
+        except Exception as _ar_err:
+            logger.debug("autonomous_trainer cycle hook error: %s", str(_ar_err))
+
         # Update rejection streak tracker
         if tradeable_count > 0 and trades_executed == 0:
             self._rejection_streak += 1
