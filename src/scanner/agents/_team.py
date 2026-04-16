@@ -1198,7 +1198,6 @@ class ScannerAgentTeam:
         self._meta_overrides = meta_overrides  # store for use during vote()
         logger.debug("AgentTeam: applied meta overrides for %d agents", len(meta_overrides))
 
-    @weave_op
     def evaluate(
         self,
         analysis: PairAnalysis,
