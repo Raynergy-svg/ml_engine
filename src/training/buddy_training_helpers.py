@@ -7,7 +7,9 @@ Each function handles one logical stage of the training workflow.
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 import time
 from typing import Any, Callable, Protocol
@@ -1479,6 +1481,32 @@ def train_joint_multi_pair_ensemble(
         joint_metrics = _train_joint_models(dfs, trainer, joint_save_dir, console)
         if joint_metrics is None:
             return {'status': 'error', 'error': 'Training failed'}
+
+        # Update modular_ensemble.meta.json so ensemble-completeness checker
+        # (Gate 8 in promotion_policy) sees a fresh timestamp. Without this,
+        # the meta stays at its original creation date (2026-03-18) and every
+        # retrain gets flagged as "stale" even though models are fresh.
+        try:
+            _meta_path = Path(model_dir) / "modular_ensemble.meta.json"
+            _existing_meta = {}
+            if _meta_path.exists():
+                with open(_meta_path, "r") as _mf:
+                    _existing_meta = json.load(_mf)
+            _existing_meta.update({
+                "training_type": "joint_multi_pair",
+                "trained_at": datetime.now(timezone.utc).isoformat(),
+                "trained_pairs": instruments,
+                "n_instruments": len(instruments),
+                "joint_metrics": {k: v for k, v in (joint_metrics or {}).items()
+                                  if isinstance(v, (int, float, bool, str))},
+                "granularity": granularity,
+                "candles": candles,
+            })
+            with open(_meta_path, "w") as _mf:
+                json.dump(_existing_meta, _mf, indent=2, sort_keys=True, default=str)
+            logger.info("Updated modular_ensemble.meta.json (trained_at=%s)", _existing_meta["trained_at"])
+        except Exception as _meta_err:
+            logger.warning("Failed to update modular_ensemble.meta.json: %s", _meta_err)
 
         # W&B: log joint model metrics (transformer + ridge + lgbm in one shot)
         if wb_run and wandb_log_sklearn_training:

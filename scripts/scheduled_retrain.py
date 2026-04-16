@@ -366,6 +366,9 @@ def validate_holdout_accuracy(
         evaluator = GateEvaluator(
             model_dir=str(PROJECT_ROOT / "trained_data" / "models"),
         )
+        # GateEvaluator requires explicit load_models() before evaluate_all_gates()
+        load_status = evaluator.load_models(require_tcn=False)
+        logger.info("Holdout: loaded models: %s", load_status)
 
         correct = 0
         total = 0
@@ -392,9 +395,11 @@ def validate_holdout_accuracy(
                     actual_dir = "LONG" if future_close > current_close else "SHORT"
 
                     try:
-                        result = evaluator.evaluate(row, pair)
-                        if result and hasattr(result, "direction"):
-                            pred_dir = str(result.direction).upper()
+                        gate_result = evaluator.evaluate_all_gates(
+                            row, instrument=pair,
+                        )
+                        if gate_result and isinstance(gate_result, dict):
+                            pred_dir = str(gate_result.get("direction", "")).upper()
                             if pred_dir in ("LONG", "SHORT"):
                                 total += 1
                                 if pred_dir == actual_dir:
