@@ -1907,12 +1907,11 @@ def load_direction_data(
     # Handle threshold=0 case: include ALL samples with simple up/down labeling
     use_all_samples = (threshold <= 0)
 
-    # Shaped reward label smoothing: instead of hard 0/1, encode movement
-    # magnitude into the label. A strong directional move → label close to 0/1.
-    # A weak scrape → label close to 0.5. This gives the model a richer gradient
-    # for "how confident should I be" not just "which direction."
-    # Compute the magnitude scale from the data: median absolute pct_change of
-    # clear signals. Labels are smoothed: y = 0.5 + direction * scale(magnitude).
+    # Direction labels stay hard 0/1 (required for Keras binary_accuracy metric).
+    # Shaped reward signal is encoded into SAMPLE WEIGHTS instead: strong
+    # directional moves get higher weight (model pays more attention to clear
+    # signals), weak scrapes get lower weight. This preserves the gradient benefit
+    # without breaking any metrics or loss functions.
     _pct_changes = []
     for i in range(n - lookahead):
         future_close = close[i + lookahead]
@@ -1920,7 +1919,6 @@ def load_direction_data(
         if current_close > 0:
             _pct_changes.append((future_close - current_close) / current_close)
     _pct_arr = np.array(_pct_changes) if _pct_changes else np.array([0.0])
-    # Magnitude normalizer: 95th percentile of abs(pct_change) = label of ~0.95/0.05
     _magnitude_scale = max(np.percentile(np.abs(_pct_arr), 95), 1e-6)
 
     for i in range(n - lookahead):
@@ -1934,16 +1932,15 @@ def load_direction_data(
 
         if use_all_samples or abs(pct_change) >= threshold:
             if pct_change > 1e-10:
-                # Shaped label: 0.55 (weak up) to 0.95 (strong up)
+                y[i] = 1.0  # UP (hard label)
+                # Shaped weight: strong move → weight up to 2.0, weak scrape → 0.5
                 magnitude = min(abs(pct_change) / _magnitude_scale, 1.0)
-                y[i] = 0.5 + 0.45 * magnitude  # range [0.55, 0.95]
-                weights[i] = 1.0
+                weights[i] = 0.5 + 1.5 * magnitude  # range [0.5, 2.0]
                 n_clear_up += 1
             elif pct_change < -1e-10:
-                # Shaped label: 0.45 (weak down) to 0.05 (strong down)
+                y[i] = 0.0  # DOWN (hard label)
                 magnitude = min(abs(pct_change) / _magnitude_scale, 1.0)
-                y[i] = 0.5 - 0.45 * magnitude  # range [0.05, 0.45]
-                weights[i] = 1.0
+                weights[i] = 0.5 + 1.5 * magnitude  # range [0.5, 2.0]
                 n_clear_down += 1
             else:
                 y[i] = 0.5
