@@ -144,7 +144,6 @@ def run_train_joint(
             candles=candles,
             fine_tune=True,
             fine_tune_threshold=0.05,
-            fine_tune_all=force_per_pair,
             console=console,
         )
         
