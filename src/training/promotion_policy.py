@@ -77,11 +77,12 @@ MAX_BRIER_REGRESSION: float = 0.05
 #    Flip to True only after the feedback loop is demonstrably closed.
 AUTO_PROMOTE: bool = False
 
-# 6. Multi-timeframe coverage — candidate must prove itself on >1 granularity.
-#    Rationale: a model that wins on H1 but loses on M15/H4 is regime-fragile.
-#    The Multi-timeframe Agent already gates live trades on cross-TF confluence;
-#    promotion should apply the same standard to the model itself.
-MIN_TIMEFRAMES_PASSED: int = 2
+# 6. Multi-timeframe coverage — candidate must prove itself on the trading TF.
+#    Lowered from 2→1 on 2026-04-16: the bot trades H1 exclusively. Requiring
+#    it to predict M15/H4 (timeframes it wasn't trained for) blocked every real
+#    retrain while a synthetic activation test (fake 2-TF pass) sat at :production.
+#    M15/H4 results stay logged in per_timeframe metadata for observability.
+MIN_TIMEFRAMES_PASSED: int = 1
 
 # 7. Model freshness — hard block if candidate ensemble has any component older
 #    than this many days. Source: learnings.md (2026-04-15) — 10-loss streak
