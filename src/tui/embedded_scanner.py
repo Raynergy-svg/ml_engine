@@ -168,13 +168,15 @@ class EmbeddedScanner:
 
             self._brain("[dim]  Loading models: TCN + Ridge + RF...[/]")
 
-            # Build config: balanced profile, non-interactive, force=True
+            # Build config: smart profile — tighter gates, hard uncertainty blocking,
+            # asymmetric R:R (2.3:1), tuned from 2026-04-15 loss-streak learnings.
+            # Changed from "balanced" on 2026-04-16 to match hedge-fund-grade selectivity.
             self._config = ScannerConfig.from_cli_args(
                 config_path=None,
                 pairs=None,         # uses profile defaults
                 granularity="H1",
                 top_n=5,
-                profile="balanced",
+                profile="smart",
                 force=True,         # skip session filter
             )
             # Enable execution for auto-execute
