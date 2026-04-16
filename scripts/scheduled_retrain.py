@@ -365,7 +365,6 @@ def validate_holdout_accuracy(
 
         evaluator = GateEvaluator(
             model_dir=str(PROJECT_ROOT / "trained_data" / "models"),
-            pair="EUR_USD",
         )
 
         correct = 0
