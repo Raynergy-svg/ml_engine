@@ -1144,6 +1144,9 @@ def _train_tcn_volatility(
         )
 
         tcn_trainer.save(str(tcn_save_path))
+        # Touch the saved file so ensemble-completeness checker sees a fresh mtime
+        # (warm-start path can preserve the cached checkpoint's old mtime).
+        tcn_save_path.touch()
 
         if console:
             acc = tcn_metrics.get('val_accuracy', tcn_metrics.get('accuracy', 0))

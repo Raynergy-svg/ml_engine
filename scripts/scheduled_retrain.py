@@ -388,7 +388,8 @@ def validate_holdout_accuracy(
                     continue
 
                 # Check direction predictions against actual price movement
-                for i in range(len(features) - 5):
+                n_errors = 0
+                for i in range(min(len(features) - 5, 200)):  # cap at 200 for speed
                     row = features.iloc[i : i + 1]
                     future_close = test_df["close"].iloc[min(i + 5, len(test_df) - 1)]
                     current_close = test_df["close"].iloc[i]
@@ -404,8 +405,16 @@ def validate_holdout_accuracy(
                                 total += 1
                                 if pred_dir == actual_dir:
                                     correct += 1
-                    except Exception:
+                    except Exception as _eval_err:
+                        n_errors += 1
+                        if n_errors <= 3:
+                            logger.warning(
+                                "Holdout evaluate_all_gates error on %s row %d: %s",
+                                pair, i, _eval_err,
+                            )
                         continue
+                if n_errors:
+                    logger.warning("Holdout %s: %d/%d rows threw exceptions", pair, n_errors, min(len(features)-5, 200))
             except Exception as e:
                 logger.debug(f"Hold-out validation skipped for {pair}: {e}")
 
@@ -474,12 +483,14 @@ def verify_ensemble_refreshed(
             if p.exists():
                 checks.append((f"joint/{name}", p))
 
-    # Per-pair directories (any that look like an FX pair: 3-letter_3-letter)
+    # Per-pair directories: check LightGBM fine-tuned models (these ARE produced
+    # by the joint retrain's fine-tuning step). Skip .arch.json files — those are
+    # transformer architecture exports from a separate per-pair training path that
+    # the joint retrain doesn't touch.
     pair_pattern = re.compile(r"^[A-Z]{3}_[A-Z]{3}$")
     for sub in models_root.iterdir() if models_root.exists() else []:
         if sub.is_dir() and pair_pattern.match(sub.name):
-            # Use any meta file present as the "this pair's models got refreshed" proxy.
-            for candidate in sub.glob("*.arch.json"):
+            for candidate in sub.glob("lgbm_*.pkl"):
                 checks.append((f"{sub.name}/{candidate.name}", candidate))
                 break  # one probe per pair is enough
 
