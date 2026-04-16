@@ -1,48 +1,8 @@
 {
   "version": 1,
   "current_regime": "LOW",
-  "transition_count": 562,
+  "transition_count": 566,
   "transitions": [
-    {
-      "old_regime": "LOW",
-      "new_regime": "NORMAL",
-      "confidence": 0.6836,
-      "timestamp": "2026-04-14T22:11:59.564681+00:00",
-      "source": "scan_pipeline",
-      "metadata": {
-        "pair": "EUR_CHF"
-      }
-    },
-    {
-      "old_regime": "LOW",
-      "new_regime": "NORMAL",
-      "confidence": 0.6736,
-      "timestamp": "2026-04-14T22:12:39.561923+00:00",
-      "source": "scan_pipeline",
-      "metadata": {
-        "pair": "GBP_CHF"
-      }
-    },
-    {
-      "old_regime": "NORMAL",
-      "new_regime": "LOW",
-      "confidence": 0.7465,
-      "timestamp": "2026-04-15T01:35:48.326546+00:00",
-      "source": "scan_pipeline",
-      "metadata": {
-        "pair": "EUR_USD"
-      }
-    },
-    {
-      "old_regime": "NORMAL",
-      "new_regime": "LOW",
-      "confidence": 0.8457,
-      "timestamp": "2026-04-15T01:37:26.019247+00:00",
-      "source": "scan_pipeline",
-      "metadata": {
-        "pair": "USD_JPY"
-      }
-    },
     {
       "old_regime": "NORMAL",
       "new_regime": "LOW",
@@ -1002,7 +962,47 @@
       "metadata": {
         "pair": "EUR_AUD"
       }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8093,
+      "timestamp": "2026-04-16T16:11:30.408290+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8557,
+      "timestamp": "2026-04-16T16:11:56.415384+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "USD_CHF"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.8929,
+      "timestamp": "2026-04-16T16:12:09.077098+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "AUD_USD"
+      }
+    },
+    {
+      "old_regime": "NORMAL",
+      "new_regime": "LOW",
+      "confidence": 0.7822,
+      "timestamp": "2026-04-16T16:13:11.627598+00:00",
+      "source": "scan_pipeline",
+      "metadata": {
+        "pair": "EUR_AUD"
+      }
     }
   ],
-  "last_updated": "2026-04-16T16:03:12.471149+00:00"
+  "last_updated": "2026-04-16T16:18:42.681001+00:00"
 }

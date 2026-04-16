@@ -1,7 +1,7 @@
 {
   "last_fired": {
     "win_rate_drop": 1774296074.6708229,
-    "consecutive_losses": 1776352864.57526,
+    "consecutive_losses": 1776356613.035101,
     "drawdown": 1775176910.690363
   },
   "active_alerts": [
@@ -244,7 +244,17 @@
       "threshold": 3.0,
       "pair": "",
       "acknowledged": false
+    },
+    {
+      "alert_type": "consecutive_losses",
+      "severity": "WARNING",
+      "message": "16 consecutive losses (threshold: 3)",
+      "timestamp": "2026-04-16T16:23:33.034837",
+      "value": 16.0,
+      "threshold": 3.0,
+      "pair": "",
+      "acknowledged": false
     }
   ],
-  "last_updated": "2026-04-16T16:08:40.528844"
+  "last_updated": "2026-04-16T16:23:33.038067"
 }
