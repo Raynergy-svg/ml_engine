@@ -4,7 +4,22 @@
       "co_win": 0,
       "co_loss": 1,
       "mixed": 0
+    },
+    "EUR_AUD|USD_CHF": {
+      "co_win": 0,
+      "co_loss": 1,
+      "mixed": 0
+    },
+    "EUR_JPY|USD_CHF": {
+      "co_win": 0,
+      "co_loss": 1,
+      "mixed": 0
+    },
+    "EUR_GBP|USD_JPY": {
+      "co_win": 0,
+      "co_loss": 1,
+      "mixed": 0
     }
   },
-  "updated": "2026-04-08T22:41:57.248850+00:00"
+  "updated": "2026-04-16T03:00:20.369263+00:00"
 }

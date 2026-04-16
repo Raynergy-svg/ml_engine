@@ -2,26 +2,10 @@
   "version": 1,
   "log": [
     {
-      "timestamp": "2026-04-09T18:16:22.941897+00:00",
+      "timestamp": "2026-04-16T03:00:18.488124+00:00",
       "result": {
-        "raw_pnl_reward": -534.5677,
-        "shaped_reward": -535.9457,
-        "regime": "choppy",
-        "regime_bonus": 0.0,
-        "drawdown_penalty": -1.2,
-        "duration_component": -0.178,
-        "pnl_reward_correlation": 1.0,
-        "is_reward_hack_alert": false
-      },
-      "pnl": -534.5677,
-      "duration_bars": 178,
-      "entry_confidence": 0.6487
-    },
-    {
-      "timestamp": "2026-04-09T18:16:22.942138+00:00",
-      "result": {
-        "raw_pnl_reward": -292.5388,
-        "shaped_reward": -293.5388,
+        "raw_pnl_reward": -258.8599,
+        "shaped_reward": -259.8599,
         "regime": "normal",
         "regime_bonus": 0.0,
         "drawdown_penalty": -1.0,
@@ -29,17 +13,17 @@
         "pnl_reward_correlation": 1.0,
         "is_reward_hack_alert": false
       },
-      "pnl": -292.5388,
-      "duration_bars": 17,
-      "entry_confidence": 0.5948
+      "pnl": -258.8599,
+      "duration_bars": 4,
+      "entry_confidence": 0.6675
     }
   ],
   "summary": {
-    "n_trades": 2,
-    "mean_pnl": -413.55324999999993,
-    "mean_shaped_reward": -414.74225,
+    "n_trades": 1,
+    "mean_pnl": -258.8599,
+    "mean_shaped_reward": -259.8599,
     "pnl_reward_correlation": 1.0,
-    "reward_std": 121.20345
+    "reward_std": 0.0
   },
-  "last_updated": "2026-04-09T18:16:26.828354+00:00"
+  "last_updated": "2026-04-16T03:00:20.375691+00:00"
 }

@@ -1,6 +1,38 @@
 {
-  "training_type": "joint_multi_pair",
-  "trained_at": "2026-03-18T23:11:39.526814",
+  "bootstrapped_at": "2026-03-18",
+  "bootstrapped_from": "joint_training_meta.json",
+  "candles": 5000,
+  "granularity": "H1",
+  "joint_metrics": {},
+  "models": {
+    "direction": {
+      "metrics": {
+        "val_accuracy": 0.5530791788856305,
+        "val_balanced_accuracy": 0.5578171828171828
+      },
+      "path": "trained_data/models/joint/transformer_direction.keras"
+    }
+  },
+  "n_instruments": 15,
+  "results": {
+    "random_forest": {
+      "drawdown_mae_bps": 14.434506959040284,
+      "streak_prob_mae": 0.021581651698011187
+    },
+    "ridge": {
+      "confidence_mae": 0.27994477381743293,
+      "r2_score": 0.9966222936256018
+    },
+    "transformer": {
+      "epochs_trained": 10,
+      "val_accuracy": 0.5530791788856305,
+      "val_balanced_accuracy": 0.5578171828171828
+    },
+    "xgboost": {
+      "acceleration_accuracy": 0.8459664708410947,
+      "momentum_mae": 0.026455849786257847
+    }
+  },
   "selected_pairs": [
     "EUR_USD",
     "GBP_USD",
@@ -10,44 +42,23 @@
     "USD_CAD",
     "USD_CHF"
   ],
+  "trained_at": "2026-04-16T15:29:31.669065+00:00",
   "trained_pairs": [
     "EUR_USD",
     "GBP_USD",
     "USD_JPY",
+    "USD_CHF",
     "AUD_USD",
-    "NZD_USD",
     "USD_CAD",
-    "USD_CHF"
+    "NZD_USD",
+    "EUR_GBP",
+    "EUR_JPY",
+    "GBP_JPY",
+    "AUD_JPY",
+    "EUR_AUD",
+    "GBP_AUD",
+    "EUR_CHF",
+    "GBP_CHF"
   ],
-  "granularity": "H1",
-  "results": {
-    "transformer": {
-      "val_accuracy": 0.5530791788856305,
-      "val_balanced_accuracy": 0.5578171828171828,
-      "epochs_trained": 10
-    },
-    "xgboost": {
-      "acceleration_accuracy": 0.8459664708410947,
-      "momentum_mae": 0.026455849786257847
-    },
-    "random_forest": {
-      "drawdown_mae_bps": 14.434506959040284,
-      "streak_prob_mae": 0.021581651698011187
-    },
-    "ridge": {
-      "confidence_mae": 0.27994477381743293,
-      "r2_score": 0.9966222936256018
-    }
-  },
-  "models": {
-    "direction": {
-      "path": "trained_data/models/joint/transformer_direction.keras",
-      "metrics": {
-        "val_accuracy": 0.5530791788856305,
-        "val_balanced_accuracy": 0.5578171828171828
-      }
-    }
-  },
-  "bootstrapped_from": "joint_training_meta.json",
-  "bootstrapped_at": "2026-03-18"
+  "training_type": "joint_multi_pair"
 }

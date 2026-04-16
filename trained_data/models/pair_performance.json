@@ -1,13 +1,13 @@
 {
   "EUR_GBP": {
-    "trades": 1,
+    "trades": 3,
     "wins": 0,
-    "losses": 1,
-    "total_pnl": -381.5,
-    "total_pnl_pips": -11.5,
-    "avg_confidence": 0.692,
+    "losses": 3,
+    "total_pnl": -899.39,
+    "total_pnl_pips": -34.9,
+    "avg_confidence": 0.675,
     "best_pnl_pips": 0.0,
-    "worst_pnl_pips": -11.5,
+    "worst_pnl_pips": -11.8,
     "win_rate": 0.0
   },
   "NZD_USD": {
@@ -22,47 +22,69 @@
     "win_rate": 0.0
   },
   "AUD_JPY": {
-    "trades": 1,
+    "trades": 2,
     "wins": 0,
-    "losses": 1,
-    "total_pnl": -100.15,
-    "total_pnl_pips": -17.7,
-    "avg_confidence": 0.629,
+    "losses": 2,
+    "total_pnl": -207.32,
+    "total_pnl_pips": -33.2,
+    "avg_confidence": 0.655,
     "best_pnl_pips": 0.0,
     "worst_pnl_pips": -17.7,
     "win_rate": 0.0
   },
   "USD_CHF": {
-    "trades": 1,
+    "trades": 3,
     "wins": 0,
-    "losses": 1,
-    "total_pnl": -534.57,
-    "total_pnl_pips": -16.8,
-    "avg_confidence": 0.649,
+    "losses": 3,
+    "total_pnl": -1159.32,
+    "total_pnl_pips": -36.1,
+    "avg_confidence": 0.673,
     "best_pnl_pips": 0.0,
     "worst_pnl_pips": -16.8,
     "win_rate": 0.0
   },
   "EUR_AUD": {
-    "trades": 1,
+    "trades": 2,
     "wins": 0,
-    "losses": 1,
-    "total_pnl": -292.54,
-    "total_pnl_pips": -27.6,
-    "avg_confidence": 0.595,
+    "losses": 2,
+    "total_pnl": -647.1,
+    "total_pnl_pips": -47.3,
+    "avg_confidence": 0.618,
     "best_pnl_pips": 0.0,
     "worst_pnl_pips": -27.6,
     "win_rate": 0.0
   },
   "EUR_JPY": {
+    "trades": 2,
+    "wins": 0,
+    "losses": 2,
+    "total_pnl": -210.91,
+    "total_pnl_pips": -37.3,
+    "avg_confidence": 0.597,
+    "best_pnl_pips": 0.0,
+    "worst_pnl_pips": -20.8,
+    "win_rate": 0.0
+  },
+  "USD_JPY": {
     "trades": 1,
     "wins": 0,
     "losses": 1,
-    "total_pnl": -114.34,
-    "total_pnl_pips": -20.8,
-    "avg_confidence": 0.549,
+    "total_pnl": -95.57,
+    "total_pnl_pips": -17.9,
+    "avg_confidence": 0.669,
     "best_pnl_pips": 0.0,
-    "worst_pnl_pips": -20.8,
+    "worst_pnl_pips": -17.9,
+    "win_rate": 0.0
+  },
+  "USD_CAD": {
+    "trades": 2,
+    "wins": 0,
+    "losses": 2,
+    "total_pnl": -369.94,
+    "total_pnl_pips": -20.1,
+    "avg_confidence": 0.648,
+    "best_pnl_pips": 0.0,
+    "worst_pnl_pips": -12.7,
     "win_rate": 0.0
   }
 }

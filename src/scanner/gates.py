@@ -1708,7 +1708,10 @@ class GateEvaluator:
             "confidence_ridge": self._ridge_confidence is not None,
             "risk_rf": self._rf_risk is not None,
             "transformer_gate": self._transformer is not None,
-            "meta_labeler": self._meta_labeler is not None,
             "tcn_volatility_gate": self._tcn_volatility is not None,
         }
+        # Only include meta_labeler when it's actually loaded
+        # (no trained meta_labeler.pkl currently exists on disk)
+        if self._meta_labeler is not None:
+            health["meta_labeler"] = True
         return health

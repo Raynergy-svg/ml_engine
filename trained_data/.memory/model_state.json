@@ -8,7 +8,7 @@
   "runtime::buddy_runtime": {
     "selected_llm_provider": "claude",
     "intelligent_mode_enabled": false,
-    "last_updated": "2026-04-14T21:58:54.413262+00:00",
+    "last_updated": "2026-04-15T18:35:56.153588+00:00",
     "last_trade_execution_decision": {
       "timestamp": "2026-03-22T18:15:48.301405+00:00",
       "instrument": "EUR_USD",
@@ -24,15 +24,13 @@
       "adaptive_reason": null
     },
     "last_no_trade_decision": {
-      "timestamp": "2026-04-02T12:50:21.900976+00:00",
+      "timestamp": "2026-04-15T18:35:56.153297+00:00",
       "instrument": "EUR_USD",
       "granularity": "H1",
       "decision_type": "gate_failure",
-      "reason": "momentum_fail,final_score_fail",
-      "final_decision": "\u2192 NO TRADE: momentum_fail,final_score_fail",
-      "failed_gates": [
-        "XGBoost momentum (0.08)"
-      ]
+      "reason": "direction_fail",
+      "final_decision": "\u2192 NO TRADE: direction_fail",
+      "failed_gates": []
     }
   },
   "peak_nav": 0.0

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_fills": 18,
+  "total_fills": 24,
   "total_rejections": 0,
   "pairs": {
     "USD_CAD": [
@@ -10,6 +10,20 @@
         "fill_status": "filled",
         "execution_ms": 0.0,
         "timestamp": "2026-03-31T01:07:54.595337+00:00"
+      },
+      {
+        "regime": "LOW",
+        "slippage_pips": 1.0,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-04-15T23:08:48.524065+00:00"
+      },
+      {
+        "regime": "LOW",
+        "slippage_pips": 2.3,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-04-16T03:03:37.345473+00:00"
       }
     ],
     "USD_JPY": [
@@ -26,6 +40,13 @@
         "fill_status": "partial",
         "execution_ms": 0.0,
         "timestamp": "2026-03-31T01:31:43.193188+00:00"
+      },
+      {
+        "regime": "LOW",
+        "slippage_pips": 0.2,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-04-15T19:01:39.681920+00:00"
       }
     ],
     "EUR_USD": [
@@ -132,6 +153,13 @@
         "fill_status": "filled",
         "execution_ms": 0.0,
         "timestamp": "2026-04-14T12:11:59.250681+00:00"
+      },
+      {
+        "regime": "LOW",
+        "slippage_pips": 0.0,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-04-16T02:39:58.127885+00:00"
       }
     ],
     "EUR_AUD": [
@@ -142,7 +170,23 @@
         "execution_ms": 0.0,
         "timestamp": "2026-04-14T22:41:30.768560+00:00"
       }
+    ],
+    "EUR_GBP": [
+      {
+        "regime": "LOW",
+        "slippage_pips": 0.3,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-04-15T19:23:58.889754+00:00"
+      },
+      {
+        "regime": "LOW",
+        "slippage_pips": 3.8,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-04-15T21:17:07.911607+00:00"
+      }
     ]
   },
-  "last_updated": "2026-04-14T22:41:30.768587+00:00"
+  "last_updated": "2026-04-16T03:03:37.345526+00:00"
 }

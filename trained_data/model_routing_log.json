@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "total_routed": 3898,
+  "total_routed": 6434,
   "model_selection_counts": {
     "TCN": 0,
     "Ridge": 0,
     "RF": 0
   },
   "decisions": [],
-  "last_updated": "2026-04-14T22:55:51.930200+00:00"
+  "last_updated": "2026-04-16T16:08:40.516331+00:00"
 }

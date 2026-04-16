@@ -48,7 +48,6 @@ tensorboard/
 .claude/ralph/prd_aura_phase*.json
 .claude/ralph/event_log.jsonl
 .claude/ralph/memory.json
-.claude/litellm.openrouter.yaml
 .claude/ralph/reports/
 .claude/ralph/archive/
 .claude/ralph/watcher.pid

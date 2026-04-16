@@ -18,4 +18,28 @@ if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 fi
 
-exec python -m src.tui.app "$@"
+mkdir -p logs
+
+# NOTE: We no longer shell-redirect stderr with `2>> logfile`. That pattern
+# caused the TUI to hang blank under conda + tf-metal because native
+# library fd mutations during heavy imports could route Textual's output
+# onto the already-file-backed fd 2. Now Python takes ownership of the
+# stderr redirect AFTER fd 1 is pinned to /dev/tty — see src/tui/__main__.py.
+#
+# BUDDY_DEBUG=1 ./buddy  →  Python also skips its internal stderr redirect
+# so tracebacks appear on the terminal. Use when diagnosing crashes.
+export BUDDY_TUI_STDERR_LOG="${BUDDY_TUI_STDERR_LOG:-logs/buddy_tui.stderr.log}"
+
+# Rotate the stderr log if it has grown past 2 MB from prior runs.
+if [ -f "$BUDDY_TUI_STDERR_LOG" ]; then
+    LOG_BYTES=$(stat -f%z "$BUDDY_TUI_STDERR_LOG" 2>/dev/null || stat -c%s "$BUDDY_TUI_STDERR_LOG" 2>/dev/null || echo 0)
+    if [ "${LOG_BYTES:-0}" -gt 2097152 ]; then
+        mv "$BUDDY_TUI_STDERR_LOG" "${BUDDY_TUI_STDERR_LOG}.1"
+    fi
+fi
+
+if [ "${BUDDY_DEBUG:-}" = "1" ]; then
+    echo "  \033[1;33m▸ BUDDY_DEBUG=1 — stderr stays on terminal (no redirect)\033[0m"
+fi
+
+exec python -m src.tui "$@"

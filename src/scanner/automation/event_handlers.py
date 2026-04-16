@@ -1170,7 +1170,7 @@ class ClaudeReflectionHandler:
             return True
 
         try:
-            timeout = 300 if mode == "deep" else 60
+            timeout = 420 if mode == "deep" else 90
             prompt = self._build_prompt(context, mode)
             result = self._invoker(
                 prompt=prompt,

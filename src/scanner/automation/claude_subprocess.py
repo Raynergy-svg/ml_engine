@@ -134,7 +134,7 @@ PROMISE_RE = re.compile(r"<promise>REFLECTION_COMPLETE</promise>", re.IGNORECASE
 # trailing epoch to schedule a precise cooldown. Fallback patterns cover
 # "rate limit", "credit balance", and the generic "usage limit" phrasing.
 RATELIMIT_RE = re.compile(
-    r"(?:Claude\s+AI\s+)?(?:usage\s+limit\s+reached|rate\s*limit|credit\s+balance\s+is\s+too\s+low)",
+    r"(?:Claude\s+AI\s+)?(?:usage\s+limit\s+reached|rate\s*limit|credit\s+balance\s+is\s+too\s+low|hit\s+your\s+limit)",
     re.IGNORECASE,
 )
 RATELIMIT_EPOCH_RE = re.compile(r"\|\s*(\d{9,11})\b")
@@ -762,14 +762,61 @@ class RepairResult:
 
 
 def _parse_repair_result(stdout: str) -> Dict[str, Any]:
-    """Extract the <repair-result>...</repair-result> JSON block from stdout."""
+    """Extract the <repair-result>...</repair-result> block from stdout.
+
+    Claude emits this in three formats depending on mood:
+    1. Raw JSON: {"files_edited": [...], ...}
+    2. Fenced JSON: ```json {...} ```
+    3. YAML-like key:value lines (FILE:, FIX:, DIFF:)
+    """
     match = REPAIR_RESULT_RE.search(stdout or "")
     if not match:
         return {}
+    raw = match.group(1).strip()
+    # Strip code fences
+    if "```" in raw:
+        lines = [l for l in raw.splitlines() if not l.strip().startswith("```")]
+        raw = "\n".join(lines).strip()
+    # Try JSON
     try:
-        return json.loads(match.group(1).strip())
+        return json.loads(raw)
     except json.JSONDecodeError:
-        return {}
+        pass
+    # Fallback: YAML-like key:value
+    result: Dict[str, Any] = {}
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if ":" not in stripped:
+            continue
+        k, _, v = stripped.partition(":")
+        key = k.strip().lower().replace(" ", "_")
+        val = v.strip()
+        if key == "file":
+            result.setdefault("files_edited", []).append(val)
+        elif key == "files_edited":
+            try:
+                result["files_edited"] = json.loads(val)
+            except json.JSONDecodeError:
+                result["files_edited"] = [f.strip() for f in val.split(",") if f.strip()]
+        elif key == "fix":
+            result["fix_description"] = val
+        elif key == "root_cause":
+            result["root_cause"] = val
+        elif key in ("lines_changed",):
+            try:
+                result["lines_changed"] = int(val)
+            except ValueError:
+                pass
+        elif key == "confidence":
+            try:
+                result["confidence"] = float(val)
+            except ValueError:
+                pass
+        elif key == "needs_human":
+            result["needs_human"] = val.lower() in ("true", "yes", "1")
+        elif key == "regression_risk":
+            result["regression_risk"] = val.upper()
+    return result
 
 
 def _run_pytest_validation(files_edited: List[str], timeout: int = 120) -> tuple:
@@ -1027,11 +1074,42 @@ def invoke_code_repair(
                 result.needs_human = bool(repair_data.get("needs_human", False))
                 result.regression_risk = repair_data.get("regression_risk", "UNKNOWN")
 
+            # Fallback: if Claude fixed code but didn't emit the repair-result
+            # block, detect changes via mtime (only files modified after spawn).
+            # Critical: we MUST NOT use bare `git diff --name-only` here because
+            # that picks up ALL uncommitted changes, and _revert_files would wipe
+            # unrelated work (learned the hard way — reverted our own code).
+            if not result.files_edited and proc.returncode == 0:
+                try:
+                    diff_proc = subprocess.run(
+                        ["git", "diff", "--name-only"],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    if diff_proc.returncode == 0:
+                        changed = []
+                        for f in diff_proc.stdout.strip().splitlines():
+                            if not (f.startswith("src/") and f.endswith(".py")):
+                                continue
+                            try:
+                                mtime = Path(f).stat().st_mtime
+                                if mtime >= start:
+                                    changed.append(f)
+                            except OSError:
+                                continue
+                        if changed:
+                            result.files_edited = changed
+                            result.fix_description = result.fix_description or (
+                                f"Claude edited {', '.join(changed)} (detected via mtime)"
+                            )
+                            logger.info("code_repair.fallback_detection", files=changed)
+                except Exception:
+                    pass
+
             if result.needs_human or not result.files_edited:
                 # Claude decided it needs escalation or couldn't fix it
                 result.error = result.error or "needs_human or no files edited"
                 result.success = False
-            elif result.files_edited and promise_found:
+            elif result.files_edited:
                 # Claude wrote a fix — now validate with pytest
                 logger.info(
                     "code_repair.validating",

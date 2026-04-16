@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_trades": 17,
+  "total_trades": 23,
   "trades": {
     "LOW": [
       {
@@ -26,6 +26,42 @@
         "duration": 195,
         "won": false,
         "timestamp": "2026-04-08T22:41:57.214689+00:00"
+      },
+      {
+        "pnl": -11.6,
+        "duration": 20,
+        "won": false,
+        "timestamp": "2026-04-15T21:26:22.418810+00:00"
+      },
+      {
+        "pnl": -17.9,
+        "duration": 31,
+        "won": false,
+        "timestamp": "2026-04-15T22:55:39.608926+00:00"
+      },
+      {
+        "pnl": -12.7,
+        "duration": 41,
+        "won": false,
+        "timestamp": "2026-04-16T02:40:01.127398+00:00"
+      },
+      {
+        "pnl": -8.0,
+        "duration": 4,
+        "won": false,
+        "timestamp": "2026-04-16T03:00:20.332502+00:00"
+      },
+      {
+        "pnl": -11.8,
+        "duration": 205,
+        "won": false,
+        "timestamp": "2026-04-16T15:21:10.879807+00:00"
+      },
+      {
+        "pnl": -7.4,
+        "duration": 132,
+        "won": false,
+        "timestamp": "2026-04-16T15:21:10.899277+00:00"
       }
     ],
     "NORMAL": [
@@ -112,5 +148,5 @@
     ]
   },
   "allocation_log": [],
-  "last_updated": "2026-04-14T22:55:51.921834+00:00"
+  "last_updated": "2026-04-16T16:08:40.512205+00:00"
 }

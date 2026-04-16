@@ -1,9 +1,314 @@
 {
   "version": 1,
-  "total_checks": 0,
-  "corrections_applied": 0,
-  "critical_alerts": 0,
-  "active_size_reductions": {},
-  "drift_history": {},
-  "last_updated": "2026-04-04T04:57:31.691299+00:00"
+  "total_checks": 45,
+  "corrections_applied": 23,
+  "critical_alerts": 7,
+  "active_size_reductions": {
+    "AUD_USD": 0.6,
+    "EUR_AUD": 0.6,
+    "GBP_AUD": 0.6
+  },
+  "drift_history": {
+    "EUR_USD": [
+      {
+        "drift_score": 0.1333,
+        "severity": "mild",
+        "timestamp": "2026-04-15T21:11:00.701376+00:00",
+        "current_accuracy": 0.4167
+      },
+      {
+        "drift_score": 0.1297,
+        "severity": "mild",
+        "timestamp": "2026-04-16T00:57:33.980473+00:00",
+        "current_accuracy": 0.4203
+      },
+      {
+        "drift_score": 0.1235,
+        "severity": "mild",
+        "timestamp": "2026-04-16T03:21:50.899307+00:00",
+        "current_accuracy": 0.4265
+      }
+    ],
+    "GBP_USD": [
+      {
+        "drift_score": 0.0331,
+        "severity": "none",
+        "timestamp": "2026-04-15T21:11:00.708251+00:00",
+        "current_accuracy": 0.5169
+      },
+      {
+        "drift_score": 0.0035,
+        "severity": "none",
+        "timestamp": "2026-04-16T00:57:33.973950+00:00",
+        "current_accuracy": 0.5465
+      },
+      {
+        "drift_score": -0.0095,
+        "severity": "none",
+        "timestamp": "2026-04-16T03:21:50.885880+00:00",
+        "current_accuracy": 0.5595
+      }
+    ],
+    "USD_JPY": [
+      {
+        "drift_score": 0.05,
+        "severity": "none",
+        "timestamp": "2026-04-15T21:11:00.713956+00:00",
+        "current_accuracy": 0.5
+      },
+      {
+        "drift_score": 0.0217,
+        "severity": "none",
+        "timestamp": "2026-04-16T00:57:33.989492+00:00",
+        "current_accuracy": 0.5283
+      },
+      {
+        "drift_score": 0.0227,
+        "severity": "none",
+        "timestamp": "2026-04-16T03:21:50.907744+00:00",
+        "current_accuracy": 0.5273
+      }
+    ],
+    "USD_CHF": [
+      {
+        "drift_score": 0.1523,
+        "severity": "mild",
+        "timestamp": "2026-04-15T21:11:00.718596+00:00",
+        "current_accuracy": 0.3977
+      },
+      {
+        "drift_score": 0.1618,
+        "severity": "mild",
+        "timestamp": "2026-04-16T00:57:33.994079+00:00",
+        "current_accuracy": 0.3882
+      },
+      {
+        "drift_score": 0.1524,
+        "severity": "mild",
+        "timestamp": "2026-04-16T03:21:50.912780+00:00",
+        "current_accuracy": 0.3976
+      }
+    ],
+    "AUD_USD": [
+      {
+        "drift_score": 0.2619,
+        "severity": "critical",
+        "timestamp": "2026-04-15T21:11:00.723479+00:00",
+        "current_accuracy": 0.2881
+      },
+      {
+        "drift_score": 0.211,
+        "severity": "critical",
+        "timestamp": "2026-04-16T00:57:33.998937+00:00",
+        "current_accuracy": 0.339
+      },
+      {
+        "drift_score": 0.1996,
+        "severity": "mild",
+        "timestamp": "2026-04-16T03:21:50.918886+00:00",
+        "current_accuracy": 0.3504
+      }
+    ],
+    "USD_CAD": [
+      {
+        "drift_score": 0.1629,
+        "severity": "mild",
+        "timestamp": "2026-04-15T21:11:00.728472+00:00",
+        "current_accuracy": 0.3871
+      },
+      {
+        "drift_score": 0.1167,
+        "severity": "mild",
+        "timestamp": "2026-04-16T00:57:34.003916+00:00",
+        "current_accuracy": 0.4333
+      },
+      {
+        "drift_score": 0.0845,
+        "severity": "none",
+        "timestamp": "2026-04-16T03:21:50.924261+00:00",
+        "current_accuracy": 0.4655
+      }
+    ],
+    "NZD_USD": [
+      {
+        "drift_score": 0.1571,
+        "severity": "mild",
+        "timestamp": "2026-04-15T21:11:00.733204+00:00",
+        "current_accuracy": 0.3929
+      },
+      {
+        "drift_score": 0.1356,
+        "severity": "mild",
+        "timestamp": "2026-04-16T00:57:34.008497+00:00",
+        "current_accuracy": 0.4144
+      },
+      {
+        "drift_score": 0.1005,
+        "severity": "mild",
+        "timestamp": "2026-04-16T03:21:50.929924+00:00",
+        "current_accuracy": 0.4495
+      }
+    ],
+    "EUR_GBP": [
+      {
+        "drift_score": 0.1929,
+        "severity": "mild",
+        "timestamp": "2026-04-15T21:11:00.738205+00:00",
+        "current_accuracy": 0.3571
+      },
+      {
+        "drift_score": 0.1929,
+        "severity": "mild",
+        "timestamp": "2026-04-16T00:57:34.013441+00:00",
+        "current_accuracy": 0.3571
+      },
+      {
+        "drift_score": 0.1929,
+        "severity": "mild",
+        "timestamp": "2026-04-16T03:21:50.936220+00:00",
+        "current_accuracy": 0.3571
+      }
+    ],
+    "EUR_JPY": [
+      {
+        "drift_score": -0.0532,
+        "severity": "none",
+        "timestamp": "2026-04-15T21:11:00.742712+00:00",
+        "current_accuracy": 0.6032
+      },
+      {
+        "drift_score": 0.0,
+        "severity": "none",
+        "timestamp": "2026-04-16T00:57:34.017932+00:00",
+        "current_accuracy": 0.55
+      },
+      {
+        "drift_score": 0.0,
+        "severity": "none",
+        "timestamp": "2026-04-16T03:21:50.941729+00:00",
+        "current_accuracy": 0.55
+      }
+    ],
+    "GBP_JPY": [
+      {
+        "drift_score": 0.0115,
+        "severity": "none",
+        "timestamp": "2026-04-15T21:11:00.747758+00:00",
+        "current_accuracy": 0.5385
+      },
+      {
+        "drift_score": 0.0433,
+        "severity": "none",
+        "timestamp": "2026-04-16T00:57:34.022418+00:00",
+        "current_accuracy": 0.5067
+      },
+      {
+        "drift_score": 0.0435,
+        "severity": "none",
+        "timestamp": "2026-04-16T03:21:50.947378+00:00",
+        "current_accuracy": 0.5065
+      }
+    ],
+    "AUD_JPY": [
+      {
+        "drift_score": 0.0743,
+        "severity": "none",
+        "timestamp": "2026-04-15T21:11:00.752547+00:00",
+        "current_accuracy": 0.4757
+      },
+      {
+        "drift_score": 0.0892,
+        "severity": "none",
+        "timestamp": "2026-04-16T00:57:34.026976+00:00",
+        "current_accuracy": 0.4608
+      },
+      {
+        "drift_score": 0.0854,
+        "severity": "none",
+        "timestamp": "2026-04-16T03:21:50.954165+00:00",
+        "current_accuracy": 0.4646
+      }
+    ],
+    "EUR_AUD": [
+      {
+        "drift_score": 0.2762,
+        "severity": "critical",
+        "timestamp": "2026-04-15T21:11:00.757395+00:00",
+        "current_accuracy": 0.2738
+      },
+      {
+        "drift_score": 0.236,
+        "severity": "critical",
+        "timestamp": "2026-04-16T00:57:34.031669+00:00",
+        "current_accuracy": 0.314
+      },
+      {
+        "drift_score": 0.2128,
+        "severity": "critical",
+        "timestamp": "2026-04-16T03:21:50.959939+00:00",
+        "current_accuracy": 0.3372
+      }
+    ],
+    "GBP_AUD": [
+      {
+        "drift_score": 0.2593,
+        "severity": "critical",
+        "timestamp": "2026-04-15T21:11:00.762297+00:00",
+        "current_accuracy": 0.2907
+      },
+      {
+        "drift_score": 0.2129,
+        "severity": "critical",
+        "timestamp": "2026-04-16T00:57:34.036332+00:00",
+        "current_accuracy": 0.3371
+      },
+      {
+        "drift_score": 0.1904,
+        "severity": "mild",
+        "timestamp": "2026-04-16T03:21:50.965340+00:00",
+        "current_accuracy": 0.3596
+      }
+    ],
+    "EUR_CHF": [
+      {
+        "drift_score": -0.0032,
+        "severity": "none",
+        "timestamp": "2026-04-15T21:11:00.767173+00:00",
+        "current_accuracy": 0.5532
+      },
+      {
+        "drift_score": 0.0167,
+        "severity": "none",
+        "timestamp": "2026-04-16T00:57:34.041060+00:00",
+        "current_accuracy": 0.5333
+      },
+      {
+        "drift_score": 0.0045,
+        "severity": "none",
+        "timestamp": "2026-04-16T03:21:50.971371+00:00",
+        "current_accuracy": 0.5455
+      }
+    ],
+    "GBP_CHF": [
+      {
+        "drift_score": 0.0348,
+        "severity": "none",
+        "timestamp": "2026-04-15T21:11:00.771668+00:00",
+        "current_accuracy": 0.5152
+      },
+      {
+        "drift_score": 0.0016,
+        "severity": "none",
+        "timestamp": "2026-04-16T00:57:34.046009+00:00",
+        "current_accuracy": 0.5484
+      },
+      {
+        "drift_score": 0.0016,
+        "severity": "none",
+        "timestamp": "2026-04-16T03:21:50.976251+00:00",
+        "current_accuracy": 0.5484
+      }
+    ]
+  },
+  "last_updated": "2026-04-16T03:21:50.983228+00:00"
 }

@@ -1206,7 +1206,37 @@
       "final_score": null
     },
     "ridge_features": null,
-    "outcome": null,
+    "outcome": {
+      "realized_pl": -107.1688,
+      "pnl_pips": -15.5,
+      "trade_won": false,
+      "close_price": 112.996,
+      "close_time": "2026-04-13T23:51:19.772609364Z",
+      "exit_price": 112.996,
+      "exit_time": "2026-04-13T23:51:19.772609364Z",
+      "duration_minutes": 83.4,
+      "exit_reason": "sl_hit",
+      "mae_pips": 15.5,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 1,
+      "sl_pips": 15.5,
+      "tp_pips": 19.5,
+      "rr_ratio": 1.26,
+      "risk_reward": 1.26,
+      "regime_at_entry": "NORMAL",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -108.1688,
+      "regime_reward_details": {
+        "raw_pnl_reward": -107.1688,
+        "shaped_reward": -108.1688,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
     "fill_price": 113.151,
     "expected_price": 113.151,
     "slippage_pips": 0.0
@@ -1325,7 +1355,37 @@
       "final_score": null
     },
     "ridge_features": null,
-    "outcome": null,
+    "outcome": {
+      "realized_pl": -365.8951,
+      "pnl_pips": -11.3,
+      "trade_won": false,
+      "close_price": 0.77973,
+      "close_time": "2026-04-14T12:26:39.900044035Z",
+      "exit_price": 0.77973,
+      "exit_time": "2026-04-14T12:26:39.900044035Z",
+      "duration_minutes": 14.7,
+      "exit_reason": "sl_hit",
+      "mae_pips": 11.3,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 1,
+      "sl_pips": 11.2,
+      "tp_pips": 13.8,
+      "rr_ratio": 1.23,
+      "risk_reward": 1.23,
+      "regime_at_entry": "NORMAL",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -366.8951,
+      "regime_reward_details": {
+        "raw_pnl_reward": -365.8951,
+        "shaped_reward": -366.8951,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
     "fill_price": 0.78086,
     "expected_price": 0.78086,
     "slippage_pips": 0.0
@@ -1444,9 +1504,1259 @@
       "final_score": null
     },
     "ridge_features": null,
-    "outcome": null,
+    "outcome": {
+      "realized_pl": -96.571,
+      "pnl_pips": -16.5,
+      "trade_won": false,
+      "close_price": 187.484,
+      "close_time": "2026-04-14T15:00:02.492657245Z",
+      "exit_price": 187.484,
+      "exit_time": "2026-04-14T15:00:02.492657245Z",
+      "duration_minutes": 167.8,
+      "exit_reason": "sl_hit",
+      "mae_pips": 16.5,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 3,
+      "sl_pips": 16.5,
+      "tp_pips": 24.0,
+      "rr_ratio": 1.45,
+      "risk_reward": 1.45,
+      "regime_at_entry": "NORMAL",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -97.571,
+      "regime_reward_details": {
+        "raw_pnl_reward": -96.571,
+        "shaped_reward": -97.571,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
     "fill_price": 187.319,
     "expected_price": 187.319,
+    "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1220",
+    "episode_id": "28fb35f6-4da2-46b6-af94-fdefb6a26ded",
+    "timestamp": "2026-04-14T22:41:30.764895+00:00",
+    "pair": "EUR_AUD",
+    "direction": "LONG",
+    "confidence": 0.6409715005274355,
+    "entry_price": 1.65504,
+    "sl_price": 1.65308315659755,
+    "tp_price": 1.6589521085061254,
+    "sl_pips": 19.6,
+    "tp_pips": 39.1,
+    "rr_ratio": 1.99,
+    "risk_reward": 1.99,
+    "lots": 2.5,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.7643,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.48,
+          "passed": false,
+          "weight": 0.30514258680428946,
+          "reason": "trend neutral (ADX 1)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.5870253164556919,
+          "passed": true,
+          "weight": 0.34322872944849747,
+          "reason": "RSI neutral (RSI 43.0)",
+          "reason_code": "mean_reversion_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 0.9757443997357507,
+          "passed": true,
+          "weight": 0.5147795149190981,
+          "reason": "risk acceptable (0.72% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.36304347826086103,
+          "passed": true,
+          "weight": 0.49299194797601087,
+          "reason": "uncertainty contained (0.27)",
+          "reason_code": "uncertainty_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.27391304347827794,
+            "confidence_variance": 0.3282608695652317,
+            "model_disagreement": 0.0,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        },
+        {
+          "name": "execution_quality",
+          "score": 0.7176667182748018,
+          "passed": true,
+          "weight": 0.333007694971787,
+          "reason": "execution quality solid (liq 0.57)",
+          "reason_code": "execution_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "execution_quality_score": 0.7176667182748018,
+            "execution_quality_passed": true,
+            "spread_pips": 0.6707373609800631,
+            "est_slippage_pips": 0.6931361602671153,
+            "liquidity_score": 0.5652173913043479
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "LOW",
+      "atr_pips": 16.768434024501577,
+      "uncertainty_score": 0.27391304347827794,
+      "model_disagreement": 0.0,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 0.8,
+        "tp_mult": 1.2
+      }
+    },
+    "spread_pips": 4.8,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.3556,
+      "base_score": 0.3757,
+      "quote_score": -0.3355,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {},
+      "core_score": 0.5543478260869537,
+      "final_score": 0.5543478260869537
+    },
+    "ridge_features": null,
+    "outcome": {
+      "realized_pl": -354.5596,
+      "pnl_pips": -19.7,
+      "trade_won": false,
+      "close_price": 1.65307,
+      "close_time": "2026-04-15T02:46:03.058288459Z",
+      "exit_price": 1.65307,
+      "exit_time": "2026-04-15T02:46:03.058288459Z",
+      "duration_minutes": 244.5,
+      "exit_reason": "sl_hit",
+      "mae_pips": 19.7,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 4,
+      "sl_pips": 19.6,
+      "tp_pips": 39.1,
+      "rr_ratio": 1.99,
+      "risk_reward": 1.99,
+      "regime_at_entry": "LOW",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -355.5596,
+      "regime_reward_details": {
+        "raw_pnl_reward": -354.5596,
+        "shaped_reward": -355.5596,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
+    "fill_price": 1.65504,
+    "expected_price": 1.65504,
+    "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1232",
+    "episode_id": "4797c2b4-ea86-49ea-bfdd-26a12d097709",
+    "timestamp": "2026-04-15T19:01:39.676699+00:00",
+    "pair": "USD_JPY",
+    "direction": "LONG",
+    "confidence": 0.6689009119742662,
+    "entry_price": 159.04,
+    "sl_price": 158.86234283192238,
+    "tp_price": 159.49114292019408,
+    "sl_pips": 17.8,
+    "tp_pips": 45.1,
+    "rr_ratio": 2.53,
+    "risk_reward": 2.53,
+    "lots": 0.84,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.8286,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.72,
+          "passed": true,
+          "weight": 0.33051033638130556,
+          "reason": "trend neutral (ADX 56)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.549804237678486,
+          "passed": true,
+          "weight": 0.3988806449280996,
+          "reason": "RSI neutral (RSI 46.0)",
+          "reason_code": "mean_reversion_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 1.0,
+          "passed": true,
+          "weight": 0.5094804910066655,
+          "reason": "risk acceptable (0.16% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.2,
+          "passed": true,
+          "weight": 0.41797858087990736,
+          "reason": "uncertainty high (0.60) [soft penalty]",
+          "reason_code": "uncertainty_soft_penalty",
+          "confidence_delta": -0.10999999999999999,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.6,
+            "confidence_variance": 0.6486652321472591,
+            "model_disagreement": 0.0,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        },
+        {
+          "name": "execution_quality",
+          "score": 0.7113667302962083,
+          "passed": true,
+          "weight": 0.37739453727058603,
+          "reason": "execution quality solid (liq 0.57)",
+          "reason_code": "execution_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "execution_quality_score": 0.7113667302962083,
+            "execution_quality_passed": true,
+            "spread_pips": 0.7186286723105464,
+            "est_slippage_pips": 0.7146872503658328,
+            "liquidity_score": 0.5652173913043479
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "LOW",
+      "atr_pips": 17.96571680776366,
+      "uncertainty_score": 0.6,
+      "model_disagreement": 0.0,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 0.8,
+        "tp_mult": 1.2
+      }
+    },
+    "spread_pips": 1.9,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.1595,
+      "base_score": 0.1771,
+      "quote_score": -0.142,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {
+        "direction_score": 0.3500571012496949,
+        "confidence_score": 0.5638819771496881,
+        "momentum_score": 1.0,
+        "risk_score": 0.5673338178477911,
+        "used_learned_weights": false,
+        "ensemble_weights": {
+          "direction": 0.35,
+          "confidence": 0.3,
+          "momentum": 0.2,
+          "risk": 0.15
+        }
+      },
+      "core_score": 0.5767846512594684,
+      "final_score": 0.5767846512594684
+    },
+    "ridge_features": null,
+    "outcome": {
+      "realized_pl": -95.5652,
+      "pnl_pips": -17.9,
+      "trade_won": false,
+      "close_price": 158.861,
+      "close_time": "2026-04-15T21:37:17.465167825Z",
+      "exit_price": 158.861,
+      "exit_time": "2026-04-15T21:37:17.465167825Z",
+      "duration_minutes": 155.6,
+      "exit_reason": "sl_hit",
+      "mae_pips": 17.9,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 3,
+      "sl_pips": 17.8,
+      "tp_pips": 45.1,
+      "rr_ratio": 2.53,
+      "risk_reward": 2.53,
+      "regime_at_entry": "LOW",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -96.5652,
+      "regime_reward_details": {
+        "raw_pnl_reward": -95.5652,
+        "shaped_reward": -96.5652,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
+    "fill_price": 159.04,
+    "expected_price": 159.04,
+    "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1236",
+    "episode_id": "398ef749-2976-4bd1-8323-252053a5665d",
+    "timestamp": "2026-04-15T19:23:58.887170+00:00",
+    "pair": "EUR_GBP",
+    "direction": "SHORT",
+    "confidence": 0.6546104873157617,
+    "entry_price": 0.86951,
+    "sl_price": 0.87034,
+    "tp_price": 0.86754,
+    "sl_pips": 8.3,
+    "tp_pips": 19.7,
+    "rr_ratio": 2.37,
+    "risk_reward": 2.37,
+    "lots": 1.9,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.8286,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.72,
+          "passed": true,
+          "weight": 0.36683029074417306,
+          "reason": "trend neutral (ADX 64)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.6585820895522151,
+          "passed": true,
+          "weight": 0.41624901881195814,
+          "reason": "mean reversion supports short (RSI 62.7)",
+          "reason_code": "mean_reversion_support",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 1.0,
+          "passed": true,
+          "weight": 0.48290969712690307,
+          "reason": "risk acceptable (0.12% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.09999999999999998,
+          "passed": true,
+          "weight": 0.42466760732967995,
+          "reason": "model disagreement elevated (0.50 > 0.50) [soft penalty]",
+          "reason_code": "disagreement_soft_penalty",
+          "confidence_delta": -0.05,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.8,
+            "confidence_variance": 0.7176730316811597,
+            "model_disagreement": 0.5,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        },
+        {
+          "name": "execution_quality",
+          "score": 0.7807110613150487,
+          "passed": true,
+          "weight": 0.3484385496926962,
+          "reason": "execution quality solid (liq 0.57)",
+          "reason_code": "execution_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "execution_quality_score": 0.7807110613150487,
+            "execution_quality_passed": true,
+            "spread_pips": 0.19148624646596804,
+            "est_slippage_pips": 0.47747315873577256,
+            "liquidity_score": 0.5652173913043479
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "LOW",
+      "atr_pips": 4.787156161649201,
+      "uncertainty_score": 0.8,
+      "model_disagreement": 0.5,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 0.8,
+        "tp_mult": 1.2
+      }
+    },
+    "spread_pips": 1.2,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.0978,
+      "base_score": -0.3356,
+      "quote_score": -0.14,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {
+        "direction_score": 0.20586942434310918,
+        "confidence_score": 0.6350491813139716,
+        "momentum_score": 1.0,
+        "risk_score": 0.6134583230180928,
+        "used_learned_weights": false,
+        "ensemble_weights": {
+          "direction": 0.35,
+          "confidence": 0.3,
+          "momentum": 0.2,
+          "risk": 0.15
+        }
+      },
+      "core_score": 0.5545878013669937,
+      "final_score": 0.5545878013669937
+    },
+    "ridge_features": null,
+    "outcome": {
+      "realized_pl": -301.8666,
+      "pnl_pips": -11.6,
+      "trade_won": false,
+      "close_price": 0.87067,
+      "close_time": "2026-04-15T21:04:55.052696780Z",
+      "exit_price": 0.87067,
+      "exit_time": "2026-04-15T21:04:55.052696780Z",
+      "duration_minutes": 100.9,
+      "exit_reason": "manual_close",
+      "mae_pips": 11.6,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 2,
+      "sl_pips": 8.3,
+      "tp_pips": 19.7,
+      "rr_ratio": 2.37,
+      "risk_reward": 2.37,
+      "regime_at_entry": "LOW",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -302.8666,
+      "regime_reward_details": {
+        "raw_pnl_reward": -301.8666,
+        "shaped_reward": -302.8666,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
+    "fill_price": 0.86951,
+    "expected_price": 0.86951,
+    "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1243",
+    "episode_id": "76b86093-b705-453d-8bfd-e6a8e55b62dc",
+    "timestamp": "2026-04-15T21:17:07.907298+00:00",
+    "pair": "EUR_GBP",
+    "direction": "SHORT",
+    "confidence": 0.6770761756620687,
+    "entry_price": 0.86956,
+    "sl_price": 0.8707400000000001,
+    "tp_price": 0.86794,
+    "sl_pips": 11.8,
+    "tp_pips": 16.2,
+    "rr_ratio": 1.37,
+    "risk_reward": 1.37,
+    "lots": 1.34,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.8286,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.72,
+          "passed": true,
+          "weight": 0.32702015208145874,
+          "reason": "trend neutral (ADX 64)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.75,
+          "passed": true,
+          "weight": 0.3824751287313381,
+          "reason": "mean reversion supports short (RSI 70.4)",
+          "reason_code": "mean_reversion_support",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 1.0,
+          "passed": true,
+          "weight": 0.5739265200403039,
+          "reason": "risk acceptable (0.13% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.09999999999999998,
+          "passed": true,
+          "weight": 0.44331065439870565,
+          "reason": "model disagreement elevated (0.50 > 0.50) [soft penalty]",
+          "reason_code": "disagreement_soft_penalty",
+          "confidence_delta": -0.05,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.8,
+            "confidence_variance": 0.6803716960251912,
+            "model_disagreement": 0.5,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        },
+        {
+          "name": "execution_quality",
+          "score": 0.7807763929643416,
+          "passed": true,
+          "weight": 0.3982280526697577,
+          "reason": "execution quality solid (liq 0.57)",
+          "reason_code": "execution_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "execution_quality_score": 0.7807763929643416,
+            "execution_quality_passed": true,
+            "spread_pips": 0.19098960768401407,
+            "est_slippage_pips": 0.4772496712838933,
+            "liquidity_score": 0.5652173913043479
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "LOW",
+      "atr_pips": 4.774740192100352,
+      "uncertainty_score": 0.8,
+      "model_disagreement": 0.5,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 0.8,
+        "tp_mult": 1.2
+      }
+    },
+    "spread_pips": 5.6,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.1394,
+      "base_score": -0.3885,
+      "quote_score": -0.1098,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {
+        "direction_score": 0.21831060647964473,
+        "confidence_score": 0.6447224875225542,
+        "momentum_score": 1.0,
+        "risk_score": 0.546357260222927,
+        "used_learned_weights": false,
+        "ensemble_weights": {
+          "direction": 0.35,
+          "confidence": 0.3,
+          "momentum": 0.2,
+          "risk": 0.15
+        }
+      },
+      "core_score": 0.551779047558081,
+      "final_score": 0.551779047558081
+    },
+    "ridge_features": null,
+    "outcome": {
+      "realized_pl": -216.0182,
+      "pnl_pips": -11.8,
+      "trade_won": false,
+      "close_price": 0.87074,
+      "close_time": "2026-04-16T14:22:10.529471256Z",
+      "exit_price": 0.87074,
+      "exit_time": "2026-04-16T14:22:10.529471256Z",
+      "duration_minutes": 1025.0,
+      "exit_reason": "sl_hit",
+      "mae_pips": 11.8,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 17,
+      "sl_pips": 11.8,
+      "tp_pips": 16.2,
+      "rr_ratio": 1.37,
+      "risk_reward": 1.37,
+      "regime_at_entry": "LOW",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -217.0182,
+      "regime_reward_details": {
+        "raw_pnl_reward": -216.0182,
+        "shaped_reward": -217.0182,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
+    "fill_price": 0.86956,
+    "expected_price": 0.86956,
+    "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1249",
+    "episode_id": "510399cb-d4fe-4b2d-9843-6a58554ab90a",
+    "timestamp": "2026-04-15T23:08:48.518424+00:00",
+    "pair": "USD_CAD",
+    "direction": "LONG",
+    "confidence": 0.6549070594606463,
+    "entry_price": 1.37353,
+    "sl_price": 1.3722663413693823,
+    "tp_price": 1.3763391465765442,
+    "sl_pips": 12.6,
+    "tp_pips": 28.1,
+    "rr_ratio": 2.23,
+    "risk_reward": 2.23,
+    "lots": 2.5,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.8286,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.72,
+          "passed": true,
+          "weight": 0.29992087751145563,
+          "reason": "trend neutral (ADX 54)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.6127740303541216,
+          "passed": true,
+          "weight": 0.338478285918477,
+          "reason": "mean reversion supports long (RSI 41.0)",
+          "reason_code": "mean_reversion_support",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 1.0,
+          "passed": true,
+          "weight": 0.4145887904037948,
+          "reason": "risk acceptable (0.16% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 1.0,
+          "passed": true,
+          "weight": 0.5607940473621968,
+          "reason": "uncertainty contained (0.00)",
+          "reason_code": "uncertainty_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.0,
+            "confidence_variance": 0.05678186231754756,
+            "model_disagreement": 0.0,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        },
+        {
+          "name": "execution_quality",
+          "score": 0.7446700122212244,
+          "passed": true,
+          "weight": 0.38679393803131384,
+          "reason": "execution quality solid (liq 0.57)",
+          "reason_code": "execution_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "execution_quality_score": 0.7446700122212244,
+            "execution_quality_passed": true,
+            "spread_pips": 0.46546345224707664,
+            "est_slippage_pips": 0.6007629013372714,
+            "liquidity_score": 0.5652173913043479
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "LOW",
+      "atr_pips": 11.636586306176916,
+      "uncertainty_score": 0.0,
+      "model_disagreement": 0.0,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 0.8,
+        "tp_mult": 1.2
+      }
+    },
+    "spread_pips": 2.0,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.0988,
+      "base_score": 0.1977,
+      "quote_score": 0.0,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {
+        "direction_score": 0.5259576469659806,
+        "confidence_score": 0.5399924754527428,
+        "momentum_score": 0.7,
+        "risk_score": 0.6834222924260605,
+        "used_learned_weights": false,
+        "ensemble_weights": {
+          "direction": 0.35,
+          "confidence": 0.3,
+          "momentum": 0.2,
+          "risk": 0.15
+        }
+      },
+      "core_score": 0.5885962629378252,
+      "final_score": 0.5297366366440427
+    },
+    "ridge_features": null,
+    "outcome": {
+      "realized_pl": -233.6651,
+      "pnl_pips": -12.7,
+      "trade_won": false,
+      "close_price": 1.37226,
+      "close_time": "2026-04-16T02:35:27.612125000Z",
+      "exit_price": 1.37226,
+      "exit_time": "2026-04-16T02:35:27.612125000Z",
+      "duration_minutes": 206.7,
+      "exit_reason": "sl_hit",
+      "mae_pips": 12.7,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 3,
+      "sl_pips": 12.6,
+      "tp_pips": 28.1,
+      "rr_ratio": 2.23,
+      "risk_reward": 2.23,
+      "regime_at_entry": "LOW",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -234.6651,
+      "regime_reward_details": {
+        "raw_pnl_reward": -233.6651,
+        "shaped_reward": -234.6651,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
+    "fill_price": 1.37353,
+    "expected_price": 1.37353,
+    "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1255",
+    "episode_id": "3f88dd30-a636-459a-89b6-f42318acd6f0",
+    "timestamp": "2026-04-16T02:39:58.122668+00:00",
+    "pair": "USD_CHF",
+    "direction": "LONG",
+    "confidence": 0.6675174023258115,
+    "entry_price": 0.78107,
+    "sl_price": 0.78027,
+    "tp_price": 0.78307,
+    "sl_pips": 8.0,
+    "tp_pips": 20.0,
+    "rr_ratio": 2.5,
+    "risk_reward": 2.5,
+    "lots": 2.5,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.7964,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.72,
+          "passed": true,
+          "weight": 0.3384960000000001,
+          "reason": "trend neutral (ADX 54)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.6184402332361449,
+          "passed": true,
+          "weight": 0.3853230000000001,
+          "reason": "mean reversion supports long (RSI 40.5)",
+          "reason_code": "mean_reversion_support",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 1.0,
+          "passed": true,
+          "weight": 0.5021325000000001,
+          "reason": "risk acceptable (0.22% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.8,
+          "passed": true,
+          "weight": 0.4977680000000001,
+          "reason": "model disagreement elevated (0.50 > 0.50) [soft penalty]",
+          "reason_code": "disagreement_soft_penalty",
+          "confidence_delta": -0.05,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.2,
+            "confidence_variance": 0.14114326634157792,
+            "model_disagreement": 0.5,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        },
+        {
+          "name": "execution_quality",
+          "score": 0.7660263487995258,
+          "passed": true,
+          "weight": 0.3918016666666667,
+          "reason": "execution quality solid (liq 0.57)",
+          "reason_code": "execution_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "execution_quality_score": 0.7660263487995258,
+            "execution_quality_passed": true,
+            "spread_pips": 0.3031166402491286,
+            "est_slippage_pips": 0.5277068359381948,
+            "liquidity_score": 0.5652173913043479
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "LOW",
+      "atr_pips": 7.577916006228215,
+      "uncertainty_score": 0.2,
+      "model_disagreement": 0.5,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 0.8,
+        "tp_mult": 1.2
+      }
+    },
+    "spread_pips": 1.6,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.1332,
+      "base_score": 0.3,
+      "quote_score": 0.0335,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {
+        "direction_score": 0.5215170621871947,
+        "confidence_score": 0.5368010311795629,
+        "momentum_score": 0.7,
+        "risk_score": 0.879574034582,
+        "used_learned_weights": false,
+        "ensemble_weights": {
+          "direction": 0.35,
+          "confidence": 0.3,
+          "momentum": 0.2,
+          "risk": 0.15
+        }
+      },
+      "core_score": 0.6155073863066871,
+      "final_score": 0.5539566476760184
+    },
+    "ridge_features": null,
+    "outcome": {
+      "realized_pl": -258.8599,
+      "pnl_pips": -8.0,
+      "trade_won": false,
+      "close_price": 0.78027,
+      "close_time": "2026-04-16T03:00:14.749581093Z",
+      "exit_price": 0.78027,
+      "exit_time": "2026-04-16T03:00:14.749581093Z",
+      "duration_minutes": 20.3,
+      "exit_reason": "sl_hit",
+      "mae_pips": 8.0,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 1,
+      "sl_pips": 8.0,
+      "tp_pips": 20.0,
+      "rr_ratio": 2.5,
+      "risk_reward": 2.5,
+      "regime_at_entry": "LOW",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -259.8599,
+      "regime_reward_details": {
+        "raw_pnl_reward": -258.8599,
+        "shaped_reward": -259.8599,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
+    "fill_price": 0.78107,
+    "expected_price": 0.78107,
+    "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1261",
+    "episode_id": "c691b416-f77f-4840-9f98-ec8e94d697b2",
+    "timestamp": "2026-04-16T03:03:37.339888+00:00",
+    "pair": "USD_CAD",
+    "direction": "LONG",
+    "confidence": 0.6407486926377108,
+    "entry_price": 1.37174,
+    "sl_price": 1.3710131661450737,
+    "tp_price": 1.374362084637315,
+    "sl_pips": 7.3,
+    "tp_pips": 26.2,
+    "rr_ratio": 3.59,
+    "risk_reward": 3.59,
+    "lots": 2.5,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.8286,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.72,
+          "passed": true,
+          "weight": 0.32712185496621876,
+          "reason": "trend neutral (ADX 54)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.5709024720623117,
+          "passed": true,
+          "weight": 0.3736099152871808,
+          "reason": "RSI neutral (RSI 44.3)",
+          "reason_code": "mean_reversion_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 1.0,
+          "passed": true,
+          "weight": 0.48235658990426455,
+          "reason": "risk acceptable (0.17% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.8,
+          "passed": true,
+          "weight": 0.45200078740259547,
+          "reason": "model disagreement elevated (0.50 > 0.50) [soft penalty]",
+          "reason_code": "disagreement_soft_penalty",
+          "confidence_delta": -0.05,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.2,
+            "confidence_variance": 0.06881129873607505,
+            "model_disagreement": 0.5,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        },
+        {
+          "name": "execution_quality",
+          "score": 0.7555529349421402,
+          "passed": true,
+          "weight": 0.38935775218258717,
+          "reason": "execution quality solid (liq 0.57)",
+          "reason_code": "execution_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "execution_quality_score": 0.7555529349421402,
+            "execution_quality_passed": true,
+            "spread_pips": 0.3827335419704314,
+            "est_slippage_pips": 0.563534441712781,
+            "liquidity_score": 0.5652173913043479
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "LOW",
+      "atr_pips": 9.568338549260785,
+      "uncertainty_score": 0.2,
+      "model_disagreement": 0.5,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 0.8,
+        "tp_mult": 1.2
+      }
+    },
+    "spread_pips": 1.6,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.1406,
+      "base_score": 0.2812,
+      "quote_score": 0.0,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {
+        "direction_score": 0.5006496071815492,
+        "confidence_score": 0.5405207099505919,
+        "momentum_score": 0.7,
+        "risk_score": 0.9630082323970309,
+        "used_learned_weights": false,
+        "ensemble_weights": {
+          "direction": 0.35,
+          "confidence": 0.3,
+          "momentum": 0.2,
+          "risk": 0.15
+        }
+      },
+      "core_score": 0.6218348103582746,
+      "final_score": 0.5204757362698759
+    },
+    "ridge_features": null,
+    "outcome": {
+      "realized_pl": -136.2784,
+      "pnl_pips": -7.4,
+      "trade_won": false,
+      "close_price": 1.371,
+      "close_time": "2026-04-16T14:05:58.109694358Z",
+      "exit_price": 1.371,
+      "exit_time": "2026-04-16T14:05:58.109694358Z",
+      "duration_minutes": 662.3,
+      "exit_reason": "sl_hit",
+      "mae_pips": 7.4,
+      "mfe_pips": 0.0,
+      "bars_in_trade": 11,
+      "sl_pips": 7.3,
+      "tp_pips": 26.2,
+      "rr_ratio": 3.59,
+      "risk_reward": 3.59,
+      "regime_at_entry": "LOW",
+      "regime_at_exit": "NORMAL",
+      "shaped_reward": -137.2784,
+      "regime_reward_details": {
+        "raw_pnl_reward": -136.2784,
+        "shaped_reward": -137.2784,
+        "regime": "normal",
+        "regime_bonus": 0.0,
+        "drawdown_penalty": -1.0,
+        "duration_component": 0.0,
+        "pnl_reward_correlation": 1.0,
+        "is_reward_hack_alert": false
+      }
+    },
+    "fill_price": 1.37174,
+    "expected_price": 1.37174,
     "slippage_pips": 0.0
   }
 ]

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_records": 17,
+  "total_records": 23,
   "cost_data": {
     "LOW": {
       "ensemble": [
@@ -31,6 +31,48 @@
           "fill_time": 0.0,
           "fill_rate": 1.0,
           "timestamp": "2026-04-08T22:41:57.214800+00:00"
+        },
+        {
+          "pair": "EUR_GBP",
+          "slippage": 0.0,
+          "fill_time": 0.0,
+          "fill_rate": 1.0,
+          "timestamp": "2026-04-15T21:26:22.418856+00:00"
+        },
+        {
+          "pair": "USD_JPY",
+          "slippage": 0.0,
+          "fill_time": 0.0,
+          "fill_rate": 1.0,
+          "timestamp": "2026-04-15T22:55:39.609038+00:00"
+        },
+        {
+          "pair": "USD_CAD",
+          "slippage": 0.0,
+          "fill_time": 0.0,
+          "fill_rate": 1.0,
+          "timestamp": "2026-04-16T02:40:01.127457+00:00"
+        },
+        {
+          "pair": "USD_CHF",
+          "slippage": 0.0,
+          "fill_time": 0.0,
+          "fill_rate": 1.0,
+          "timestamp": "2026-04-16T03:00:20.332628+00:00"
+        },
+        {
+          "pair": "EUR_GBP",
+          "slippage": 0.0,
+          "fill_time": 0.0,
+          "fill_rate": 1.0,
+          "timestamp": "2026-04-16T15:21:10.879859+00:00"
+        },
+        {
+          "pair": "USD_CAD",
+          "slippage": 0.0,
+          "fill_time": 0.0,
+          "fill_rate": 1.0,
+          "timestamp": "2026-04-16T15:21:10.899321+00:00"
         }
       ]
     },
@@ -135,5 +177,5 @@
     }
   },
   "recommendations": [],
-  "last_updated": "2026-04-14T22:50:40.227520+00:00"
+  "last_updated": "2026-04-16T16:03:12.451949+00:00"
 }

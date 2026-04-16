@@ -1,0 +1,13 @@
+### Reflection Cycle #2: 3 New Losses (1232, 1249, 1255), Config Consumer Still Dead — 2026-04-16
+
+- [2026-04-16] **ROOT_CAUSE/config_consumer_still_dead**: 9 pending config adjustments with total_adjustments=0. Cycle 1 proposals (max_disagreement=0.25, max_uncertainty=0.40, WVS=0.85) were ESCALATED to cycle 2 but NEVER applied. The ConfigAdjuster._load_state() bug (missing `self._pending = data.get("pending", {})`) remains unfixed. Every defensive adjustment proposed by self-heal is dead-lettered. **This is the #1 priority fix — without it, no self-heal action can take effect.**
+
+- [2026-04-16] **PATTERN/all_3_losses_LOW_regime_sl_mult_0.8**: Trades 1232 (USD_JPY, -17.9 pips), 1249 (USD_CAD, -12.7 pips), 1255 (USD_CHF, -8.0 pips) — all LOW regime, all sl_mult=0.8, all sl_hit. LOW regime config `regime_atr_multipliers.LOW.sl_mult=0.8` TIGHTENS SL in the exact conditions where wider SL is needed. Ranging markets have higher noise-to-signal — 0.8x ATR is guaranteed stop-hunt bait. Trading rule already mandates >=1.2 (promoted 2026-04-15) but config hasn't been updated because config consumer is dead.
+
+- [2026-04-16] **PATTERN/risk_sentinel_blind_to_staleness**: All 3 losses: risk_sentinel scored 1.0 (maximum confidence). Models are 28 days stale. Risk sentinel has no model_freshness input — it cannot detect that the signals it's evaluating are from an ensemble trained on March data applied to April markets. Propose: add model_age_days to risk_sentinel input vector.
+
+- [2026-04-16] **PATTERN/mean_reversion_false_support_LOW_regime**: Trades 1249 + 1255: mean_reversion supported LONG based on RSI 40-41. These RSI readings triggered "mean reversion supports long" but in a LOW/ranging market, RSI mean-reversion signals lack directional edge. The agent gave false confidence to entries that immediately reversed. Weight reduction proposed (0.9 → 0.65 for LOW regime).
+
+- [2026-04-16] **OBSERVATION/trend_neutral_ADX_54_56_not_actionable**: All 3 trades: trend agent scored 0.72, reported "trend neutral (ADX 54-56)". ADX >25 indicates strong trend. ADX 54-56 is a VERY strong trend. "Neutral" classification at ADX=54 is suspicious — trend agent may be reporting ADX strength without evaluating directional alignment with the proposed trade direction. Needs investigation.
+
+- [2026-04-16] **IMMEDIATE_ACTION/retrain_modular_ensemble**: modular_ensemble age=28.5 days. This model group produces the directional predictions that all 14+ trades relied on. MFE=0 on all recent trades = the model is systematically wrong. Retraining is non-negotiable. joint_gates (0d) and agent_weights (0d) are fresh — only modular_ensemble is stale.

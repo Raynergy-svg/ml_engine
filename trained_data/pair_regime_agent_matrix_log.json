@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_votes": 20,
+  "total_votes": 50,
   "matrix": {
     "AUD_JPY": {
       "NORMAL": {
@@ -126,6 +126,43 @@
             "timestamp": "2026-04-09T18:16:26.782555+00:00"
           }
         ]
+      },
+      "LOW": {
+        "trend": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T03:00:20.329238+00:00"
+          }
+        ],
+        "mean_reversion": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T03:00:20.329579+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T03:00:20.329594+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T03:00:20.329604+00:00"
+          }
+        ],
+        "execution_quality": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T03:00:20.329610+00:00"
+          }
+        ]
       }
     },
     "EUR_AUD": {
@@ -159,7 +196,174 @@
           }
         ]
       }
+    },
+    "EUR_GBP": {
+      "LOW": {
+        "trend": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-15T21:26:22.416213+00:00"
+          },
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876568+00:00"
+          }
+        ],
+        "mean_reversion": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-15T21:26:22.416279+00:00"
+          },
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876585+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-15T21:26:22.416289+00:00"
+          },
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876591+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-15T21:26:22.416297+00:00"
+          },
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876597+00:00"
+          }
+        ],
+        "execution_quality": [
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-15T21:26:22.416304+00:00"
+          },
+          {
+            "vote": "SHORT",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876602+00:00"
+          }
+        ]
+      }
+    },
+    "USD_JPY": {
+      "LOW": {
+        "trend": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-15T22:55:39.604248+00:00"
+          }
+        ],
+        "mean_reversion": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-15T22:55:39.604309+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-15T22:55:39.604323+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-15T22:55:39.604335+00:00"
+          }
+        ],
+        "execution_quality": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-15T22:55:39.604343+00:00"
+          }
+        ]
+      }
+    },
+    "USD_CAD": {
+      "LOW": {
+        "trend": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T02:40:01.124477+00:00"
+          },
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876610+00:00"
+          }
+        ],
+        "mean_reversion": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T02:40:01.124524+00:00"
+          },
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876620+00:00"
+          }
+        ],
+        "risk_sentinel": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T02:40:01.124532+00:00"
+          },
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876629+00:00"
+          }
+        ],
+        "uncertainty": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T02:40:01.124538+00:00"
+          },
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876637+00:00"
+          }
+        ],
+        "execution_quality": [
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T02:40:01.124543+00:00"
+          },
+          {
+            "vote": "LONG",
+            "won": false,
+            "timestamp": "2026-04-16T15:21:10.876642+00:00"
+          }
+        ]
+      }
     }
   },
-  "last_updated": "2026-04-14T22:55:51.928680+00:00"
+  "last_updated": "2026-04-16T16:08:40.514671+00:00"
 }

@@ -119,6 +119,8 @@ class EmbeddedScanner:
         self._config = None   # ScannerConfig
         self._online_rl = None
         self._policy_engine = None
+        self._config_adjuster = None
+        self._freshness_check_interval = 10  # every N cycles
 
         # State
         self._scan_count = 0
@@ -188,6 +190,13 @@ class EmbeddedScanner:
 
             # ── Automation modules (cherry-picked from ContinuousScanner) ──
             self._init_automation_modules()
+
+            # Force gate evaluator init so model health report is accurate
+            if hasattr(self._scanner, '_init_gate_evaluator'):
+                try:
+                    self._scanner._init_gate_evaluator()
+                except Exception:
+                    pass
 
             # ── Model health breakdown ───────────────────────────────
             # Report exactly what's loaded so the user isn't misled by a
@@ -260,6 +269,18 @@ class EmbeddedScanner:
             logger.info("EmbeddedScanner: PolicyEngine initialized")
         except Exception as e:
             logger.debug("PolicyEngine init skipped: %s", e)
+
+        # ConfigAdjuster — consumes pending config adjustments each cycle
+        try:
+            from src.scanner.automation.config_adjuster import ConfigAdjuster
+            self._config_adjuster = ConfigAdjuster()
+            pending = len(getattr(self._config_adjuster, "_pending", {}))
+            if pending:
+                logger.info("EmbeddedScanner: ConfigAdjuster loaded with %d pending adjustments", pending)
+            else:
+                logger.info("EmbeddedScanner: ConfigAdjuster initialized (no pending)")
+        except Exception as e:
+            logger.debug("ConfigAdjuster init skipped: %s", e)
 
     def run_one_cycle(self) -> Optional[ScanEnrichment]:
         """Run ONE scan cycle synchronously. CALL FROM A THREAD.
@@ -522,6 +543,39 @@ class EmbeddedScanner:
                     self._brain("[yellow]  ▸ Model drift detected — check diagnostics[/]")
             except Exception as e:
                 logger.debug("Drift monitor error: %s", e)
+
+        # ConfigAdjuster — apply pending config adjustments every cycle
+        if self._config_adjuster is not None and self._config is not None:
+            try:
+                applied = self._config_adjuster.apply_adjustments(
+                    self._config, self._scan_count,
+                )
+                if applied:
+                    names = [a["key"] for a in applied]
+                    self._brain(
+                        f"[yellow]  ▸ Config adjusted: {', '.join(names)}[/]"
+                    )
+                self._config_adjuster.save_state()
+            except Exception as e:
+                logger.debug("ConfigAdjuster apply error: %s", e)
+
+        # Model freshness — periodic check every N cycles
+        if self._scan_count % self._freshness_check_interval == 0:
+            try:
+                from src.scanner.automation.model_freshness import get_model_freshness
+                freshness = get_model_freshness()
+                f_status = freshness.get("status", "UNKNOWN")
+                f_oldest = freshness.get("oldest_age_days")
+                if f_status == "CRITICAL":
+                    self._brain(
+                        f"[red]  ▸ MODELS CRITICAL — oldest {f_oldest:.0f}d, retrain needed[/]"
+                    )
+                elif f_status == "STALE":
+                    self._brain(
+                        f"[yellow]  ▸ Models stale — oldest {f_oldest:.0f}d[/]"
+                    )
+            except Exception as e:
+                logger.debug("Model freshness check error: %s", e)
 
         # Smart loop (drawdown guardian, RL sync, trade monitoring)
         self._run_smart_loop()

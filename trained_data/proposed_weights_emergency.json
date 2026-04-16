@@ -1,0 +1,27 @@
+{
+  "proposed_by": "reflection_agent",
+  "timestamp": "2026-04-15T19:06:47Z",
+  "trigger": "losing_streak_10_consecutive (0% win rate, 100% MFE=0)",
+  "rationale": "Models have ZERO predictive edge. 10/10 closed trades lost. MFE=0 on every trade (price never moved in predicted direction). Disagreement=0.5 trades: 0W/6L. Disagreement=0.0 trades: 0W/4L. modular_ensemble 28d stale, joint_gates 22d stale.",
+  "regime_adjustments": {
+    "NORMAL": {
+      "trend": {"current": 1.0175, "proposed": 0.85, "reason": "0/10 direction predictions correct"},
+      "mean_reversion": {"current": 0.7681, "proposed": 1.10, "reason": "Correct NO vote on 6+ losses per exit_accountability"},
+      "uncertainty": {"current": 0.8886, "proposed": 1.20, "reason": "Defensive agent needs more blocking power"},
+      "risk_sentinel": {"current": 1.0385, "proposed": 1.15, "reason": "Risk priority during drawdown"}
+    },
+    "_global": {
+      "trend": {"current": 1.0506, "proposed": 0.85, "reason": "Demote until retrained"},
+      "mean_reversion": {"current": 0.8012, "proposed": 1.10, "reason": "Most accurate agent — promote"},
+      "uncertainty": {"current": 0.9414, "proposed": 1.20, "reason": "Defensive boost during staleness"},
+      "risk_sentinel": {"current": 1.0914, "proposed": 1.15, "reason": "Risk management priority"}
+    }
+  },
+  "defensive_config": {
+    "max_model_disagreement": {"current": 0.60, "proposed": 0.40, "reason": "0W/6L at disagreement=0.5"},
+    "max_uncertainty_score": {"current": 0.40, "proposed": 0.35, "reason": "Trade 1199 had 0.60 uncertainty"},
+    "min_confidence_floor": {"current": 0.42, "proposed": 0.72, "reason": "Highest losing conf was 0.702 — halt trading"},
+    "recommended_profile": "conservative"
+  },
+  "action_required": "HUMAN REVIEW REQUIRED. 0% win rate = fundamental model failure, not weight tuning issue. Retrain modular_ensemble and joint_gates FIRST."
+}

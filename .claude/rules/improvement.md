@@ -75,3 +75,10 @@ Meta-rules governing how Buddy learns and evolves.
 - Never let learnings accumulate without triage (apply / capture / dismiss)
 - Never evolve config silently — log every adjustment with reason
 - Never guess at stale state — read state.json, ask if unclear
+
+## Config Adjustment Consumer Verification (promoted 2026-04-16, from 4 observations: 3 self-heal dead-letter reports + 1 root cause trace)
+- ALWAYS verify that ConfigAdjuster._load_state() loads ALL persisted fields: pending, history, last_applied
+- ALWAYS verify that pending config adjustment keys EXACTLY match ScannerConfig dataclass field names — mismatched keys silently create orphan attributes via setattr() that no code reads
+- ALWAYS run a round-trip smoke test after adding a new config adjustment source: write pending → restart process → verify apply_adjustments() consumes it → verify config attribute changed
+- NEVER assume a feedback loop is closed just because both write and read sides exist — verify the persistence layer connects them (this bug cost $3,527 over 14 trades)
+- ALWAYS validate proposed config keys against ScannerConfig dataclass field names BEFORE writing to config_adjustments.json — grep for the exact field name in config.py. Confirmed orphan keys from cycle 3: min_confidence_threshold->min_confidence, atr_sl_multiplier_low_regime->atr_sl_multiplier. 5/9 proposals were dead on arrival.

@@ -5,7 +5,7 @@
     "Keras 3 model loader fix (seed param)",
     "Soft uncertainty blocking (proportional penalty)",
     "ATR-based dynamic SL/TP",
-    "Position sizing scaled to account ($100K → 2.5 lot trades)",
+    "Position sizing scaled to account ($100K \u2192 2.5 lot trades)",
     "Correlation filter for double-exposure prevention",
     "RL feedback loop (agent weights from trade outcomes)",
     "Drawdown guardian with trailing SL",
@@ -18,8 +18,8 @@
     "Bootstrap .claude/ learning infrastructure",
     "US-002: Session state engine (StateEngine class)",
     "US-003: Trade outcome analyzer (LearningEngine.analyze_trade)",
-    "US-004: Rule promotion (3+ observations → promoted rules)",
-    "US-005: Adaptive config tuner (rules → config changes)",
+    "US-004: Rule promotion (3+ observations \u2192 promoted rules)",
+    "US-005: Adaptive config tuner (rules \u2192 config changes)",
     "US-006: Per-pair adaptive SL/TP multipliers",
     "US-007: Improvement tracker and meta-learning metrics",
     "US-008: Observation logging for market patterns",
@@ -28,12 +28,13 @@
     "US-011: buddy learn CLI command",
     "US-012: Full learning loop integration into ContinuousScanner"
   ],
-  "next": "Run scan cycle in watch mode to validate full learning loop end-to-end",
+  "next": "Boot TUI and verify: (1) model health 13/14, (2) ConfigAdjuster applies 5 pending, (3) ModelFreshness periodic check fires",
   "open_questions": [
-    "EUR_USD model predicted LONG but pair was bearish — is the model stale or is this a regime issue?",
-    "Should we increase min_confidence threshold given EUR_USD losses at 67% confidence?"
+    "[RESOLVED 04-16] ConfigAdjuster orphan keys fixed \u2014 all 6 pending keys now match ScannerConfig fields. TUI wiring added.",
+    "Are the 3 currently open trades (test_1 EUR_USD, 1243 EUR_GBP, 1261 USD_CAD) also on stale model predictions? Consider closing.",
+    "Per-pair models not retrained by autonomous_trainer \u2014 is train-joint only training the global model?"
   ],
-  "last_updated": "2026-03-18T00:00:00Z",
+  "last_updated": "2026-04-16T16:08:48.157310+00:00",
   "portfolio_snapshot": {
     "nav": 100575.1932,
     "open_trades": 2,
@@ -43,6 +44,6 @@
     "session_losses": 3,
     "win_rate": 0.0
   },
-  "improvement_focus": "Full self-improvement loop live — monitoring learning extraction and rule promotion",
+  "improvement_focus": "Self-heal cycle #1 (2026-04-16T16:03Z) on 16th consecutive loss (Trade 1261 USD_CAD LONG, streak total -$3,879). Cycle 1 maxed all 5 supported config keys (sl_mult=1.2, disagreement=0.25, min_conf=68, WVS=0.85, risk=0.025) \u2014 pending block empty. Root cause now isolated to 3 layers OUTSIDE config plane: (1) directional pipeline produces inverted-sign predictions even on freshly-retrained global model (Trade 1255 USD_CHF MFE=0 disproves staleness-only theory), (2) autonomous_trainer global retrain skipped 8 of 14 per-pair sub-models on Apr 16 run (EUR_GBP, USD_CAD still on Mar 24), (3) RL position sizer training data 24d stale, locking lots at 2.5 throughout the loss streak. Next engineering actions: (a) fix per-pair retrain coverage in autonomous_trainer, (b) retrain RL position sizer + add streak-aware cap, (c) audit trend agent ADX threshold (reports 'neutral' at ADX 54-64 across trades 1243/1255/1261), (d) audit feature normalization parity train vs inference. Reflection skipped a 6th config adjustment to avoid freezing the system.",
   "scan_cycle_count": 0
 }

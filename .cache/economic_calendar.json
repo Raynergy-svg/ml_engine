@@ -1,18 +1,6 @@
 {
-  "cached_at": "2026-04-14T22:06:48.354512+00:00",
+  "cached_at": "2026-04-15T22:28:26.845647+00:00",
   "events": [
-    {
-      "timestamp": "2026-04-15T13:00:00+00:00",
-      "currency": "USD",
-      "title": "adp employment change",
-      "impact": "MEDIUM"
-    },
-    {
-      "timestamp": "2026-04-15T19:00:00+00:00",
-      "currency": "USD",
-      "title": "fomc meeting minutes",
-      "impact": "HIGH"
-    },
     {
       "timestamp": "2026-04-16T12:00:00+00:00",
       "currency": "GBP",

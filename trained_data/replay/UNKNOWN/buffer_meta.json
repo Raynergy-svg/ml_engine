@@ -1,14 +1,14 @@
 {
   "capacity_ratio": 0.1,
   "mix_ratio": 0.2,
-  "sample_count": 23356,
-  "buffer_size": 2335,
-  "saved_at": "2026-03-24T06:08:57.220220",
+  "sample_count": 28259,
+  "buffer_size": 2825,
+  "saved_at": "2026-04-16T11:29:26.990035",
   "data_sources": [
     {
-      "id": "JOINT_7pairs_20260324_055849_de2da905",
-      "n_samples": 23356,
-      "timestamp": "2026-03-24T05:58:53.489216"
+      "id": "JOINT_15pairs_20260416_112408_92f0813b",
+      "n_samples": 28259,
+      "timestamp": "2026-04-16T11:24:16.570022"
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_outcomes": 20,
+  "total_outcomes": 26,
   "outcomes": {
     "UNKNOWN": [
       {
@@ -39,6 +39,48 @@
         "rr_ratio": 1.3678160919540232,
         "won": false,
         "timestamp": "2026-04-08T22:41:57.214630+00:00"
+      },
+      {
+        "confidence": 0.6546104873157617,
+        "momentum": 0.8286,
+        "rr_ratio": 2.373493975903614,
+        "won": false,
+        "timestamp": "2026-04-15T21:26:22.418797+00:00"
+      },
+      {
+        "confidence": 0.6689009119742662,
+        "momentum": 0.8286,
+        "rr_ratio": 2.533707865168539,
+        "won": false,
+        "timestamp": "2026-04-15T22:55:39.608894+00:00"
+      },
+      {
+        "confidence": 0.6549070594606463,
+        "momentum": 0.8286,
+        "rr_ratio": 2.2301587301587302,
+        "won": false,
+        "timestamp": "2026-04-16T02:40:01.127382+00:00"
+      },
+      {
+        "confidence": 0.6675174023258115,
+        "momentum": 0.7964,
+        "rr_ratio": 2.5,
+        "won": false,
+        "timestamp": "2026-04-16T03:00:20.332481+00:00"
+      },
+      {
+        "confidence": 0.6770761756620687,
+        "momentum": 0.8286,
+        "rr_ratio": 1.3728813559322033,
+        "won": false,
+        "timestamp": "2026-04-16T15:21:10.879794+00:00"
+      },
+      {
+        "confidence": 0.6407486926377108,
+        "momentum": 0.8286,
+        "rr_ratio": 3.589041095890411,
+        "won": false,
+        "timestamp": "2026-04-16T15:21:10.899267+00:00"
       }
     ],
     "NORMAL": [
@@ -153,5 +195,5 @@
   },
   "thresholds": {},
   "optimization_log": [],
-  "last_updated": "2026-04-14T22:50:40.230259+00:00"
+  "last_updated": "2026-04-16T16:03:12.453389+00:00"
 }

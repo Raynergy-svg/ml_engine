@@ -1399,8 +1399,608 @@
       "pnl": -114.3397,
       "timestamp": 1775972946.226917,
       "trade_id": "1157"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.18341514537208653,
+          "verdict": "LONG",
+          "weight": 0.36683029074417306
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.20812450940597907,
+          "verdict": "LONG",
+          "weight": 0.41624901881195814
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.24145484856345154,
+          "verdict": "LONG",
+          "weight": 0.48290969712690307
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.21233380366483998,
+          "verdict": "LONG",
+          "weight": 0.42466760732967995
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.1742192748463481,
+          "verdict": "LONG",
+          "weight": 0.3484385496926962
+        }
+      ],
+      "direction": "SHORT",
+      "outcome": "LOSS",
+      "pair": "EUR_GBP",
+      "pnl": -301.8666,
+      "timestamp": 1776288380.998667,
+      "trade_id": "1236"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.18341514537208653,
+          "verdict": "LONG",
+          "weight": 0.36683029074417306
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.20812450940597907,
+          "verdict": "LONG",
+          "weight": 0.41624901881195814
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.24145484856345154,
+          "verdict": "LONG",
+          "weight": 0.48290969712690307
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.21233380366483998,
+          "verdict": "LONG",
+          "weight": 0.42466760732967995
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.1742192748463481,
+          "verdict": "LONG",
+          "weight": 0.3484385496926962
+        }
+      ],
+      "direction": "SHORT",
+      "outcome": "LOSS",
+      "pair": "EUR_GBP",
+      "pnl": -301.8666,
+      "timestamp": 1776288381.6269078,
+      "trade_id": "1236"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.16525516819065278,
+          "verdict": "LONG",
+          "weight": 0.33051033638130556
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.1994403224640498,
+          "verdict": "LONG",
+          "weight": 0.3988806449280996
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.25474024550333274,
+          "verdict": "LONG",
+          "weight": 0.5094804910066655
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.20898929043995368,
+          "verdict": "LONG",
+          "weight": 0.41797858087990736
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.18869726863529301,
+          "verdict": "LONG",
+          "weight": 0.37739453727058603
+        }
+      ],
+      "direction": "LONG",
+      "outcome": "LOSS",
+      "pair": "USD_JPY",
+      "pnl": -95.5652,
+      "timestamp": 1776293737.9567392,
+      "trade_id": "1232"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.16525516819065278,
+          "verdict": "LONG",
+          "weight": 0.33051033638130556
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.1994403224640498,
+          "verdict": "LONG",
+          "weight": 0.3988806449280996
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.25474024550333274,
+          "verdict": "LONG",
+          "weight": 0.5094804910066655
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.20898929043995368,
+          "verdict": "LONG",
+          "weight": 0.41797858087990736
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.18869726863529301,
+          "verdict": "LONG",
+          "weight": 0.37739453727058603
+        }
+      ],
+      "direction": "LONG",
+      "outcome": "LOSS",
+      "pair": "USD_JPY",
+      "pnl": -95.5652,
+      "timestamp": 1776293738.694494,
+      "trade_id": "1232"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.14996043875572782,
+          "verdict": "LONG",
+          "weight": 0.29992087751145563
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.1692391429592385,
+          "verdict": "LONG",
+          "weight": 0.338478285918477
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.2072943952018974,
+          "verdict": "LONG",
+          "weight": 0.4145887904037948
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.2803970236810984,
+          "verdict": "LONG",
+          "weight": 0.5607940473621968
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19339696901565692,
+          "verdict": "LONG",
+          "weight": 0.38679393803131384
+        }
+      ],
+      "direction": "LONG",
+      "outcome": "LOSS",
+      "pair": "USD_CAD",
+      "pnl": -233.6651,
+      "timestamp": 1776307199.023594,
+      "trade_id": "1249"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.14996043875572782,
+          "verdict": "LONG",
+          "weight": 0.29992087751145563
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.1692391429592385,
+          "verdict": "LONG",
+          "weight": 0.338478285918477
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.2072943952018974,
+          "verdict": "LONG",
+          "weight": 0.4145887904037948
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.2803970236810984,
+          "verdict": "LONG",
+          "weight": 0.5607940473621968
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19339696901565692,
+          "verdict": "LONG",
+          "weight": 0.38679393803131384
+        }
+      ],
+      "direction": "LONG",
+      "outcome": "LOSS",
+      "pair": "USD_CAD",
+      "pnl": -233.6651,
+      "timestamp": 1776307199.6958249,
+      "trade_id": "1249"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.16924800000000004,
+          "verdict": "LONG",
+          "weight": 0.3384960000000001
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19266150000000004,
+          "verdict": "LONG",
+          "weight": 0.3853230000000001
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.25106625000000005,
+          "verdict": "LONG",
+          "weight": 0.5021325000000001
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.24888400000000005,
+          "verdict": "LONG",
+          "weight": 0.4977680000000001
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19590083333333336,
+          "verdict": "LONG",
+          "weight": 0.3918016666666667
+        }
+      ],
+      "direction": "LONG",
+      "outcome": "LOSS",
+      "pair": "USD_CHF",
+      "pnl": -258.8599,
+      "timestamp": 1776308418.577118,
+      "trade_id": "1255"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.16924800000000004,
+          "verdict": "LONG",
+          "weight": 0.3384960000000001
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19266150000000004,
+          "verdict": "LONG",
+          "weight": 0.3853230000000001
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.25106625000000005,
+          "verdict": "LONG",
+          "weight": 0.5021325000000001
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.24888400000000005,
+          "verdict": "LONG",
+          "weight": 0.4977680000000001
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19590083333333336,
+          "verdict": "LONG",
+          "weight": 0.3918016666666667
+        }
+      ],
+      "direction": "LONG",
+      "outcome": "LOSS",
+      "pair": "USD_CHF",
+      "pnl": -258.8599,
+      "timestamp": 1776308419.2528908,
+      "trade_id": "1255"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.16351007604072937,
+          "verdict": "LONG",
+          "weight": 0.32702015208145874
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19123756436566905,
+          "verdict": "LONG",
+          "weight": 0.3824751287313381
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.28696326002015193,
+          "verdict": "LONG",
+          "weight": 0.5739265200403039
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.22165532719935283,
+          "verdict": "LONG",
+          "weight": 0.44331065439870565
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19911402633487885,
+          "verdict": "LONG",
+          "weight": 0.3982280526697577
+        }
+      ],
+      "direction": "SHORT",
+      "outcome": "LOSS",
+      "pair": "EUR_GBP",
+      "pnl": -216.0182,
+      "timestamp": 1776352867.1283042,
+      "trade_id": "1243"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.16351007604072937,
+          "verdict": "LONG",
+          "weight": 0.32702015208145874
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19123756436566905,
+          "verdict": "LONG",
+          "weight": 0.3824751287313381
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.28696326002015193,
+          "verdict": "LONG",
+          "weight": 0.5739265200403039
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.22165532719935283,
+          "verdict": "LONG",
+          "weight": 0.44331065439870565
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19911402633487885,
+          "verdict": "LONG",
+          "weight": 0.3982280526697577
+        }
+      ],
+      "direction": "SHORT",
+      "outcome": "LOSS",
+      "pair": "EUR_GBP",
+      "pnl": -216.0182,
+      "timestamp": 1776352868.526249,
+      "trade_id": "1243"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.16356092748310938,
+          "verdict": "LONG",
+          "weight": 0.32712185496621876
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.1868049576435904,
+          "verdict": "LONG",
+          "weight": 0.3736099152871808
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.24117829495213228,
+          "verdict": "LONG",
+          "weight": 0.48235658990426455
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.22600039370129774,
+          "verdict": "LONG",
+          "weight": 0.45200078740259547
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19467887609129358,
+          "verdict": "LONG",
+          "weight": 0.38935775218258717
+        }
+      ],
+      "direction": "LONG",
+      "outcome": "LOSS",
+      "pair": "USD_CAD",
+      "pnl": -136.2784,
+      "timestamp": 1776352868.535357,
+      "trade_id": "1261"
+    },
+    {
+      "agents": [
+        {
+          "agent_name": "trend",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.16356092748310938,
+          "verdict": "LONG",
+          "weight": 0.32712185496621876
+        },
+        {
+          "agent_name": "mean_reversion",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.1868049576435904,
+          "verdict": "LONG",
+          "weight": 0.3736099152871808
+        },
+        {
+          "agent_name": "risk_sentinel",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.24117829495213228,
+          "verdict": "LONG",
+          "weight": 0.48235658990426455
+        },
+        {
+          "agent_name": "uncertainty",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.22600039370129774,
+          "verdict": "LONG",
+          "weight": 0.45200078740259547
+        },
+        {
+          "agent_name": "execution_quality",
+          "aligned_with_outcome": false,
+          "confidence": 0.5,
+          "contribution_score": -0.19467887609129358,
+          "verdict": "LONG",
+          "weight": 0.38935775218258717
+        }
+      ],
+      "direction": "LONG",
+      "outcome": "LOSS",
+      "pair": "USD_CAD",
+      "pnl": -136.2784,
+      "timestamp": 1776352869.602535,
+      "trade_id": "1261"
     }
   ],
-  "saved_at": 1775972946.227871,
+  "saved_at": 1776352869.602953,
   "version": 1
 }

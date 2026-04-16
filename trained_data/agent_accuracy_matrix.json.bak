@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_records": 12,
+  "total_records": 40,
   "matrix": {
     "NORMAL": {
       "AUD_JPY": {
@@ -23,6 +23,28 @@
           "correct": 1,
           "total": 1,
           "accuracy": 1.0
+        }
+      },
+      "EUR_AUD": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "volatility": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
         }
       }
     },
@@ -70,8 +92,140 @@
           "total": 1,
           "accuracy": 0.0
         }
+      },
+      "EUR_GBP": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "mean_reversion": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "execution_quality": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      },
+      "USD_JPY": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "mean_reversion": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "execution_quality": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      },
+      "USD_CAD": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "mean_reversion": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "execution_quality": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      },
+      "USD_CHF": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "mean_reversion": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "execution_quality": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
+      }
+    },
+    "HIGH": {
+      "USD_CHF": {
+        "trend": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "volatility": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "risk_sentinel": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "uncertainty": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        }
       }
     }
   },
-  "last_updated": "2026-04-08T22:41:57.204571+00:00"
+  "last_updated": "2026-04-16T03:00:20.323666+00:00"
 }

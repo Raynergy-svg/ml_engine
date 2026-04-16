@@ -6,45 +6,53 @@
     "USD_JPY",
     "USD_CHF",
     "AUD_USD",
+    "USD_CAD",
+    "NZD_USD",
     "EUR_GBP",
-    "EUR_JPY"
+    "EUR_JPY",
+    "GBP_JPY",
+    "AUD_JPY",
+    "EUR_AUD",
+    "GBP_AUD",
+    "EUR_CHF",
+    "GBP_CHF"
   ],
   "metrics": {
     "direction": {
-      "train_accuracy": 0.7631015777587891,
-      "val_accuracy": 0.5246314275440489,
-      "val_balanced_accuracy": 0.5304645974597256,
-      "val_up_accuracy": 0.5268057784911717,
-      "val_down_accuracy": 0.5341234164282795,
-      "val_direction_gap": 0.007317637937107824,
-      "epochs_trained": 22,
-      "n_train_samples": 23356,
-      "n_val_samples": 5562,
-      "total_weight_norm": 57.38709315636157,
-      "avg_weight_norm": 1.510186662009515,
+      "train_accuracy": 0.7604302763938904,
+      "val_accuracy": 0.5293612453032743,
+      "val_balanced_accuracy": 0.5474004862813034,
+      "val_up_accuracy": 0.5477996965098634,
+      "val_down_accuracy": 0.5470012760527435,
+      "val_direction_gap": 0.0007984204571198639,
+      "epochs_trained": 17,
+      "n_train_samples": 28259,
+      "n_val_samples": 9315,
+      "total_weight_norm": 68.38257208597837,
+      "avg_weight_norm": 1.7995413706836412,
       "drift_detected": false
     },
     "momentum": {
-      "momentum_mae": 0.02079187337072233,
-      "acceleration_accuracy": 0.8607691573623437,
+      "momentum_mae": 0.0342710754802122,
+      "acceleration_accuracy": 0.8526245402875292,
       "model_type": "lightgbm"
     },
     "risk": {
-      "drawdown_mae_pct": 0.0013645344700577257,
-      "drawdown_mae_bps": 13.645344700577258,
-      "streak_prob_mae": 0.017336535635866162,
+      "drawdown_mae_pct": 0.0015310837955774485,
+      "drawdown_mae_bps": 15.310837955774485,
+      "streak_prob_mae": 0.0230849467897954,
       "model_type": "lightgbm"
     },
     "confidence": {
-      "confidence_mae": 0.28188243222873105,
-      "r2_score": 0.9967210300293295,
+      "confidence_mae": 0.26876937090637726,
+      "r2_score": 0.9971026361463041,
       "model_type": "lightgbm",
       "n_estimators": 100,
       "n_important_features": 16,
-      "n_total_features": 21
+      "n_total_features": 29
     }
   },
   "per_instrument_metrics": {},
   "fine_tune_decisions": {},
-  "saved_at": "2026-03-24T06:09:00.589491"
+  "saved_at": "2026-04-16T11:29:31.667401"
 }

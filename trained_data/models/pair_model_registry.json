@@ -4,7 +4,7 @@
     "active_model": "joint",
     "joint_accuracy": 1.0,
     "per_pair_accuracy": 0.0,
-    "joint_trades": 3,
+    "joint_trades": 4,
     "per_pair_trades": 0,
     "last_switch": "",
     "reason": "default"
@@ -44,7 +44,7 @@
     "active_model": "joint",
     "joint_accuracy": 1.0,
     "per_pair_accuracy": 0.0,
-    "joint_trades": 1,
+    "joint_trades": 3,
     "per_pair_trades": 0,
     "last_switch": "",
     "reason": "default"
@@ -54,7 +54,7 @@
     "active_model": "joint",
     "joint_accuracy": 1.0,
     "per_pair_accuracy": 0.0,
-    "joint_trades": 2,
+    "joint_trades": 3,
     "per_pair_trades": 0,
     "last_switch": "",
     "reason": "default"
@@ -95,6 +95,16 @@
     "joint_accuracy": 1.0,
     "per_pair_accuracy": 0.0,
     "joint_trades": 1,
+    "per_pair_trades": 0,
+    "last_switch": "",
+    "reason": "default"
+  },
+  "EUR_GBP": {
+    "pair": "EUR_GBP",
+    "active_model": "joint",
+    "joint_accuracy": 1.0,
+    "per_pair_accuracy": 0.0,
+    "joint_trades": 2,
     "per_pair_trades": 0,
     "last_switch": "",
     "reason": "default"

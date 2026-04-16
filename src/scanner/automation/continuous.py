@@ -1053,6 +1053,9 @@ class ContinuousScanner:
                         else:
                             console.print("  [dim]Check logs for full traceback[/dim]")
 
+                    # ── Code Repair Trigger ──────────────────────────────────
+                    self._try_code_repair(e, console)
+
                 if self._running:
                     self._sleep_with_progress(interval_minutes)
         except KeyboardInterrupt:
@@ -1062,6 +1065,102 @@ class ContinuousScanner:
             self._perform_shutdown()
 
         return self._scan_count
+
+    # ── Code Repair (Self-Heal) ────────────────────────────────────────
+    _error_frequency: Dict[str, int] = {}
+
+    _SKIP_REPAIR_ERRORS = frozenset({
+        "ConnectionError", "TimeoutError", "requests.exceptions.ConnectionError",
+        "requests.exceptions.Timeout", "requests.exceptions.ReadTimeout",
+        "urllib3.exceptions.MaxRetryError", "urllib3.exceptions.NewConnectionError",
+        "socket.timeout", "OSError", "BrokenPipeError", "ConnectionResetError",
+        "KeyboardInterrupt", "SystemExit",
+    })
+
+    def _try_code_repair(self, exc: Exception, console=None) -> None:
+        """Attempt automated code repair for code-level exceptions.
+
+        Skips network/transient errors. Only fires after 2+ occurrences.
+        Runs in a background thread so the scan loop isn't blocked.
+        """
+        import traceback as tb_module
+        import threading
+
+        error_class = type(exc).__name__
+        if error_class in self._SKIP_REPAIR_ERRORS:
+            return
+
+        tb_str = tb_module.format_exc()
+        tb_obj = exc.__traceback__
+        file_path, line_no, func_name = "", 0, ""
+        if tb_obj:
+            while tb_obj.tb_next:
+                tb_obj = tb_obj.tb_next
+            frame = tb_obj.tb_frame
+            file_path = frame.f_code.co_filename
+            line_no = tb_obj.tb_lineno
+            func_name = frame.f_code.co_name
+
+        if "src/" not in file_path and "buddy_scanner" not in file_path:
+            return
+
+        error_sig = f"{error_class}:{file_path}:{line_no}"
+        self._error_frequency[error_sig] = self._error_frequency.get(error_sig, 0) + 1
+        freq = self._error_frequency[error_sig]
+        if freq < 2:
+            logger.info("code_repair.deferred", error_sig=error_sig, frequency=freq,
+                        reason="waiting for 2nd occurrence")
+            return
+
+        context = ""
+        try:
+            with open(file_path, "r") as f:
+                lines = f.readlines()
+            start = max(0, line_no - 11)
+            end = min(len(lines), line_no + 10)
+            context = "".join(lines[start:end])
+        except OSError:
+            pass
+
+        if console:
+            console.print(f"  [yellow]Self-heal triggered for {error_class} in {file_path}:{line_no}[/yellow]")
+
+        def _repair_worker():
+            try:
+                from src.scanner.automation.claude_subprocess import invoke_code_repair
+                r = invoke_code_repair(
+                    error_type=error_class,
+                    error_message=str(exc),
+                    traceback_str=tb_str,
+                    file=file_path,
+                    line=line_no,
+                    function=func_name,
+                    context=context,
+                    frequency=freq,
+                    timeout_seconds=180,
+                )
+                if r.success:
+                    logger.info("code_repair.success", error_sig=error_sig,
+                                files=r.files_edited, fix=r.fix_description[:200])
+                    if console:
+                        console.print(f"  [green]Self-heal applied: {r.fix_description[:100]}[/green]")
+                    self._error_frequency.pop(error_sig, None)
+                elif r.reverted:
+                    logger.warning("code_repair.reverted", error_sig=error_sig, reason=r.error)
+                    if console:
+                        console.print(f"  [red]Self-heal fix reverted (tests failed)[/red]")
+                elif r.needs_human:
+                    logger.warning("code_repair.needs_human", error_sig=error_sig,
+                                   diagnosis=r.root_cause)
+                    if console:
+                        console.print(f"  [yellow]Self-heal: needs human — {r.root_cause[:80]}[/yellow]")
+                else:
+                    logger.warning("code_repair.failed", error_sig=error_sig, error=r.error)
+            except Exception as repair_err:
+                logger.debug("code_repair.worker_error: %s", repair_err)
+
+        t = threading.Thread(target=_repair_worker, name="code-repair", daemon=True)
+        t.start()
 
     def _perform_shutdown(self) -> None:
         """Run bounded, idempotent shutdown and persistence steps."""

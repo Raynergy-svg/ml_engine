@@ -272,46 +272,58 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # maintaining risk gates.
     "smart": {
         "blocked_pairs": [],
-        # Phase 29 (US-174): Enable trade execution in smart profile
         "enable_execution": True,
-        "min_confidence": 42.0,
-        "min_momentum": 0.05,  # Phase 98: was 0.08, killed 35% of signals
-        "min_tcn_probability": 0.58,
-        "max_drawdown_pct": 0.030,
-        "final_score_threshold": 0.44,
-        "max_uncertainty_std": 0.16,
-        "min_atr_pips": 4.0,
+        # ── Entry Quality Gates (high selectivity > high volume) ─────
+        # Old: 42.0 — let everything through. Source: 10-loss streak 2026-04-15,
+        # all trades had confidence 0.55–0.70 from 28-day-stale models.
+        "min_confidence": 62.0,
+        "min_momentum": 0.12,  # Old: 0.05. Require real directional momentum.
+        "min_tcn_probability": 0.62,  # Old: 0.58. Ensemble must agree.
+        "max_drawdown_pct": 0.025,  # Old: 0.030. Tighter drawdown leash.
+        "final_score_threshold": 0.52,  # Old: 0.44. Raise the floor.
+        "max_uncertainty_std": 0.13,  # Old: 0.16. Models must be confident.
+        "min_atr_pips": 5.0,  # Old: 4.0. Skip dead-vol pairs.
         "min_volatility_regime": 0,
-        "weighted_vote_threshold": 0.45,
+        # ── Agent Consensus (tighter WVS, hard uncertainty blocking) ──
+        # Old WVS: 0.45. Trade 1220 passed at 0.76 despite trend=False.
+        # Source: trading.md rule 2026-04-15 + config_adjustments.json CRITICAL.
+        "weighted_vote_threshold": 0.72,
         "sub_inference_tradeable_only": False,
-        "sub_inference_min_confidence": 0.30,
-        "sub_inference_vote_threshold": 0.34,  # Phase 98: 1/3 vote threshold
-        "sub_inference_max_candidates": 15,
-        "agent_promotion_min_confidence": 0.50,
-        "max_uncertainty_score": 0.52,
-        "max_model_disagreement": 0.60,
+        "sub_inference_min_confidence": 0.45,  # Old: 0.30.
+        "sub_inference_vote_threshold": 0.42,  # Old: 0.34.
+        "sub_inference_max_candidates": 10,  # Old: 15. Focus on fewer, better.
+        "agent_promotion_min_confidence": 0.58,  # Old: 0.50.
+        # Old: 0.52 soft. Soft penalty docked only 0.074 from confidence —
+        # trades at 0.60 uncertainty sailed through (source: trade 1199).
+        "max_uncertainty_score": 0.38,
+        # Old: 0.60. At 0.50 disagreement models are guessing. Source:
+        # config_adjustments.json CRITICAL — 2/3 losses had disagreement=0.5.
+        "max_model_disagreement": 0.28,
+        # ── RL Adaptive Systems ───────────────────────────────────────
         "use_rl_sizer": True,
         "use_rl_gates": True,
         "use_rl_exits": True,
         "enable_agent_trade_promotion": True,
-        # Soft uncertainty: penalize confidence instead of hard-blocking trades
-        "soft_uncertainty_blocking": True,
-        # ATR-based dynamic SL/TP (wider range for volatility-adaptive sizing)
-        "atr_sl_multiplier": 1.2,
-        "atr_tp_multiplier": 2.0,
-        "min_sl_pips": 10.0,
-        "max_sl_pips": 35.0,
-        "min_tp_pips": 15.0,
-        "max_tp_pips": 60.0,
-        "high_prob_threshold": 0.65,
-        "high_prob_tp_bonus": 15.0,
-        # Multi-timeframe confluence agent (H1 → H4 → D1)
+        # HARD uncertainty blocking. Source: trading.md rule 2026-04-15 —
+        # soft penalty proved insufficient during 10-loss streak.
+        "soft_uncertainty_blocking": False,
+        # ── ATR-Based Dynamic SL/TP (asymmetric R:R) ─────────────────
+        # Target: 2.3:1 average R:R. Old: 1.67:1 (1.2 SL / 2.0 TP).
+        # Source: trading.md rule — LOW regime sl_mult >= 1.2.
+        "atr_sl_multiplier": 1.3,
+        "atr_tp_multiplier": 2.8,  # Old: 2.0. Wider TP for asymmetry.
+        "min_sl_pips": 12.0,  # Old: 10.0. Survive noise.
+        "max_sl_pips": 30.0,  # Old: 35.0. Don't bleed on wrong calls.
+        "min_tp_pips": 22.0,  # Old: 15.0. No scalping — hold winners.
+        "max_tp_pips": 80.0,  # Old: 60.0. Let runners run.
+        "high_prob_threshold": 0.72,  # Old: 0.65. Earn the TP bonus.
+        "high_prob_tp_bonus": 20.0,  # Old: 15.0. Reward high conviction.
+        # ── Multi-Timeframe & Performance ─────────────────────────────
         "enable_multi_timeframe_agent": True,
-        # Pair performance agent (adjusts confidence from historical W/L)
         "enable_pair_performance_agent": True,
-        # Minimum risk:reward ratio to execute a trade
-        "min_risk_reward_ratio": 1.2,
-        # LLM deep analysis for losing trades
+        # Old: 1.2. Barely above cost. Hedge funds target 2:1+ asymmetry.
+        # At 1.8:1 min, even 40% win rate is profitable (expectancy > 0).
+        "min_risk_reward_ratio": 1.8,
         "enable_llm_trade_analysis": True,
     },
 }

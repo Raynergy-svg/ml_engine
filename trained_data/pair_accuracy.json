@@ -9,17 +9,26 @@
         "timestamp": "2026-04-03T20:10:35.490907987Z"
       },
       {
+        "trade_id": "1236",
         "direction": "SHORT",
         "outcome": false,
-        "confidence": 0.692402640953435,
-        "timestamp": "2026-04-12T05:49:20.735113Z"
+        "confidence": 0.6546104873157617,
+        "timestamp": "2026-04-15T21:04:55.052696780Z"
+      },
+      {
+        "trade_id": "1243",
+        "direction": "SHORT",
+        "outcome": false,
+        "confidence": 0.6770761756620687,
+        "timestamp": "2026-04-16T14:22:10.529471256Z"
       }
     ],
-    "accuracy": 0.0,
-    "total": 2,
+    "accuracy": null,
+    "total": 3,
     "wins": 0,
-    "rolling_total": 2,
-    "rolling_wins": 0
+    "rolling_total": 0,
+    "rolling_wins": 0,
+    "blocked": false
   },
   "NZD_USD": {
     "trades": [
@@ -29,19 +38,14 @@
         "outcome": false,
         "confidence": 0.6921612793529159,
         "timestamp": "2026-04-06T15:10:54.795532270Z"
-      },
-      {
-        "direction": "LONG",
-        "outcome": false,
-        "confidence": 0.6921612793529159,
-        "timestamp": "2026-04-12T05:49:20.736788Z"
       }
     ],
-    "accuracy": 0.0,
-    "total": 2,
+    "accuracy": null,
+    "total": 1,
     "wins": 0,
-    "rolling_total": 2,
-    "rolling_wins": 0
+    "rolling_total": 0,
+    "rolling_wins": 0,
+    "blocked": false
   },
   "AUD_JPY": {
     "trades": [
@@ -53,17 +57,19 @@
         "timestamp": "2026-04-07T01:39:03.200109448Z"
       },
       {
+        "trade_id": "1189",
         "direction": "LONG",
         "outcome": false,
-        "confidence": 0.628967136467435,
-        "timestamp": "2026-04-12T05:49:20.738053Z"
+        "confidence": 0.680418896309787,
+        "timestamp": "2026-04-13T23:51:19.772609364Z"
       }
     ],
-    "accuracy": 0.0,
+    "accuracy": null,
     "total": 2,
     "wins": 0,
-    "rolling_total": 2,
-    "rolling_wins": 0
+    "rolling_total": 0,
+    "rolling_wins": 0,
+    "blocked": false
   },
   "USD_CHF": {
     "trades": [
@@ -75,23 +81,26 @@
         "timestamp": "2026-04-09T13:33:56.560058146Z"
       },
       {
+        "trade_id": "1195",
         "direction": "LONG",
         "outcome": false,
-        "confidence": 0.6487055722755246,
-        "timestamp": "2026-04-09T18:16:26.877278Z"
+        "confidence": 0.7021770131042311,
+        "timestamp": "2026-04-14T12:26:39.900044035Z"
       },
       {
+        "trade_id": "1255",
         "direction": "LONG",
         "outcome": false,
-        "confidence": 0.6487055722755246,
-        "timestamp": "2026-04-12T05:49:20.739269Z"
+        "confidence": 0.6675174023258115,
+        "timestamp": "2026-04-16T03:00:14.749581093Z"
       }
     ],
-    "accuracy": 0.0,
+    "accuracy": null,
     "total": 3,
     "wins": 0,
-    "rolling_total": 3,
-    "rolling_wins": 0
+    "rolling_total": 0,
+    "rolling_wins": 0,
+    "blocked": false
   },
   "EUR_AUD": {
     "trades": [
@@ -103,31 +112,83 @@
         "timestamp": "2026-04-09T00:07:27.312160245Z"
       },
       {
-        "direction": "SHORT",
+        "trade_id": "1220",
+        "direction": "LONG",
         "outcome": false,
-        "confidence": 0.5947610338374847,
-        "timestamp": "2026-04-12T05:49:20.740528Z"
+        "confidence": 0.6409715005274355,
+        "timestamp": "2026-04-15T02:46:03.058288459Z"
       }
     ],
-    "accuracy": 0.0,
+    "accuracy": null,
     "total": 2,
     "wins": 0,
-    "rolling_total": 2,
-    "rolling_wins": 0
+    "rolling_total": 0,
+    "rolling_wins": 0,
+    "blocked": false
   },
   "EUR_JPY": {
     "trades": [
       {
+        "trade_id": "1157",
         "direction": "SHORT",
         "outcome": false,
         "confidence": 0.5494406703497674,
-        "timestamp": "2026-04-12T05:49:20.741915Z"
+        "timestamp": "2026-04-09T19:26:33.512391421Z"
+      },
+      {
+        "trade_id": "1199",
+        "direction": "SHORT",
+        "outcome": false,
+        "confidence": 0.644445357959629,
+        "timestamp": "2026-04-14T15:00:02.492657245Z"
       }
     ],
-    "accuracy": 0.0,
+    "accuracy": null,
+    "total": 2,
+    "wins": 0,
+    "rolling_total": 0,
+    "rolling_wins": 0,
+    "blocked": false
+  },
+  "USD_JPY": {
+    "trades": [
+      {
+        "trade_id": "1232",
+        "direction": "LONG",
+        "outcome": false,
+        "confidence": 0.6689009119742662,
+        "timestamp": "2026-04-15T21:37:17.465167825Z"
+      }
+    ],
+    "accuracy": null,
     "total": 1,
     "wins": 0,
-    "rolling_total": 1,
-    "rolling_wins": 0
+    "rolling_total": 0,
+    "rolling_wins": 0,
+    "blocked": false
+  },
+  "USD_CAD": {
+    "trades": [
+      {
+        "trade_id": "1249",
+        "direction": "LONG",
+        "outcome": false,
+        "confidence": 0.6549070594606463,
+        "timestamp": "2026-04-16T02:35:27.612125000Z"
+      },
+      {
+        "trade_id": "1261",
+        "direction": "LONG",
+        "outcome": false,
+        "confidence": 0.6407486926377108,
+        "timestamp": "2026-04-16T14:05:58.109694358Z"
+      }
+    ],
+    "accuracy": null,
+    "total": 2,
+    "wins": 0,
+    "rolling_total": 0,
+    "rolling_wins": 0,
+    "blocked": false
   }
 }

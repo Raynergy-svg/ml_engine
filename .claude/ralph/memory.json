@@ -10,67 +10,67 @@
     "story_status": {
       "US-401": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Audit and recalibrate disagreement_gap_analyzer.py NEAR_MISS_GAP against live qu"
       },
       "US-402": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Verify confidence_penalty_ceiling.py is actively clipping penalties and fix stal"
       },
       "US-403": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Add kill_reason field to PairAnalysis to feed gate-kill telemetry"
       },
       "US-404": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Add per-cycle gate-kill breakdown to scan cycle log and console output"
       },
       "US-405": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Post-Phase-89 adaptive floor activation audit script"
       },
       "US-406": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Phase 90 integration and regression test suite"
       },
       "US-007": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Add session improvement summary and metrics tracking"
       },
       "US-008": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Add observation logging for interesting market patterns"
       },
       "US-009": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Wire self-refine into post-trade analysis for LLM-based insight extraction"
       },
       "US-010": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Add learnings consolidation and anti-proliferation guard"
       },
       "US-011": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Create buddy_learn CLI command for manual learning triggers"
       },
       "US-012": {
         "passed": true,
-        "completed_at": "2026-04-14T22:58:55.895515+00:00",
+        "completed_at": "2026-04-16T16:01:06.848179+00:00",
         "title": "Integrate full learning loop into ContinuousScanner watch mode"
       }
     },
     "last_story_completed": "US-401",
-    "last_updated": "2026-04-14T22:58:55.895515+00:00",
+    "last_updated": "2026-04-16T16:01:06.848179+00:00",
     "all_complete": true
   },
   "loop_history": {

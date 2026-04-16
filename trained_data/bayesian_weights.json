@@ -146,11 +146,11 @@
     },
     "NORMAL:execution_quality": {
       "alpha": 2.6934963483606498,
-      "beta": 6.247049869991583
+      "beta": 7.9902796711782935
     },
     "NORMAL:mean_reversion": {
-      "alpha": 5.83547742041091,
-      "beta": 3.9669982193467304
+      "alpha": 6.33547742041091,
+      "beta": 7.174406145740235
     },
     "NORMAL:momentum": {
       "alpha": 1.99,
@@ -170,7 +170,7 @@
     },
     "NORMAL:risk_sentinel": {
       "alpha": 5.97,
-      "beta": 1.99
+      "beta": 2.0142556002642493
     },
     "NORMAL:session_timing": {
       "alpha": 1.99,
@@ -181,19 +181,19 @@
       "beta": 5.97
     },
     "NORMAL:trend": {
-      "alpha": 4.855599999999999,
-      "beta": 5.056000000000003
+      "alpha": 5.3355999999999995,
+      "beta": 7.576000000000005
     },
     "NORMAL:uncertainty": {
-      "alpha": 3.496424124851983,
-      "beta": 5.132548153367299
+      "alpha": 4.559467603112844,
+      "beta": 5.7325481533673
     },
     "NORMAL:volatility": {
       "alpha": 4.522772499999999,
-      "beta": 3.9312349999999996
+      "beta": 4.592235
     }
   },
-  "epsilon": 0.1484328501185143,
-  "update_count": 21,
+  "epsilon": 0.14769235351293986,
+  "update_count": 31,
   "version": 1
 }

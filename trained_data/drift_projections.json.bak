@@ -1,0 +1,636 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-16T00:57:34.065920+00:00",
+  "projections": {
+    "GBP_USD": {
+      "pair": "GBP_USD",
+      "generated_at": "2026-04-16T00:57:34.062459+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "EUR_USD": {
+      "pair": "EUR_USD",
+      "generated_at": "2026-04-16T00:57:34.062719+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "USD_JPY": {
+      "pair": "USD_JPY",
+      "generated_at": "2026-04-16T00:57:34.062977+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "USD_CHF": {
+      "pair": "USD_CHF",
+      "generated_at": "2026-04-16T00:57:34.063242+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "AUD_USD": {
+      "pair": "AUD_USD",
+      "generated_at": "2026-04-16T00:57:34.063477+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "USD_CAD": {
+      "pair": "USD_CAD",
+      "generated_at": "2026-04-16T00:57:34.063711+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "NZD_USD": {
+      "pair": "NZD_USD",
+      "generated_at": "2026-04-16T00:57:34.063951+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "EUR_GBP": {
+      "pair": "EUR_GBP",
+      "generated_at": "2026-04-16T00:57:34.064187+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "EUR_JPY": {
+      "pair": "EUR_JPY",
+      "generated_at": "2026-04-16T00:57:34.064426+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "GBP_JPY": {
+      "pair": "GBP_JPY",
+      "generated_at": "2026-04-16T00:57:34.064659+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "AUD_JPY": {
+      "pair": "AUD_JPY",
+      "generated_at": "2026-04-16T00:57:34.064893+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "EUR_AUD": {
+      "pair": "EUR_AUD",
+      "generated_at": "2026-04-16T00:57:34.065133+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "GBP_AUD": {
+      "pair": "GBP_AUD",
+      "generated_at": "2026-04-16T00:57:34.065371+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "EUR_CHF": {
+      "pair": "EUR_CHF",
+      "generated_at": "2026-04-16T00:57:34.065636+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    },
+    "GBP_CHF": {
+      "pair": "GBP_CHF",
+      "generated_at": "2026-04-16T00:57:34.065917+00:00",
+      "current_accuracy": 0.55,
+      "baseline_accuracy": 0.55,
+      "projection_points": [
+        {
+          "hours_ahead": 6,
+          "predicted_accuracy": 0.54244,
+          "confidence_interval_low": 0.47994000000000003,
+          "confidence_interval_high": 0.60494,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 12,
+          "predicted_accuracy": 0.53488,
+          "confidence_interval_low": 0.45988,
+          "confidence_interval_high": 0.60988,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 24,
+          "predicted_accuracy": 0.51976,
+          "confidence_interval_low": 0.41976,
+          "confidence_interval_high": 0.61976,
+          "degradation_driver": "model_age"
+        },
+        {
+          "hours_ahead": 48,
+          "predicted_accuracy": 0.48952,
+          "confidence_interval_low": 0.33952,
+          "confidence_interval_high": 0.6395200000000001,
+          "degradation_driver": "model_age"
+        }
+      ],
+      "recommended_action": "prepare_retrain",
+      "action_urgency": "low",
+      "risk_factors": [
+        "stable"
+      ],
+      "hours_until_critical": null
+    }
+  }
+}

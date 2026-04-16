@@ -1,5 +1,5 @@
 {
-  "timestamp": 1775972945.662644,
+  "timestamp": 1776352867.1262789,
   "version": "1.0.0",
   "windows": {
     "execution_quality": {
@@ -34,6 +34,36 @@
         {
           "pnl": -100.1479,
           "timestamp": 1775688115.2657468,
+          "won": false
+        },
+        {
+          "pnl": -301.8666,
+          "timestamp": 1776288380.9960608,
+          "won": false
+        },
+        {
+          "pnl": -95.5652,
+          "timestamp": 1776293737.9551418,
+          "won": false
+        },
+        {
+          "pnl": -233.6651,
+          "timestamp": 1776307199.020319,
+          "won": false
+        },
+        {
+          "pnl": -258.8599,
+          "timestamp": 1776308418.5730538,
+          "won": false
+        },
+        {
+          "pnl": -216.0182,
+          "timestamp": 1776352867.125823,
+          "won": false
+        },
+        {
+          "pnl": -136.2784,
+          "timestamp": 1776352867.1258361,
           "won": false
         }
       ],
@@ -102,6 +132,36 @@
         {
           "pnl": -100.1479,
           "timestamp": 1775688115.265741,
+          "won": false
+        },
+        {
+          "pnl": -301.8666,
+          "timestamp": 1776288380.9960551,
+          "won": false
+        },
+        {
+          "pnl": -95.5652,
+          "timestamp": 1776293737.955136,
+          "won": false
+        },
+        {
+          "pnl": -233.6651,
+          "timestamp": 1776307199.0203142,
+          "won": false
+        },
+        {
+          "pnl": -258.8599,
+          "timestamp": 1776308418.573047,
+          "won": false
+        },
+        {
+          "pnl": -216.0182,
+          "timestamp": 1776352867.125818,
+          "won": false
+        },
+        {
+          "pnl": -136.2784,
+          "timestamp": 1776352867.12583,
           "won": false
         }
       ],
@@ -241,6 +301,36 @@
           "pnl": -100.1479,
           "timestamp": 1775688115.265743,
           "won": false
+        },
+        {
+          "pnl": -301.8666,
+          "timestamp": 1776288380.996057,
+          "won": false
+        },
+        {
+          "pnl": -95.5652,
+          "timestamp": 1776293737.9551392,
+          "won": false
+        },
+        {
+          "pnl": -233.6651,
+          "timestamp": 1776307199.020316,
+          "won": false
+        },
+        {
+          "pnl": -258.8599,
+          "timestamp": 1776308418.573051,
+          "won": false
+        },
+        {
+          "pnl": -216.0182,
+          "timestamp": 1776352867.12582,
+          "won": false
+        },
+        {
+          "pnl": -136.2784,
+          "timestamp": 1776352867.1258318,
+          "won": false
         }
       ],
       "NORMAL": [
@@ -373,6 +463,36 @@
           "pnl": -100.1479,
           "timestamp": 1775688115.2657301,
           "won": false
+        },
+        {
+          "pnl": -301.8666,
+          "timestamp": 1776288380.996048,
+          "won": false
+        },
+        {
+          "pnl": -95.5652,
+          "timestamp": 1776293737.955132,
+          "won": false
+        },
+        {
+          "pnl": -233.6651,
+          "timestamp": 1776307199.0203068,
+          "won": false
+        },
+        {
+          "pnl": -258.8599,
+          "timestamp": 1776308418.573042,
+          "won": false
+        },
+        {
+          "pnl": -216.0182,
+          "timestamp": 1776352867.125809,
+          "won": false
+        },
+        {
+          "pnl": -136.2784,
+          "timestamp": 1776352867.1258261,
+          "won": false
         }
       ],
       "NORMAL": [
@@ -486,6 +606,36 @@
         {
           "pnl": -100.1479,
           "timestamp": 1775688115.265745,
+          "won": false
+        },
+        {
+          "pnl": -301.8666,
+          "timestamp": 1776288380.996059,
+          "won": false
+        },
+        {
+          "pnl": -95.5652,
+          "timestamp": 1776293737.955141,
+          "won": false
+        },
+        {
+          "pnl": -233.6651,
+          "timestamp": 1776307199.020318,
+          "won": false
+        },
+        {
+          "pnl": -258.8599,
+          "timestamp": 1776308418.573052,
+          "won": false
+        },
+        {
+          "pnl": -216.0182,
+          "timestamp": 1776352867.125822,
+          "won": false
+        },
+        {
+          "pnl": -136.2784,
+          "timestamp": 1776352867.125835,
           "won": false
         }
       ],

@@ -183,6 +183,7 @@ class ConfigAdjuster:
                 data = json.loads(self.persistence_path.read_text())
 
             if isinstance(data, dict):
+                self._pending = data.get("pending", {})
                 self._history = data.get("history", [])
                 self._last_applied = data.get("last_applied", {})
                 # Convert string cycle keys to str (JSON always serializes keys as strings)

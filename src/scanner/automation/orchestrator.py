@@ -585,6 +585,15 @@ class Orchestrator:
             critical=False,
         ))
 
+        # Step 16: Model freshness check (every 10 cycles)
+        self._dispatch_table.append(DispatchStep(
+            name="model_freshness_check",
+            callable=lambda: self._model_freshness_check_dispatch(),
+            condition=lambda: True,
+            interval=10,
+            critical=False,
+        ))
+
     def register_module(
         self,
         name: str,
@@ -1200,6 +1209,64 @@ class Orchestrator:
                 logger.debug("Tier 7: Policy audit clean (env=%s)", env.get("account_mode", "unknown"))
         except Exception as e:
             logger.debug("Tier 7: Policy audit failed: %s", e)
+
+    def _model_freshness_check_dispatch(self) -> None:
+        """Check model freshness and warn/trigger retrain on staleness.
+
+        Runs every 10 cycles. On CRITICAL or STALE status, logs a warning.
+        On CRITICAL, attempts to trigger the drift remediator if available,
+        since stale models are functionally equivalent to drifted models.
+        """
+        try:
+            from src.scanner.automation.model_freshness import get_model_freshness
+
+            freshness = get_model_freshness()
+            status = freshness.get("status", "UNKNOWN")
+            oldest = freshness.get("oldest_age_days")
+            stale_list = freshness.get("stale_models", [])
+
+            if status == "FRESH":
+                logger.debug(
+                    "Model freshness: FRESH (oldest=%.1fd)", oldest or 0
+                )
+                return
+
+            if status == "AGING":
+                logger.info(
+                    "Model freshness: AGING (oldest=%.1fd) — approaching staleness",
+                    oldest or 0,
+                )
+                return
+
+            # STALE or CRITICAL — warn
+            logger.warning(
+                "Model freshness: %s (oldest=%.1fd) — stale models: %s",
+                status,
+                oldest or 0,
+                ", ".join(stale_list) if stale_list else "none",
+            )
+
+            # On CRITICAL, attempt to trigger retraining via drift remediator
+            if status == "CRITICAL" and self._drift_remediator is not None:
+                try:
+                    logger.info(
+                        "Model freshness CRITICAL — triggering drift remediator "
+                        "as staleness proxy (oldest=%.1fd)",
+                        oldest or 0,
+                    )
+                    rem_result = self._drift_remediator.check_and_remediate()
+                    logger.info(
+                        "Freshness-triggered remediation: %s — %s (%.1fs)",
+                        rem_result.action_taken,
+                        rem_result.reason,
+                        rem_result.duration_seconds,
+                    )
+                except Exception as retrain_err:
+                    logger.warning(
+                        "Freshness-triggered retrain failed: %s", retrain_err
+                    )
+        except Exception as e:
+            logger.debug("Model freshness check failed: %s", e)
 
     def _get_system_health_report(self) -> Dict[str, Any]:
         """Combine QA score + gate health + agent health into a unified report.

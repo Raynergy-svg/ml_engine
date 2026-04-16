@@ -12,20 +12,20 @@
     },
     "execution_quality": {
       "confidence_threshold": 0.6,
-      "fitness": 0.4984,
-      "last_updated": "2026-04-08T22:41:55.257916+00:00",
+      "fitness": 0.4959,
+      "last_updated": "2026-04-16T15:21:07.123152+00:00",
       "regime_switch_sensitivity": 0.5,
-      "update_count": 2,
+      "update_count": 8,
       "version": "1.0",
       "voting_veto_power": 1.0,
       "weight_decay_rate": 0.01
     },
     "mean_reversion": {
       "confidence_threshold": 0.45,
-      "fitness": 0.5,
-      "last_updated": "2026-04-09T18:16:23.019842+00:00",
+      "fitness": 0.4963,
+      "last_updated": "2026-04-16T15:21:07.118047+00:00",
       "regime_switch_sensitivity": 0.7,
-      "update_count": 1,
+      "update_count": 7,
       "version": "1.0",
       "voting_veto_power": 1.5,
       "weight_decay_rate": 0.005
@@ -60,6 +60,16 @@
       "voting_veto_power": 1.0,
       "weight_decay_rate": 0.01
     },
+    "order_flow": {
+      "confidence_threshold": 0.6,
+      "fitness": 0.5,
+      "last_updated": "2026-04-15T22:55:37.952700+00:00",
+      "regime_switch_sensitivity": 0.5,
+      "update_count": 0,
+      "version": "1.0",
+      "voting_veto_power": 1.0,
+      "weight_decay_rate": 0.01
+    },
     "pair_performance": {
       "confidence_threshold": 0.6,
       "fitness": 0.5,
@@ -72,10 +82,10 @@
     },
     "risk_sentinel": {
       "confidence_threshold": 0.3,
-      "fitness": 0.5,
-      "last_updated": "2026-04-09T18:16:23.024105+00:00",
+      "fitness": 0.4963,
+      "last_updated": "2026-04-16T15:21:07.119747+00:00",
       "regime_switch_sensitivity": 0.5,
-      "update_count": 1,
+      "update_count": 7,
       "version": "1.0",
       "voting_veto_power": 1.25,
       "weight_decay_rate": 0.025
@@ -112,20 +122,20 @@
     },
     "trend": {
       "confidence_threshold": 0.45,
-      "fitness": 0.5,
-      "last_updated": "2026-04-09T18:16:23.017559+00:00",
+      "fitness": 0.4963,
+      "last_updated": "2026-04-16T15:21:07.116351+00:00",
       "regime_switch_sensitivity": 0.7,
-      "update_count": 1,
+      "update_count": 7,
       "version": "1.0",
       "voting_veto_power": 1.0,
       "weight_decay_rate": 0.05
     },
     "uncertainty": {
       "confidence_threshold": 0.75,
-      "fitness": 0.5,
-      "last_updated": "2026-04-09T18:16:23.026236+00:00",
+      "fitness": 0.4963,
+      "last_updated": "2026-04-16T15:21:07.121450+00:00",
       "regime_switch_sensitivity": 0.5,
-      "update_count": 1,
+      "update_count": 7,
       "version": "1.0",
       "voting_veto_power": 1.5,
       "weight_decay_rate": 0.005

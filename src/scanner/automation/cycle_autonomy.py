@@ -360,8 +360,9 @@ class CycleAutonomyTriggers:
         self._brain(
             f"[red]  ▸ LOSING STREAK reflection firing — last {len(recent)} trades all lost[/]"
         )
-        # Deep mode: full MCP access, 5min timeout, can propose weights/config
-        self._invoke(prompt, trade_id, mode="deep", timeout=300)
+        # Deep mode: full MCP access, 7min timeout (CLAUDE.md Refinement Protocol
+        # eats ~60-90s before the actual reflection starts)
+        self._invoke(prompt, trade_id, mode="deep", timeout=420)
 
     def _fire_self_heal(self, scan_count: int) -> None:
         """PostTradeDiagnostics says DEGRADED/CRITICAL — spawn deep Claude."""
@@ -372,7 +373,7 @@ class CycleAutonomyTriggers:
         self._brain(
             f"[red]  ▸ Self-heal reflection firing — status={status}[/]"
         )
-        self._invoke(prompt, trade_id, mode="deep", timeout=300)
+        self._invoke(prompt, trade_id, mode="deep", timeout=420)
 
 
 # ── Prompt builders ────────────────────────────────────────────────────

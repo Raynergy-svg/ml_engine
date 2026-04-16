@@ -9,7 +9,27 @@
       "co_win": 0,
       "co_loss": 1,
       "mixed": 0
+    },
+    "EUR_JPY|USD_CHF": {
+      "co_win": 0,
+      "co_loss": 1,
+      "mixed": 0
+    },
+    "EUR_GBP|USD_JPY": {
+      "co_win": 0,
+      "co_loss": 2,
+      "mixed": 0
+    },
+    "EUR_GBP|USD_CAD": {
+      "co_win": 0,
+      "co_loss": 2,
+      "mixed": 0
+    },
+    "EUR_GBP|USD_CHF": {
+      "co_win": 0,
+      "co_loss": 1,
+      "mixed": 0
     }
   },
-  "updated": "2026-04-09T18:16:26.823244+00:00"
+  "updated": "2026-04-16T15:21:10.918967+00:00"
 }
