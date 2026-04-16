@@ -1867,6 +1867,33 @@ def load_direction_data(
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
 
+    # Regime embedding: append 4-dim one-hot (LOW/NORMAL/HIGH/EXTREME) derived
+    # from ATR percentile. The model learns regime-conditional patterns without
+    # architecture changes — just 4 extra columns on the feature matrix.
+    try:
+        if 'atr_pct_14' in df.columns or 'atr_pct_20' in df.columns:
+            _atr_col = 'atr_pct_20' if 'atr_pct_20' in df.columns else 'atr_pct_14'
+            _atr = df[_atr_col].values.astype(np.float32)
+            _atr_valid = _atr[np.isfinite(_atr)]
+            if len(_atr_valid) > 100:
+                _q25, _q50, _q75 = np.percentile(_atr_valid, [25, 50, 75])
+                _regime_onehot = np.zeros((len(X), 4), dtype=np.float32)
+                for _ri in range(len(_atr)):
+                    _v = _atr[_ri] if np.isfinite(_atr[_ri]) else _q50
+                    if _v <= _q25:
+                        _regime_onehot[_ri, 0] = 1.0  # LOW
+                    elif _v <= _q50:
+                        _regime_onehot[_ri, 1] = 1.0  # NORMAL
+                    elif _v <= _q75:
+                        _regime_onehot[_ri, 2] = 1.0  # HIGH
+                    else:
+                        _regime_onehot[_ri, 3] = 1.0  # EXTREME
+                X = np.concatenate([X, _regime_onehot], axis=1)
+                features = features + ['regime_low', 'regime_normal', 'regime_high', 'regime_extreme']
+                logger.info("Regime embedding appended: 4 one-hot columns (from %s)", _atr_col)
+    except Exception as _regime_err:
+        logger.debug("Regime embedding skipped: %s", _regime_err)
+
     # Create direction labels with THRESHOLD FILTERING
     close = df['close'].values
     n = len(close)
@@ -1880,6 +1907,22 @@ def load_direction_data(
     # Handle threshold=0 case: include ALL samples with simple up/down labeling
     use_all_samples = (threshold <= 0)
 
+    # Shaped reward label smoothing: instead of hard 0/1, encode movement
+    # magnitude into the label. A strong directional move → label close to 0/1.
+    # A weak scrape → label close to 0.5. This gives the model a richer gradient
+    # for "how confident should I be" not just "which direction."
+    # Compute the magnitude scale from the data: median absolute pct_change of
+    # clear signals. Labels are smoothed: y = 0.5 + direction * scale(magnitude).
+    _pct_changes = []
+    for i in range(n - lookahead):
+        future_close = close[i + lookahead]
+        current_close = close[i]
+        if current_close > 0:
+            _pct_changes.append((future_close - current_close) / current_close)
+    _pct_arr = np.array(_pct_changes) if _pct_changes else np.array([0.0])
+    # Magnitude normalizer: 95th percentile of abs(pct_change) = label of ~0.95/0.05
+    _magnitude_scale = max(np.percentile(np.abs(_pct_arr), 95), 1e-6)
+
     for i in range(n - lookahead):
         future_close = close[i + lookahead]
         current_close = close[i]
@@ -1890,24 +1933,25 @@ def load_direction_data(
         pct_change = (future_close - current_close) / current_close
 
         if use_all_samples or abs(pct_change) >= threshold:
-            # Label based on direction (with small threshold to handle float precision)
             if pct_change > 1e-10:
-                y[i] = 1.0  # UP
+                # Shaped label: 0.55 (weak up) to 0.95 (strong up)
+                magnitude = min(abs(pct_change) / _magnitude_scale, 1.0)
+                y[i] = 0.5 + 0.45 * magnitude  # range [0.55, 0.95]
                 weights[i] = 1.0
                 n_clear_up += 1
             elif pct_change < -1e-10:
-                y[i] = 0.0  # DOWN
+                # Shaped label: 0.45 (weak down) to 0.05 (strong down)
+                magnitude = min(abs(pct_change) / _magnitude_scale, 1.0)
+                y[i] = 0.5 - 0.45 * magnitude  # range [0.05, 0.45]
                 weights[i] = 1.0
                 n_clear_down += 1
             else:
-                # Exactly zero change - label as unclear
                 y[i] = 0.5
                 weights[i] = 0.0
                 n_unclear += 1
         else:
-            # Unclear signal - move too small (noise)
             y[i] = 0.5
-            weights[i] = 0.0  # Exclude from training
+            weights[i] = 0.0
             n_unclear += 1
 
     # Drop last `lookahead` rows (no future data)

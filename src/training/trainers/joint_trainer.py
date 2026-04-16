@@ -139,13 +139,35 @@ class JointMultiPairTrainer:
             },
         }
 
+        # Pair-specific sample weighting: underperforming pairs get higher weight
+        # so the model is forced to learn harder cases instead of averaging away.
+        # weight = 1 / max(avg_accuracy, 0.30), floored to prevent >3.3x multiplier.
+        _pair_weights: Dict[str, float] = {}
+        try:
+            import json as _json
+            _acc_path = Path("trained_data/agent_accuracy_matrix.json")
+            if _acc_path.exists():
+                _acc_data = _json.loads(_acc_path.read_text())
+                for _pair_name, _pair_data in _acc_data.items():
+                    if isinstance(_pair_data, dict):
+                        _accs = [v for v in _pair_data.values()
+                                if isinstance(v, (int, float)) and 0 <= v <= 1]
+                        if _accs:
+                            _avg = sum(_accs) / len(_accs)
+                            _pair_weights[_pair_name] = 1.0 / max(_avg, 0.30)
+                if _pair_weights:
+                    logger.info("Pair weighting: %s", {k: f"{v:.2f}x" for k, v in _pair_weights.items()})
+        except Exception as _pw_err:
+            logger.debug("Pair weighting skipped: %s", _pw_err)
+
         for instrument in instruments:
             if instrument not in dfs:
                 logger.warning(f"Skipping {instrument}: not in provided DataFrames")
                 continue
 
             df = dfs[instrument]
-            logger.info(f"Processing {instrument}: {len(df)} rows")
+            _pw = _pair_weights.get(instrument, 1.0)
+            logger.info(f"Processing {instrument}: {len(df)} rows (pair_weight={_pw:.2f}x)")
 
             # Load each model's data (pass individual params, not config object)
             try:
@@ -167,9 +189,9 @@ class JointMultiPairTrainer:
                     )
                     combined_data["direction"]["X_train"].append(x_train)
                     combined_data["direction"]["y_train"].append(dir_result["y_train"])
-                    combined_data["direction"]["w_train"].append(
-                        dir_result.get("w_train", np.ones(len(dir_result["y_train"])))
-                    )
+                    # Apply pair-specific weight multiplier to sample weights
+                    _base_w = dir_result.get("w_train", np.ones(len(dir_result["y_train"])))
+                    combined_data["direction"]["w_train"].append(_base_w * _pw)
                     combined_data["direction"]["X_val"].append(x_val)
                     combined_data["direction"]["y_val"].append(dir_result["y_val"])
                     combined_data["direction"]["w_val"].append(
