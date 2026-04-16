@@ -1459,38 +1459,103 @@ def train_joint_multi_pair_ensemble(
             console.print("[red]No data loaded for any instrument[/red]")
         return {'status': 'error', 'error': 'No data loaded'}
 
-    # 2. Train joint models
-    config = trainer_config_cls()
-    trainer = joint_trainer_cls(config)
-    joint_save_dir = str(Path(model_dir) / "joint")
+    # W&B: wrap the entire retrain as an observable run
+    try:
+        from src.training.trainers.wandb_callback import wandb_training_run, wandb_log_sklearn_training
+    except ImportError:
+        from contextlib import nullcontext as wandb_training_run  # type: ignore[assignment]
+        wandb_log_sklearn_training = None  # type: ignore[assignment]
 
-    joint_metrics = _train_joint_models(dfs, trainer, joint_save_dir, console)
-    if joint_metrics is None:
-        return {'status': 'error', 'error': 'Training failed'}
+    with wandb_training_run(
+        pairs=instruments,
+        granularity=granularity,
+        candles=candles,
+    ) as wb_run:
+        # 2. Train joint models
+        config = trainer_config_cls()
+        trainer = joint_trainer_cls(config)
+        joint_save_dir = str(Path(model_dir) / "joint")
 
-    # 3. Evaluate per-instrument performance
-    per_instrument_metrics = _evaluate_per_instrument(trainer, dfs, console)
+        joint_metrics = _train_joint_models(dfs, trainer, joint_save_dir, console)
+        if joint_metrics is None:
+            return {'status': 'error', 'error': 'Training failed'}
 
-    # 4. Fine-tune underperforming pairs
-    fine_tune_results = _run_fine_tuning(
-        trainer, dfs, per_instrument_metrics, fine_tune, fine_tune_threshold, model_dir, console
-    )
+        # W&B: log joint model metrics (transformer + ridge + lgbm in one shot)
+        if wb_run and wandb_log_sklearn_training:
+            _wb_loggable = {k: v for k, v in (joint_metrics or {}).items()
+                          if isinstance(v, (int, float, bool))}
+            if _wb_loggable:
+                try:
+                    wb_run.log({"joint/" + k: v for k, v in _wb_loggable.items()})
+                except Exception:
+                    pass
 
-    # 5. Train auxiliary models (RL sizer removed - train separately via train-rl-sizer)
-    tcn_result = _train_tcn_volatility(dfs, model_dir, config, console)
-    meta_result = _train_meta_labeler(trainer, model_dir, console)
+        # 3. Evaluate per-instrument performance
+        per_instrument_metrics = _evaluate_per_instrument(trainer, dfs, console)
 
-    # 6. Report results
-    if console:
-        _report_joint_training_results(
-            console, joint_metrics, per_instrument_metrics, fine_tune_results,
-            None, tcn_result, meta_result, joint_save_dir, model_dir
+        # 4. Fine-tune underperforming pairs
+        fine_tune_results = _run_fine_tuning(
+            trainer, dfs, per_instrument_metrics, fine_tune, fine_tune_threshold, model_dir, console
         )
 
-    return _build_joint_training_result(
-        dfs, joint_metrics, per_instrument_metrics, fine_tune_results,
-        tcn_result, meta_result, joint_save_dir
-    )
+        # W&B: log per-pair fine-tuning metrics
+        if wandb_log_sklearn_training and fine_tune_results:
+            for pair_name, ft_result in fine_tune_results.items():
+                if isinstance(ft_result, dict):
+                    ft_metrics = {k: v for k, v in ft_result.items()
+                                 if isinstance(v, (int, float, bool))}
+                    if ft_metrics:
+                        wandb_log_sklearn_training(
+                            model_name="fine-tune",
+                            pair=pair_name,
+                            metrics=ft_metrics,
+                            model_path=str(Path(model_dir) / pair_name),
+                            tags=["fine-tune"],
+                        )
+
+        # 5. Train auxiliary models (RL sizer removed - train separately via train-rl-sizer)
+        tcn_result = _train_tcn_volatility(dfs, model_dir, config, console)
+        meta_result = _train_meta_labeler(trainer, model_dir, console)
+
+        # W&B: log TCN + meta-labeler metrics
+        if wandb_log_sklearn_training:
+            if tcn_result and isinstance(tcn_result, dict):
+                tcn_metrics = {k: v for k, v in tcn_result.items()
+                              if isinstance(v, (int, float, bool))}
+                if tcn_metrics:
+                    wandb_log_sklearn_training(
+                        model_name="tcn_volatility_regime",
+                        pair="joint",
+                        metrics=tcn_metrics,
+                        model_path=str(Path(model_dir) / "joint" / "tcn_volatility_regime.keras"),
+                        tags=["tcn", "regime"],
+                    )
+
+        # 6. Report results
+        if console:
+            _report_joint_training_results(
+                console, joint_metrics, per_instrument_metrics, fine_tune_results,
+                None, tcn_result, meta_result, joint_save_dir, model_dir
+            )
+
+        # W&B: log final summary on orchestrator run
+        if wb_run:
+            try:
+                wb_run.summary.update({
+                    "n_instruments": len(dfs),
+                    "joint_val_accuracy": (joint_metrics or {}).get("val_accuracy"),
+                    "joint_balanced_accuracy": (joint_metrics or {}).get("val_balanced_accuracy"),
+                    "tcn_val_accuracy": (tcn_result or {}).get("metrics", {}).get("val_accuracy")
+                                        if isinstance(tcn_result, dict) else None,
+                    "n_fine_tuned": len(fine_tune_results) if fine_tune_results else 0,
+                })
+            except Exception:
+                pass
+
+        return _build_joint_training_result(
+            dfs, joint_metrics, per_instrument_metrics, fine_tune_results,
+            tcn_result, meta_result, joint_save_dir
+        )
 
 
 def _fine_tune_single_instrument(

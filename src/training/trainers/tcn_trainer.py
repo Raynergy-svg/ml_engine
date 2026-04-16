@@ -476,6 +476,19 @@ class TCNTrainer(BaseTrainer):
             ),
         ]
 
+        # W&B epoch streaming for TCN regime classifier
+        try:
+            from src.training.trainers.wandb_callback import WandBTrainingCallback
+            _wb_cb = WandBTrainingCallback(
+                model_name="tcn_volatility_regime",
+                pair="joint",
+                model_save_path=str(Path(self.config.checkpoint_dir) / "tcn_volatility_regime.keras"),
+                config={"epochs": self.config.epochs, "n_classes": 4},
+            )
+            callbacks.append(_wb_cb)
+        except Exception as _wb_err:
+            logger.debug("W&B callback skipped for TCN: %s", _wb_err)
+
         self._add_tcn_gradual_unfreeze_callback(callbacks, keras_module)
         return callbacks
 
