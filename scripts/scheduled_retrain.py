@@ -369,11 +369,12 @@ def validate_holdout_accuracy(
 
         correct = 0
         total = 0
-        from src.data.oanda_api import get_candles
+        from src.utils.oanda_practice import OandaPracticeClient
+        oanda = OandaPracticeClient.from_env()
 
         for pair in pairs[:3]:  # Validate on up to 3 pairs (speed)
             try:
-                candles_df = get_candles(pair, granularity=granularity, count=holdout_candles)
+                candles_df = oanda.get_candles(pair, granularity=granularity, count=holdout_candles)
                 if candles_df is None or len(candles_df) < 100:
                     continue
 
