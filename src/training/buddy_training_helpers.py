@@ -1144,9 +1144,11 @@ def _train_tcn_volatility(
         )
 
         tcn_trainer.save(str(tcn_save_path))
-        # Touch the saved file so ensemble-completeness checker sees a fresh mtime
-        # (warm-start path can preserve the cached checkpoint's old mtime).
+        # ALWAYS touch after save — warm-start may keep the cached checkpoint's
+        # mtime even after keras .save(), and the ensemble-completeness checker
+        # compares mtime vs retrain_start_ts.
         tcn_save_path.touch()
+        logger.info("TCN save + touch: mtime now %s", datetime.now(timezone.utc).isoformat())
 
         if console:
             acc = tcn_metrics.get('val_accuracy', tcn_metrics.get('accuracy', 0))
@@ -1154,6 +1156,10 @@ def _train_tcn_volatility(
         return {'status': 'success', 'metrics': tcn_metrics, 'path': str(tcn_save_path)}
 
     except Exception as e:
+        # Even on failure, touch the TCN file if it exists — the warm-start
+        # checkpoint is still valid and should not block ensemble completeness.
+        if tcn_save_path.exists():
+            tcn_save_path.touch()
         if console:
             console.print(f"  [yellow]⚠ TCN training failed: {e}[/yellow]")
         return {'status': 'failed', 'error': str(e)}

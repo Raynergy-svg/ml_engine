@@ -212,6 +212,14 @@ class Scanner:
             logger.debug(f"Phase 69: Keras warm-up deferred: {_warmup_err}")
             self._modular_ensemble = None
 
+        # Hot-reload handler: subscribe to MODEL_PROMOTED so this scanner
+        # picks up fresh models without a restart. Safe no-op if bus unavailable.
+        try:
+            from src.scanner.model_reload_handler import register_model_reload_handler
+            register_model_reload_handler(self)
+        except Exception as _rh_err:
+            logger.debug("Model reload handler registration deferred: %s", _rh_err)
+
         # Lazy-loaded components
         self._gate_evaluator: Optional[GateEvaluator] = None
         self._feature_engineer = None
@@ -1584,6 +1592,45 @@ class Scanner:
             return False
         except Exception as e:
             logger.warning(f"Gate evaluator init failed: {e}")
+            return False
+
+    def reload_models(self, reason: str = "manual") -> bool:
+        """Hot-reload all cached models from disk.
+
+        Called by the MODEL_PROMOTED event subscriber so the running scanner
+        picks up freshly-trained models without a restart. Also callable
+        manually from TUI or CLI.
+
+        Returns True if reload succeeded, False otherwise.
+        """
+        logger.warning("Scanner.reload_models triggered (reason=%s)", reason)
+        try:
+            # 1. Invalidate gate evaluator — forces full re-init
+            self._gate_evaluator = None
+
+            # 2. Reload modular ensemble (TF/Keras models)
+            if self._modular_ensemble is not None:
+                try:
+                    self._modular_ensemble.load_models()
+                    self._ensemble_loaded = getattr(self._modular_ensemble, '_loaded', False)
+                    logger.info("Modular ensemble reloaded (loaded=%s)", self._ensemble_loaded)
+                except Exception as _me_err:
+                    logger.error("Modular ensemble reload failed: %s", _me_err)
+
+            # 3. Reload agent weights (Bayesian + learned)
+            if hasattr(self, '_agent_team') and self._agent_team is not None:
+                try:
+                    self._agent_team.reload_learned_weights()
+                    logger.info("Agent weights reloaded")
+                except Exception as _aw_err:
+                    logger.debug("Agent weight reload failed: %s", _aw_err)
+
+            # 4. Re-init gate evaluator immediately (don't wait for next scan)
+            gate_ok = self._init_gate_evaluator()
+            logger.info("Gate evaluator re-initialized: %s", gate_ok)
+            return True
+        except Exception as exc:
+            logger.error("reload_models failed: %s", exc, exc_info=True)
             return False
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -6549,15 +6596,16 @@ class Scanner:
         # ── Group 1: modular ensemble ──────────────────────────────
         mei = getattr(self, "_modular_ensemble", None)
         if mei is not None:
-            health["transformer_regime"] = getattr(mei, "regime_model", None) is not None
             health["transformer_direction"] = getattr(mei, "transformer", None) is not None
             health["tcn_volatility"] = getattr(mei, "tcn", None) is not None
-            health["histgb_baseline"] = getattr(mei, "histgb", None) is not None
+            # Only count optional models when they're expected/configured
+            if getattr(getattr(mei, "config", None), "require_regime_model", False):
+                health["transformer_regime"] = getattr(mei, "regime_model", None) is not None
+            if getattr(mei, "histgb", None) is not None:
+                health["histgb_baseline"] = True
         else:
-            health["transformer_regime"] = False
             health["transformer_direction"] = False
             health["tcn_volatility"] = False
-            health["histgb_baseline"] = False
 
         # ── Group 2: gate evaluator ────────────────────────────────
         ge = getattr(self, "_gate_evaluator", None)
@@ -6585,10 +6633,13 @@ class Scanner:
         # ── Group 4: supporting artifacts (advisory) ───────────────
         support_dir = _Path("trained_data/models")
         health["calibration_params"] = (support_dir / "calibration_params.json").exists()
-        health["pair_affinity_matrix"] = _Path("trained_data/pair_affinity_matrix.json").exists()
-        health["rl_scaler"] = (support_dir / "rl_scaler.pkl").exists()
-        health["gate_rl_config"] = (support_dir / "gate_rl_config.pkl").exists()
+        health["pair_affinity_matrix"] = (support_dir / "pair_affinity_matrix.json").exists()
         health["modular_ensemble_meta"] = (support_dir / "modular_ensemble.meta.json").exists()
+
+        # ── Group 5: RL models ─────────────────────────────────────
+        health["rl_position_sizer"] = (support_dir / "rl_position_sizer.zip").exists()
+        health["rl_gate_thresholds"] = (support_dir / "sac_gate_thresholds.zip").exists()
+        health["rl_optimal_exit"] = (support_dir / "ppo_optimal_exit.zip").exists()
 
         loaded_count = sum(1 for v in health.values() if v)
         total = len(health)
@@ -6939,6 +6990,35 @@ class Scanner:
             }
             for a in tradeable
         ]
+
+        # ── Trade outcome predictor (US-082): advisory pre-execution prediction ──
+        if self._trade_outcome_predictor is not None:
+            for trade in trades:
+                try:
+                    ctx = trade.get("analysis_context", {})
+                    # Synthesize pre-execution features from analysis context.
+                    # Post-entry features (MAE, MFE, bars) are zero at entry.
+                    pred_features = {
+                        "dist_to_sl_pct": 0.0,
+                        "dist_to_tp_pct": 0.0,
+                        "mae_pips": 0.0,
+                        "mfe_pips": 0.0,
+                        "bars_in_trade": 0,
+                        "momentum_since_entry": float(ctx.get("momentum", 0.0) or 0.0),
+                        "current_vol_vs_entry_vol": 1.0,
+                    }
+                    prediction = self._trade_outcome_predictor.predict(pred_features)
+                    trade["analysis_context"]["outcome_prediction"] = prediction.to_dict()
+                    if prediction.is_trained:
+                        logger.info(
+                            "US-082 %s: outcome_predictor advisory — win_prob=%.2f action=%s (%s)",
+                            trade.get("pair", "?"),
+                            prediction.win_probability,
+                            prediction.suggested_action,
+                            prediction.reason,
+                        )
+                except Exception as e:
+                    logger.debug("US-082 outcome predictor skipped for %s: %s", trade.get("pair", "?"), e)
 
         # Feedback hook: log seasonality modifiers for tradeable setups to observation pipeline
         if self._seasonality is not None:
