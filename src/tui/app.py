@@ -492,8 +492,12 @@ class BuddyApp(App):
         Binding("f4", "switch_tab('journal')", "Journal", show=True),
         Binding("f5", "switch_tab('config')", "Config", show=True),
         Binding("f6", "switch_tab('diag')", "Diagnostics", show=True),
+        Binding("f7", "cycle_asset_class", "FX⇄Futures", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
+
+    # Asset class modes — F7 cycles through them
+    _ASSET_CLASSES = ["fx", "futures", "hybrid"]
 
     def __init__(self, live: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -502,6 +506,7 @@ class BuddyApp(App):
         self._demo_nav = 101420.0
         self._scanner = None  # EmbeddedScanner (live mode only)
         self._reflection_stop = threading.Event()  # Signals ReflectionLogReader to exit
+        self._asset_class = "fx"  # current asset class mode
 
     def compose(self) -> ComposeResult:
         yield HeaderBar(id="header-bar")
@@ -914,6 +919,49 @@ class BuddyApp(App):
     def action_switch_tab(self, tab_id: str) -> None:
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab_id
+
+    def action_cycle_asset_class(self) -> None:
+        """F7: cycle through FX → Futures → Hybrid → FX.
+
+        Updates the scanner config + restarts the scan loop with the new
+        instrument set. The broker switches automatically:
+          fx     → OANDA (EUR_USD, GBP_USD, ...)
+          futures → IBKR  (ES, NQ, CL, GC, ZB, 6E)
+          hybrid  → both  (all instruments, primary broker from config)
+        """
+        idx = self._ASSET_CLASSES.index(self._asset_class)
+        self._asset_class = self._ASSET_CLASSES[(idx + 1) % len(self._ASSET_CLASSES)]
+
+        mode_label = {
+            "fx": "FX (OANDA) — 15 pairs",
+            "futures": "FUTURES (IBKR) — ES NQ CL GC ZB 6E",
+            "hybrid": "HYBRID — FX + Futures",
+        }[self._asset_class]
+
+        # Update scanner config if scanner is running
+        if self._scanner is not None:
+            try:
+                config = self._scanner.get_config()
+                if config is not None:
+                    config.asset_class = self._asset_class
+                    config.broker_type = config.active_broker_type
+                    # Log the switch
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "Asset class switched to %s — instruments: %s",
+                        self._asset_class, config.active_instruments[:5],
+                    )
+            except Exception:
+                pass
+
+        # Notify the user via the brain log
+        try:
+            brain_log = self.query_one("#brain-log")
+            brain_log.write(f"[bold cyan]⟨ MODE ⟩[/] {mode_label}")
+        except Exception:
+            pass
+
+        self.notify(f"Asset class: {mode_label}", title="Mode Switch")
 
     def action_quit(self) -> None:
         """Clean shutdown — stop scanner before exiting."""

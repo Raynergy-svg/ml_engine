@@ -420,6 +420,34 @@ def get_default_registry() -> InstrumentRegistry:
         )
     )
 
+    # ZB (30-Year US Treasury Bond)
+    registry.register(
+        Instrument.futures(
+            symbol="ZB",
+            broker_symbol="ZB",
+            tick_size=1 / 32,  # 1/32 of a point
+            tick_value=31.25,
+            multiplier=1000.0,
+            price_precision=5,
+            margin_requirement=5.0,
+            exchange="CBOT",
+        )
+    )
+
+    # 6E (EUR/USD Futures — same underlying as FX but with real CME volume)
+    registry.register(
+        Instrument.futures(
+            symbol="6E",
+            broker_symbol="6E",
+            tick_size=0.00005,
+            tick_value=6.25,
+            multiplier=125000.0,
+            price_precision=5,
+            margin_requirement=3.0,
+            exchange="CME",
+        )
+    )
+
     logger.info(
         f"Initialized default registry: {len(registry.get_by_asset_class('FX'))} FX, "
         f"{len(registry.get_by_asset_class('FUTURES'))} FUTURES"

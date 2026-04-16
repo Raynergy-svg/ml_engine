@@ -39,6 +39,17 @@ CROSS_PAIRS = [
 
 DEFAULT_PAIRS = MAJOR_PAIRS + CROSS_PAIRS
 
+# Futures contracts — front-month symbols for IBKR
+# Symbol format: CME/NYMEX/COMEX standard roots
+DEFAULT_FUTURES = [
+    "ES",   # S&P 500 E-mini (CME) — equity index, strong trend, high liquidity
+    "NQ",   # Nasdaq 100 E-mini (CME) — tech-heavy, momentum-driven
+    "CL",   # Crude Oil (NYMEX) — commodity, seasonal + geopolitical
+    "GC",   # Gold (COMEX) — safe haven, inversely correlated to equities
+    "ZB",   # 30-Year Treasury Bond (CBOT) — rates, macro regime signal
+    "6E",   # EUR/USD futures (CME) — same as FX but with real volume
+]
+
 # NOTE: PIP_VALUES has been moved to InstrumentRegistry (src.brokers.registry)
 # Use get_registry().get(symbol).pip_value to access pip values
 
@@ -455,6 +466,7 @@ class ScannerConfig:
     # Select which broker to use for execution and data fetching
     # ═══════════════════════════════════════════════════════════════════════════════
     broker_type: str = "oanda"  # "oanda" or "ibkr" (default: OANDA)
+    asset_class: str = "fx"  # "fx" | "futures" | "hybrid" — determines instrument set + sizing logic
 
     # OANDA-specific settings
     oanda_account_id: str = ""  # Account ID (e.g., "001-001-123456-001")
@@ -542,12 +554,33 @@ class ScannerConfig:
     agent_promotion_requires_risk: bool = True
     use_master_pair_models: bool = True
 
-    # Default pairs (for easy access)
+    # Default instruments (resolved from asset_class at init)
     default_pairs: List[str] = field(default_factory=lambda: DEFAULT_PAIRS.copy())
+    default_futures: List[str] = field(default_factory=lambda: DEFAULT_FUTURES.copy())
     pip_values: Dict[str, float] = field(default_factory=lambda: {
         inst.symbol: inst.pip_value
         for inst in get_registry().get_by_asset_class("FX")
     })
+
+    @property
+    def active_instruments(self) -> List[str]:
+        """Return instruments for the configured asset_class."""
+        if self.asset_class == "futures":
+            return list(self.default_futures)
+        elif self.asset_class == "hybrid":
+            return list(self.default_pairs) + list(self.default_futures)
+        else:  # "fx" default
+            return list(self.default_pairs)
+
+    @property
+    def active_broker_type(self) -> str:
+        """Return the broker for the configured asset_class."""
+        if self.asset_class == "futures":
+            return "ibkr"
+        elif self.asset_class == "hybrid":
+            return self.broker_type  # user chooses primary
+        else:
+            return "oanda"
 
     # Blocked pairs (pairs with model accuracy issues or other constraints)
     blocked_pairs: List[str] = field(default_factory=list)
