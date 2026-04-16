@@ -595,8 +595,7 @@ def validate_holdout_multi_timeframe(
     # If at least one TF has real accuracy data AND passes, we're good.
     # If ALL TFs returned ok=True but with insufficient samples (acc=None),
     # treat as a soft pass — the holdout validator couldn't test but explicitly
-    # chose not to block. This prevents "RETRAINING FAILED" when the evaluate
-    # API returns 0 predictions (GateEvaluator signature mismatch, data issue, etc.)
+    # chose not to block.
     all_soft_pass = all(per_tf[g]["passed"] for g in granularities) and passed_count == 0
     overall_passed = passed_count >= 1 or all_soft_pass
     if all_soft_pass:
@@ -605,17 +604,34 @@ def validate_holdout_multi_timeframe(
             "soft-passing. Holdout validation did NOT actually run.",
             len(granularities),
         )
-    # Aggregate accuracy = weighted average across TFs that returned numbers.
+
+    # PRIMARY TF ACCURACY: use the first granularity (the trading TF, typically
+    # H1) as the promotion gate's accuracy metric. M15/H4 are informational —
+    # requiring a model to predict on timeframes it wasn't trained for is asking
+    # the wrong question. Per-TF breakdown stays in metadata for observability.
+    primary_tf = granularities[0]
+    primary_acc = per_tf[primary_tf].get("accuracy")
+    primary_samples = per_tf[primary_tf].get("samples") or 0
+
+    # Aggregate stays available for reference but isn't used in promotion gate.
     accs = [per_tf[g]["accuracy"] for g in granularities if per_tf[g]["accuracy"] is not None]
     agg_acc = sum(accs) / len(accs) if accs else None
     tot_samples = sum((per_tf[g]["samples"] or 0) for g in granularities)
+
+    logger.info(
+        "Holdout primary TF=%s accuracy=%.3f (%d samples) | aggregate=%.3f (%d samples)",
+        primary_tf, primary_acc or 0, primary_samples, agg_acc or 0, tot_samples,
+    )
 
     metrics = {
         "timeframes_passed": passed_count,
         "timeframes_tested": len(granularities),
         "per_timeframe": per_tf,
-        "accuracy": agg_acc,           # aggregate (mean across TFs) — used by absolute + relative gates
-        "holdout_samples": tot_samples,  # summed samples across TFs
+        "accuracy": primary_acc,            # PRIMARY TF only — used by promotion gates 1+3
+        "accuracy_aggregate": agg_acc,      # mean across all TFs — informational
+        "holdout_samples": primary_samples,  # samples from primary TF only
+        "holdout_samples_total": tot_samples,
+        "primary_timeframe": primary_tf,
     }
     combined_msg = (
         f"Multi-TF holdout: {passed_count}/{len(granularities)} timeframes passed. "
