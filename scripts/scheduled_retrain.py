@@ -377,15 +377,47 @@ def validate_holdout_accuracy(
 
         for pair in pairs[:3]:  # Validate on up to 3 pairs (speed)
             try:
-                candles_df = oanda.get_candles(pair, granularity=granularity, count=holdout_candles)
-                if candles_df is None or len(candles_df) < 100:
+                candles_raw = oanda.get_candles(pair, granularity=granularity, count=holdout_candles)
+                # OandaPracticeClient returns a dict or Response — extract DataFrame
+                if candles_raw is None:
+                    logger.debug("Holdout %s: candles returned None", pair)
+                    continue
+                import pandas as _pd
+                if isinstance(candles_raw, dict):
+                    # Extract from OANDA response: {"candles": [...]}
+                    candles_list = candles_raw.get("candles", [])
+                    if not candles_list:
+                        logger.debug("Holdout %s: empty candles list in response", pair)
+                        continue
+                    rows = []
+                    for c in candles_list:
+                        mid = c.get("mid", {})
+                        rows.append({
+                            "time": c.get("time"),
+                            "open": float(mid.get("o", 0)),
+                            "high": float(mid.get("h", 0)),
+                            "low": float(mid.get("l", 0)),
+                            "close": float(mid.get("c", 0)),
+                            "volume": int(c.get("volume", 0)),
+                        })
+                    candles_df = _pd.DataFrame(rows)
+                elif isinstance(candles_raw, _pd.DataFrame):
+                    candles_df = candles_raw
+                else:
+                    logger.debug("Holdout %s: unexpected candles type %s", pair, type(candles_raw))
+                    continue
+
+                if len(candles_df) < 100:
+                    logger.debug("Holdout %s: only %d candles", pair, len(candles_df))
                     continue
 
                 # Use last holdout_candles as test set
                 test_df = candles_df.tail(holdout_candles)
                 features = compute_normalized_features(test_df)
                 if features is None or features.empty:
+                    logger.debug("Holdout %s: features empty after compute_normalized_features", pair)
                     continue
+                logger.info("Holdout %s [%s]: %d features rows, %d columns", pair, granularity, len(features), features.shape[1])
 
                 # Check direction predictions against actual price movement
                 n_errors = 0
@@ -483,16 +515,12 @@ def verify_ensemble_refreshed(
             if p.exists():
                 checks.append((f"joint/{name}", p))
 
-    # Per-pair directories: check LightGBM fine-tuned models (these ARE produced
-    # by the joint retrain's fine-tuning step). Skip .arch.json files — those are
-    # transformer architecture exports from a separate per-pair training path that
-    # the joint retrain doesn't touch.
-    pair_pattern = re.compile(r"^[A-Z]{3}_[A-Z]{3}$")
-    for sub in models_root.iterdir() if models_root.exists() else []:
-        if sub.is_dir() and pair_pattern.match(sub.name):
-            for candidate in sub.glob("lgbm_*.pkl"):
-                checks.append((f"{sub.name}/{candidate.name}", candidate))
-                break  # one probe per pair is enough
+    # Per-pair directories: SKIP. The joint retrain's fine-tuning step only
+    # retunes pairs that exceed fine_tune_threshold (typically ~5 of 15). Pairs
+    # that performed well keep their existing models — making their mtimes stale
+    # by design, not by bug. Only the joint directory + meta.json are guaranteed
+    # fresh after every retrain. Per-pair staleness is tracked separately by the
+    # retrain_agent's model_staleness trigger.
 
     stale: List[str] = []
     max_age_days: float = 0.0
