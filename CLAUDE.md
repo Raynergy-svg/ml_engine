@@ -11,7 +11,13 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 
 ## Core Loop
 1. **Scan**: Multi-pair analysis with TCN/Ridge/RF ensemble models
-2. **Agents**: 12-agent team (trend, mean_reversion, volatility, risk_sentinel, uncertainty, execution_quality, momentum, news_risk, multi_timeframe, pair_performance, session_timing, support_resistance)
+2. **Agents**: 15-agent team (truth: see `_BASE_WEIGHTS` in `src/scanner/agents/_team.py`):
+   - **Core 12**: trend, mean_reversion, volatility, risk_sentinel, uncertainty, execution_quality, momentum, news_risk, multi_timeframe, pair_performance, session_timing, support_resistance
+   - **Extended 3**: order_flow (OANDA order/position book contrarian, weight 0.95), trader_readiness (Aura human-side readiness, weight 0.50), devil_advocate (adversarial bear-case evaluator, runs LAST, weight 1.30)
+   - Extended 3 are individually toggleable via `ScannerConfig` flags (all default `True`):
+     - `enable_order_flow_agent` — disable to skip OANDA book-depth contrarian signal
+     - `enable_trader_readiness_agent` — disable to skip Aura human-side readiness check
+     - `enable_devil_advocate_agent` — disable to skip adversarial bear-case evaluator (legacy `enable_devil_advocate` still honored for backcompat)
 3. **Gates**: Confidence, momentum, risk — all must pass
 4. **Execute**: ATR-based SL/TP, regime-aware position sizing
 5. **Monitor**: Drawdown guardian, trailing SL, real-time P/L
@@ -37,6 +43,7 @@ These files are written by me (Claude), for me. They are the reasoning layer on 
 - `trade_narrative.md` — interpreted trade history (not raw journal data)
 - `strategic_log.md` — my decision ledger, append-only
 - `open_questions.md` — active hypotheses and investigations
+- `docs/supervisor_console_runbook.md` — operator runbook for the Supervisor Console (hotkeys, kill-switch procedure, post-kill checklist, escalation). Required reading before any LIVE-mode session.
 
 ## Self-Improvement (Buddy's Mechanical Layer)
 - Learnings: `.claude/learnings.md` — date-stamped insights from trade outcomes
@@ -48,7 +55,7 @@ These files are written by me (Claude), for me. They are the reasoning layer on 
 - `main.py` — CLI entry point (argparse: --dry-run, --watch, --execute, --pairs, etc.)
 - `buddy_scanner.py` — BuddyScanner shim class (library, not CLI)
 - `src/scanner/engine.py` — Core Scanner class with model ensemble
-- `src/scanner/agents/` — ScannerAgentTeam (12 agents) with RL weight learning
+- `src/scanner/agents/` — ScannerAgentTeam (15 agents: core 12 + order_flow, trader_readiness, devil_advocate) with RL weight learning
 - `src/scanner/execution.py` — ExecutionManager: OANDA trade execution + RL sync
 - `src/scanner/config.py` — ScannerConfig with agent toggles and thresholds
 - `src/scanner/automation/continuous.py` — Watch mode loop

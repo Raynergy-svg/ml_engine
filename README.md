@@ -149,6 +149,13 @@ pip install -r requirements.txt
 
 Intel Macs can use `environment_intel_mac.yml` instead.
 
+After the environment is ready, install the P0 safety gates (orphan-key guard, py_compile, circuit-breaker regression — see `docs/ci_gates.md`):
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
 ### 2. Set credentials
 
 Create `.env.local` in the repo root:

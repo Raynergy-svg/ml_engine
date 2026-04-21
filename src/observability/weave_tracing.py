@@ -179,8 +179,9 @@ def patch_instance_methods(
 ) -> int:
     """Wrap every bound method on `instance` whose name starts with `prefix`.
 
-    Used to trace all 12 `_evaluate_*` agent methods on ScannerAgentTeam without
-    editing each method's source. Returns count of methods patched.
+    Used to trace all `_evaluate_*` agent methods on ScannerAgentTeam (15 agents;
+    see ``ScannerAgentTeam._BASE_WEIGHTS``) without editing each method's source.
+    Returns count of methods patched.
     """
     if not is_enabled():
         return 0

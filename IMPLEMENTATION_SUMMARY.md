@@ -31,7 +31,7 @@
 ## Architecture Overview
 
 ```
-Agent Verdicts (12 agents, 0-1 scores)
+Agent Verdicts (15 agents, 0-1 scores — see `ScannerAgentTeam._BASE_WEIGHTS`)
          ↓
 ┌────────────────────────────────────────┐
 │  CALIBRATION PIPELINE (5 LAYERS)      │
@@ -67,7 +67,7 @@ Final Confidence Score (0-1)
 ## Key Features
 
 ### ✓ Ensemble Disagreement Detection
-- Computes std of 12 agent scores
+- Computes std of 15 agent scores
 - 4-level classification (LOW/MODERATE/HIGH/CRITICAL)
 - Multiplicative penalties: 1.0 → 0.9 → 0.8 → 0.6
 

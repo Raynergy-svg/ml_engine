@@ -11,7 +11,7 @@ Algorithm:
 4. Normalize: posterior becomes probability distribution
 5. Sample: draw from posterior (Thompson) or take argmax (greedy)
 
-Time: <100ms per update for 12 agents
+Time: <100ms per update for the 15-agent team (see ``ScannerAgentTeam._BASE_WEIGHTS``)
 """
 
 from __future__ import annotations

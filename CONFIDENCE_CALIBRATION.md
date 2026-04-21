@@ -11,7 +11,7 @@ It addresses a critical trading challenge: **raw confidence scores from agent co
 The calibration pipeline has 5 layers:
 
 ```
-Agent Verdicts (12 agents, each with score & weight)
+Agent Verdicts (15 agents, each with score & weight — see `ScannerAgentTeam._BASE_WEIGHTS`)
     ↓
 1. Ensemble Disagreement  (std of agent scores)
     ↓
@@ -92,7 +92,7 @@ system.refit_calibration()
 
 ### 1. Ensemble Disagreement
 
-**What it measures:** How much the 12 agents disagree on the trade quality.
+**What it measures:** How much the 15 agents disagree on the trade quality (see `ScannerAgentTeam._BASE_WEIGHTS`).
 
 **How it works:**
 - Extracts score from each agent (0-1 confidence)
@@ -232,7 +232,7 @@ verdicts = [
     # From ScannerAgentTeam.evaluate()
     agent_verdict_1,
     agent_verdict_2,
-    # ... 12 agents total
+    # ... 15 agents total (see ScannerAgentTeam._BASE_WEIGHTS)
 ]
 
 # Calibrate before entry
