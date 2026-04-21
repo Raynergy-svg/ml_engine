@@ -321,7 +321,7 @@ class TestAgentTeamEvaluation:
         Requirements:
         - Fetch ES H1 candles
         - Construct feature engineering output
-        - Run 12-agent team evaluation
+        - Run 15-agent team evaluation (see ``ScannerAgentTeam._BASE_WEIGHTS``)
         - Verify list of AgentVerdict objects returned
         - Verify each verdict has name, score, passed flag
         """

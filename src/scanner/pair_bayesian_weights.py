@@ -2,8 +2,10 @@
 Pair-Specific Bayesian Agent Weights — Phase 53 (US-329).
 
 Extends BayesianAgentWeights with pair-level Beta distributions.
-12 agents × 12 pairs = 144 additional distributions, blended with
-global regime weights:
+Core-12 agents × 12 pairs = 144 additional distributions, blended with
+global regime weights. (Extended agents order_flow / trader_readiness /
+devil_advocate from the 15-agent team are not tracked here; see
+``ScannerAgentTeam._BASE_WEIGHTS`` for the full roster.)
 
     final_weight = 0.6 × regime_weight + 0.4 × pair_weight
 
@@ -28,7 +30,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Default 12 agents from the system
+# Default core-12 agents (subset of the 15-agent team; see
+# ``ScannerAgentTeam._BASE_WEIGHTS`` for the full roster).
 DEFAULT_AGENT_NAMES = [
     "trend", "mean_reversion", "volatility", "risk_sentinel",
     "uncertainty", "execution_quality", "momentum", "news_risk",

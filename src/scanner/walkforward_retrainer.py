@@ -24,7 +24,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Default 12 agents with equal initial weights
+# Default core-12 agents with equal initial weights (subset of the 15-agent
+# team; extended agents order_flow / trader_readiness / devil_advocate are
+# not walk-forward retrained here. Source of truth: ``ScannerAgentTeam._BASE_WEIGHTS``.)
 DEFAULT_AGENTS = [
     "trend", "mean_reversion", "volatility", "risk_sentinel",
     "uncertainty", "execution_quality", "momentum", "news_risk",

@@ -34,6 +34,33 @@ from .filters import VolatilityFilter, DiversificationFilter
 
 logger = logging.getLogger(__name__)
 
+# US-513: Staleness hard-block constants. Promoted from .claude/rules/trading.md
+# (2026-04-15): when any ensemble component is > 7 days old, the uncertainty
+# hard-block threshold drops from 0.45 to 0.35.
+STALENESS_AGE_THRESHOLD_DAYS: float = 7.0
+STALENESS_UNCERTAINTY_THRESHOLD: float = 0.35
+
+
+def _evaluate_staleness_uncertainty_block(
+    uncertainty_score: float,
+    staleness_days: float,
+    *,
+    age_threshold: float = STALENESS_AGE_THRESHOLD_DAYS,
+    uncertainty_threshold: float = STALENESS_UNCERTAINTY_THRESHOLD,
+) -> Tuple[bool, Optional[str]]:
+    """Pure helper — no logging side effects on negative path.
+
+    On positive (block) path emits the canonical warning required by
+    US-513 acceptance criteria so downstream auditors can grep one line.
+    """
+    if staleness_days > age_threshold and uncertainty_score > uncertainty_threshold:
+        logger.warning(
+            "HARD-BLOCK: models stale %.0fd, uncertainty %.2f > %.2f tightened threshold",
+            staleness_days, uncertainty_score, uncertainty_threshold,
+        )
+        return True, "stale_models_uncertainty_block"
+    return False, None
+
 # ---------------------------------------------------------------------------
 # M1 Metal / TensorFlow environment defaults (set before TF is imported)
 # ---------------------------------------------------------------------------
@@ -1594,6 +1621,40 @@ class Scanner:
             logger.warning(f"Gate evaluator init failed: {e}")
             return False
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # US-513: Model staleness — surface to TUI + enforce uncertainty hard-block
+    # ═══════════════════════════════════════════════════════════════════════
+    def get_model_staleness_days(self) -> float:
+        """Max age (days) over loaded ensemble component trained_at deltas.
+
+        Returns 0.0 when freshness can't be computed (no models, missing
+        meta files, etc.) so the caller can treat 'unknown' as 'fresh'
+        rather than triggering a false hard-block.
+        """
+        try:
+            from .automation.model_freshness import get_model_freshness
+            f = get_model_freshness()
+            oldest = f.get("oldest_age_days")
+            return float(oldest) if oldest is not None else 0.0
+        except Exception as exc:
+            logger.debug("get_model_staleness_days failed: %s", exc)
+            return 0.0
+
+    def evaluate_staleness_uncertainty_block(
+        self,
+        uncertainty_score: float,
+        staleness_days: Optional[float] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """Apply the .claude/rules/trading.md staleness rule:
+        models > 7d AND uncertainty > 0.35 ⇒ HARD BLOCK.
+
+        Returns (blocked, reason_code).
+        """
+        return _evaluate_staleness_uncertainty_block(
+            uncertainty_score,
+            staleness_days if staleness_days is not None else self.get_model_staleness_days(),
+        )
+
     def reload_models(self, reason: str = "manual") -> bool:
         """Hot-reload all cached models from disk.
 
@@ -2981,6 +3042,26 @@ class Scanner:
                     f"({votes}/{total} = {consensus_ratio:.0%})"
                 )
 
+        # US-513: Staleness uncertainty hard-block. Stale models compound
+        # uncertainty into losses (see .claude/rules/trading.md 2026-04-15
+        # 10-loss streak); soft penalties were proven insufficient.
+        try:
+            _u_score = float(getattr(analysis, "uncertainty_score", 0.0) or 0.0)
+            _stale_days = self.get_model_staleness_days()
+            _blocked, _reason = self.evaluate_staleness_uncertainty_block(_u_score, _stale_days)
+            if _blocked:
+                analysis.gates_passed = False
+                why = getattr(analysis, "why_no_trade", None) or []
+                if isinstance(why, list):
+                    why.append(
+                        f"{_reason}: models stale {_stale_days:.0f}d, uncertainty "
+                        f"{_u_score:.2f} > {STALENESS_UNCERTAINTY_THRESHOLD:.2f}"
+                    )
+                    analysis.why_no_trade = why
+                analysis.staleness_block_reason = _reason
+        except Exception as _stale_err:
+            logger.debug("%s: staleness block check skipped: %s", analysis.pair, _stale_err)
+
         # Agent-consensus promotion: optionally promote to executable setup.
         # SAFETY: promotion must NEVER override specialist agent blocks,
         # dangerous model disagreement, or unknown regime conditions.
@@ -2996,6 +3077,9 @@ class Scanner:
         if promote and analysis.blocked_by_circuit_breaker:
             promote = False
             logger.info(f"{analysis.pair}: promotion blocked — circuit breaker active")
+        if promote and getattr(analysis, "staleness_block_reason", None):
+            promote = False
+            logger.info(f"{analysis.pair}: promotion blocked — stale_models_uncertainty_block")
         if promote and getattr(analysis, "weighted_vote_score", 0) < float(
             getattr(self.config, "weighted_vote_threshold", 0.55)
         ):
@@ -6937,6 +7021,16 @@ class Scanner:
                     "fasttrack": getattr(a, "fasttrack", False),  # US-166
                     "weighted_vote_score": a.weighted_vote_score,
                     "agent_reasons": a.agent_reasons[:5] if a.agent_reasons else [],
+                    # 2026-04-20: Thread agent-team circuit-breaker state through to execution.
+                    # ExecutionManager re-checks these to enforce hard blocks (trend_contra,
+                    # staleness_hard_block, ensemble_direction_conflict, disagreement_hard_block)
+                    # at the execution boundary (defense-in-depth).
+                    "blocked_by_circuit_breaker": getattr(
+                        a, "blocked_by_circuit_breaker", False
+                    ),
+                    "circuit_breakers_triggered": list(
+                        getattr(a, "circuit_breakers_triggered", []) or []
+                    ),
                     "volatility_regime": a.volatility_regime,
                     "atr_pips": a.atr_pips,
                     "uncertainty_score": a.uncertainty_score,

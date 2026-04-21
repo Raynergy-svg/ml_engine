@@ -12,9 +12,11 @@ Provides ExecutionManager for trade execution with:
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -149,6 +151,38 @@ class ExecutionConfig:
     ibkr_host: str = "127.0.0.1"
     ibkr_port: int = 7497
     ibkr_client_id: int = 1
+
+
+# ── US-503 Kill Switch types ──────────────────────────────────────────
+
+@dataclass
+class FlattenResult:
+    """Structured result returned by ExecutionManager.flatten_all().
+
+    Attributes:
+        orders_cancelled: Count of working orders successfully cancelled.
+        orders_failed: Count of order cancellations that failed.
+        positions_closed: Count of open positions successfully closed.
+        positions_failed: Count of position closes that failed after retries.
+        duration_ms: Wall-clock time for the full flatten operation in milliseconds.
+    """
+    orders_cancelled: int
+    orders_failed: int
+    positions_closed: int
+    positions_failed: int
+    duration_ms: float
+
+
+class KillSwitchPartialFailure(Exception):
+    """Raised by flatten_all() when one or more positions could not be closed.
+
+    Attributes:
+        remaining_trades: List of OANDA trade IDs that are still open.
+    """
+
+    def __init__(self, message: str, remaining_trades: List[str]) -> None:
+        super().__init__(message)
+        self.remaining_trades = remaining_trades
 
 
 @dataclass
@@ -1809,6 +1843,21 @@ class ExecutionManager:
                 success=False,
                 error=f"BLOCKED: agent_passed=False (agents voted NO)",
             )
+        # 2026-04-20: Re-check agent-team circuit breakers at execution boundary.
+        # Promoted rules (trading.md 2026-04-15):
+        #   • trend_contra              — trend agent passed=False on directional trade (Trade 1220)
+        #   • staleness_hard_block      — uncertainty>0.35 with stale models (-$2,637 streak)
+        #   • ensemble_direction_conflict — TCN/Ridge/RF disagree on direction
+        #   • disagreement_hard_block   — model_disagreement above hard floor
+        # If upstream agent voting somehow set agent_passed=True while a hard block
+        # was triggered, we still reject here.
+        _cb_flag = bool(ctx.get("blocked_by_circuit_breaker", False))
+        _cb_codes = list(ctx.get("circuit_breakers_triggered", []) or [])
+        if _cb_flag or _cb_codes:
+            return ExecutionResult(
+                success=False,
+                error=f"BLOCKED: circuit_breakers_triggered={_cb_codes or ['unspecified']}",
+            )
         _ctx_disagreement = float(ctx.get("model_disagreement", 0.0))
         _max_disagreement = getattr(self.config, "max_model_disagreement", 0.65)
         # Phase 91: >= not > — exact boundary must block (0.50 = coin flip)
@@ -3144,6 +3193,179 @@ class ExecutionManager:
                 except Exception:
                     pass
             return ExecutionResult(success=False, error=str(e))
+
+    def submit_trade(
+        self,
+        pair: str,
+        direction: str,
+        confidence: float,
+        current_price: float,
+        atr: float,
+        analysis_context: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """US-502/US-511: State-gated trade submission with operator veto window.
+
+        Checks halted/paused/mode before delegating to execute_trade or dry-run journal.
+        If veto_window_ms > 0: emits signal.pending, holds for the window, and
+        cancels execution if control.signal_veto arrives with matching signal_id.
+
+        Returns a dict with at minimum a 'status' key:
+          'paused'   — scanner paused, signal suppressed
+          'vetoed'   — operator aborted during veto window
+          'dry_run'  — simulated, written to trained_data/dry_run_journal.jsonl
+          'executed' — live order submitted successfully
+          'rejected' — execute_trade returned failure
+        """
+        import json
+        import os
+        import threading
+        import uuid
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            from src.scanner.automation.event_bus import get_event_bus
+            _se = StateEngine()
+            _bus = get_event_bus()
+        except Exception as _init_err:
+            logger.warning("submit_trade: state/bus init failed (%s) — falling through to execute_trade", _init_err)
+            result = self.execute_trade(
+                pair=pair, direction=direction, confidence=confidence,
+                current_price=current_price, atr=atr, analysis_context=analysis_context, **kwargs,
+            )
+            return {"status": "executed" if result.success else "rejected", "result": result}
+
+        # ── gate 1: paused (allow monitoring, block new executions) ──
+        if _se.get_paused():
+            logger.warning("SCANNER PAUSED — signal suppressed for %s %s", pair, direction)
+            _bus.publish("signal.rejected", {
+                "pair": pair, "direction": direction, "reason": "paused",
+                "confidence": confidence,
+            })
+            return {"status": "paused", "pair": pair, "direction": direction}
+
+        # ── gate 1.5: US-511 veto window ────────────────────────────
+        _cfg = getattr(self, "config", None)
+        _veto_ms: int = 0
+        if _cfg is not None:
+            _per_pair = getattr(_cfg, "veto_window_ms_per_pair", {}) or {}
+            _default_ms = getattr(_cfg, "veto_window_ms_default", 0) or 0
+            _veto_ms = int(_per_pair.get(pair, _default_ms))
+        _wvs = float((analysis_context or {}).get("weighted_vote_score", 0.0))
+
+        if _veto_ms > 0:
+            _signal_id = str(uuid.uuid4())
+            _deadline = datetime.now(timezone.utc).timestamp() + _veto_ms / 1000.0
+            _deadline_iso = datetime.fromtimestamp(_deadline, tz=timezone.utc).isoformat()
+            _pending_payload: Dict[str, Any] = {
+                "signal_id": _signal_id,
+                "pair": pair,
+                "direction": direction,
+                "entry": current_price,
+                "sl": float((analysis_context or {}).get("sl_price", 0.0)),
+                "tp": float((analysis_context or {}).get("tp_price", 0.0)),
+                "weighted_vote_score": _wvs,
+                "window_ms": _veto_ms,
+                "deadline_iso": _deadline_iso,
+            }
+            # Register before publishing to avoid race
+            _veto_evt = _bus.register_veto_wait(_signal_id)
+            _bus.publish("signal.pending", _pending_payload)
+            logger.info(
+                "VETO WINDOW: EXECUTING %s in %.1fs… A to abort [signal_id=%s]",
+                pair, _veto_ms / 1000.0, _signal_id,
+            )
+            _vetoed = _veto_evt.wait(timeout=_veto_ms / 1000.0)
+            _bus.cancel_veto_wait(_signal_id)  # no-op if already consumed
+
+            if _vetoed:
+                logger.warning("SIGNAL VETOED by operator: %s %s [signal_id=%s]", pair, direction, _signal_id)
+                _bus.publish("signal.vetoed", {
+                    "signal_id": _signal_id, "pair": pair, "direction": direction,
+                    "vetoed_by": "operator",
+                })
+                # Journal the veto so RL history is complete
+                try:
+                    _jpath = Path("trained_data/trade_journal_rl.json")
+                    _jpath.parent.mkdir(parents=True, exist_ok=True)
+                    _jentries: list = []
+                    if _jpath.exists():
+                        try:
+                            _jentries = json.loads(_jpath.read_text()) or []
+                            if not isinstance(_jentries, list):
+                                _jentries = []
+                        except Exception:
+                            _jentries = []
+                    _veto_entry: Dict[str, Any] = {
+                        "signal_id": _signal_id,
+                        "pair": pair,
+                        "direction": direction,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "confidence": confidence,
+                        "entry_price": current_price,
+                        "atr": atr,
+                        "vetoed_by": "operator",
+                        "outcome": "vetoed",
+                    }
+                    _jentries.append(_veto_entry)
+                    _tmp = str(_jpath) + ".tmp"
+                    with open(_tmp, "w") as _jf:
+                        _jf.write(json.dumps(_jentries, indent=2))
+                    os.replace(_tmp, str(_jpath))
+                except Exception as _jw_err:
+                    logger.warning("submit_trade: veto journal write failed: %s", _jw_err)
+                return {
+                    "status": "vetoed", "pair": pair, "direction": direction,
+                    "signal_id": _signal_id, "vetoed_by": "operator",
+                }
+
+        # ── gate 2: mode branch ──────────────────────────────────────
+        mode = _se.get_mode()
+
+        if mode == "dry_run":
+            logger.info("MODE=dry_run — trade simulated: %s %s conf=%.3f", pair, direction, confidence)
+            entry: Dict[str, Any] = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "pair": pair,
+                "direction": direction,
+                "confidence": confidence,
+                "current_price": current_price,
+                "atr": atr,
+                "mode": "dry_run",
+                "analysis_context": analysis_context or {},
+            }
+            try:
+                journal_path = Path("trained_data/dry_run_journal.jsonl")
+                journal_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(journal_path, "a") as _jf:
+                    _jf.write(json.dumps(entry) + "\n")
+            except Exception as _jw_err:
+                logger.warning("submit_trade: dry_run journal write failed: %s", _jw_err)
+            _bus.publish("signal.executed", {
+                "pair": pair, "direction": direction, "mode": "dry_run",
+                "confidence": confidence,
+            })
+            return {"status": "dry_run", "pair": pair, "direction": direction, "entry": entry}
+
+        # mode == 'live': real OANDA submission
+        result = self.execute_trade(
+            pair=pair, direction=direction, confidence=confidence,
+            current_price=current_price, atr=atr, analysis_context=analysis_context, **kwargs,
+        )
+        if result.success:
+            _bus.publish("signal.executed", {
+                "pair": pair, "direction": direction, "mode": "live",
+                "trade_id": result.trade_id, "confidence": confidence,
+            })
+            return {"status": "executed", "pair": pair, "direction": direction, "result": result}
+        else:
+            _bus.publish("signal.rejected", {
+                "pair": pair, "direction": direction, "reason": result.error,
+                "mode": "live", "confidence": confidence,
+            })
+            return {"status": "rejected", "pair": pair, "direction": direction, "error": result.error}
 
     def execute_trades(
         self,
@@ -4607,6 +4829,91 @@ class ExecutionManager:
         except Exception as exc:
             logger.error("Failed to spawn background retrain: %s", exc)
 
+    def sync_rl_weights(
+        self,
+        weights_before: Dict[str, float],
+        weights_after: Dict[str, float],
+        trade_id: str,
+        pnl: float,
+        reason: str,
+        history_path: Optional[str] = None,
+    ) -> int:
+        """Append per-agent RL weight snapshot rows to weight_history.jsonl (US-515).
+
+        One row per agent whose weight was observed. Rows are JSON Lines (one
+        object per line). Writes are atomic-append: the line is fully formed,
+        then written with O_APPEND semantics and fsync'd so a crash cannot
+        produce a half-written row.
+
+        Schema: {ts, trade_id, agent, weight_before, weight_after, pnl, reason}
+
+        Args:
+            weights_before: Per-agent weights prior to RL update.
+            weights_after: Per-agent weights after RL update.
+            trade_id: The trade id that triggered the update.
+            pnl: Realized P/L for the trade (float).
+            reason: Short reason tag (e.g. "trade_closed_win").
+            history_path: Override for the output path (used by tests).
+
+        Returns:
+            Number of rows appended.
+        """
+        from pathlib import Path
+
+        path = Path(history_path) if history_path else Path("trained_data/models/weight_history.jsonl")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"sync_rl_weights: could not create parent dir {path.parent}: {e}")
+            return 0
+
+        ts = datetime.now(timezone.utc).isoformat()
+        # Union of agents seen in either dict so we don't miss any
+        try:
+            agents = sorted(set(weights_before.keys()) | set(weights_after.keys()))
+        except Exception:
+            agents = []
+
+        rows: List[str] = []
+        for agent in agents:
+            try:
+                wb = float(weights_before.get(agent, 0.0))
+                wa = float(weights_after.get(agent, wb))
+            except (TypeError, ValueError):
+                continue
+            row = {
+                "ts": ts,
+                "trade_id": str(trade_id),
+                "agent": str(agent),
+                "weight_before": round(wb, 6),
+                "weight_after": round(wa, 6),
+                "pnl": float(pnl),
+                "reason": str(reason),
+            }
+            try:
+                rows.append(json.dumps(row, sort_keys=True))
+            except (TypeError, ValueError) as e:
+                logger.debug(f"sync_rl_weights: skip unserializable row for {agent}: {e}")
+
+        if not rows:
+            return 0
+
+        payload = "\n".join(rows) + "\n"
+        try:
+            # Atomic-ish append: single write call in O_APPEND mode + fsync.
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    pass  # Best-effort; not all fds support fsync
+        except OSError as e:
+            logger.warning(f"sync_rl_weights: append failed for {path}: {e}")
+            return 0
+
+        return len(rows)
+
     def sync_closed_trades_rl(self, scanner: Any = None) -> Dict[str, Any]:
         """Check OANDA for recently closed trades and run RL feedback on agent weights.
 
@@ -4832,6 +5139,8 @@ class ExecutionManager:
                     "exit_reason": exit_reason,
                     "pnl": realized_pl,
                     "shaped_reward": _shaped_reward,
+                    # US-515: trade id carried through so sync_rl_weights can tag snapshot rows
+                    "trade_id": tid,
                 })
 
         # Tier 7: Expectancy, PairTracker, Attribution, DriftDetector, FeatureHealth,
@@ -4912,11 +5221,30 @@ class ExecutionManager:
                         except Exception as _mod_err:
                             logger.debug(f"Regime reward modulation skipped: {_mod_err}")
 
+                    # US-515: snapshot global weights BEFORE RL update (per-trade)
+                    _per_trade_before = dict(
+                        agent_team._learned_weights.get("_global", agent_team._BASE_WEIGHTS)
+                    )
+
                     new_weights = agent_team.update_weights_from_outcome(
                         agent_verdicts=upd["agent_verdicts"],
                         trade_won=upd["trade_won"],
                         regime=upd.get("regime", "NORMAL"),
                     )
+
+                    # US-515: append per-agent row to weight_history.jsonl
+                    try:
+                        self.sync_rl_weights(
+                            weights_before=_per_trade_before,
+                            weights_after=new_weights,
+                            trade_id=str(upd.get("trade_id", "")),
+                            pnl=float(upd.get("pnl", 0.0) or 0.0),
+                            reason=(
+                                "trade_closed_win" if upd.get("trade_won") else "trade_closed_loss"
+                            ),
+                        )
+                    except Exception as _wh_err:
+                        logger.debug(f"US-515 weight_history append skipped: {_wh_err}")
 
                     # Restore boost after each trade (penalty restored below or in trailing logic)
                     if _rl_config is not None:
@@ -5530,4 +5858,347 @@ class ExecutionManager:
             "fill_rate": fill_rate,
             "total_trades": total,
             "rejected_count": total - filled,
+        }
+
+    # ── US-503 Kill Switch ────────────────────────────────────────────
+
+    async def flatten_all(self, reason: str) -> "FlattenResult":
+        """Panic-button backend: cancel all working orders and market-close all open positions.
+
+        Execution order:
+        1. Halt scanner immediately via StateEngine (before any OANDA call).
+        2. Fetch open orders and open trades from OANDA.
+        3. Cancel working orders in parallel (asyncio.gather).
+        4. Market-close open positions in parallel (asyncio.gather).
+        5. Write structured entry to .claude/brain/strategic_log.md.
+        6. Emit control.kill event on the trading EventBus.
+        7. If any position close failed after all retries, raise KillSwitchPartialFailure.
+
+        Each individual OANDA call uses exponential backoff (base 1s, max 30s, jitter).
+        4xx client errors are NOT retried.
+
+        Args:
+            reason: Human-readable reason for the kill switch activation (e.g. 'TUI_KILL').
+
+        Returns:
+            FlattenResult with counts of cancelled/closed/failed operations and duration_ms.
+
+        Raises:
+            KillSwitchPartialFailure: If any position close exhausted all retries.
+        """
+        import requests as _requests
+        import random
+        import json
+        import time
+
+        _start = time.monotonic()
+
+        # ── Step 1: Halt immediately ──────────────────────────────────
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            _se = StateEngine()
+            _se.set_halted(True)
+            logger.warning("flatten_all: state.halted=True set (reason=%s)", reason)
+        except Exception as _halt_err:
+            logger.error("flatten_all: failed to set halted flag: %s", _halt_err)
+
+        token = os.getenv("OANDA_API_TOKEN", "")
+        acct = os.getenv("OANDA_ACCOUNT_ID", "")
+        base = self._oanda_base_url
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        # ── Async retry helper ────────────────────────────────────────
+        async def _async_retry(method: str, url: str, **kwargs: Any) -> Any:
+            """Run a sync requests call in a thread with async exponential backoff.
+
+            4xx client errors are returned immediately without retry.
+            5xx / timeout / connection errors are retried up to 3 times.
+            """
+            func = {"GET": _requests.get, "PUT": _requests.put, "DELETE": _requests.delete}[method]
+            last_exc: Optional[Exception] = None
+            for attempt in range(4):  # 1 initial + 3 retries
+                try:
+                    resp = await asyncio.to_thread(func, url, headers=headers, timeout=10, **kwargs)
+                    if resp.status_code in (401, 403):
+                        # Auth error — no retry
+                        logger.warning("flatten_all: auth error %d on %s", resp.status_code, url)
+                        return resp
+                    if resp.status_code >= 400 and resp.status_code < 500:
+                        # Other 4xx — no retry
+                        return resp
+                    if resp.status_code >= 500:
+                        raise ValueError(f"OANDA 5xx: {resp.status_code}")
+                    return resp
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt < 3:
+                        delay = min(1.0 * (2 ** attempt), 30.0) + random.uniform(0, 0.1)
+                        logger.warning(
+                            "flatten_all: retry %d/3 in %.1fs after %s on %s",
+                            attempt + 1, delay, exc, url,
+                        )
+                        await asyncio.sleep(delay)
+            raise last_exc or RuntimeError(f"All retries exhausted for {url}")
+
+        # ── Step 2: Fetch open orders (pending) ──────────────────────
+        pending_order_ids: List[str] = []
+        try:
+            resp = await _async_retry("GET", f"{base}/v3/accounts/{acct}/pendingOrders")
+            if resp.status_code == 200:
+                pending_order_ids = [
+                    str(o["id"]) for o in resp.json().get("orders", []) if "id" in o
+                ]
+                logger.info("flatten_all: %d pending orders to cancel", len(pending_order_ids))
+        except Exception as _oe:
+            logger.error("flatten_all: could not fetch pending orders: %s", _oe)
+
+        # ── Step 3: Fetch open trades ────────────────────────────────
+        open_trade_ids: List[str] = []
+        try:
+            resp = await _async_retry("GET", f"{base}/v3/accounts/{acct}/openTrades")
+            if resp.status_code == 200:
+                open_trade_ids = [
+                    str(t["id"]) for t in resp.json().get("trades", []) if "id" in t
+                ]
+                logger.info("flatten_all: %d open trades to close", len(open_trade_ids))
+        except Exception as _te:
+            logger.error("flatten_all: could not fetch open trades: %s", _te)
+
+        # ── Step 4a: Cancel working orders in parallel ───────────────
+        async def _cancel_order(order_id: str) -> bool:
+            try:
+                resp = await _async_retry(
+                    "DELETE", f"{base}/v3/accounts/{acct}/orders/{order_id}"
+                )
+                if resp.status_code in (200, 404):
+                    logger.info("flatten_all: cancelled order %s (status=%d)", order_id, resp.status_code)
+                    return True
+                logger.warning("flatten_all: cancel order %s failed: %d %s", order_id, resp.status_code, resp.text[:120])
+                return False
+            except Exception as exc:
+                logger.error("flatten_all: cancel order %s error: %s", order_id, exc)
+                return False
+
+        cancel_results = await asyncio.gather(
+            *[_cancel_order(oid) for oid in pending_order_ids],
+            return_exceptions=True,
+        )
+        orders_cancelled = sum(1 for r in cancel_results if r is True)
+        orders_failed = len(cancel_results) - orders_cancelled
+
+        # ── Step 4b: Market-close open positions in parallel ─────────
+        async def _close_position(trade_id: str) -> bool:
+            try:
+                resp = await _async_retry(
+                    "PUT", f"{base}/v3/accounts/{acct}/trades/{trade_id}/close", json={}
+                )
+                if resp.status_code == 200:
+                    logger.info("flatten_all: closed position %s", trade_id)
+                    return True
+                logger.warning("flatten_all: close trade %s failed: %d %s", trade_id, resp.status_code, resp.text[:120])
+                return False
+            except Exception as exc:
+                logger.error("flatten_all: close trade %s error: %s", trade_id, exc)
+                return False
+
+        close_results = await asyncio.gather(
+            *[_close_position(tid) for tid in open_trade_ids],
+            return_exceptions=True,
+        )
+        positions_closed = sum(1 for r in close_results if r is True)
+        positions_failed_ids = [
+            open_trade_ids[i]
+            for i, r in enumerate(close_results)
+            if r is not True
+        ]
+        positions_failed = len(positions_failed_ids)
+
+        duration_ms = (time.monotonic() - _start) * 1000.0
+
+        result = FlattenResult(
+            orders_cancelled=orders_cancelled,
+            orders_failed=orders_failed,
+            positions_closed=positions_closed,
+            positions_failed=positions_failed,
+            duration_ms=round(duration_ms, 1),
+        )
+
+        # ── Step 5: Write to strategic_log.md ────────────────────────
+        try:
+            _log_path = ".claude/brain/strategic_log.md"
+            _entry = {
+                "actor": "TUI_KILL",
+                "reason": reason,
+                "result": asdict(result),
+                "positions_failed_ids": positions_failed_ids,
+            }
+            _log_line = (
+                f"\n## [{datetime.now(timezone.utc).isoformat()}] KILL SWITCH ACTIVATED\n"
+                f"```json\n{json.dumps(_entry, indent=2)}\n```\n"
+            )
+            with open(_log_path, "a") as _f:
+                _f.write(_log_line)
+            logger.info("flatten_all: wrote strategic_log entry")
+        except Exception as _log_err:
+            logger.error("flatten_all: strategic_log write failed: %s", _log_err)
+
+        # ── Step 6: Emit control.kill event ──────────────────────────
+        try:
+            from src.scanner.automation.event_bus import get_event_bus
+            _bus = get_event_bus()
+            _bus.publish("control.kill", {"reason": reason, "result": asdict(result)})
+            logger.info("flatten_all: emitted control.kill event")
+        except Exception as _bus_err:
+            logger.error("flatten_all: event bus publish failed: %s", _bus_err)
+
+        # ── Step 7: Raise on partial failure ─────────────────────────
+        if positions_failed_ids:
+            raise KillSwitchPartialFailure(
+                f"flatten_all: {positions_failed} position(s) could not be closed after retries: "
+                f"{positions_failed_ids}",
+                remaining_trades=positions_failed_ids,
+            )
+
+        return result
+
+    # ── US-510 Per-Trade Manual Close ─────────────────────────────────
+
+    async def close_trade(self, trade_id: str, reason: str = "operator") -> Dict[str, Any]:
+        """Market-close a single open trade by ID and journal the outcome.
+
+        Args:
+            trade_id: OANDA trade ID to close.
+            reason: Human-readable reason (default 'operator' for TUI manual close).
+
+        Returns:
+            Dict with keys: success (bool), trade_id, exit_price, realized_pl, error (on failure).
+        """
+        import json
+        import random
+        import time
+        import requests as _requests
+        from pathlib import Path
+
+        token = os.getenv("OANDA_API_TOKEN", "")
+        acct = os.getenv("OANDA_ACCOUNT_ID", "")
+        base = self._oanda_base_url
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        async def _retry_put(url: str) -> Any:
+            last_exc: Optional[Exception] = None
+            for attempt in range(4):
+                try:
+                    resp = await asyncio.to_thread(
+                        _requests.put, url, headers=headers, json={}, timeout=10
+                    )
+                    if 400 <= resp.status_code < 500:
+                        return resp
+                    if resp.status_code >= 500:
+                        raise ValueError(f"OANDA 5xx: {resp.status_code}")
+                    return resp
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt < 3:
+                        delay = min(1.0 * (2 ** attempt), 30.0) + random.uniform(0, 0.1)
+                        logger.warning(
+                            "close_trade: retry %d/3 in %.1fs: %s", attempt + 1, delay, exc
+                        )
+                        await asyncio.sleep(delay)
+            raise last_exc or RuntimeError(f"All retries exhausted for {url}")
+
+        url = f"{base}/v3/accounts/{acct}/trades/{trade_id}/close"
+        try:
+            resp = await _retry_put(url)
+        except Exception as exc:
+            logger.error("close_trade: OANDA call failed for %s: %s", trade_id, exc)
+            return {"success": False, "trade_id": trade_id, "error": str(exc)}
+
+        if resp.status_code != 200:
+            err = f"OANDA status {resp.status_code}: {resp.text[:200]}"
+            logger.warning("close_trade: close failed for %s: %s", trade_id, err)
+            return {"success": False, "trade_id": trade_id, "error": err}
+
+        body = resp.json()
+        fill_txn = body.get("orderFillTransaction", {})
+        exit_price = float(fill_txn.get("price", 0.0))
+        realized_pl = float(fill_txn.get("pl", fill_txn.get("realizedPL", 0.0)))
+        close_time = fill_txn.get("time", datetime.now(timezone.utc).isoformat())
+        logger.info(
+            "close_trade: closed %s at %.5f, P/L=%.2f (reason=%s)",
+            trade_id, exit_price, realized_pl, reason,
+        )
+
+        # ── Update journal entry ──────────────────────────────────────
+        journal_path = Path("trained_data/trade_journal_rl.json")
+        try:
+            entries: List[Dict[str, Any]] = []
+            if journal_path.exists():
+                try:
+                    from src.scanner.automation.safe_json import safe_json_read
+                    entries = safe_json_read(journal_path, default=[])
+                except ImportError:
+                    entries = json.loads(journal_path.read_text(encoding="utf-8"))
+            if not isinstance(entries, list):
+                entries = []
+
+            matched = False
+            for entry in entries:
+                if str(entry.get("trade_id", "")) == str(trade_id):
+                    entry["outcome"] = {
+                        "exit_price": exit_price,
+                        "close_price": exit_price,
+                        "realized_pl": realized_pl,
+                        "trade_won": realized_pl > 0,
+                        "close_time": close_time,
+                        "closed_by": "operator",
+                        "manual_close_reason": reason,
+                        "duration_minutes": 0.0,
+                    }
+                    matched = True
+                    break
+
+            if not matched:
+                # Trade not in journal (opened outside this session) — append minimal record
+                entries.append({
+                    "trade_id": str(trade_id),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "pair": "UNKNOWN",
+                    "direction": "UNKNOWN",
+                    "outcome": {
+                        "exit_price": exit_price,
+                        "close_price": exit_price,
+                        "realized_pl": realized_pl,
+                        "trade_won": realized_pl > 0,
+                        "close_time": close_time,
+                        "closed_by": "operator",
+                        "manual_close_reason": reason,
+                        "duration_minutes": 0.0,
+                    },
+                })
+
+            tmp = journal_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(entries, indent=2, sort_keys=True), encoding="utf-8")
+            tmp.replace(journal_path)
+            logger.info("close_trade: journal updated for trade %s", trade_id)
+        except Exception as _je:
+            logger.error("close_trade: journal update failed for %s: %s", trade_id, _je)
+
+        # ── Emit trade.manual_close event ────────────────────────────
+        try:
+            from src.scanner.automation.event_bus import get_event_bus
+            get_event_bus().publish("trade.manual_close", {
+                "trade_id": trade_id,
+                "exit_price": exit_price,
+                "realized_pl": realized_pl,
+                "reason": reason,
+                "ts": close_time,
+            })
+        except Exception as _be:
+            logger.error("close_trade: event bus publish failed: %s", _be)
+
+        return {
+            "success": True,
+            "trade_id": trade_id,
+            "exit_price": exit_price,
+            "realized_pl": realized_pl,
         }

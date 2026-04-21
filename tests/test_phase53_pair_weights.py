@@ -2,7 +2,7 @@
 Tests for Phase 53 US-329: Pair-Specific Bayesian Agent Weights.
 
 Tests cover:
-  - Initialization with 144 distributions (12 agents × 12 pairs)
+  - Initialization with 144 distributions (core-12 agents × 12 pairs; extended agents not pair-tracked)
   - Warm-start: pair needs 5 trades before pair-specific weights activate
   - Sampling with and without pair activation
   - Blending ratio (0.6 regime + 0.4 pair)
