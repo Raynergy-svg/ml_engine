@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
 
 from src.scanner.automation.background_activity import get_background_activity_tracker
-from src.scanner.automation.event_bus import Event, EventBus, EventType, get_event_bus
+from src.scanner.automation.event_bus import Event, PrdEventBus as EventBus, EventType, get_prd_event_bus as get_event_bus
 
 logger = logging.getLogger(__name__)
 

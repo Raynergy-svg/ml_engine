@@ -1,15 +1,16 @@
 """Entropy-based position sizing from ensemble signals.
 
-US-098: Measure Shannon entropy across the 12-agent ensemble vote
-distribution. High entropy (disagreement) reduces position size by
-30-50%. Low entropy (consensus) allows full sizing or slight boost.
-Provides information-theoretic bridge between agent consensus and
-risk allocation.
+US-098: Measure Shannon entropy across the 15-agent ensemble vote
+distribution (see ``ScannerAgentTeam._BASE_WEIGHTS``). High entropy
+(disagreement) reduces position size by 30-50%. Low entropy
+(consensus) allows full sizing or slight boost. Provides
+information-theoretic bridge between agent consensus and risk
+allocation.
 
 Based on 2024 entropy portfolio research.
 
 Shannon Entropy: H = -Σ(p_i * log2(p_i))
-- 12 agents with binary votes: max entropy = log2(2) = 1.0 bit
+- 15 agents with binary votes: max entropy = log2(2) = 1.0 bit
 - Normalized entropy: H_norm = H / log2(K) where K = number of categories
 - Size multiplier: mult = 1.0 + boost_at_low_entropy - penalty_at_high_entropy
 """

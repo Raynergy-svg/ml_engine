@@ -576,7 +576,10 @@ class DeploymentValidator:
                 )
             )
 
-            # Check structure: should have 12 agents
+            # Check structure: should have the core-12 RL-tracked agents
+            # (subset of the 15-agent team; extended agents order_flow /
+            # trader_readiness / devil_advocate are not persisted here.
+            # See ``ScannerAgentTeam._BASE_WEIGHTS`` for the full roster.)
             # Supports both regime-aware format (agents nested under _global/NORMAL/etc.)
             # and legacy flat format (agents as top-level keys)
             expected_agents = {
@@ -618,7 +621,7 @@ class DeploymentValidator:
                     CheckResult(
                         "Agent weights: Completeness",
                         "PASS",
-                        f"OK (all 12 agents present)"
+                        f"OK (all core-12 agents present)"
                     )
                 )
 
@@ -1610,7 +1613,7 @@ def run_self_test(project_root: Path) -> int:
         d = _create_fixture_dir("missing_agents")
         fixture_dirs.append(d)
 
-        weights = {"_global": {"trend": 1.0}}  # Only 1 of 12 agents
+        weights = {"_global": {"trend": 1.0}}  # Only 1 of the core-12 agents
         with open(d / "trained_data" / "models" / "agent_weights.json", "w") as f:
             json.dump(weights, f)
 

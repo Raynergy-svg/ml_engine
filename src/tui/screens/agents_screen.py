@@ -317,6 +317,204 @@ class DisagreementPanel(Static):
 
 
 # ---------------------------------------------------------------------------
+# WeightInspector -- US-515: RL weight state + delta tracking
+# ---------------------------------------------------------------------------
+
+class WeightInspector(Static):
+    """Per-agent current weight, delta over last N trades, and trajectory sparkline.
+
+    Reads trained_data/models/weight_history.jsonl (written by
+    ExecutionManager.sync_rl_weights) and trained_data/models/agent_weights.json.
+
+    Surfaces the RL learning loop so the operator can see which agents are
+    gaining vs losing influence and catch anomalies (e.g. weight collapsing
+    to near-zero).
+    """
+
+    DEFAULT_CSS = """
+    WeightInspector {
+        height: auto;
+        min-height: 10;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._history_path: Path = (
+            Path(__file__).resolve().parents[3]
+            / "trained_data" / "models" / "weight_history.jsonl"
+        )
+        self._weights_path: Path = (
+            Path(__file__).resolve().parents[3]
+            / "trained_data" / "models" / "agent_weights.json"
+        )
+        self._window: int = 50
+        self._current: dict[str, float] = {}
+        self._per_agent_history: dict[str, list[float]] = {}
+        self._gainers: list[tuple[str, float]] = []
+        self._losers: list[tuple[str, float]] = []
+
+    # ---------- data IO ----------
+
+    def set_paths(self, history_path: Path, weights_path: Path) -> None:
+        """Override data paths (used by integration tests)."""
+        self._history_path = history_path
+        self._weights_path = weights_path
+
+    def refresh_data(self, window: int = 50) -> None:
+        """Re-read both data sources and recompute derived series."""
+        self._window = int(window) if window and window > 0 else 50
+        self._current = self._read_current_weights()
+        self._per_agent_history = self._read_history_by_agent(self._window)
+        self._compute_influence_summary()
+        self.refresh()
+
+    def _read_current_weights(self) -> dict[str, float]:
+        """Load current per-agent weights from agent_weights.json (global regime)."""
+        # JSON Safety Gate: try/except with empty fallback
+        try:
+            if not self._weights_path.exists():
+                return {}
+            data = json.loads(self._weights_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, ValueError) as exc:
+            logger.debug("WeightInspector: weights read failed: %s", exc)
+            return {}
+
+        if not isinstance(data, dict):
+            return {}
+        # Prefer _global (cross-regime running average); fall back to NORMAL
+        src = data.get("_global")
+        if not isinstance(src, dict):
+            src = data.get("NORMAL") if isinstance(data.get("NORMAL"), dict) else {}
+        out: dict[str, float] = {}
+        for k, v in src.items():
+            if isinstance(v, (int, float)):
+                out[str(k)] = float(v)
+        return out
+
+    def _read_history_by_agent(self, window: int) -> dict[str, list[float]]:
+        """Last `window` weight_after values per agent from weight_history.jsonl."""
+        # JSON Safety Gate: try/except with empty fallback
+        if not self._history_path.exists():
+            return {}
+        by_agent: dict[str, list[float]] = {}
+        try:
+            with open(self._history_path, "r", encoding="utf-8") as f:
+                for raw in f:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        row = json.loads(raw)
+                    except (json.JSONDecodeError, ValueError):
+                        continue  # skip corrupt line, don't crash
+                    if not isinstance(row, dict):
+                        continue
+                    agent = row.get("agent")
+                    wa = row.get("weight_after")
+                    if not agent or not isinstance(wa, (int, float)):
+                        continue
+                    by_agent.setdefault(str(agent), []).append(float(wa))
+        except OSError as exc:
+            logger.debug("WeightInspector: history read failed: %s", exc)
+            return {}
+        # Keep last `window` entries per agent
+        return {a: vals[-window:] for a, vals in by_agent.items()}
+
+    def _compute_influence_summary(self) -> None:
+        """Derive gainers/losers over the window."""
+        deltas: list[tuple[str, float]] = []
+        for agent, series in self._per_agent_history.items():
+            if len(series) < 2:
+                continue
+            delta = series[-1] - series[0]
+            deltas.append((agent, delta))
+        deltas.sort(key=lambda x: x[1], reverse=True)
+        self._gainers = [d for d in deltas if d[1] > 0][:3]
+        self._losers = [d for d in deltas if d[1] < 0][-3:]
+
+    # ---------- rendering ----------
+
+    def _anomaly_badge(self, weight: float) -> tuple[str, str]:
+        if weight < 0.1:
+            return ("⚠ low", _NEGATIVE)
+        if weight > 0.9 and weight != 0.0:
+            # Base weights for several agents are > 0.9 baseline; still flag for > 0.9
+            # per AC. Check true high-end — weights are capped at 2.0 by RL code.
+            if weight > 0.9:
+                return ("⚠ high", _NEGATIVE) if weight > 0.9 else ("", _TEXT)
+        return ("", _TEXT)
+
+    def render(self) -> Text:
+        t = Text()
+
+        agents = sorted(
+            set(self._current.keys()) | set(self._per_agent_history.keys())
+        )
+        # Filter to known core agents for a clean display
+        agents = [a for a in agents if a in _AGENT_SHORT_NAMES]
+
+        if not agents:
+            t.append("  No RL weight history yet\n", style=_DIM)
+            t.append(
+                f"  (waiting for first sync → writes weight_history.jsonl)\n",
+                style=_DIM,
+            )
+            return t
+
+        # Header
+        t.append(
+            f"  Agent      Current   Δ{self._window:<3}trades   Trajectory              Status\n",
+            style=f"bold {_DIM}",
+        )
+        t.append("  " + "─" * 68 + "\n", style=_BORDER)
+
+        for agent in agents:
+            short = _AGENT_SHORT_NAMES.get(agent, agent[:6])
+            current = self._current.get(agent, 0.0)
+            series = self._per_agent_history.get(agent, [])
+            if len(series) >= 2:
+                delta = series[-1] - series[0]
+            else:
+                delta = 0.0
+            spark = _sparkline_str(series, 20) if series else "░" * 20
+
+            delta_color = (
+                _POSITIVE if delta > 0.01 else _NEGATIVE if delta < -0.01 else _DIM
+            )
+            badge, badge_color = self._anomaly_badge(current)
+
+            t.append(f"  {short:<10}", style=_TEXT)
+            t.append(f"{current:>6.3f}   ", style=f"bold {_TEXT}")
+            sign = "+" if delta >= 0 else ""
+            t.append(f"{sign}{delta:>6.3f}       ", style=f"bold {delta_color}")
+            t.append(f"{spark:<22}  ", style=_DATA)
+            if badge:
+                t.append(f"{badge}", style=f"bold {badge_color}")
+            t.append("\n")
+
+        # Summary footer
+        t.append("  " + "─" * 68 + "\n", style=_BORDER)
+        t.append("  Gaining influence: ", style=_DIM)
+        if self._gainers:
+            parts = [f"{_AGENT_SHORT_NAMES.get(a, a[:6])}(+{d:.3f})" for a, d in self._gainers]
+            t.append(", ".join(parts), style=f"bold {_POSITIVE}")
+        else:
+            t.append("—", style=_DIM)
+        t.append("\n")
+
+        t.append("  Losing influence:  ", style=_DIM)
+        if self._losers:
+            parts = [f"{_AGENT_SHORT_NAMES.get(a, a[:6])}({d:.3f})" for a, d in self._losers]
+            t.append(", ".join(parts), style=f"bold {_NEGATIVE}")
+        else:
+            t.append("—", style=_DIM)
+
+        return t
+
+
+# ---------------------------------------------------------------------------
 # AgentsScreen -- Main Container
 # ---------------------------------------------------------------------------
 
@@ -362,6 +560,11 @@ class AgentsScreen(Container):
             yield Label("  MODEL DISAGREEMENT", classes="panel-title")
             yield DisagreementPanel(id="agents-disagreement")
 
+        # US-515: RL weight state + delta tracking
+        with Vertical(id="agents-weight-inspector-panel", classes="panel"):
+            yield Label("  WEIGHT INSPECTOR — RL LEARNING LOOP", classes="panel-title")
+            yield WeightInspector(id="agents-weight-inspector")
+
     def on_mount(self) -> None:
         # Set up weight matrix table columns
         weight_table = self.query_one("#agents-weight-table", DataTable)
@@ -371,6 +574,7 @@ class AgentsScreen(Container):
         # Load initial data
         self._load_weights()
         self._load_journal_data()
+        self._refresh_weight_inspector()
 
     # ------------------------------------------------------------------
     # Public: update from snapshot
@@ -384,6 +588,18 @@ class AgentsScreen(Container):
         self._load_weights()
         self._refresh_weight_table()
         self._load_journal_data()
+        self._refresh_weight_inspector()
+
+    def _refresh_weight_inspector(self) -> None:
+        """US-515: re-read weight_history.jsonl and update the inspector widget."""
+        try:
+            inspector = self.query_one("#agents-weight-inspector", WeightInspector)
+        except Exception:
+            return
+        try:
+            inspector.refresh_data(window=50)
+        except Exception as exc:
+            logger.debug("WeightInspector refresh failed: %s", exc)
 
     # ------------------------------------------------------------------
     # Private: weight matrix

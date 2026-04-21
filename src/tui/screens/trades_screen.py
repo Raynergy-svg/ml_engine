@@ -19,9 +19,12 @@ from typing import Any
 
 from rich.text import Text
 
+from textual import work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import DataTable, Label, Static
+from textual.screen import ModalScreen
+from textual.widgets import Button, DataTable, Label, Static
 
 from src.tui.data_provider import DashboardSnapshot, TradeRow
 
@@ -237,6 +240,103 @@ class DrillDownPanel(Static):
 
 
 # ---------------------------------------------------------------------------
+# TradeCloseModal — per-trade market-close confirmation
+# ---------------------------------------------------------------------------
+
+class TradeCloseModal(ModalScreen[bool]):
+    """Confirm market-close for a single open trade.
+
+    Returns True on confirm, False on cancel/escape.
+    """
+
+    BINDINGS = [Binding("escape", "dismiss_cancel", "Cancel", show=True)]
+
+    DEFAULT_CSS = """
+    TradeCloseModal {
+        align: center middle;
+    }
+
+    #close-dialog {
+        width: 58;
+        height: auto;
+        background: #0a0a0f;
+        border: double #ff00ff;
+        padding: 1 2;
+    }
+
+    #close-title {
+        text-align: center;
+        color: #ff00ff;
+        text-style: bold;
+        padding: 0 0 1 0;
+    }
+
+    #close-details {
+        padding: 0 0 1 0;
+        color: #e0e0ff;
+    }
+
+    #close-warning {
+        text-align: center;
+        color: #ffab00;
+        padding: 0 0 1 0;
+    }
+
+    #close-buttons {
+        align: center middle;
+        height: 3;
+    }
+
+    #close-confirm {
+        margin: 0 1;
+    }
+
+    #close-cancel {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, trade: TradeRow) -> None:
+        super().__init__()
+        self._trade = trade
+
+    def compose(self) -> ComposeResult:
+        tr = self._trade
+        pnl_sign = "+" if tr.pnl_pips >= 0 else ""
+        pnl_str = f"{pnl_sign}${tr.pnl_pips:,.2f}"
+        dir_label = "BUY (Long)" if tr.direction == "BUY" else "SELL (Short)"
+
+        with Vertical(id="close-dialog"):
+            yield Label("✕  CLOSE TRADE  ✕", id="close-title")
+            yield Static(
+                f"  Pair:          {tr.pair}\n"
+                f"  Direction:     {dir_label}\n"
+                f"  Entry:         {tr.entry_price:.5f}\n"
+                f"  SL / TP:       {tr.sl_price:.5f} / {tr.tp_price:.5f}\n"
+                f"  Qty:           {tr.quantity:,.0f} units\n"
+                f"  Current P/L:   {pnl_str}\n"
+                f"  Trade ID:      {tr.trade_id}",
+                id="close-details",
+            )
+            yield Label(
+                "Market-close at current bid/ask — cannot be undone.",
+                id="close-warning",
+            )
+            with Horizontal(id="close-buttons"):
+                yield Button("✓ Confirm Close", id="close-confirm", variant="error")
+                yield Button("✕ Cancel", id="close-cancel", variant="default")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "close-confirm":
+            self.dismiss(True)
+        elif event.button.id == "close-cancel":
+            self.dismiss(False)
+
+    def action_dismiss_cancel(self) -> None:
+        self.dismiss(False)
+
+
+# ---------------------------------------------------------------------------
 # TradesScreen -- Main Container
 # ---------------------------------------------------------------------------
 
@@ -248,6 +348,8 @@ class TradesScreen(Container):
       - Drill-down detail panel (middle, conditional)
       - Recent closed trades DataTable (bottom)
     """
+
+    BINDINGS = [Binding("c", "close_selected_trade", "Close Trade", show=True)]
 
     DEFAULT_CSS = """
     TradesScreen {
@@ -295,16 +397,34 @@ class TradesScreen(Container):
     # ------------------------------------------------------------------
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Handle row selection in the open positions table."""
-        table = self.query_one("#trades-open-table", DataTable)
-        if event.data_table is not table:
+        """Handle row selection in the open positions table.
+
+        US-512: Enter on a row pushes a GateTraceModal — answers
+        "why did this fire?" for executed/rejected/vetoed signals.
+        Closed-trades table uses the same handler with its own trade_id list.
+        """
+        try:
+            open_table = self.query_one("#trades-open-table", DataTable)
+            closed_table = self.query_one("#trades-closed-table", DataTable)
+        except Exception:
             return
 
-        row_idx = event.cursor_row
-        if 0 <= row_idx < len(self._trades):
-            self._selected_index = row_idx
-            trade = self._trades[row_idx]
-            self._update_drilldown(trade)
+        from src.tui.screens.gate_trace_modal import GateTraceModal
+
+        if event.data_table is open_table:
+            row_idx = event.cursor_row
+            if 0 <= row_idx < len(self._trades):
+                self._selected_index = row_idx
+                trade = self._trades[row_idx]
+                self._update_drilldown(trade)
+                if trade.trade_id:
+                    self.app.push_screen(GateTraceModal(trade_id=str(trade.trade_id)))
+        elif event.data_table is closed_table:
+            row_idx = event.cursor_row
+            if 0 <= row_idx < len(self._closed_trades):
+                tid = self._closed_trades[row_idx].get("trade_id")
+                if tid:
+                    self.app.push_screen(GateTraceModal(trade_id=str(tid)))
 
     # ------------------------------------------------------------------
     # Public: update from snapshot
@@ -438,6 +558,7 @@ class TradesScreen(Container):
 
         # Take last 20, most recent first
         recent = list(reversed(closed[-20:]))
+        self._closed_trades = recent
 
         for entry in recent:
             outcome = entry.get("outcome", {})
@@ -475,3 +596,60 @@ class TradesScreen(Container):
                 pair_text, dir_text, entry_text, exit_text,
                 pnl_text, result_text, time_text,
             )
+
+    # ------------------------------------------------------------------
+    # US-510: Per-trade close action
+    # ------------------------------------------------------------------
+
+    def action_close_selected_trade(self) -> None:
+        """Hotkey C: push TradeCloseModal for the currently selected open trade."""
+        if self._selected_index is None or self._selected_index >= len(self._trades):
+            self.app.notify("No trade selected.", title="Close Trade", severity="warning")
+            return
+
+        trade = self._trades[self._selected_index]
+        if not trade.trade_id:
+            self.app.notify("Selected trade has no ID.", title="Close Trade", severity="warning")
+            return
+
+        def _on_modal_result(confirmed: bool) -> None:
+            if confirmed:
+                self._do_close_trade(trade.trade_id)
+
+        self.app.push_screen(TradeCloseModal(trade), _on_modal_result)
+
+    @work
+    async def _do_close_trade(self, trade_id: str) -> None:
+        """Async worker: call ExecutionManager.close_trade and show result toast."""
+        from src.scanner.execution import ExecutionManager
+
+        em = ExecutionManager()
+        result = await em.close_trade(trade_id, reason="operator")
+
+        if result.get("success"):
+            pl = result.get("realized_pl", 0.0)
+            pl_sign = "+" if pl >= 0 else ""
+            self.app.notify(
+                f"Trade {trade_id} closed. P/L: {pl_sign}${pl:,.2f}",
+                title="Trade Closed",
+                severity="information",
+            )
+        else:
+            err = result.get("error", "Unknown error")
+            self.app.notify(
+                f"Close failed: {err}",
+                title="Close Trade Error",
+                severity="error",
+            )
+
+        # Refresh both tables so the closed trade moves from open → closed
+        self._load_closed_trades()
+        # Remove from local trades list so open table reflects reality
+        self._trades = [t for t in self._trades if t.trade_id != trade_id]
+        if self._selected_index is not None and self._selected_index >= len(self._trades):
+            self._selected_index = max(0, len(self._trades) - 1) if self._trades else None
+        self._refresh_open_table()
+        if self._trades and self._selected_index is not None:
+            self._update_drilldown(self._trades[self._selected_index])
+        else:
+            self._clear_drilldown()

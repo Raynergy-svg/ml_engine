@@ -45,8 +45,13 @@ TREND_WIDEN_TABLE: Dict[str, Dict[str, float]] = {
 
 # early_tighten: tighten SL when confidence is low or momentum is fading
 # Key: regime → SL tightening multiplier (< 1.0 means tighter)
+# NOTE (2026-04-20): LOW regime sl_multiplier locked at 1.0 (no-tighten) per
+# .claude/rules/trading.md promoted rule (2026-04-15, Trade 1220 EUR_AUD).
+# In LOW/ranging vol, price NOISE exceeds directional movement, so tightening SL
+# guarantees premature stops. The downstream guard at _apply_early_tighten
+# (`if mult >= 1.0: return sl, tp, None`) makes 1.0 a safe no-op.
 EARLY_TIGHTEN_TABLE: Dict[str, Dict[str, float]] = {
-    "LOW": {"sl_multiplier": 0.85, "confidence_threshold": 0.55},
+    "LOW": {"sl_multiplier": 1.00, "confidence_threshold": 0.55},  # was 0.85 — see note above
     "NORMAL": {"sl_multiplier": 0.90, "confidence_threshold": 0.50},
     "HIGH": {"sl_multiplier": 0.92, "confidence_threshold": 0.50},
     "EXTREME": {"sl_multiplier": 0.95, "confidence_threshold": 0.55},

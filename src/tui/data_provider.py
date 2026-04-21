@@ -132,6 +132,12 @@ class DashboardSnapshot:
     # Errors
     last_error: str = ""
 
+    # Supervisor state (US-504)
+    scanner_paused: bool = False
+    halted: bool = False
+    mode: str = "dry_run"
+    max_component_age_days: float = 0.0
+
     # Timestamp
     last_refresh: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -254,6 +260,10 @@ class DataProvider:
                 snap.models_total = int(enrichment.models_total)
                 snap.models_detail = dict(enrichment.models_detail or {})
                 snap.momentum_model_type = str(enrichment.momentum_model_type or "none")
+            # Model staleness (days since oldest ensemble component was trained)
+            age = getattr(enrichment, "max_component_age_days", None)
+            if age is not None:
+                snap.max_component_age_days = _safe_float(age)
 
         # ── NAV History (deque is thread-safe + auto-bounded) ──
         if snap.nav > 0:
@@ -379,13 +389,16 @@ class DataProvider:
             # Real total gets set from scanner.get_model_health() on first cycle
             snap.models_total = len(model_files)
 
-        # Check scanner state
+        # Check scanner state and supervisor flags
         state_path = self._project_root / ".claude" / "state.json"
         if state_path.exists():
             try:
                 state = json.loads(state_path.read_text())
                 snap.scan_cycle_count = state.get("scan_cycles", 0)
                 snap.scanner_ready = True
+                snap.scanner_paused = bool(state.get("scanner_paused", False))
+                snap.halted = bool(state.get("halted", False))
+                snap.mode = str(state.get("mode", "dry_run"))
             except Exception:
                 pass
 

@@ -662,8 +662,18 @@ class ContinuousScanner:
                     else:
                         tradeable = [a for a in result.analyses if a.is_tradeable]
 
+                    # US-506: suppress new executions when operator has paused the scanner
+                    _scanner_paused = False
+                    try:
+                        from src.scanner.automation.state_engine import StateEngine as _SE506
+                        _scanner_paused = _SE506().get_paused()
+                        if _scanner_paused:
+                            logger.warning("SCANNER PAUSED by operator — skipping signal execution (monitoring continues)")
+                    except Exception as _p506_err:
+                        logger.debug("Pause check error (non-blocking): %s", _p506_err)
+
                     # Auto-execute if enabled (use is_tradeable not gates_passed)
-                    if auto_execute:
+                    if auto_execute and not _scanner_paused:
                         tradeable = self._filter_correlated_exposure(tradeable)
                         if tradeable:
                             # Tier 7: Policy gate — check before execution
@@ -1185,8 +1195,8 @@ class ContinuousScanner:
             logger.debug("Shutdown: orchestrator close failed: %s", _orch_err)
 
         try:
-            from src.scanner.automation.event_bus import get_event_bus
-            bus = get_event_bus()
+            from src.scanner.automation.event_bus import get_prd_event_bus
+            bus = get_prd_event_bus()
             if hasattr(bus, "shutdown"):
                 timed_out = bus.shutdown(timeout_secs=3.0)
                 if timed_out:
@@ -1753,6 +1763,18 @@ class ContinuousScanner:
 
     def _run_smart_loop(self) -> None:
         """Run the smart trading loop: monitor, guardian, RL sync, learning, adaptation."""
+        # US-502: halted hard-stop — skip entire cycle when state flag is set
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            from src.scanner.automation.event_bus import get_event_bus
+            _se = StateEngine()
+            if _se.get_halted():
+                logger.warning("SCANNER HALTED — skipping scan cycle")
+                get_event_bus().publish("control.kill", {"source": "_run_smart_loop", "reason": "halted"})
+                return
+        except Exception as _halt_err:
+            logger.debug("Halted check error (non-blocking): %s", _halt_err)
+
         try:
             from src.scanner.execution import ExecutionManager
 

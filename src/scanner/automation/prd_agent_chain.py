@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from src.scanner.automation.background_activity import get_background_activity_tracker
 from src.scanner.automation.event_bus import (
-    Event, EventBus, EventResult, EventType, get_event_bus,
+    Event, PrdEventBus as EventBus, EventResult, EventType, get_prd_event_bus as get_event_bus,
 )
 from src.scanner.automation.prd_watcher import PRDWatcher, PRDCompletionChecker
 from src.scanner.automation.gap_wirer import GapWirer

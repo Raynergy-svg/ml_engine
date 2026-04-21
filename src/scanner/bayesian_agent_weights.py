@@ -44,7 +44,9 @@ __all__ = [
     "create_exploitation_heavy_weights",
 ]
 
-# Default 12 agents from the system
+# Default core-12 agents (subset of the 15-agent team; extended agents
+# order_flow / trader_readiness / devil_advocate are not tracked here).
+# Source of truth for the full roster: ``ScannerAgentTeam._BASE_WEIGHTS``.
 DEFAULT_AGENT_NAMES = [
     "trend",
     "mean_reversion",

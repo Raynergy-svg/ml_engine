@@ -174,6 +174,8 @@ class JournalScreen(Container):
     def __init__(self, project_root: str = "", **kwargs) -> None:
         super().__init__(**kwargs)
         self._project_root = Path(project_root) if project_root else Path.cwd()
+        # US-512: trade_ids parallel to journal-table rows for gate-trace lookup
+        self._row_trade_ids: list[str] = []
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="journal-top"):
@@ -206,7 +208,10 @@ class JournalScreen(Container):
         journal_path = self._project_root / "trained_data" / "trade_journal_rl.json"
 
         table = self.query_one("#journal-table", DataTable)
-        table.add_columns("Pair", "Dir", "Conf", "Entry", "Exit", "P/L", "Result", "Time")
+        table.cursor_type = "row"
+        if not table.columns:
+            table.add_columns("Pair", "Dir", "Conf", "Entry", "Exit", "P/L", "Result", "Time")
+        self._row_trade_ids = []
 
         entries = []
         if journal_path.exists():
@@ -297,6 +302,7 @@ class JournalScreen(Container):
                 entry_str, exit_str,
                 pl_str, result_str, time_str,
             )
+            self._row_trade_ids.append(str(entry.get("trade_id") or ""))
 
         # Compute stats
         total = wins + losses
@@ -338,3 +344,16 @@ class JournalScreen(Container):
     def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
         """Placeholder for live data refresh (journal is mostly static)."""
         pass
+
+    # ------------------------------------------------------------------
+    # US-512: Enter on a row -> GateTraceModal
+    # ------------------------------------------------------------------
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        from src.tui.screens.gate_trace_modal import GateTraceModal
+
+        row_idx = event.cursor_row
+        if 0 <= row_idx < len(self._row_trade_ids):
+            tid = self._row_trade_ids[row_idx]
+            if tid:
+                self.app.push_screen(GateTraceModal(trade_id=tid))

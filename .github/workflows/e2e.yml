@@ -1,0 +1,46 @@
+name: E2E — Supervisor Console
+
+on:
+  push:
+    branches: [main, develop, "copilot/**"]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  supervisor-console:
+    name: tests/e2e/test_supervisor_console.py
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest pytest-timeout textual httpretty rich
+
+      - name: Run E2E suite
+        env:
+          PYTHONUNBUFFERED: "1"
+          OANDA_API_TOKEN: "ci-token"
+          OANDA_ACCOUNT_ID: "ci-acct"
+        run: |
+          mkdir -p .claude/ralph/reports
+          python -m pytest tests/e2e/test_supervisor_console.py -v --timeout=60
+
+      - name: Upload evidence file
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase91-e2e-evidence
+          path: .claude/ralph/reports/phase91_e2e_evidence.jsonl
+          if-no-files-found: warn

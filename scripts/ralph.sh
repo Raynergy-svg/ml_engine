@@ -6,8 +6,16 @@
 # one at a time with proper implementation prompts, marks stories complete when
 # Claude emits the <promise>COMPLETE_STORY_{id}</promise> signal, and exits only
 # when all stories pass.
+#
+# Model routing:
+#   Complex stories  (>=7 acceptance criteria OR integration/benchmark/async keywords) → OPUS_MODEL
+#   Medium stories   (everything else) → SONNET_MODEL
 
 set -e
+
+# Model constants
+OPUS_MODEL="claude-opus-4-7"
+SONNET_MODEL="claude-sonnet-4-6"
 
 # Parse arguments
 TOOL="claude"  # Default to claude (non-interactive, --dangerously-skip-permissions)
@@ -45,6 +53,7 @@ RALPH_DIR="$PROJECT_ROOT/.claude/ralph"
 PRD_FILE="$RALPH_DIR/prd.json"
 PROGRESS_FILE="$RALPH_DIR/progress.txt"
 ARCHIVE_DIR="$RALPH_DIR/archive"
+STORY_OUTPUT_DIR="$RALPH_DIR/story_outputs"
 LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
 
 # Trap to ensure temp files are cleaned up on exit
@@ -120,6 +129,33 @@ log_progress() {
   echo "[$(date +'%Y-%m-%d %H:%M:%S')] $message" >> "$PROGRESS_FILE"
 }
 
+# Helper: Pick model based on story complexity
+#   Complex → OPUS_MODEL   (>=7 acceptance criteria, or integration/benchmark/async keywords)
+#   Medium  → SONNET_MODEL (everything else)
+pick_model() {
+  local story_id="$1"
+
+  # Count acceptance criteria
+  local criteria_count
+  criteria_count=$(jq -r --arg id "$story_id" \
+    '[.userStories[] | select(.id == $id) | (.acceptanceCriteria // .acceptance_criteria // [])[]] | length' \
+    "$PRD_FILE" 2>/dev/null || echo "0")
+
+  # Pull description + criteria text for keyword scan
+  local story_text
+  story_text=$(jq -r --arg id "$story_id" \
+    '.userStories[] | select(.id == $id) | [.description // "", (.acceptanceCriteria // .acceptance_criteria // [])[]] | join(" ")' \
+    "$PRD_FILE" 2>/dev/null || echo "")
+
+  # Complexity signals: criteria volume or known hard keywords
+  if [[ "$criteria_count" -ge 7 ]] || \
+     echo "$story_text" | grep -qiE "integration test|e2e|end.to.end|benchmark|performance|async|event.bus|asyncio|playwright|smoke test"; then
+    echo "$OPUS_MODEL"
+  else
+    echo "$SONNET_MODEL"
+  fi
+}
+
 # Archive previous run if branch changed
 if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
   CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
@@ -159,6 +195,9 @@ if [ ! -f "$PROGRESS_FILE" ]; then
   echo "Started: $(date)" >> "$PROGRESS_FILE"
   echo "---" >> "$PROGRESS_FILE"
 fi
+
+# Ensure per-story output directory exists (completion-discipline audit trail)
+mkdir -p "$STORY_OUTPUT_DIR"
 
 # Guard: Check if PRD file exists
 if [ ! -f "$PRD_FILE" ]; then
@@ -208,10 +247,13 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   STORY_DESC=$(get_story_field "$STORY_ID" ".description")
   STORY_CRITERIA=$(get_story_criteria "$STORY_ID")
 
+  # Select model before building prompt so it appears in log header
+  STORY_MODEL=$(pick_model "$STORY_ID")
+
   echo ""
-  echo "Processing story: $STORY_ID"
+  echo "Processing story: $STORY_ID  [model: $STORY_MODEL]"
   echo "Title: $STORY_TITLE"
-  log_progress "Processing story: $STORY_ID - $STORY_TITLE"
+  log_progress "Processing story: $STORY_ID - $STORY_TITLE [model: $STORY_MODEL]"
 
   # Build prompt in temp file (avoids shell escaping nightmares)
   PROMPT_FILE=$(mktemp /tmp/ralph_prompt_XXXXXX.md)
@@ -240,8 +282,12 @@ PROMPT_END
   echo "Implement this story fully. Verify each acceptance criterion." >> "$PROMPT_FILE"
   echo "When complete, emit: <promise>COMPLETE_STORY_${STORY_ID}</promise>" >> "$PROMPT_FILE"
 
-  # Run Claude with the story prompt
-  OUTPUT=$(claude --dangerously-skip-permissions --print < "$PROMPT_FILE" 2>&1 | tee /dev/stderr) || true
+  # Run Claude with the story prompt — model selected by pick_model()
+  # Per-story output capture: live stream AND persist to story log for audit
+  STORY_LOG="$STORY_OUTPUT_DIR/${STORY_ID}_iter${i}.log"
+  echo "# Ralph story output — $STORY_ID iteration $i — model: $STORY_MODEL — $(date -Iseconds)" > "$STORY_LOG"
+  OUTPUT=$(claude --model "$STORY_MODEL" --dangerously-skip-permissions --print < "$PROMPT_FILE" 2>&1 | tee /dev/stderr | tee -a "$STORY_LOG") || true
+  echo "# Exit marker — $STORY_ID iteration $i — $(date -Iseconds)" >> "$STORY_LOG"
 
   # Clean up temp prompt file
   rm -f "$PROMPT_FILE"

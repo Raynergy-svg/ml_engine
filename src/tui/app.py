@@ -35,9 +35,15 @@ from textual.widgets import (
 )
 
 from src.tui.data_provider import DataProvider, DashboardSnapshot
+from src.tui.screens.kill_modal import KillModal
+from src.tui.screens.mode_modal import ModeConfirmModal, check_oanda_credentials
 from src.tui.screens.trades_screen import TradesScreen
 from src.tui.screens.agents_screen import AgentsScreen
 from src.tui.screens.journal_screen import JournalScreen
+from src.tui.screens.inbox_screen import InboxScreen
+from src.tui.screens.rules_screen import RulesScreen
+from src.tui.widgets.state_strip import StateStrip
+from src.tui.widgets.staleness_banner import StalenessBanner
 
 # Lazy imports for screens still being built — fallback to None
 try:
@@ -145,7 +151,7 @@ class HeaderBar(Static):
 
 
 class AgentPanel(Static):
-    """12 agents with colored bar indicators. Reads from snapshot or demo."""
+    """15-agent panel with colored bar indicators (see ``ScannerAgentTeam._BASE_WEIGHTS``). Reads from snapshot or demo."""
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -487,12 +493,18 @@ class BuddyApp(App):
 
     BINDINGS = [
         Binding("f1", "switch_tab('overview')", "Overview", show=True),
-        Binding("f2", "switch_tab('trades')", "Trades", show=True),
-        Binding("f3", "switch_tab('agents')", "Agents", show=True),
-        Binding("f4", "switch_tab('journal')", "Journal", show=True),
-        Binding("f5", "switch_tab('config')", "Config", show=True),
-        Binding("f6", "switch_tab('diag')", "Diagnostics", show=True),
-        Binding("f7", "cycle_asset_class", "FX⇄Futures", show=True),
+        Binding("f2", "switch_tab('inbox')", "Inbox", show=True),
+        Binding("f3", "switch_tab('trades')", "Trades", show=True),
+        Binding("f4", "switch_tab('agents')", "Agents", show=True),
+        Binding("f5", "switch_tab('journal')", "Journal", show=True),
+        Binding("f6", "switch_tab('config')", "Config", show=True),
+        Binding("f7", "switch_tab('rules')", "Rules", show=True),
+        Binding("f8", "switch_tab('diag')", "Diagnostics", show=True),
+        Binding("ctrl+f", "cycle_asset_class", "FX⇄Futures", show=True),
+        Binding("space", "supervisor_pause", "Pause", show=True),
+        Binding("k", "supervisor_kill", "Kill", show=True),
+        Binding("m", "supervisor_mode", "Mode", show=True),
+        Binding("a", "supervisor_abort", "Abort Signal", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
 
@@ -507,12 +519,15 @@ class BuddyApp(App):
         self._scanner = None  # EmbeddedScanner (live mode only)
         self._reflection_stop = threading.Event()  # Signals ReflectionLogReader to exit
         self._asset_class = "fx"  # current asset class mode
+        self._kill_in_progress = False  # True while flatten_all is running (disables hotkeys)
 
     def compose(self) -> ComposeResult:
         yield HeaderBar(id="header-bar")
 
         with TabbedContent(id="main-tabs"):
             with TabPane("◈ Overview", id="overview"):
+                yield StalenessBanner(id="staleness-banner")
+                yield StateStrip(id="state-strip")
                 with Vertical(id="overview-container"):
                     with Horizontal(id="overview-top"):
                         with Vertical(classes="panel"):
@@ -548,6 +563,11 @@ class BuddyApp(App):
                             yield RichLog(id="brain-log", highlight=True, markup=True,
                                          max_lines=500, auto_scroll=True)
 
+            with TabPane("◈ Inbox", id="inbox"):
+                yield InboxScreen(
+                    project_root=str(Path(__file__).resolve().parent.parent.parent),
+                    id="inbox-screen",
+                )
             with TabPane("◈ Trades", id="trades"):
                 yield TradesScreen(id="trades-screen")
             with TabPane("◈ Agents", id="agents"):
@@ -565,6 +585,11 @@ class BuddyApp(App):
                     )
                 else:
                     yield PlaceholderContent("CONFIG — The Tuning Bench")
+            with TabPane("◈ Rules", id="rules"):
+                yield RulesScreen(
+                    project_root=str(Path(__file__).resolve().parent.parent.parent),
+                    id="rules-screen",
+                )
             with TabPane("◈ Diagnostics", id="diag"):
                 if DiagnosticsScreen is not None:
                     yield DiagnosticsScreen(
@@ -840,7 +865,14 @@ class BuddyApp(App):
         health.update_from_snapshot(snap)
         health.refresh()
 
-        # Update Trades screen (F2)
+        # Update Inbox screen (F2)
+        try:
+            inbox_screen = self.query_one("#inbox-screen", InboxScreen)
+            inbox_screen.update_from_snapshot(snap)
+        except Exception:
+            pass
+
+        # Update Trades screen (F3)
         try:
             trades_screen = self.query_one("#trades-screen", TradesScreen)
             trades_screen.update_from_snapshot(snap)
@@ -854,10 +886,24 @@ class BuddyApp(App):
         except Exception:
             pass
 
-        # Update Diagnostics screen (F6)
+        # Update Diagnostics screen (F7)
         try:
             diag_screen = self.query_one("#diag-screen", DiagnosticsScreen)
             diag_screen.update_from_snapshot(snap)
+        except Exception:
+            pass
+
+        # Update state strip
+        try:
+            state_strip = self.query_one("#state-strip", StateStrip)
+            state_strip.update_from_snapshot(snap)
+        except Exception:
+            pass
+
+        # US-513: Update staleness banner (red alert when models > 7d old)
+        try:
+            banner = self.query_one("#staleness-banner", StalenessBanner)
+            banner.update_from_snapshot(snap)
         except Exception:
             pass
 
@@ -917,11 +963,13 @@ class BuddyApp(App):
         log.write(Text.from_markup(f"[dim]{now}[/] {line}"))
 
     def action_switch_tab(self, tab_id: str) -> None:
+        if self._kill_in_progress:
+            return
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab_id
 
     def action_cycle_asset_class(self) -> None:
-        """F7: cycle through FX → Futures → Hybrid → FX.
+        """F7: cycle through FX → Futures → Hybrid → FX.  Blocked during kill.
 
         Updates the scanner config + restarts the scan loop with the new
         instrument set. The broker switches automatically:
@@ -929,6 +977,8 @@ class BuddyApp(App):
           futures → IBKR  (ES, NQ, CL, GC, ZB, 6E)
           hybrid  → both  (all instruments, primary broker from config)
         """
+        if self._kill_in_progress:
+            return
         idx = self._ASSET_CLASSES.index(self._asset_class)
         self._asset_class = self._ASSET_CLASSES[(idx + 1) % len(self._ASSET_CLASSES)]
 
@@ -962,6 +1012,344 @@ class BuddyApp(App):
             pass
 
         self.notify(f"Asset class: {mode_label}", title="Mode Switch")
+
+    def action_supervisor_pause(self) -> None:
+        """Space: toggle scanner_paused via StateEngine (US-506)."""
+        if self._kill_in_progress:
+            return
+
+        from src.scanner.automation.state_engine import StateEngine
+        from src.scanner.automation.event_bus import get_event_bus
+
+        se = StateEngine()
+
+        # Guard: halted takes precedence — no pause toggle when system is halted
+        if se.get_halted():
+            self.notify("System is HALTED — resume not available.", title="Paused Blocked", severity="warning")
+            return
+
+        current = se.get_paused()
+        new_paused = not current
+        se.set_paused(new_paused)
+
+        action = "pause" if new_paused else "resume"
+        event_type = "control.pause" if new_paused else "control.resume"
+        try:
+            get_event_bus().publish(event_type, {"source": "TUI", "actor": "operator"})
+        except Exception as _eb_err:
+            logger.warning("action_supervisor_pause: event_bus publish failed: %s", _eb_err)
+
+        # Brain log notification
+        if new_paused:
+            markup = "[bold yellow]◈ SCANNER PAUSED by operator[/bold yellow] — new executions suppressed, monitoring active"
+        else:
+            markup = "[bold green]◈ SCANNER RESUMED by operator[/bold green] — new executions enabled"
+        try:
+            from rich.text import Text as _Text
+            self.query_one("#brain-log", RichLog).write(_Text.from_markup(markup))
+        except Exception:
+            pass
+
+        # strategic_log.md entry
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            from pathlib import Path as _Path
+            _ts = _dt.now(_tz.utc).isoformat()
+            _log_path = _Path(".claude/brain/strategic_log.md")
+            if _log_path.exists():
+                _entry = (
+                    f"\n### {_ts} — Operator {action.upper()}\n"
+                    f"**actor:** TUI  **action:** {action}  "
+                    f"**before:** {'paused' if current else 'running'}  "
+                    f"**after:** {'paused' if new_paused else 'running'}\n"
+                )
+                with open(_log_path, "a") as _f:
+                    _f.write(_entry)
+        except Exception as _sl_err:
+            logger.debug("strategic_log write failed: %s", _sl_err)
+
+        label = "PAUSED" if new_paused else "RUNNING"
+        self.notify(f"Scanner {label}", title="Supervisor", severity="warning" if new_paused else "information")
+        logger.info("action_supervisor_pause: scanner_paused=%s", new_paused)
+
+    def action_supervisor_kill(self) -> None:
+        """K: open kill-switch confirmation modal (US-505)."""
+        if self._kill_in_progress:
+            return
+
+        snap = self._provider.snapshot
+
+        if not snap.trades:
+            self.notify("Nothing to flatten.", title="Kill Switch", severity="information")
+            return
+
+        def _on_modal_result(confirmed: bool) -> None:
+            if confirmed:
+                self._kill_in_progress = True
+                self._do_flatten_worker()
+
+        self.push_screen(KillModal(snap), _on_modal_result)
+
+    @work
+    async def _do_flatten_worker(self) -> None:
+        """Async worker: invoke ExecutionManager.flatten_all and stream bus events to brain log."""
+        import asyncio as _asyncio
+
+        from rich.text import Text as _Text
+
+        from src.scanner.automation.event_bus import get_event_bus
+        from src.scanner.execution import (
+            ExecutionManager,
+            FlattenResult,
+            KillSwitchPartialFailure,
+        )
+
+        def _brain(markup: str) -> None:
+            try:
+                self.query_one("#brain-log", RichLog).write(_Text.from_markup(markup))
+            except Exception:
+                pass
+
+        _brain("[bold red]◈ KILL SWITCH — flattening all positions...[/]")
+
+        bus = get_event_bus()
+        em = ExecutionManager()
+        _done = _asyncio.Event()
+
+        async def _stream_bus() -> None:
+            try:
+                async for event in bus.subscribe():
+                    if _done.is_set():
+                        break
+                    etype = event.get("type", "")
+                    if etype == "signal.rejected" and event.get("reason") == "flattened":
+                        tid = event.get("trade_id", "?")
+                        _brain(f"[red]  ✗ trade {tid} flattened[/]")
+                    elif etype == "control.kill":
+                        _brain("[bold red]  ◈ control.kill — scanner halted[/]")
+                        _done.set()
+                        break
+            except _asyncio.CancelledError:
+                pass
+            except Exception as _e:
+                logger.debug("kill bus stream error: %s", _e)
+
+        listener = _asyncio.create_task(_stream_bus())
+
+        try:
+            result: FlattenResult = await em.flatten_all("operator_kill")
+            _done.set()
+            listener.cancel()
+            _brain(
+                f"[green]✓ Flatten complete — {result.positions_closed} positions closed, "
+                f"{result.orders_cancelled} orders cancelled ({result.duration_ms:.0f}ms)[/]"
+            )
+            self.notify("✓ All positions flat. Scanner halted.", title="Kill Switch")
+        except KillSwitchPartialFailure as exc:
+            _done.set()
+            listener.cancel()
+            remaining = ", ".join(exc.remaining_trades[:5])
+            _brain(f"[bold red]  ✗ KillSwitchPartialFailure: {exc}[/]")
+            self.notify(
+                f"Partial failure — still open: {remaining}",
+                title="Kill Switch Failed",
+                severity="error",
+            )
+        except Exception as exc:
+            _done.set()
+            listener.cancel()
+            _brain(f"[red]  ✗ flatten_all error: {exc}[/]")
+            self.notify(f"Kill switch error: {exc}", title="Kill Switch Error", severity="error")
+        finally:
+            self._kill_in_progress = False
+            if self._live:
+                self._do_live_refresh()
+
+    def action_supervisor_mode(self) -> None:
+        """M: toggle dry-run ↔ live mode (US-507).
+
+        live → dry_run: immediate (no confirmation needed).
+        dry_run → live: credential precheck, then typed 'LIVE' confirmation modal.
+        """
+        if self._kill_in_progress:
+            return
+
+        from src.scanner.automation.state_engine import StateEngine
+
+        se = StateEngine()
+        current = se.get_mode()
+        snap = self._provider.snapshot
+
+        if current == "live":
+            self._apply_mode_change(from_mode="live", to_mode="dry_run")
+            return
+
+        # dry_run → live: credential precheck before showing modal
+        cred_ok, cred_msg = check_oanda_credentials()
+        if not cred_ok:
+            self.notify(
+                f"Live mode blocked: {cred_msg}",
+                title="Credentials Missing",
+                severity="error",
+            )
+            logger.warning("action_supervisor_mode: credential check failed — %s", cred_msg)
+            return
+
+        def _on_modal_result(confirmed: bool) -> None:
+            if confirmed:
+                self._apply_mode_change(from_mode="dry_run", to_mode="live")
+
+        self.push_screen(
+            ModeConfirmModal(
+                nav=snap.nav if snap.nav > 0 else self._demo_nav,
+                open_trades=len(snap.trades),
+            ),
+            _on_modal_result,
+        )
+
+    def _apply_mode_change(self, from_mode: str, to_mode: str) -> None:
+        """Persist mode, update state strip, emit event, append strategic_log.md."""
+        from datetime import datetime as _dt, timezone as _tz
+        from pathlib import Path as _Path
+
+        from src.scanner.automation.event_bus import get_event_bus
+        from src.scanner.automation.state_engine import StateEngine
+
+        se = StateEngine()
+        try:
+            se.set_mode(to_mode)
+        except Exception as _e:
+            logger.error("_apply_mode_change: StateEngine.set_mode failed: %s", _e)
+            self.notify(f"Mode change failed: {_e}", title="Error", severity="error")
+            return
+
+        # Immediate reactive update — don't wait for the next 3s refresh cycle
+        try:
+            state_strip = self.query_one("#state-strip", StateStrip)
+            state_strip.mode = "LIVE" if to_mode == "live" else "DRY-RUN"
+            state_strip.refresh()
+        except Exception:
+            pass
+
+        snap = self._provider.snapshot
+        nav = snap.nav if snap.nav > 0 else self._demo_nav
+        open_trade_count = len(snap.trades)
+
+        # Event bus: control.mode_change
+        try:
+            get_event_bus().publish("control.mode_change", {
+                "from": from_mode,
+                "to": to_mode,
+                "actor": "operator",
+                "nav": nav,
+                "open_trade_count": open_trade_count,
+            })
+        except Exception as _eb_err:
+            logger.warning("_apply_mode_change: event_bus publish failed: %s", _eb_err)
+
+        # strategic_log.md entry
+        try:
+            _ts = _dt.now(_tz.utc).isoformat()
+            _log_path = _Path(".claude/brain/strategic_log.md")
+            if _log_path.exists():
+                _entry = (
+                    f"\n### {_ts} — Mode Change {from_mode.upper()} → {to_mode.upper()}\n"
+                    f"**actor:** TUI operator  **from:** {from_mode}  **to:** {to_mode}  "
+                    f"**nav:** ${nav:,.2f}  **open_trades:** {open_trade_count}\n"
+                )
+                with open(_log_path, "a") as _f:
+                    _f.write(_entry)
+        except Exception as _sl_err:
+            logger.debug("_apply_mode_change: strategic_log write failed: %s", _sl_err)
+
+        # Brain log
+        if to_mode == "live":
+            markup = "[bold magenta]◈ MODE → LIVE[/bold magenta] — real execution enabled, capital at risk"
+        else:
+            markup = "[bold cyan]◈ MODE → DRY-RUN[/bold cyan] — execution disabled, monitoring only"
+        try:
+            self.query_one("#brain-log", RichLog).write(Text.from_markup(markup))
+        except Exception:
+            pass
+
+        label = "LIVE" if to_mode == "live" else "DRY-RUN"
+        sev = "warning" if to_mode == "live" else "information"
+        self.notify(f"Mode: {label}", title="Mode Switch", severity=sev)
+        logger.info("_apply_mode_change: %s → %s (nav=%.2f, open=%d)", from_mode, to_mode, nav, open_trade_count)
+
+    def action_supervisor_abort(self) -> None:
+        """A: US-511 veto pending signal. Reads last signal.pending from replay buffer,
+        emits control.signal_veto with the signal_id to cancel execution."""
+        if self._kill_in_progress:
+            return
+        logger.info("hotkey supervisor_abort pressed")
+
+        try:
+            from src.scanner.automation.event_bus import get_event_bus
+            _bus = get_event_bus()
+        except Exception as _e:
+            logger.warning("action_supervisor_abort: event_bus unavailable: %s", _e)
+            self.notify("Abort unavailable (event bus error)", severity="warning")
+            return
+
+        # Find the most recent signal.pending in the replay buffer
+        _pending: dict = {}
+        for _evt in reversed(_bus.replay_buffer()):
+            if _evt.get("event_type") == "signal.pending":
+                _pending = _evt.get("payload", {})
+                break
+
+        _signal_id = _pending.get("signal_id", "")
+        if not _signal_id:
+            self.notify("No pending signal to abort", severity="warning")
+            logger.info("action_supervisor_abort: no pending signal found in replay buffer")
+            return
+
+        _pair = _pending.get("pair", "?")
+        _direction = _pending.get("direction", "?")
+
+        # Emit the veto — the scanner thread's threading.Event.wait() will unblock
+        _bus.publish("control.signal_veto", {
+            "signal_id": _signal_id,
+            "vetoed_by": "operator",
+            "pair": _pair,
+            "direction": _direction,
+        })
+
+        logger.info("control.signal_veto emitted for signal_id=%s pair=%s", _signal_id, _pair)
+        self.notify(f"Signal VETOED: {_pair} {_direction}", title="Operator Abort", severity="warning")
+
+        try:
+            from rich.text import Text as _Text
+            self.query_one("#brain-log", RichLog).write(_Text.from_markup(
+                f"[bold red]◈ SIGNAL VETOED[/] — operator abort: [yellow]{_pair} {_direction}[/] "
+                f"[dim]signal_id={_signal_id[:8]}…[/]"
+            ))
+        except Exception:
+            pass
+
+    def _start_veto_countdown(self, pair: str, window_ms: int, signal_id: str) -> None:
+        """US-511: Show brain-log countdown '{n}s — A to abort' using set_interval."""
+        import math
+        _remaining_s = [math.ceil(window_ms / 1000)]
+        _cancel_holder: list = [None]
+
+        def _tick() -> None:
+            n = _remaining_s[0]
+            if n <= 0:
+                if _cancel_holder[0] is not None:
+                    _cancel_holder[0]()
+                return
+            try:
+                self.query_one("#brain-log", RichLog).write(
+                    f"[bold yellow]⏳ EXECUTING {pair} in {n}s… [dim]A to abort[/][/]"
+                )
+            except Exception:
+                pass
+            _remaining_s[0] -= 1
+
+        _handle = self.set_interval(1.0, _tick, pause=False)
+        _cancel_holder[0] = _handle.stop
 
     def action_quit(self) -> None:
         """Clean shutdown — stop scanner before exiting."""

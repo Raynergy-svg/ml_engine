@@ -722,3 +722,75 @@ DiagnosticsScreen {
     max-height: 25%;
     min-height: 6;
 }
+
+/* ── StateStrip (Supervisor State Bar — US-504) ─────────────────── */
+
+#state-strip {
+    height: 1;
+    background: #1a1a2e;
+    padding: 0 1;
+    border-bottom: solid #2a2a4a;
+}
+
+.state-running {
+    color: #00ff41;
+    text-style: bold;
+}
+
+.state-paused {
+    color: #ffab00;
+    text-style: bold;
+}
+
+.state-halted {
+    color: #ff1744;
+    text-style: bold;
+}
+
+.mode-dryrun {
+    color: #00ffcc;
+    text-style: bold;
+}
+
+.mode-live {
+    color: #ff1744;
+    text-style: bold;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GATE TRACE MODAL — US-512  (PASS / NEAR-MISS / FAIL color-coding)
+   ═══════════════════════════════════════════════════════════════════ */
+
+GateTraceModal {
+    align: center middle;
+}
+
+GateTraceModal #trace-dialog {
+    border: double #00ffcc;
+    background: #0a0a0f;
+}
+
+GateTraceModal #trace-title {
+    color: #00ffcc;
+    text-style: bold;
+}
+
+GateTraceModal .trace-section {
+    background: #131320;
+    border: solid #2a2a4a;
+}
+
+.gate-pass {
+    color: #00ff41;
+    text-style: bold;
+}
+
+.gate-near {
+    color: #ffab00;
+    text-style: bold;
+}
+
+.gate-fail {
+    color: #ff1744;
+    text-style: bold;
+}

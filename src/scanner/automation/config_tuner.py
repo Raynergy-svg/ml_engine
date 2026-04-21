@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 RULES_PATH = Path(".claude/rules/trading.md")
 ADJUSTMENTS_PATH = Path(".claude/config_adjustments.json")
+PENDING_PATH = Path(".claude/pending_adjustments.json")
 
 # Bounds to prevent runaway tuning
 BOUNDS = {
@@ -39,9 +41,11 @@ class ConfigTuner:
         self,
         rules_path: Optional[Path] = None,
         adjustments_path: Optional[Path] = None,
+        pending_path: Optional[Path] = None,
     ):
         self.rules_path = rules_path or RULES_PATH
         self.adjustments_path = adjustments_path or ADJUSTMENTS_PATH
+        self.pending_path = pending_path or PENDING_PATH
         self._applied_rules: set[str] = set()
 
     def load_rules(self) -> List[str]:
@@ -135,23 +139,78 @@ class ConfigTuner:
 
         return None
 
-    def _log_adjustments(self, adjustments: List[Dict[str, Any]]) -> None:
-        """Persist adjustments to .claude/config_adjustments.json."""
-        existing: List[Dict[str, Any]] = []
-        if self.adjustments_path.exists():
-            try:
-                existing = json.loads(self.adjustments_path.read_text())
-            except Exception:
-                pass
+    def propose_adjustment(self, adj: Dict[str, Any]) -> str:
+        """Write one adjustment as a proposal to pending_adjustments.json.
 
+        Returns the proposal_id. Validates the key against ScannerConfig before
+        writing — orphan keys are written with status='invalid' so they appear
+        in the audit log but are never applied.
+        """
+        from src.scanner.automation.adjustment_validator import validate_adjustment
+
+        key = adj.get("field") or adj.get("key", "")
+        value = adj.get("new", adj.get("new_value"))
+        old_value = adj.get("old", adj.get("old_value"))
+        reason = str(adj.get("rule", adj.get("reason", "rule-based adjustment")))[:200]
+
+        validation = validate_adjustment(key, value, reason)
+
+        proposal_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        proposal = {
+            "id": proposal_id,
+            "timestamp": now,
+            "key": key,
+            "current_value": old_value,
+            "proposed_value": value,
+            "reason": reason,
+            "source": "config_tuner",
+            "validation": validation.to_dict(),
+            "status": "pending" if validation.valid else "invalid",
+            "snooze_until": None,
+        }
+
+        # Atomic write to pending_adjustments.json
+        data: Dict[str, Any] = {"proposals": []}
+        if self.pending_path.exists():
+            try:
+                data = json.loads(self.pending_path.read_text())
+            except Exception:
+                data = {"proposals": []}
+
+        data["proposals"].append(proposal)
+        self.pending_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.pending_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=2))
+        tmp.rename(self.pending_path)
+
+        # Emit event (best-effort)
+        try:
+            from src.scanner.automation.event_bus import get_event_bus
+            get_event_bus().publish("adjustment.proposed", {
+                "proposal_id": proposal_id,
+                "key": key,
+                "value": value,
+                "source": "config_tuner",
+                "valid": validation.valid,
+            })
+        except Exception:
+            pass
+
+        return proposal_id
+
+    def _log_adjustments(self, adjustments: List[Dict[str, Any]]) -> None:
+        """Route each rule-based adjustment to pending_adjustments.json (not config_adjustments.json).
+
+        Previously wrote directly to config_adjustments.json (US-508 retire).
+        Now writes proposals that require operator approval via AdjustmentApprover.
+        """
         now = datetime.now(timezone.utc).isoformat()
         for adj in adjustments:
             adj["timestamp"] = now
-            existing.append(adj)
+            proposal_id = self.propose_adjustment(adj)
             logger.info(
-                "Config adjustment: %s %.4f -> %.4f (rule: %s)",
-                adj["field"], adj["old"], adj["new"], adj.get("rule", "")[:60],
+                "Config proposal %s: %s %.4f -> %.4f (rule: %s)",
+                proposal_id[:8], adj["field"], adj["old"], adj["new"],
+                adj.get("rule", "")[:60],
             )
-
-        self.adjustments_path.parent.mkdir(parents=True, exist_ok=True)
-        self.adjustments_path.write_text(json.dumps(existing, indent=2))

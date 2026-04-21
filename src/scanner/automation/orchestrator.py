@@ -739,6 +739,35 @@ class Orchestrator:
             except Exception as e:
                 result.errors.append(f"observation_log_failed: {e}")
 
+        # ── TRADE EXECUTION (Step 3) ─────────────────────────────────────
+        # 2026-04-20: Wire `auto_execute` flag — previously stored but never consumed.
+        # Executes only when:
+        #   • self._auto_execute was set True by the caller (e.g. main.py --execute)
+        #   • Scanner config has enable_execution=True (double opt-in)
+        #   • scan produced tradeable analyses
+        # All defense-in-depth gates (agent_passed, circuit breakers, R:R ≥ 1.2,
+        # disagreement/regime/confidence) are re-enforced inside Scanner.execute_trades →
+        # ExecutionManager.execute_trade, so this line is a dispatch hook, not a bypass.
+        if self._auto_execute and scan_result and scan_result.analyses:
+            try:
+                if getattr(self._current_scanner.config, "enable_execution", False):
+                    exec_results = self._current_scanner.execute_trades(scan_result.analyses)
+                    successful = [r for r in (exec_results or []) if getattr(r, "success", False)]
+                    result.trades_executed = len(successful)
+                    if exec_results:
+                        logger.info(
+                            "Auto-execute: attempted=%d, successful=%d",
+                            len(exec_results), len(successful),
+                        )
+                else:
+                    logger.info(
+                        "Auto-execute requested but scanner.config.enable_execution=False — skipping"
+                    )
+            except Exception as e:
+                error_class = type(e).__name__
+                result.errors.append(f"auto_execute_failed ({error_class}): {e}")
+                logger.error("Auto-execute failed [%s]: %s", error_class, e)
+
         return result
 
     # ── Dispatch Step Helper Methods ───────────────────────────────

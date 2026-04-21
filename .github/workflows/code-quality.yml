@@ -115,3 +115,43 @@ jobs:
         python -c "from online_retrainer import OnlineRetrainer, RetrainConfig; print('online_retrainer OK')"
         python -c "from news_features import fetch_forex_news, check_economic_calendar; print('news_features OK')"
         echo "✅ All critical imports validated"
+
+  p0-safety-gates:
+    name: P0 Safety Gates (orphan-keys, py_compile, circuit-breaker)
+    runs-on: ubuntu-latest
+    # Single source of truth: invokes the same hooks developers run locally
+    # via pre-commit. Keeping one source of truth avoids CI/local drift.
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # pre-commit drives the three hooks below.
+        # pytest + numpy/pandas/... are required by the circuit-breaker
+        # regression tests (same set used in the `test` job above).
+        pip install pre-commit pytest numpy pandas rich PyYAML structlog scikit-learn
+
+    - name: Run P0 safety gates (pre-commit, all files)
+      run: |
+        pre-commit run --all-files \
+          --hook-stage manual \
+          config-adjustments-orphans \
+          p0-py-compile \
+          circuit-breaker-regression
+
+    - name: Report
+      if: failure()
+      run: |
+        echo "::error::P0 safety gate violation. Check pre-commit output above."
+        echo "Gate 1 (orphan-keys): blocks on ScannerConfig drift (exit 1 or 2)."
+        echo "Gate 2 (py_compile):  blocks on syntax errors in the 5 safety files."
+        echo "Gate 3 (circuit-breaker): blocks on regression in trade-blocking gates."

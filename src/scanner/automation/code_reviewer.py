@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src.scanner.automation.event_bus import Event, EventBus, EventResult, EventType, get_event_bus
+from src.scanner.automation.event_bus import Event, PrdEventBus as EventBus, EventResult, EventType, get_prd_event_bus as get_event_bus
 
 logger = logging.getLogger(__name__)
 

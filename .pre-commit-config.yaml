@@ -1,0 +1,57 @@
+# Pre-commit configuration — P0/P1 safety gates for the FX trading bot.
+#
+# Install once per clone:
+#     pip install pre-commit
+#     pre-commit install
+#
+# Manual run (all files):
+#     pre-commit run --all-files
+#
+# These are BLOCKERS, not auto-fixers. A failing hook blocks the commit.
+# No external repos — `local` only — to keep the supply-chain surface narrow
+# (this is a financial system; every pulled-in repo is trust you need to audit).
+#
+# Exit-code contract (enforced by each hook's underlying script):
+#   0 = pass
+#   1 = gate violation (orphan key, syntax error, test failure) — block
+#   2 = infra/validator broken — block (treat as failure)
+
+repos:
+  - repo: local
+    hooks:
+      # Gate 1 — ScannerConfig orphan-key guard.
+      # Source: .claude/rules/improvement.md "Config Adjustment Consumer
+      # Verification" (promoted 2026-04-16 from a $3,527 live-trading loss).
+      # Runs on any change to ScannerConfig or the three adjustment JSON files.
+      - id: config-adjustments-orphans
+        name: ScannerConfig orphan-key guard
+        entry: python3 src/scanner/tools/validate_config_adjustments.py
+        language: system
+        files: ^(src/scanner/config\.py|\.claude/config_adjustments\.json|\.claude/pending_adjustments\.json|logs/reflection_staging/config_adjustments\.json)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+
+      # Gate 2 — Syntax check on the 5 files carrying the P0 safety contract.
+      # py_compile is stdlib, zero-dep, and catches the class of drift that
+      # would ship a broken trade-blocking gate (trend veto, staleness block,
+      # regime SL inversion, auto_execute wiring, RL sync).
+      - id: p0-py-compile
+        name: P0 safety-files py_compile
+        entry: python3 -m py_compile src/scanner/automation/dynamic_sl_tp.py src/scanner/agents/_team.py src/scanner/engine.py src/scanner/execution.py src/scanner/automation/orchestrator.py
+        language: system
+        files: ^src/scanner/(automation/(dynamic_sl_tp|orchestrator)|agents/_team|engine|execution)\.py$
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+
+      # Gate 3 — Circuit-breaker regression tests.
+      # All 7 tests in test_circuit_breaker_enforcement.py must pass.
+      # Triggered whenever any of the enforcement-carrying files OR the test
+      # itself changes. -q keeps CI logs clean; -x would mask multi-failure
+      # state so we intentionally don't use it.
+      - id: circuit-breaker-regression
+        name: Circuit-breaker regression tests
+        entry: python3 -m pytest tests/scanner/test_circuit_breaker_enforcement.py -q
+        language: system
+        files: ^(src/scanner/(agents/_team|engine|execution)\.py|tests/scanner/test_circuit_breaker_enforcement\.py)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]

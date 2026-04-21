@@ -1,7 +1,7 @@
 """Enhanced Confidence Calibration System for Buddy FX Trading Bot.
 
 Implements a multi-layer confidence calibration pipeline:
-1. Ensemble Disagreement - Uncertainty from 12 agent score variance
+1. Ensemble Disagreement - Uncertainty from agent score variance (15-agent team; see ``ScannerAgentTeam._BASE_WEIGHTS``)
 2. Regime-Aware Platt Scaling - Separate sigmoid calibration per regime
 3. Confidence Time-Decay - Regime-dependent decay over holding period
 4. Agent Agreement Quality - Coherence of agent consensus

@@ -86,6 +86,11 @@ class ScanEnrichment:
     models_detail: dict = field(default_factory=dict)
     momentum_model_type: str = "none"
 
+    # US-513: Max age (days) over loaded ensemble component trained_at deltas.
+    # 0.0 = unknown / fresh; > 7 triggers Overview red banner + uncertainty
+    # hard-block tightening to 0.35.
+    max_component_age_days: float = 0.0
+
 
 class EmbeddedScanner:
     """Bridge between the Scanner engine and the Textual TUI.
@@ -821,6 +826,15 @@ class EmbeddedScanner:
                 enrichment.momentum_model_type = str(mh.get("momentum_type", "none"))
         except Exception as e:
             logger.debug("Model health snapshot error: %s", e)
+
+        # US-513: Model staleness — max ensemble component age in days
+        try:
+            if hasattr(self._scanner, "get_model_staleness_days"):
+                enrichment.max_component_age_days = float(
+                    self._scanner.get_model_staleness_days() or 0.0
+                )
+        except Exception as e:
+            logger.debug("Model staleness snapshot error: %s", e)
 
         return enrichment
 

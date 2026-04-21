@@ -520,6 +520,145 @@ class JournalReader:
 
         return cumulative
 
+    # ------------------------------------------------------------------
+    # US-512: Gate trace — answers "why did this fire / get rejected?"
+    # ------------------------------------------------------------------
+
+    def get_gate_trace(self, trade_id: str) -> dict[str, Any] | None:
+        """Return a structured gate-trace dict for the given trade_id.
+
+        Five sections (per US-512):
+          - context: pair, direction, timestamp, broker, regime, atr_pips
+          - agents: list of {name, score, passed, weight, reason}
+          - gates: {confidence, momentum, risk} -> {passed, label}
+          - math: weighted_vote_score, agent_total/passed, uncertainty,
+                  model_disagreement, confidence
+          - rr:   sl_pips, tp_pips, rr_ratio, entry/sl/tp prices, lots
+
+        Returns None if no entry matches trade_id (caller shows fallback).
+        Reads RAW JSON to preserve fields not exposed by JournalEntry
+        (uncertainty_score, model_disagreement, etc).
+        """
+        if not trade_id:
+            return None
+
+        if not self._path.exists():
+            return None
+
+        try:
+            raw_data = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            return None
+        if not isinstance(raw_data, list):
+            return None
+
+        target_id = str(trade_id)
+        match: dict[str, Any] | None = None
+        for raw in raw_data:
+            if isinstance(raw, dict) and str(raw.get("trade_id")) == target_id:
+                match = raw
+                break
+        if match is None:
+            return None
+
+        gates_raw = match.get("gates") or {}
+        agents_raw = match.get("agents") or {}
+        regime_raw = match.get("regime") or {}
+        outcome_raw = match.get("outcome") or {}
+
+        agent_reasons = agents_raw.get("agent_reasons") or []
+        agents: list[dict[str, Any]] = []
+        for ar in agent_reasons:
+            if not isinstance(ar, dict):
+                continue
+            agents.append(
+                {
+                    "name": str(ar.get("name") or "unknown"),
+                    "score": _safe_float(ar.get("score")),
+                    "passed": bool(ar.get("passed", False)),
+                    "weight": _safe_float(ar.get("weight"), default=1.0),
+                    "reason": str(ar.get("reason") or ""),
+                    "reason_code": str(ar.get("reason_code") or ""),
+                    "block_trade": bool(ar.get("block_trade", False)),
+                }
+            )
+
+        gates = {
+            "confidence": {
+                "passed": bool(gates_raw.get("confidence_passed", False)),
+                "label": "confidence",
+            },
+            "momentum": {
+                "passed": bool(gates_raw.get("momentum_passed", False)),
+                "label": "momentum",
+            },
+            "risk": {
+                "passed": bool(gates_raw.get("risk_passed", False)),
+                "label": "risk",
+            },
+        }
+
+        math_section = {
+            "weighted_vote_score": _safe_float(agents_raw.get("weighted_vote_score")),
+            "agent_total": int(_safe_float(agents_raw.get("agent_total"), default=len(agents))),
+            "agent_passed": int(
+                _safe_float(
+                    agents_raw.get("agent_passed"),
+                    default=sum(1 for a in agents if a["passed"]),
+                )
+            ),
+            "confidence": _safe_float(match.get("confidence")),
+            "uncertainty_score": _safe_float(regime_raw.get("uncertainty_score")),
+            "model_disagreement": _safe_float(regime_raw.get("model_disagreement")),
+            "gate_summary": str(gates_raw.get("gate_summary") or ""),
+        }
+
+        sl_pips = _safe_float(match.get("sl_pips"))
+        tp_pips = _safe_float(match.get("tp_pips"))
+        rr_ratio = _safe_float(match.get("rr_ratio", match.get("risk_reward")))
+        if rr_ratio == 0.0 and sl_pips > 0:
+            rr_ratio = tp_pips / sl_pips
+
+        rr_section = {
+            "sl_pips": sl_pips,
+            "tp_pips": tp_pips,
+            "rr_ratio": rr_ratio,
+            "entry_price": _safe_float(match.get("entry_price")),
+            "sl_price": _safe_float(match.get("sl_price")),
+            "tp_price": _safe_float(match.get("tp_price")),
+            "lots": _safe_float(match.get("lots")),
+        }
+
+        # Outcome (if closed) — surfaces "why did this fire?" vs reality
+        outcome = None
+        if isinstance(outcome_raw, dict) and "realized_pl" in outcome_raw:
+            outcome = {
+                "trade_won": bool(outcome_raw.get("trade_won", False)),
+                "realized_pl": _safe_float(outcome_raw.get("realized_pl")),
+                "exit_reason": str(outcome_raw.get("exit_reason") or "unknown"),
+            }
+
+        context = {
+            "trade_id": str(match.get("trade_id")),
+            "pair": str(match.get("pair") or "---"),
+            "direction": str(match.get("direction") or "---"),
+            "timestamp": str(match.get("timestamp") or ""),
+            "broker": str(match.get("broker") or "unknown"),
+            "asset_class": str(match.get("asset_class") or "FX"),
+            "volatility_regime": str(regime_raw.get("volatility_regime") or "UNKNOWN"),
+            "atr_pips": _safe_float(regime_raw.get("atr_pips")),
+            "regime_risk_modifier": _safe_float(regime_raw.get("regime_risk_modifier"), default=1.0),
+        }
+
+        return {
+            "context": context,
+            "agents": agents,
+            "gates": gates,
+            "math": math_section,
+            "rr": rr_section,
+            "outcome": outcome,
+        }
+
     def get_pnl_curve_pips(self) -> list[float]:
         """Cumulative P/L curve in pips (alternative to dollar P/L)."""
         closed = self.get_closed()
