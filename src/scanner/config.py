@@ -100,6 +100,8 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_news_risk_agent": True,
         "enable_momentum_agent": True,
         "enable_trader_readiness_agent": True,
+        "enable_order_flow_agent": True,
+        "enable_devil_advocate_agent": True,
         # Features & attention
         "enable_feature_attention": True,
         "enable_temporal_attention": True,
@@ -152,7 +154,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "agent_promotion_min_confidence": 0.56,
         "max_uncertainty_score": 0.35,
         "max_model_disagreement": 0.45,
-        "min_agent_consensus_ratio": 0.42,  # 5/12 agents minimum — stricter
+        "min_agent_consensus_ratio": 0.42,  # ~42% of voting agents minimum — stricter
         # Phase 33 (US-216): Infrastructure features safe for conservative mode
         "enable_memory_manager": True,
         "enable_health_registry": True,
@@ -166,6 +168,9 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_pair_performance_agent": True,
         "enable_multi_timeframe_agent": True,
         "enable_devil_advocate": True,
+        "enable_devil_advocate_agent": True,
+        "enable_order_flow_agent": True,
+        "enable_trader_readiness_agent": True,
         "devil_advocate_block_threshold": 0.60,
         "devil_advocate_warn_threshold": 0.40,
     },
@@ -187,7 +192,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "agent_promotion_min_confidence": 0.50,
         "max_uncertainty_score": 0.48,
         "max_model_disagreement": 0.65,
-        "min_agent_consensus_ratio": 0.33,  # 4/12 agents minimum — was 0.25
+        "min_agent_consensus_ratio": 0.33,  # ~33% of voting agents minimum — was 0.25
         # Phase 30 (US-185): RL features and soft uncertainty for aggressive profile
         "use_rl_sizer": True,
         "use_rl_gates": True,
@@ -273,6 +278,8 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "execution_strategy": "TWAP",
         "sl_tp_aggressiveness": 1.2,
         "enable_devil_advocate": True,
+        "enable_devil_advocate_agent": True,
+        "enable_order_flow_agent": True,
         "devil_advocate_block_threshold": 0.60,
         "devil_advocate_warn_threshold": 0.40,
     },
@@ -336,6 +343,17 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         # At 1.8:1 min, even 40% win rate is profitable (expectancy > 0).
         "min_risk_reward_ratio": 1.8,
         "enable_llm_trade_analysis": True,
+        "enable_trend_agent_hard_veto": True,
+        "enable_mean_reversion_veto": True,  # H2 (Phase 93)
+        "mean_reversion_veto_disagree_floor": 0.25,
+        "staleness_uncertainty_threshold": 0.35,
+        "staleness_age_threshold_days": 7.0,
+        "veto_window_ms_default": 0,  # US-511: operator veto window (0=disabled by default in smart)
+        "veto_window_ms_per_pair": {},
+        # Extended agents 13/14/15 — always on for smart profile; operators can disable via YAML override
+        "enable_trader_readiness_agent": True,
+        "enable_order_flow_agent": True,
+        "enable_devil_advocate_agent": True,
     },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
@@ -501,7 +519,7 @@ class ScannerConfig:
     # LOW=tight stops, EXTREME=wide TP to capture big moves
     regime_atr_multipliers: Dict[str, Dict[str, float]] = field(
         default_factory=lambda: {
-            "LOW": {"sl_mult": 0.8, "tp_mult": 1.2},
+            "LOW": {"sl_mult": 1.2, "tp_mult": 1.2},
             "NORMAL": {"sl_mult": 1.0, "tp_mult": 1.5},
             "HIGH": {"sl_mult": 1.1, "tp_mult": 2.0},
             "EXTREME": {"sl_mult": 1.2, "tp_mult": 2.8},
@@ -608,13 +626,20 @@ class ScannerConfig:
     enable_session_timing_agent: bool = True
     enable_support_resistance_agent: bool = True
     enable_trader_readiness_agent: bool = True  # Agent #13: Aura human-side readiness signal
-    enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator
-    enable_order_flow_agent: bool = True  # Order-flow / book-depth agent
+    enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator (legacy flag — kept for backward compatibility)
+    enable_devil_advocate_agent: bool = True  # Agent #14: Canonical _agent-suffixed toggle (supersedes enable_devil_advocate)
+    enable_order_flow_agent: bool = True  # Agent #15: Order-flow / book-depth agent
     enable_calendar_blackout: bool = True  # Economic calendar blackout gate (US-301)
     news_sentiment_fast_mode: bool = True  # Fast-path sentiment inference
     enable_news_sentiment: bool = True  # News sentiment integration
     devil_advocate_block_threshold: float = 0.60  # Bear score above this blocks the trade
     devil_advocate_warn_threshold: float = 0.40   # Bear score above this soft-vetoes
+    enable_trend_agent_hard_veto: bool = True  # Hard-block directional trades when trend agent fails
+    # H2 (Phase 93): mean_reversion composite veto — block when MR fails AND models disagree > floor.
+    # MR weight is 0.90 (lowest of core agents) so its NO vote gets drowned in WVS arithmetic.
+    # This gives MR real authority only when paired with model disagreement evidence.
+    enable_mean_reversion_veto: bool = True
+    mean_reversion_veto_disagree_floor: float = 0.25  # Fires when model_disagreement > this value
 
     # --- Graph-Attention Agent Consensus (US-076) ---
     use_heterogeneous_agents: bool = False  # Enable agent specialization categories
@@ -652,6 +677,8 @@ class ScannerConfig:
     max_model_disagreement: float = 0.65  # Phase 81: was 0.5, hard-blocked all signals at 0.50
     disagreement_hard_floor: float = 0.50  # Phase 81: was 0.30, too many false blocks. Soft penalty handles the range 0.50-0.65
     soft_uncertainty_blocking: bool = True  # Phase 76: Default True — graduated confidence penalty instead of hard block for disagreement between floor and max
+    staleness_uncertainty_threshold: float = 0.35  # Tighter uncertainty block when models are stale (US-503)
+    staleness_age_threshold_days: float = 7.0  # Days beyond which staleness_uncertainty_threshold applies (US-503)
 
     # --- HRP Portfolio Optimization (US-073) ---
     use_hrp: bool = False  # Replace binary correlation filter with HRP weights
@@ -894,6 +921,10 @@ class ScannerConfig:
     episodic_suppression_loss_rate: float = 0.70  # Loss rate threshold for suppression
     episodic_memory_max_episodes: int = 500  # Max episodes to keep in memory
 
+    # --- Pre-Trade Veto Window (US-511) ---
+    veto_window_ms_default: int = 0  # 0 = disabled; 1-5000ms hold before execution
+    veto_window_ms_per_pair: Dict[str, int] = field(default_factory=dict)  # pair-specific overrides
+
     # --- Autonomous Performance-Driven PRD Generation (Ralph Trigger) ---
     enable_auto_ralph: bool = True  # Auto-generate PRD stories from performance gaps
     auto_ralph_win_rate_threshold: float = 0.45  # Win rate below this triggers a story
@@ -977,6 +1008,12 @@ class ScannerConfig:
                 f"Setting to 100."
             )
             self.lookback_candles = 100
+
+        low_sl_mult = self.regime_atr_multipliers.get("LOW", {}).get("sl_mult", 0)
+        if low_sl_mult < 1.2:
+            raise ValueError(
+                "LOW regime sl_mult must be >= 1.2 (ranging markets require wider stops)"
+            )
 
     def load_yaml_config(self) -> Dict[str, Any]:
         """Load and cache YAML configuration.

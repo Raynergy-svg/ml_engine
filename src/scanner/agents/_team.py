@@ -33,6 +33,12 @@ from src.scanner.agents.memory import (
 
 logger = logging.getLogger(__name__)
 
+# US-503: Optional staleness import — wrapped so the module loads even if unavailable
+try:
+    from src.scanner.automation.model_freshness import get_model_freshness
+except Exception:
+    get_model_freshness = None  # type: ignore[assignment]
+
 
 def _clip01(value: float) -> float:
     return min(max(float(value), 0.0), 1.0)
@@ -1307,19 +1313,26 @@ class ScannerAgentTeam:
                 verdicts.append(sr_verdict)
 
         # Agent #15: Order Flow (OANDA order/position book contrarian signal)
-        if getattr(self.config, "enable_order_flow_agent", False):
+        # Default True — backward compatible with configs/YAML dicts that omit the key.
+        if getattr(self.config, "enable_order_flow_agent", True):
             of_verdict = self._evaluate_order_flow(ctx)
             if of_verdict is not None:
                 verdicts.append(of_verdict)
 
         # Agent #13: Trader Readiness (Aura human-side intelligence)
-        if getattr(self.config, "enable_trader_readiness_agent", False):
+        # Default True — backward compatible with configs/YAML dicts that omit the key.
+        if getattr(self.config, "enable_trader_readiness_agent", True):
             readiness_verdict = self._evaluate_trader_readiness(ctx)
             if readiness_verdict is not None:
                 verdicts.append(readiness_verdict)
 
         # Agent #14: Devil's Advocate (Adversarial bear-case evaluator, runs LAST)
-        if getattr(self.config, "enable_devil_advocate", True):
+        # Canonical toggle: enable_devil_advocate_agent (new _agent-suffixed name).
+        # Legacy toggle: enable_devil_advocate (kept for backward compatibility).
+        # Both default True; disabling requires explicit False on the canonical flag.
+        _da_enabled = getattr(self.config, "enable_devil_advocate_agent", True) and \
+                      getattr(self.config, "enable_devil_advocate", True)
+        if _da_enabled:
             try:
                 from src.scanner.agents.agent_da import DevilsAdvocateAgent
                 da_agent = DevilsAdvocateAgent()
@@ -1878,14 +1891,25 @@ class ScannerAgentTeam:
             reason_code = "trend_neutral"
             confidence_delta = 0.0
 
+        passed = score >= 0.55
+        block_trade = False
+        if (
+            not passed
+            and ctx.analysis.direction in ("LONG", "SHORT")
+            and getattr(ctx.config, "enable_trend_agent_hard_veto", True)
+        ):
+            block_trade = True
+            reason = reason + " (hard veto)"
+
         return AgentVerdict(
             name="trend",
             score=_clip01(score),
-            passed=score >= 0.55,
+            passed=passed,
             weight=self._weight_for("trend"),
             reason=reason,
             reason_code=reason_code,
             confidence_delta=confidence_delta,
+            block_trade=block_trade,
         )
 
     def _evaluate_mean_reversion(self, ctx: AgentDecisionContext) -> AgentVerdict:
@@ -1913,14 +1937,34 @@ class ScannerAgentTeam:
             reason_code = "mean_reversion_neutral"
             confidence_delta = 0.0
 
+        # H2 composite veto: MR voted NO on every losing trade in the 04-15 streak.
+        # On its own, MR weight (0.90, lowest) is arithmetically drowned in the WVS.
+        # The composite rule — MR fails AND models already disagree — catches the
+        # "nobody knows what's happening here" state that produced MFE=0 losses.
+        # Uses ctx.gate_details (populated upstream by gate evaluator), not
+        # ctx.analysis.model_disagreement (which is assigned AFTER verdicts).
+        passed = score >= 0.52
+        block_trade = False
+        if (
+            not passed
+            and direction in ("LONG", "SHORT")
+            and getattr(ctx.config, "enable_mean_reversion_veto", True)
+        ):
+            disagree_floor = float(getattr(ctx.config, "mean_reversion_veto_disagree_floor", 0.25))
+            model_disagree = float(ctx.gate_details.get("model_disagreement", 0.0) or 0.0)
+            if model_disagree > disagree_floor:
+                block_trade = True
+                reason = reason + f" (hard veto — disagreement {model_disagree:.2f} > {disagree_floor:.2f})"
+
         return AgentVerdict(
             name="mean_reversion",
             score=score,
-            passed=score >= 0.52,
+            passed=passed,
             weight=self._weight_for("mean_reversion"),
             reason=reason,
             reason_code=reason_code,
             confidence_delta=confidence_delta,
+            block_trade=block_trade,
         )
 
     def _evaluate_volatility(self, ctx: AgentDecisionContext) -> AgentVerdict:
@@ -2045,6 +2089,38 @@ class ScannerAgentTeam:
 
         max_uncertainty = _clip01(_safe_float(getattr(ctx.config, "max_uncertainty_score", 0.40), 0.40))
         max_disagreement = _clip01(_safe_float(getattr(ctx.config, "max_model_disagreement", 0.50), 0.50))
+
+        # US-503: Tighten uncertainty threshold when models are stale
+        # 2026-04-20: Promoted-rule hardening (trading.md 2026-04-15 staleness_block,
+        # 10-trade / -$2,637 loss streak). When models are stale AND uncertainty exceeds
+        # the lowered threshold, HARD-BLOCK — soft_uncertainty_blocking must not downgrade
+        # this to a confidence penalty.
+        stale_hard_block = False
+        stale_age_days = 0.0
+        try:
+            if get_model_freshness is not None:
+                _freshness = get_model_freshness()
+                _oldest = _freshness.get("oldest_age_days") or 0.0
+                _staleness_age = _safe_float(getattr(ctx.config, "staleness_age_threshold_days", 7.0), 7.0)
+                _staleness_thresh = _safe_float(getattr(ctx.config, "staleness_uncertainty_threshold", 0.35), 0.35)
+                if _oldest > _staleness_age:
+                    stale_age_days = float(_oldest)
+                    _effective = min(max_uncertainty, _staleness_thresh)
+                    if _effective < max_uncertainty:
+                        logger.info(
+                            f"Uncertainty threshold tightened to {_effective:.2f} (models {_oldest:.1f}d stale)"
+                        )
+                        max_uncertainty = _effective
+                    # Hard-block override — bypasses soft_uncertainty_blocking
+                    if uncertainty_score > _staleness_thresh:
+                        stale_hard_block = True
+                        logger.warning(
+                            f"STALENESS HARD BLOCK: uncertainty={uncertainty_score:.2f} > "
+                            f"{_staleness_thresh:.2f} with models {_oldest:.1f}d stale "
+                            f"(> {_staleness_age:.1f}d threshold)"
+                        )
+        except Exception:
+            pass
         soft_blocking = bool(getattr(ctx.config, "soft_uncertainty_blocking", False))
         ensemble_conflict_enabled = bool(getattr(ctx.config, "ensemble_conflict_enabled", False))
 
@@ -2120,7 +2196,14 @@ class ScannerAgentTeam:
         # Soft blocking: penalize confidence instead of hard-blocking for uncertainty.
         # Phase 76: disagreement between hard_floor and max_disagreement now soft-blocks
         # when soft_uncertainty_blocking=True (graduated penalty instead of hard block).
-        block_trade = should_block_ensemble or disagreement_dangerous or (exceeds_threshold and not soft_blocking)
+        # 2026-04-20: stale_hard_block bypasses soft_blocking — staleness + high uncertainty
+        # is a hard block regardless of soft_uncertainty_blocking flag.
+        block_trade = (
+            should_block_ensemble
+            or disagreement_dangerous
+            or stale_hard_block
+            or (exceeds_threshold and not soft_blocking)
+        )
 
         if should_block_ensemble and ensemble_conflict_result is not None:
             # Ensemble conflict triggered a hard block
@@ -2129,6 +2212,14 @@ class ScannerAgentTeam:
                 f"[HARD BLOCK]"
             )
             reason_code = "ensemble_direction_conflict"
+            confidence_delta = -1.0  # Hard block: full penalty
+        elif stale_hard_block:
+            # Staleness + high uncertainty — promoted rule (trading.md 2026-04-15)
+            reason = (
+                f"staleness hard-block: uncertainty={uncertainty_score:.2f} with models "
+                f"{stale_age_days:.1f}d stale [HARD BLOCK]"
+            )
+            reason_code = "staleness_hard_block"
             confidence_delta = -1.0  # Hard block: full penalty
         elif disagreement_dangerous:
             disagree_overshoot = model_disagreement - DISAGREEMENT_HARD_FLOOR
