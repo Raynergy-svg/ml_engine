@@ -4560,13 +4560,33 @@ class Scanner:
                                 f"{pair}: US-127 ThresholdOptimizer re-qualified "
                                 f"(conf={result.confidence:.3f} >= opt={_opt_conf:.3f})"
                             )
-                    # Feed optimized thresholds to ConfigAdjuster
+                    # Feed optimized thresholds to ConfigAdjuster.
+                    # 2026-04-21: fixed orphan-key bug — threshold_optimizer keys
+                    # (confidence/momentum/rr_ratio, 0-1 scale except rr_ratio) must
+                    # be mapped to real ScannerConfig field names with scale conversion.
+                    # Previously used f"optimized_{_tkey}_threshold" which created
+                    # orphan keys the validator always rejected — 174 dead proposals
+                    # accumulated in .claude/pending_adjustments.json before discovery.
                     if self._config_adjuster is not None:
+                        # Optimizer key → (ScannerConfig field, scale multiplier)
+                        _OPT_FIELD_MAP = {
+                            "confidence": ("min_confidence", 100.0),       # 0-1 → 0-100
+                            "momentum":   ("min_momentum", 1.0),           # 0-1 direct
+                            "rr_ratio":   ("min_risk_reward_ratio", 1.0),  # ratio direct
+                        }
                         for _tkey, _tval in _opt_thresholds.items():
+                            _mapping = _OPT_FIELD_MAP.get(_tkey)
+                            if _mapping is None:
+                                logger.debug(
+                                    f"threshold_optimizer: unknown key '{_tkey}' — "
+                                    "not in _OPT_FIELD_MAP, skipping adjustment emission"
+                                )
+                                continue
+                            _field_name, _scale = _mapping
                             self._config_adjuster.collect_adjustment(
                                 source="threshold_optimizer",
-                                key=f"optimized_{_tkey}_threshold",
-                                value=_tval,
+                                key=_field_name,
+                                value=round(float(_tval) * _scale, 4),
                                 reason=f"Rolling win rate optimization for {regime_name}",
                             )
                 except Exception as _to_err:

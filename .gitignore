@@ -29,6 +29,8 @@ logs/ALERT_*.txt
 .claude/.reflection.lock
 .claude/proposed_weights.json
 .claude/proposed_weights_archive/
+.claude/pending_adjustments.json
+.claude/audit_archive/
 trained_data/.autonomous_retrain_state.json
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag

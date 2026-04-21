@@ -54,6 +54,21 @@ def _approved_entry(key: str, new_value: float, source: str = "test") -> dict:
     }
 
 
+def _isolated_adjuster(tmp_path: Path, approved_file: Path | None = None) -> ConfigAdjuster:
+    """Build a ConfigAdjuster fully isolated to tmp_path.
+
+    CRITICAL: if pending_path is not overridden, ConfigAdjuster.collect_adjustment()
+    writes to the production .claude/pending_adjustments.json. A 2026-04-21 audit
+    found 4 test-pollution entries leaked from an earlier version of this file.
+    Always use this helper rather than instantiating ConfigAdjuster directly.
+    """
+    persistence = approved_file if approved_file is not None else tmp_path / "config_adjustments.json"
+    return ConfigAdjuster(
+        persistence_path=persistence,
+        pending_path=tmp_path / "pending_adjustments.json",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Round-trip: approved history → apply_adjustments → config updated
 # ---------------------------------------------------------------------------
@@ -67,7 +82,7 @@ class TestConfigAdjusterRoundTrip:
             _approved_entry("min_confidence", 62.0),  # 0-100 scale per ScannerConfig
         ])
 
-        adjuster = ConfigAdjuster(persistence_path=adj_file)
+        adjuster = _isolated_adjuster(tmp_path, adj_file)
         config = ScannerConfig()
 
         # cycle=999 bypasses the RATE_LIMIT_CYCLES=10 guard
@@ -83,7 +98,7 @@ class TestConfigAdjusterRoundTrip:
             _approved_entry("max_model_disagreement", 0.25),
         ])
 
-        adjuster = ConfigAdjuster(persistence_path=adj_file)
+        adjuster = _isolated_adjuster(tmp_path, adj_file)
         config = ScannerConfig()
         adjuster.apply_adjustments(config, current_cycle=999)
 
@@ -104,7 +119,7 @@ class TestConfigAdjusterRoundTrip:
         }
         _approved_history_file(adj_file, [entry])
 
-        adjuster = ConfigAdjuster(persistence_path=adj_file)
+        adjuster = _isolated_adjuster(tmp_path, adj_file)
         # Simulate the ID already being applied
         adjuster._applied_ids.add(proposal_id)
         config = ScannerConfig()
@@ -121,7 +136,7 @@ class TestConfigAdjusterRoundTrip:
         ])
 
         # Fresh instance — _load_state() reads last_applied / applied_ids from disk
-        adjuster2 = ConfigAdjuster(persistence_path=adj_file)
+        adjuster2 = _isolated_adjuster(tmp_path, adj_file)
         config = ScannerConfig()
         adjuster2.apply_adjustments(config, current_cycle=999)
 
@@ -150,7 +165,7 @@ class TestBypassDetectionGuard:
         }
         adj_file.write_text(json.dumps(data))
 
-        adjuster = ConfigAdjuster(persistence_path=adj_file)
+        adjuster = _isolated_adjuster(tmp_path, adj_file)
 
         # _pending must be empty regardless of what was on disk
         assert adjuster._pending == {}, (
@@ -167,7 +182,7 @@ class TestBypassDetectionGuard:
         adj_file = tmp_path / "config_adjustments.json"
         _approved_history_file(adj_file, [])
 
-        adjuster = ConfigAdjuster(persistence_path=adj_file)
+        adjuster = _isolated_adjuster(tmp_path, adj_file)
         # Simulate old-path bypass: inject directly into _pending
         adjuster._pending["max_model_disagreement"] = {
             "source": "bypass_attempt",
