@@ -178,7 +178,18 @@ class ConfigTuner:
             except Exception:
                 data = {"proposals": []}
 
-        data["proposals"].append(proposal)
+        proposals = data.setdefault("proposals", [])
+        signature = _proposal_signature(proposal)
+        for existing in proposals:
+            if _proposal_signature(existing) == signature:
+                logger.debug(
+                    "ConfigTuner: duplicate proposal suppressed: %s = %s",
+                    key,
+                    value,
+                )
+                return str(existing.get("id", proposal_id))
+
+        proposals.append(proposal)
         self.pending_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.pending_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=2))
@@ -214,3 +225,16 @@ class ConfigTuner:
                 proposal_id[:8], adj["field"], adj["old"], adj["new"],
                 adj.get("rule", "")[:60],
             )
+
+
+def _proposal_signature(proposal: Dict[str, Any]) -> tuple[str, str, str]:
+    """Stable identity for semantically identical pending adjustment proposals."""
+    try:
+        value = json.dumps(proposal.get("proposed_value"), sort_keys=True)
+    except TypeError:
+        value = str(proposal.get("proposed_value"))
+    return (
+        str(proposal.get("source", "unknown")),
+        str(proposal.get("key", "")),
+        value,
+    )

@@ -284,6 +284,27 @@ class TestAdjustmentFlowE2E(unittest.TestCase):
         applied2 = adjuster.apply_adjustments(config, current_cycle=1)
         self.assertEqual(len(applied2), 0)  # blocked by rate limit
 
+    def test_collect_adjustment_suppresses_duplicate_pending_proposal(self):
+        """Same source/key/value should create one inbox item, not one per cycle."""
+        adjuster = self._make_adjuster()
+
+        for reason in [
+            "Rolling win rate optimization for UNKNOWN",
+            "Rolling win rate optimization for EXTREME_NEXT",
+            "Rolling win rate optimization for UNKNOWN",
+        ]:
+            adjuster.collect_adjustment(
+                source="threshold_optimizer",
+                key="min_confidence",
+                value=55.0,
+                reason=reason,
+            )
+
+        data = json.loads(self.pending_path.read_text())
+        proposals = data.get("proposals", [])
+        self.assertEqual(len(proposals), 1)
+        self.assertEqual(proposals[0]["key"], "min_confidence")
+
     # ------------------------------------------------------------------
     # No duplicate application across restarts
     # ------------------------------------------------------------------

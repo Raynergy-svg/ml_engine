@@ -90,7 +90,7 @@ class AdjustmentApprover:
         # Write to config_adjustments.json (the approved store)
         approved_data = self._load_approved()
         history: list[dict[str, Any]] = approved_data.get("history", [])
-        history.append({
+        approved_entry = {
             "key": key,
             "old_value": proposal.get("current_value"),
             "new_value": value,
@@ -99,7 +99,14 @@ class AdjustmentApprover:
             "proposal_id": proposal_id,
             "timestamp": now,
             "approved_at": now,
-        })
+        }
+        if not self._history_has_duplicate(history, approved_entry):
+            history.append(approved_entry)
+        else:
+            logger.info(
+                "AdjustmentApprover: approved %s without duplicating history for %s = %s",
+                proposal_id[:8], key, value,
+            )
         approved_data["history"] = history[-200:]
         approved_data["last_updated"] = now
         approved_data["version"] = approved_data.get("version", 1)
@@ -141,6 +148,68 @@ class AdjustmentApprover:
 
         logger.info("AdjustmentApprover: rejected %s — %s", proposal_id[:8], reason)
         return True
+
+    def approve_all(self) -> dict[str, Any]:
+        """Approve every valid actionable proposal.
+
+        Invalid proposals are left in the inbox so an operator can reject or
+        inspect them explicitly.
+        """
+        pending_data = self._load_pending()
+        proposals = pending_data.get("proposals", [])
+        normalized_invalid = False
+        for proposal in proposals:
+            if (
+                proposal.get("status") in ("pending", "snoozed")
+                and not (proposal.get("validation") or {}).get("valid")
+            ):
+                proposal["status"] = "invalid"
+                normalized_invalid = True
+        if normalized_invalid:
+            self._save_pending(pending_data)
+
+        actionable_ids = [
+            p.get("id")
+            for p in proposals
+            if p.get("id")
+            and p.get("status") in ("pending", "snoozed")
+            and (p.get("validation") or {}).get("valid")
+        ]
+
+        approved = 0
+        failed: list[str] = []
+        for proposal_id in actionable_ids:
+            if self.approve(str(proposal_id)):
+                approved += 1
+            else:
+                failed.append(str(proposal_id))
+
+        skipped = len([
+            p for p in proposals
+            if p.get("status") in ("pending", "snoozed", "invalid")
+            and not (p.get("validation") or {}).get("valid")
+        ])
+        return {"approved": approved, "failed": failed, "skipped": skipped}
+
+    def reject_all(self, reason: str = "bulk reject") -> dict[str, Any]:
+        """Reject every actionable proposal in the inbox."""
+        pending_data = self._load_pending()
+        proposals = pending_data.get("proposals", [])
+        actionable_ids = [
+            p.get("id")
+            for p in proposals
+            if p.get("id") and p.get("status") in ("pending", "snoozed", "invalid")
+        ]
+
+        rejected = 0
+        failed: list[str] = []
+        for proposal_id in actionable_ids:
+            if self.reject(str(proposal_id), reason):
+                rejected += 1
+            else:
+                failed.append(str(proposal_id))
+
+        return {"rejected": rejected, "failed": failed}
 
     def snooze(self, proposal_id: str, hours: float) -> bool:
         """Snooze a proposal — it stays pending until snooze_until expires."""
@@ -214,9 +283,29 @@ class AdjustmentApprover:
         tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
         tmp.rename(self.approved_path)
 
+    def _history_has_duplicate(
+        self,
+        history: list[dict[str, Any]],
+        entry: dict[str, Any],
+    ) -> bool:
+        signature = _approval_signature(entry)
+        return any(_approval_signature(existing) == signature for existing in history)
+
     def _emit_event(self, event_type: str, payload: dict[str, Any]) -> None:
         try:
             from src.scanner.automation.event_bus import get_event_bus
             get_event_bus().publish(event_type, payload)
         except Exception:
             pass  # Event emission is best-effort; never block approval
+
+
+def _approval_signature(entry: dict[str, Any]) -> tuple[str, str, str]:
+    try:
+        value = json.dumps(entry.get("new_value"), sort_keys=True)
+    except TypeError:
+        value = str(entry.get("new_value"))
+    return (
+        str(entry.get("source", "unknown")),
+        str(entry.get("key", "")),
+        value,
+    )

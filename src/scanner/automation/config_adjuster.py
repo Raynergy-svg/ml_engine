@@ -312,7 +312,12 @@ class ConfigAdjuster:
         return []
 
     def _write_pending_proposal(self, proposal: Dict[str, Any]) -> None:
-        """Atomically append one proposal to pending_adjustments.json."""
+        """Atomically append one proposal to pending_adjustments.json.
+
+        Identical proposals are idempotent: once a source has suggested the same
+        key/value, keep the existing row instead of creating another operator
+        approval item every scan cycle.
+        """
         data: Dict[str, Any] = {"proposals": []}
         if self._pending_path.exists():
             try:
@@ -320,7 +325,19 @@ class ConfigAdjuster:
             except Exception:
                 data = {"proposals": []}
 
-        data["proposals"].append(proposal)
+        proposals = data.setdefault("proposals", [])
+        signature = _proposal_signature(proposal)
+        for existing in proposals:
+            if _proposal_signature(existing) == signature:
+                logger.debug(
+                    "ConfigAdjuster: duplicate proposal suppressed from %s: %s = %s",
+                    proposal.get("source", "unknown"),
+                    proposal.get("key"),
+                    proposal.get("proposed_value"),
+                )
+                return
+
+        proposals.append(proposal)
         self._pending_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._pending_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
@@ -339,3 +356,16 @@ def _safe_serialize(value: Any) -> Any:
     if isinstance(value, (int, float, str, bool, type(None))):
         return value
     return str(value)
+
+
+def _proposal_signature(proposal: Dict[str, Any]) -> tuple[str, str, str]:
+    """Stable identity for semantically identical adjustment proposals."""
+    try:
+        value = json.dumps(proposal.get("proposed_value"), sort_keys=True)
+    except TypeError:
+        value = str(proposal.get("proposed_value"))
+    return (
+        str(proposal.get("source", "unknown")),
+        str(proposal.get("key", "")),
+        value,
+    )
