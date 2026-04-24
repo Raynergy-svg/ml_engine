@@ -1,20 +1,19 @@
 """
-CONFIG SCREEN -- "The Control Room"
+CONFIG SCREEN -- Tier 7 Quant Control Room
 
 Four-panel layout in a 2x3 grid:
   Row 0 (full width): Active Profile selector (RadioSet) + Apply Profile button
-  Row 1, Col 0: Gate Thresholds -- grouped Input fields for scanner config values
-  Row 1, Col 1: Agent Toggles (Switch per agent) + Pairs checkboxes
-  Row 2 (full width): Config Change History (DataTable)
+  Row 1, Col 0: Tier 7 scanner thresholds and execution controls
+  Row 1, Col 1: Agent, learning, execution, and infrastructure toggles
+  Row 2 (full width): Config proposal/approval history
 
-Staged edits pattern: changes are highlighted amber until explicitly saved.
+Staged edits pattern: changes are highlighted amber until explicitly queued.
 Drop-in replacement for PlaceholderContent in the Config TabPane.
 """
 from __future__ import annotations
 
-import json
 import logging
-from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Any
 
@@ -52,54 +51,200 @@ _DATA = "#7c4dff"
 
 
 # ---------------------------------------------------------------------------
-# Gate threshold field definitions: (field_name, label, default, step, fmt)
-# Grouped by category for display
+# Numeric field definitions: (field_name, label, default)
+# Grouped by Tier 7 operating category for display.
 # ---------------------------------------------------------------------------
 
-_GATE_FIELDS: list[tuple[str, str, float]] = [
-    # Confidence & voting
-    ("min_confidence", "Min Confidence", 42.0),
-    ("weighted_vote_threshold", "Vote Threshold", 0.45),
-    ("min_agent_consensus_ratio", "Min Consensus", 0.25),
-    ("min_momentum", "Min Momentum", 0.06),
-    # Uncertainty & disagreement
-    ("max_uncertainty_score", "Max Uncertainty", 0.43),
-    ("max_model_disagreement", "Max Disagreement", 0.28),
-    ("max_uncertainty_std", "Max Uncert Std", 0.15),
-    # Risk
-    ("max_open_risk_pct", "Max Portfolio Risk", 0.15),
-    ("risk_per_trade_pct", "Base Risk %", 0.05),
-    ("max_drawdown_pct", "Max Drawdown %", 0.025),
-    # Trade structure
-    ("min_risk_reward_ratio", "Min R:R Ratio", 1.5),
-    ("atr_sl_multiplier", "ATR SL Multi", 1.0),
-    ("atr_tp_multiplier", "ATR TP Multi", 2.5),
-    # Spread & ATR
-    ("min_atr_pips", "Min ATR Pips", 5.0),
-    ("min_tcn_probability", "Min TCN Prob", 0.60),
-    ("final_score_threshold", "Final Score", 0.45),
+_CONFIG_FIELD_GROUPS: list[tuple[str, list[tuple[str, str, float]]]] = [
+    ("Entry Quality Gates", [
+        ("min_confidence", "Min Confidence", 42.0),
+        ("min_momentum", "Momentum Floor", 0.06),
+        ("min_tcn_probability", "TCN Probability", 0.60),
+        ("final_score_threshold", "Final Score", 0.45),
+        ("meta_labeler_threshold", "Meta Labeler", 0.52),
+    ]),
+    ("Weighted Vote Stack", [
+        ("weighted_vote_threshold", "Vote Threshold", 0.45),
+        ("min_agent_consensus_ratio", "Min Consensus", 0.25),
+        ("sub_inference_min_confidence", "Sub-Agent Conf", 0.30),
+        ("sub_inference_vote_threshold", "Sub-Agent Vote", 0.34),
+        ("sub_inference_max_candidates", "Sub Candidates", 10),
+    ]),
+    ("Uncertainty & Drift", [
+        ("max_uncertainty_score", "Max Uncertainty", 0.40),
+        ("max_model_disagreement", "Max Disagreement", 0.65),
+        ("disagreement_hard_floor", "Disagree Floor", 0.50),
+        ("max_uncertainty_std", "Max Uncert Std", 0.15),
+        ("staleness_uncertainty_threshold", "Stale Uncertainty", 0.35),
+        ("staleness_age_threshold_days", "Stale Age Days", 7.0),
+    ]),
+    ("Risk & Trade Structure", [
+        ("risk_per_trade_pct", "Base Risk %", 0.05),
+        ("max_open_risk_pct", "Portfolio Risk", 0.30),
+        ("max_drawdown_pct", "Max Drawdown", 0.025),
+        ("min_risk_reward_ratio", "Min R:R", 1.5),
+        ("min_atr_pips", "Min ATR Pips", 5.0),
+        ("atr_sl_multiplier", "ATR SL Multi", 1.0),
+        ("atr_tp_multiplier", "ATR TP Multi", 2.5),
+        ("min_sl_pips", "Min SL Pips", 8.0),
+        ("max_sl_pips", "Max SL Pips", 30.0),
+        ("min_tp_pips", "Min TP Pips", 20.0),
+        ("max_tp_pips", "Max TP Pips", 60.0),
+    ]),
+    ("Execution Controls", [
+        ("daily_trade_limit", "Daily Limit", 30),
+        ("max_concurrent_trades", "Max Concurrent", 10),
+        ("max_correlated_exposure", "Max Correlated", 2),
+        ("max_order_attempts", "Order Attempts", 2),
+        ("max_data_age_seconds", "Max Data Age", 600.0),
+        ("rejection_downsize_factor", "Reject Downsize", 0.5),
+        ("max_spread_pips", "Max Spread", 3.0),
+        ("max_slippage_pips", "Max Slippage", 2.0),
+        ("min_liquidity_score", "Min Liquidity", 0.3),
+    ]),
 ]
 
-# Agent toggle definitions: (config_field, display_name)
+# Backward-compatible flattened catalog used by tests and event handlers.
+_GATE_FIELDS: list[tuple[str, str, float]] = [
+    field
+    for _section, fields in _CONFIG_FIELD_GROUPS
+    for field in fields
+]
+
+_TOGGLE_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
+    ("Scanner Agents", [
+        ("enable_trend_agent", "Trend"),
+        ("enable_mean_reversion_agent", "Mean Reversion"),
+        ("enable_volatility_agent", "Volatility"),
+        ("enable_risk_sentinel_agent", "Risk Sentinel"),
+        ("enable_uncertainty_agent", "Uncertainty"),
+        ("enable_execution_quality_agent", "Exec Quality"),
+        ("enable_momentum_agent", "Momentum"),
+        ("enable_news_risk_agent", "News Risk"),
+        ("enable_multi_timeframe_agent", "Multi-TF"),
+        ("enable_pair_performance_agent", "Pair Perf"),
+        ("enable_session_timing_agent", "Session Time"),
+        ("enable_support_resistance_agent", "Support/Resist"),
+        ("enable_trader_readiness_agent", "Trader Ready"),
+        ("enable_order_flow_agent", "Order Flow"),
+        ("enable_devil_advocate_agent", "Devil Advocate"),
+    ]),
+    ("RL & Adaptive Intelligence", [
+        ("use_rl_sizer", "RL Sizer"),
+        ("use_rl_gates", "RL Gates"),
+        ("use_rl_exits", "RL Exits"),
+        ("enable_agent_trade_promotion", "Agent Promotion"),
+        ("enable_threshold_optimizer", "Threshold Optimizer"),
+        ("enable_confidence_calibration", "Confidence Cal"),
+        ("enable_model_calibration", "Model Calibration"),
+        ("enable_model_bandit", "Model Bandit"),
+        ("enable_model_routing", "Model Routing"),
+        ("enable_concept_drift_detection", "Drift Detection"),
+        ("enable_ensemble_disagreement", "Disagreement Signal"),
+        ("enable_trade_outcome_prediction", "Outcome Predictor"),
+        ("enable_trade_explainability", "Explainability"),
+        ("enable_observational_learning", "Observation Learning"),
+    ]),
+    ("Execution & Portfolio", [
+        ("enable_execution", "Execution"),
+        ("position_sizing_enabled", "Position Sizing"),
+        ("enable_smart_execution", "Smart Execution"),
+        ("enable_execution_routing", "Execution Routing"),
+        ("enable_execution_quality_tracking", "TCA Tracking"),
+        ("enable_execution_quality_optimizer", "TCA Optimizer"),
+        ("enable_dynamic_sl_tp", "Dynamic SL/TP"),
+        ("enable_live_position_management", "Live Management"),
+        ("enable_position_timeout", "Position Timeout"),
+        ("enable_dynamic_hedging", "Dynamic Hedging"),
+        ("enable_kelly_sizing", "Kelly Sizing"),
+        ("use_hrp", "HRP Portfolio"),
+    ]),
+    ("Platform & Safety", [
+        ("enable_session_filter", "Session Filter"),
+        ("enable_calendar_blackout", "Calendar Blackout"),
+        ("soft_uncertainty_blocking", "Soft Uncertainty"),
+        ("enable_circuit_breakers", "Circuit Breakers"),
+        ("enable_memory_manager", "Memory Manager"),
+        ("enable_health_registry", "Health Registry"),
+        ("enable_module_activation", "Module Activation"),
+        ("enable_agent_lifecycle", "Agent Lifecycle"),
+        ("enable_observation_consumer", "Observation Consumer"),
+        ("enable_replay_validator", "Replay Validator"),
+        ("enable_agent_accuracy_matrix", "Agent Accuracy"),
+        ("enable_pair_regime_agent_matrix", "Pair-Regime Matrix"),
+        ("enable_signal_timing", "Signal Timing"),
+    ]),
+]
+
 _AGENT_TOGGLES: list[tuple[str, str]] = [
-    ("enable_trend_agent", "Trend"),
-    ("enable_mean_reversion_agent", "Mean Reversion"),
-    ("enable_volatility_agent", "Volatility"),
-    ("enable_risk_sentinel_agent", "Risk Sentinel"),
-    ("enable_uncertainty_agent", "Uncertainty"),
-    ("enable_execution_quality_agent", "Exec Quality"),
-    ("enable_momentum_agent", "Momentum"),
-    ("enable_news_risk_agent", "News Risk"),
-    ("enable_multi_timeframe_agent", "Multi-TF"),
-    ("enable_pair_performance_agent", "Pair Perf"),
-    ("enable_session_timing_agent", "Session Time"),
-    ("enable_support_resistance_agent", "Support/Resist"),
-    ("enable_trader_readiness_agent", "Trader Ready"),
-    ("enable_devil_advocate", "Devil Advocate"),
+    field
+    for _section, fields in _TOGGLE_GROUPS
+    for field in fields
 ]
 
 # Available profiles
 _PROFILES = ["conservative", "balanced", "aggressive", "smart"]
+
+
+def _normalize_adjustment_row(entry: dict[str, Any], status: str) -> dict[str, Any]:
+    """Normalize legacy, pending, and approved adjustment records for display."""
+    field_name = entry.get("key", entry.get("field", "---"))
+    old_value = entry.get(
+        "old_value",
+        entry.get("old", entry.get("current_value", "---")),
+    )
+    new_value = entry.get(
+        "new_value",
+        entry.get("new", entry.get("proposed_value", "---")),
+    )
+    return {
+        "timestamp": entry.get("timestamp", "---"),
+        "status": entry.get("status", status),
+        "field": field_name,
+        "old": old_value,
+        "new": new_value,
+        "source": entry.get("source", "---"),
+    }
+
+
+def _read_adjustment_entries(path: Path, status: str) -> list[dict[str, Any]]:
+    """Read pending or approved adjustment records from a JSON store."""
+    try:
+        if not path.exists():
+            return []
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.debug("Failed to read %s: %s", path, exc)
+        return []
+
+    if isinstance(parsed, dict):
+        if "proposals" in parsed and isinstance(parsed["proposals"], list):
+            entries = parsed["proposals"]
+        elif "history" in parsed and isinstance(parsed["history"], list):
+            entries = parsed["history"]
+        else:
+            entries = []
+    elif isinstance(parsed, list):
+        entries = parsed
+    else:
+        entries = []
+
+    return [
+        _normalize_adjustment_row(entry, status)
+        for entry in entries
+        if isinstance(entry, dict)
+    ]
+
+
+def _load_adjustment_rows(project_root: Path, limit: int = 40) -> list[dict[str, Any]]:
+    """Return most recent pending/approved config rows, newest first."""
+    root = project_root / ".claude"
+    rows = (
+        _read_adjustment_entries(root / "pending_adjustments.json", "pending")
+        + _read_adjustment_entries(root / "config_adjustments.json", "approved")
+    )
+    rows.sort(key=lambda row: str(row.get("timestamp", "")), reverse=True)
+    return rows[:limit]
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +259,7 @@ class ConfigScreen(Container):
       - Gate thresholds (middle-left) + Agent toggles (middle-right)
       - Config change history DataTable (bottom, full width)
 
-    Edits are staged (amber highlight) until saved via the SAVE button.
+    Edits are staged (amber highlight) until queued via the approval pipeline.
     """
 
     DEFAULT_CSS = """
@@ -129,7 +274,7 @@ class ConfigScreen(Container):
         self._project_root: Path = Path(project_root) if project_root else Path(__file__).resolve().parents[3]
         self._staged_changes: dict[str, tuple[Any, Any]] = {}  # field -> (old, new)
         self._current_config: dict[str, Any] = {}
-        self._active_profile: str = "balanced"
+        self._active_profile: str = "smart"
 
     def compose(self) -> ComposeResult:
         # -- Row 0: Profile Selector --
@@ -138,96 +283,54 @@ class ConfigScreen(Container):
             with Horizontal(id="config-profile-row"):
                 yield RadioSet(
                     RadioButton("Conservative", id="radio-conservative"),
-                    RadioButton("Balanced", id="radio-balanced", value=True),
+                    RadioButton("Balanced", id="radio-balanced"),
                     RadioButton("Aggressive", id="radio-aggressive"),
-                    RadioButton("Smart", id="radio-smart"),
+                    RadioButton("Smart", id="radio-smart", value=True),
                     id="config-profile-radios",
                 )
-                yield Button("APPLY PROFILE", id="btn-apply-profile", variant="primary")
-                yield Button("SAVE", id="btn-save-config", variant="success")
-                yield Button("RESET TO PROFILE", id="btn-reset-config", variant="warning")
+                yield Button("STAGE PROFILE", id="btn-apply-profile", variant="primary")
+                yield Button("QUEUE FOR APPROVAL", id="btn-save-config", variant="success")
+                yield Button("RESET FORM", id="btn-reset-config", variant="warning")
                 yield Label("", id="config-status-label")
 
         # -- Row 1: Gate Thresholds (left) + Agent Toggles (right) --
         with Horizontal(id="config-middle-row"):
             with Vertical(id="config-gates-panel", classes="panel"):
-                yield Label("  GATE THRESHOLDS", classes="panel-title")
+                yield Label("  TIER 7 GATES / RISK / EXECUTION", classes="panel-title")
                 with ScrollableContainer(id="config-gates-scroll"):
-                    # Confidence & Voting section
-                    yield Label("  Confidence & Voting", id="gate-section-conf")
-                    for field_name, label, default in _GATE_FIELDS[:4]:
-                        with Horizontal(classes="config-field-row"):
-                            yield Label(f"  {label}", classes="config-field-label")
-                            yield Input(
-                                value=str(default),
-                                id=f"gate-{field_name}",
-                                placeholder=str(default),
-                                classes="config-field-input",
-                            )
-                    yield Rule()
-                    # Uncertainty & Disagreement section
-                    yield Label("  Uncertainty & Disagreement", id="gate-section-uncert")
-                    for field_name, label, default in _GATE_FIELDS[4:7]:
-                        with Horizontal(classes="config-field-row"):
-                            yield Label(f"  {label}", classes="config-field-label")
-                            yield Input(
-                                value=str(default),
-                                id=f"gate-{field_name}",
-                                placeholder=str(default),
-                                classes="config-field-input",
-                            )
-                    yield Rule()
-                    # Risk section
-                    yield Label("  Risk Management", id="gate-section-risk")
-                    for field_name, label, default in _GATE_FIELDS[7:10]:
-                        with Horizontal(classes="config-field-row"):
-                            yield Label(f"  {label}", classes="config-field-label")
-                            yield Input(
-                                value=str(default),
-                                id=f"gate-{field_name}",
-                                placeholder=str(default),
-                                classes="config-field-input",
-                            )
-                    yield Rule()
-                    # Trade Structure section
-                    yield Label("  Trade Structure", id="gate-section-trade")
-                    for field_name, label, default in _GATE_FIELDS[10:13]:
-                        with Horizontal(classes="config-field-row"):
-                            yield Label(f"  {label}", classes="config-field-label")
-                            yield Input(
-                                value=str(default),
-                                id=f"gate-{field_name}",
-                                placeholder=str(default),
-                                classes="config-field-input",
-                            )
-                    yield Rule()
-                    # Spread & ATR section
-                    yield Label("  Filters & Scores", id="gate-section-filter")
-                    for field_name, label, default in _GATE_FIELDS[13:]:
-                        with Horizontal(classes="config-field-row"):
-                            yield Label(f"  {label}", classes="config-field-label")
-                            yield Input(
-                                value=str(default),
-                                id=f"gate-{field_name}",
-                                placeholder=str(default),
-                                classes="config-field-input",
-                            )
+                    for idx, (section, fields) in enumerate(_CONFIG_FIELD_GROUPS):
+                        if idx:
+                            yield Rule()
+                        yield Label(f"  {section}", id=f"gate-section-{idx}")
+                        for field_name, label, default in fields:
+                            with Horizontal(classes="config-field-row"):
+                                yield Label(f"  {label}", classes="config-field-label")
+                                yield Input(
+                                    value=str(default),
+                                    id=f"gate-{field_name}",
+                                    placeholder=str(default),
+                                    classes="config-field-input",
+                                )
 
             with Vertical(id="config-agents-panel", classes="panel"):
-                yield Label("  AGENT TOGGLES", classes="panel-title")
+                yield Label("  TIER 7 MODULES", classes="panel-title")
                 with ScrollableContainer(id="config-agents-scroll"):
-                    for field_name, display_name in _AGENT_TOGGLES:
-                        with Horizontal(classes="config-toggle-row"):
-                            yield Label(f"  {display_name}", classes="config-toggle-label")
-                            yield Switch(
-                                value=True,
-                                id=f"toggle-{field_name}",
-                                classes="config-toggle-switch",
-                            )
+                    for idx, (section, toggles) in enumerate(_TOGGLE_GROUPS):
+                        if idx:
+                            yield Rule()
+                        yield Label(f"  {section}", id=f"toggle-section-{idx}")
+                        for field_name, display_name in toggles:
+                            with Horizontal(classes="config-toggle-row"):
+                                yield Label(f"  {display_name}", classes="config-toggle-label")
+                                yield Switch(
+                                    value=True,
+                                    id=f"toggle-{field_name}",
+                                    classes="config-toggle-switch",
+                                )
 
         # -- Row 2: Config Change History --
         with Vertical(id="config-history-panel", classes="panel"):
-            yield Label("  CONFIG CHANGE HISTORY", classes="panel-title")
+            yield Label("  CONFIG PROPOSALS / APPROVAL HISTORY", classes="panel-title")
             yield DataTable(id="config-history-table", cursor_type="row")
 
     # ------------------------------------------------------------------
@@ -238,7 +341,7 @@ class ConfigScreen(Container):
         """Initialize tables and load live config data."""
         # Set up history table columns
         history_table = self.query_one("#config-history-table", DataTable)
-        history_table.add_columns("Timestamp", "Field", "Old", "New", "Source")
+        history_table.add_columns("Timestamp", "Status", "Field", "Old", "New", "Source")
         history_table.zebra_stripes = True
 
         # Load current config values into the inputs
@@ -326,9 +429,16 @@ class ConfigScreen(Container):
     def update_from_snapshot(self, snap: Any) -> None:
         """Refresh config data. Called periodically by the main app.
 
-        For the config screen, we mainly care about reloading history
-        since config values don't change mid-session via the snapshot.
+        Live scanner config values arrive through DashboardSnapshot when the
+        embedded scanner is running. Do not overwrite a human's staged edits.
         """
+        config_values = getattr(snap, "config_values", None)
+        if config_values and not self._staged_changes:
+            self._active_profile = str(
+                getattr(snap, "config_profile", self._active_profile)
+                or self._active_profile
+            )
+            self._populate_from_values(dict(config_values), update_current=True)
         self._load_change_history()
 
     # ------------------------------------------------------------------
@@ -340,7 +450,7 @@ class ConfigScreen(Container):
         try:
             from src.scanner.config import ScannerConfig
             config = ScannerConfig()
-            config.apply_profile(config.profile)
+            config.apply_profile("smart")
         except Exception as exc:
             logger.debug("Failed to load ScannerConfig: %s", exc)
             config = None
@@ -348,12 +458,32 @@ class ConfigScreen(Container):
         if config is None:
             return
 
-        self._active_profile = getattr(config, "profile", "balanced")
+        self._active_profile = getattr(config, "profile", "smart")
+        values = self._extract_config_values(config)
+        self._populate_from_values(values, update_current=True)
 
-        # Populate gate threshold inputs
+        # Set profile radio button
+        self._sync_profile_radio()
+
+        # Clear any staged changes
+        self._staged_changes.clear()
+        self._update_status_label()
+
+    def _extract_config_values(self, config: Any) -> dict[str, Any]:
+        """Extract only the fields this screen owns from a ScannerConfig."""
+        values: dict[str, Any] = {}
         for field_name, _label, default in _GATE_FIELDS:
-            value = getattr(config, field_name, default)
-            self._current_config[field_name] = value
+            values[field_name] = getattr(config, field_name, default)
+        for field_name, _display_name in _AGENT_TOGGLES:
+            values[field_name] = getattr(config, field_name, True)
+        return values
+
+    def _populate_from_values(self, values: dict[str, Any], *, update_current: bool) -> None:
+        """Populate widgets from a config value map."""
+        for field_name, _label, default in _GATE_FIELDS:
+            value = values.get(field_name, default)
+            if update_current:
+                self._current_config[field_name] = value
 
             try:
                 inp = self.query_one(f"#gate-{field_name}", Input)
@@ -362,10 +492,10 @@ class ConfigScreen(Container):
             except Exception:
                 pass
 
-        # Populate agent toggle switches
         for field_name, _display_name in _AGENT_TOGGLES:
-            value = getattr(config, field_name, True)
-            self._current_config[field_name] = value
+            value = values.get(field_name, True)
+            if update_current:
+                self._current_config[field_name] = value
 
             try:
                 switch = self.query_one(f"#toggle-{field_name}", Switch)
@@ -373,7 +503,8 @@ class ConfigScreen(Container):
             except Exception:
                 pass
 
-        # Set profile radio button
+    def _sync_profile_radio(self) -> None:
+        """Reflect the active profile in the RadioSet."""
         try:
             profile_idx = _PROFILES.index(self._active_profile)
             radio_set = self.query_one("#config-profile-radios", RadioSet)
@@ -384,59 +515,54 @@ class ConfigScreen(Container):
         except (ValueError, Exception):
             pass
 
-        # Clear any staged changes
-        self._staged_changes.clear()
-        self._update_status_label()
-
     # ------------------------------------------------------------------
     # Private: Save staged changes
     # ------------------------------------------------------------------
 
     def _save_staged_changes(self) -> None:
-        """Apply staged changes to the ScannerConfig and persist to history."""
+        """Queue staged changes through the approval pipeline."""
         if not self._staged_changes:
-            self._flash_status("No changes to save", _DIM)
+            self._flash_status("No changes to queue", _DIM)
             return
 
         try:
-            from src.scanner.config import ScannerConfig
-            config = ScannerConfig()
+            from src.scanner.automation.config_adjuster import ConfigAdjuster
         except Exception as exc:
-            logger.error("Failed to load ScannerConfig for save: %s", exc)
-            self._flash_status("ERROR: Config load failed", _NEGATIVE)
+            logger.error("Failed to load ConfigAdjuster for config queue: %s", exc)
+            self._flash_status("ERROR: Approval queue unavailable", _NEGATIVE)
             return
 
-        # Apply each staged change to config
-        history_entries: list[dict[str, Any]] = []
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        adjuster = ConfigAdjuster(
+            persistence_path=self._project_root / ".claude" / "config_adjustments.json",
+            pending_path=self._project_root / ".claude" / "pending_adjustments.json",
+        )
 
+        queued = 0
+        invalid = 0
+        staged_items = list(self._staged_changes.items())
         for field_name, (old_val, new_val) in self._staged_changes.items():
-            # Type coerce based on field
-            if isinstance(old_val, bool) or field_name.startswith("enable_"):
-                coerced_val = bool(new_val)
-            else:
-                try:
-                    coerced_val = float(new_val)
-                except (ValueError, TypeError):
-                    continue
+            try:
+                coerced_val = self._coerce_value(field_name, old_val, new_val)
+            except (TypeError, ValueError) as exc:
+                logger.warning(
+                    "ConfigScreen: invalid staged value for %s: %s",
+                    field_name,
+                    exc,
+                )
+                invalid += 1
+                continue
 
-            if hasattr(config, field_name):
-                setattr(config, field_name, coerced_val)
-
-            history_entries.append({
-                "timestamp": now_iso,
-                "field": field_name,
-                "old": old_val,
-                "new": coerced_val,
-                "source": "TUI Config Screen",
-            })
-
-        # Persist history to config_adjustments.json
-        self._append_change_history(history_entries)
-
-        # Update current config cache and clear staging
-        for field_name, (_, new_val) in self._staged_changes.items():
-            self._current_config[field_name] = new_val
+            adjuster.collect_adjustment(
+                source="tui_config",
+                key=field_name,
+                value=coerced_val,
+                reason=(
+                    f"Operator staged Tier 7 config change from Config tab "
+                    f"({self._format_value(old_val)} -> {self._format_value(coerced_val)}, "
+                    f"profile={self._active_profile})"
+                ),
+            )
+            queued += 1
 
         self._staged_changes.clear()
 
@@ -450,47 +576,17 @@ class ConfigScreen(Container):
 
         # Reload history table
         self._load_change_history()
-        self._flash_status(f"Saved {len(history_entries)} changes", _POSITIVE)
+        if invalid:
+            self._flash_status(f"Queued {queued}; {invalid} invalid", _WARNING)
+        else:
+            self._flash_status(f"Queued {queued} pending approval", _POSITIVE)
         self._update_status_label()
 
-    def _append_change_history(self, entries: list[dict[str, Any]]) -> None:
-        """Append change entries to .claude/config_adjustments.json."""
-        adj_path = self._project_root / ".claude" / "config_adjustments.json"
-
-        data: dict[str, Any] = {}
-        try:
-            if adj_path.exists():
-                raw = adj_path.read_text(encoding="utf-8")
-                parsed = json.loads(raw)
-                if isinstance(parsed, dict):
-                    data = parsed
-                elif isinstance(parsed, list):
-                    # Legacy format: bare list
-                    data = {"version": 1, "history": parsed, "total_adjustments": len(parsed)}
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.debug("Failed to read config_adjustments.json: %s", exc)
-            data = {"version": 1, "history": [], "total_adjustments": 0}
-
-        # Ensure structure
-        if "history" not in data:
-            data["history"] = []
-        if "total_adjustments" not in data:
-            data["total_adjustments"] = 0
-
-        data["history"].extend(entries)
-        data["total_adjustments"] = len(data["history"])
-        data["last_updated"] = datetime.now(timezone.utc).isoformat()
-
-        # Atomic write: write to .tmp then rename
-        tmp_path = adj_path.with_suffix(".json.tmp")
-        try:
-            tmp_path.write_text(
-                json.dumps(data, indent=2, sort_keys=True),
-                encoding="utf-8",
-            )
-            tmp_path.rename(adj_path)
-        except OSError as exc:
-            logger.error("Failed to write config_adjustments.json: %s", exc)
+        logger.info(
+            "ConfigScreen queued %d/%d staged Tier 7 config changes",
+            queued,
+            len(staged_items),
+        )
 
     # ------------------------------------------------------------------
     # Private: Reset to profile
@@ -501,7 +597,7 @@ class ConfigScreen(Container):
         self._staged_changes.clear()
 
         try:
-            from src.scanner.config import ScannerConfig, SCAN_PROFILES
+            from src.scanner.config import ScannerConfig
             config = ScannerConfig()
             config.apply_profile(self._active_profile)
         except Exception as exc:
@@ -509,27 +605,7 @@ class ConfigScreen(Container):
             self._flash_status("ERROR: Profile reset failed", _NEGATIVE)
             return
 
-        # Update all inputs from the fresh config
-        for field_name, _label, default in _GATE_FIELDS:
-            value = getattr(config, field_name, default)
-            self._current_config[field_name] = value
-
-            try:
-                inp = self.query_one(f"#gate-{field_name}", Input)
-                inp.value = str(value)
-                inp.styles.border = ("solid", _BORDER)
-            except Exception:
-                pass
-
-        for field_name, _display_name in _AGENT_TOGGLES:
-            value = getattr(config, field_name, True)
-            self._current_config[field_name] = value
-
-            try:
-                switch = self.query_one(f"#toggle-{field_name}", Switch)
-                switch.value = bool(value)
-            except Exception:
-                pass
+        self._populate_from_values(self._extract_config_values(config), update_current=True)
 
         self._flash_status(f"Reset to {self._active_profile} profile", _PRIMARY)
         self._update_status_label()
@@ -539,7 +615,7 @@ class ConfigScreen(Container):
     # ------------------------------------------------------------------
 
     def _apply_selected_profile(self) -> None:
-        """Apply the selected profile via RadioSet and reload config values."""
+        """Stage the selected profile's differences for approval."""
         self._staged_changes.clear()
 
         try:
@@ -551,39 +627,19 @@ class ConfigScreen(Container):
             self._flash_status(f"ERROR: Unknown profile '{self._active_profile}'", _NEGATIVE)
             return
 
-        # Reload all inputs from the applied profile config
-        for field_name, _label, default in _GATE_FIELDS:
-            value = getattr(config, field_name, default)
-            self._current_config[field_name] = value
+        profile_values = self._extract_config_values(config)
+        self._populate_from_values(profile_values, update_current=False)
 
-            try:
-                inp = self.query_one(f"#gate-{field_name}", Input)
-                inp.value = str(value)
-                inp.styles.border = ("solid", _BORDER)
-            except Exception:
-                pass
+        for field_name, new_value in profile_values.items():
+            old_value = self._current_config.get(field_name)
+            if old_value != new_value:
+                self._staged_changes[field_name] = (old_value, new_value)
 
-        for field_name, _display_name in _AGENT_TOGGLES:
-            value = getattr(config, field_name, True)
-            self._current_config[field_name] = value
-
-            try:
-                switch = self.query_one(f"#toggle-{field_name}", Switch)
-                switch.value = bool(value)
-            except Exception:
-                pass
-
-        # Record the profile switch in history
-        self._append_change_history([{
-            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
-            "field": "profile",
-            "old": self._active_profile,
-            "new": self._active_profile,
-            "source": "TUI Profile Switch",
-        }])
-
-        self._load_change_history()
-        self._flash_status(f"Applied profile: {self._active_profile.upper()}", _POSITIVE)
+        self._highlight_staged_inputs()
+        self._flash_status(
+            f"Staged {len(self._staged_changes)} from {self._active_profile.upper()}",
+            _WARNING if self._staged_changes else _DIM,
+        )
         self._update_status_label()
 
     # ------------------------------------------------------------------
@@ -591,7 +647,7 @@ class ConfigScreen(Container):
     # ------------------------------------------------------------------
 
     def _load_change_history(self) -> None:
-        """Load config change history from .claude/config_adjustments.json."""
+        """Load pending and approved config changes."""
         try:
             history_table = self.query_one("#config-history-table", DataTable)
         except Exception:
@@ -599,35 +655,15 @@ class ConfigScreen(Container):
 
         history_table.clear()
 
-        adj_path = self._project_root / ".claude" / "config_adjustments.json"
-        entries: list[dict[str, Any]] = []
-
-        try:
-            if adj_path.exists():
-                raw = adj_path.read_text(encoding="utf-8")
-                parsed = json.loads(raw)
-                if isinstance(parsed, dict):
-                    entries = parsed.get("history", [])
-                    if not isinstance(entries, list):
-                        entries = []
-                elif isinstance(parsed, list):
-                    entries = parsed
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.debug("Failed to read config_adjustments.json: %s", exc)
-            entries = []
-
-        # Show last 30, most recent first
-        recent = list(reversed(entries[-30:]))
+        recent = _load_adjustment_rows(self._project_root, limit=40)
 
         for entry in recent:
-            if not isinstance(entry, dict):
-                continue
-
             ts = str(entry.get("timestamp", "---"))
             # Truncate to readable format
             if len(ts) > 19:
                 ts = ts[:19]
 
+            status = str(entry.get("status", "---")).upper()
             field_name = str(entry.get("field", "---"))
             old_val = entry.get("old", "---")
             new_val = entry.get("new", "---")
@@ -639,18 +675,28 @@ class ConfigScreen(Container):
 
             # Styled cells
             ts_text = Text(ts, style=_DIM)
+            status_style = (
+                _POSITIVE
+                if status == "APPROVED"
+                else _WARNING
+                if status == "PENDING"
+                else _NEGATIVE
+            )
+            status_text = Text(status, style=status_style)
             field_text = Text(field_name, style=_TEXT)
             old_text = Text(old_str, style=_NEGATIVE)
             new_text = Text(new_str, style=_POSITIVE)
             source_text = Text(source, style=_DATA)
 
-            history_table.add_row(ts_text, field_text, old_text, new_text, source_text)
+            history_table.add_row(ts_text, status_text, field_text, old_text, new_text, source_text)
 
         # If no entries, show a placeholder row
         if not recent:
             history_table.add_row(
                 Text("---", style=_DIM),
-                Text("No config changes recorded", style=_DIM),
+                Text("---", style=_DIM),
+                Text("No config proposals recorded", style=_DIM),
+                Text("---", style=_DIM),
                 Text("---", style=_DIM),
                 Text("---", style=_DIM),
                 Text("---", style=_DIM),
@@ -659,6 +705,35 @@ class ConfigScreen(Container):
     # ------------------------------------------------------------------
     # Private: Helpers
     # ------------------------------------------------------------------
+
+    def _coerce_value(self, field_name: str, old_value: Any, new_value: Any) -> Any:
+        """Coerce TUI string/float values to the existing ScannerConfig type."""
+        if (
+            isinstance(old_value, bool)
+            or field_name.startswith(("enable_", "use_"))
+            or field_name.endswith("_enabled")
+        ):
+            if isinstance(new_value, str):
+                return new_value.strip().lower() in {"1", "true", "yes", "on"}
+            return bool(new_value)
+
+        if isinstance(old_value, int) and not isinstance(old_value, bool):
+            return int(float(new_value))
+
+        if isinstance(old_value, float):
+            return float(new_value)
+
+        return new_value
+
+    def _highlight_staged_inputs(self) -> None:
+        """Mark all staged widgets amber and reset non-staged fields."""
+        staged = set(self._staged_changes)
+        for field_name, _label, _default in _GATE_FIELDS:
+            try:
+                inp = self.query_one(f"#gate-{field_name}", Input)
+                inp.styles.border = ("solid", _WARNING if field_name in staged else _BORDER)
+            except Exception:
+                pass
 
     @staticmethod
     def _format_value(val: Any) -> str:
@@ -683,7 +758,7 @@ class ConfigScreen(Container):
             label.update(
                 Text.from_markup(
                     f"  [{_WARNING}]{count} staged change{'s' if count != 1 else ''}[/]"
-                    f"  [{_DIM}]Press SAVE to apply[/]"
+                    f"  [{_DIM}]Queue for approval[/]"
                 )
             )
         else:

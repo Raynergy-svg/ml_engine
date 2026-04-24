@@ -137,6 +137,8 @@ class DashboardSnapshot:
     halted: bool = False
     mode: str = "dry_run"
     max_component_age_days: float = 0.0
+    config_profile: str = "smart"
+    config_values: dict = field(default_factory=dict)
 
     # Timestamp
     last_refresh: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -264,6 +266,11 @@ class DataProvider:
             age = getattr(enrichment, "max_component_age_days", None)
             if age is not None:
                 snap.max_component_age_days = _safe_float(age)
+            snap.config_profile = str(
+                getattr(enrichment, "config_profile", snap.config_profile)
+                or snap.config_profile
+            )
+            snap.config_values = dict(getattr(enrichment, "config_values", {}) or {})
 
         # ── NAV History (deque is thread-safe + auto-bounded) ──
         if snap.nav > 0:

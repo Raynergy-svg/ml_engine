@@ -377,6 +377,10 @@ class InboxScreen(Container):
         with Horizontal(id="inbox-actions"):
             yield Button("◈ Preview net config", id="preview-btn", variant="default",
                          classes="inbox-action-btn")
+            yield Button("✓ Approve all valid", id="approve-all-btn", variant="success",
+                         classes="inbox-action-btn")
+            yield Button("✕ Reject all", id="reject-all-btn", variant="error",
+                         classes="inbox-action-btn")
 
     def on_mount(self) -> None:
         table = self.query_one("#inbox-table", DataTable)
@@ -613,6 +617,57 @@ class InboxScreen(Container):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "preview-btn":
             self.app.push_screen(PreviewModal(self._proposals))
+        elif event.button.id == "approve-all-btn":
+            self.action_approve_all()
+        elif event.button.id == "reject-all-btn":
+            self.action_reject_all()
+
+    def action_approve_all(self) -> None:
+        """Approve every valid pending/snoozed proposal."""
+        try:
+            from src.scanner.automation.adjustment_approver import AdjustmentApprover
+            approver = AdjustmentApprover(
+                pending_path=self._pending_path,
+                approved_path=self._approved_path,
+            )
+            result = approver.approve_all()
+            approved = result.get("approved", 0)
+            skipped = result.get("skipped", 0)
+            failed = len(result.get("failed", []))
+            if failed:
+                self.notify(
+                    f"Approved {approved}; {failed} failed; {skipped} invalid skipped.",
+                    severity="warning",
+                )
+            else:
+                self.notify(
+                    f"Approved {approved} proposal(s); {skipped} invalid skipped.",
+                    severity="information",
+                )
+            self._load_proposals()
+        except Exception as e:
+            self.notify(f"Approve all error: {e}", severity="error")
+            logger.exception("InboxScreen.action_approve_all failed")
+
+    def action_reject_all(self) -> None:
+        """Reject every actionable proposal in the inbox."""
+        try:
+            from src.scanner.automation.adjustment_approver import AdjustmentApprover
+            approver = AdjustmentApprover(
+                pending_path=self._pending_path,
+                approved_path=self._approved_path,
+            )
+            result = approver.reject_all("bulk reject from inbox")
+            rejected = result.get("rejected", 0)
+            failed = len(result.get("failed", []))
+            if failed:
+                self.notify(f"Rejected {rejected}; {failed} failed.", severity="warning")
+            else:
+                self.notify(f"Rejected {rejected} proposal(s).", severity="information")
+            self._load_proposals()
+        except Exception as e:
+            self.notify(f"Reject all error: {e}", severity="error")
+            logger.exception("InboxScreen.action_reject_all failed")
 
     # ------------------------------------------------------------------
     # Tab label update

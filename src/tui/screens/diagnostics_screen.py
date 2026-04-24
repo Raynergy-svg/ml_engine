@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import re
 import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
@@ -52,6 +53,20 @@ _SEV_COLORS = {
     "INFO": _PRIMARY,
     "DEBUG": _DIM,
 }
+
+_LOG_LINE_RE = re.compile(
+    r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+-\s+"
+    r"(?P<logger>.*?)\s+-\s+(?P<level>[A-Z]+)\s+-\s+(?P<msg>.*)$"
+)
+_LOG_SOURCES = (
+    Path("logs/buddy_tui.log"),
+    Path("logs/buddy_tui.stderr.log"),
+    Path("logs/buddy_headless_run.log"),
+)
+_JSONL_SOURCES = (
+    Path("logs/reflection_log.jsonl"),
+    Path("trained_data/alerts.jsonl"),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +117,58 @@ def _format_age(dt: datetime) -> str:
         return f"{hours}h ago"
     minutes = delta.seconds // 60
     return f"{minutes}m ago"
+
+
+def _parse_dt(value: Any) -> datetime | None:
+    """Best-effort parse for ISO strings, epoch seconds, and log timestamps."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except Exception:
+            return None
+    text = str(value).strip()
+    if not text:
+        return None
+    for candidate in (text, text.replace("Z", "+00:00")):
+        try:
+            dt = datetime.fromisoformat(candidate)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except ValueError:
+            pass
+    try:
+        return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _read_json(path: Path, default: Any = None) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def _tail_lines(path: Path, max_lines: int = 120) -> list[str]:
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            return fh.readlines()[-max_lines:]
+    except Exception:
+        return []
+
+
+def _severity_from_level(level: str) -> str:
+    level = level.upper()
+    if level in {"ERROR", "CRITICAL", "ERR", "FATAL"}:
+        return "ERR"
+    if level in {"WARNING", "WARN"}:
+        return "WARN"
+    if level == "DEBUG":
+        return "DEBUG"
+    return "INFO"
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +391,7 @@ class DiagnosticsScreen(Container):
         self._severity_filter: str = "All"
         self._refresh_timer: Any = None
         self._demo_log_counter: int = 0
+        self._latest_snapshot: DashboardSnapshot | None = None
 
     def compose(self) -> ComposeResult:
         # Row 0: System Vitals + OANDA Health
@@ -385,7 +453,9 @@ class DiagnosticsScreen(Container):
         self._refresh_vitals()
         self._refresh_models()
         self._refresh_maintenance()
-        if not self._live:
+        if self._live:
+            self._refresh_error_log()
+        else:
             self._seed_error_log()
 
         # Start auto-refresh every 5 seconds
@@ -412,6 +482,8 @@ class DiagnosticsScreen(Container):
 
     def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
         """Refresh panels from a new DashboardSnapshot."""
+        self._latest_snapshot = snap
+
         # Update OANDA health from snapshot
         try:
             oanda_panel = self.query_one("#diag-oanda", OandaHealthPanel)
@@ -422,6 +494,13 @@ class DiagnosticsScreen(Container):
         except Exception:
             pass
 
+        self._refresh_models(snap)
+        self._refresh_maintenance(snap)
+        if self._live:
+            self._refresh_error_log()
+        if snap.last_error:
+            self._append_error_entry("WARN", snap.last_error)
+
     # ------------------------------------------------------------------
     # Private: periodic refresh
     # ------------------------------------------------------------------
@@ -429,7 +508,11 @@ class DiagnosticsScreen(Container):
     def _on_refresh_tick(self) -> None:
         """Called every 5 seconds to refresh vitals (+ demo log entries if not live)."""
         self._refresh_vitals()
-        if not self._live:
+        self._refresh_models(self._latest_snapshot)
+        self._refresh_maintenance(self._latest_snapshot)
+        if self._live:
+            self._refresh_error_log()
+        else:
             self._add_demo_log_entry()
 
     # ------------------------------------------------------------------
@@ -499,14 +582,18 @@ class DiagnosticsScreen(Container):
     # Private: model health
     # ------------------------------------------------------------------
 
-    def _refresh_models(self) -> None:
-        """Scan trained_data/models/ for model files and populate the table."""
+    def _refresh_models(self, snap: DashboardSnapshot | None = None) -> None:
+        """Populate model health from live scanner snapshot, with filesystem fallback."""
         try:
             table = self.query_one("#diag-models-table", DataTable)
         except Exception:
             return
 
         table.clear()
+
+        if snap is not None and snap.models_detail:
+            self._render_snapshot_model_health(table, snap)
+            return
 
         models_dir = self._project_root / "trained_data" / "models"
 
@@ -602,6 +689,90 @@ class DiagnosticsScreen(Container):
         rl_files = Text(f" {'1/1' if rl_synced else '0/1'}", style=_DIM)
         table.add_row(rl_name, rl_status, rl_acc, rl_age, rl_files)
 
+    def _render_snapshot_model_health(
+        self,
+        table: DataTable,
+        snap: DashboardSnapshot,
+    ) -> None:
+        """Render Scanner.get_model_health() details pushed through DashboardSnapshot."""
+        models_dir = self._project_root / "trained_data" / "models"
+        detail = dict(snap.models_detail or {})
+        freshness = self._read_model_freshness()
+
+        for name, loaded in sorted(detail.items()):
+            status_color = _POSITIVE if loaded else _NEGATIVE
+            status = "LOADED" if loaded else "MISSING"
+            row_name = Text(f" {name}", style=f"bold {_TEXT}")
+            row_status = Text(f" {status}", style=f"bold {status_color}")
+            accuracy = Text(" --", style=_DIM)
+            trained = Text(f" {self._model_age_for(name, freshness, models_dir)}", style=_DIM)
+            files = Text(" live", style=_DIM)
+            table.add_row(row_name, row_status, accuracy, trained, files)
+
+        if not detail:
+            table.add_row(
+                Text(" scanner models", style=f"bold {_TEXT}"),
+                Text(" WAITING", style=f"bold {_WARNING}"),
+                Text(" --", style=_DIM),
+                Text(" no scan snapshot", style=_DIM),
+                Text(" --", style=_DIM),
+            )
+
+    def _read_model_freshness(self) -> dict[str, Any]:
+        try:
+            from src.scanner.automation.model_freshness import get_model_freshness
+            data = get_model_freshness()
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _model_age_for(
+        self,
+        model_name: str,
+        freshness: dict[str, Any],
+        models_dir: Path,
+    ) -> str:
+        for group in freshness.get("groups", []) or []:
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("name", ""))
+            if group_name and (group_name in model_name or model_name in group_name):
+                trained_at = _parse_dt(group.get("trained_at"))
+                if trained_at is not None:
+                    return _format_age(trained_at)
+                age = group.get("age_days")
+                if age is not None:
+                    try:
+                        return f"{float(age):.0f}d ago"
+                    except Exception:
+                        pass
+
+        candidates = self._model_file_candidates(model_name, models_dir)
+        existing = [p for p in candidates if p.exists()]
+        if existing:
+            latest = max(existing, key=lambda p: p.stat().st_mtime)
+            return _format_age(datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc))
+        return "--"
+
+    def _model_file_candidates(self, model_name: str, models_dir: Path) -> list[Path]:
+        mapping = {
+            "agent_team_weights": [models_dir / "agent_weights.json"],
+            "calibration_params": [models_dir / "calibration_params.json"],
+            "pair_affinity_matrix": [models_dir / "pair_affinity_matrix.json"],
+            "modular_ensemble_meta": [models_dir / "modular_ensemble.meta.json"],
+            "rl_position_sizer": [models_dir / "rl_position_sizer.zip"],
+            "rl_gate_thresholds": [models_dir / "sac_gate_thresholds.zip"],
+            "rl_optimal_exit": [models_dir / "ppo_optimal_exit.zip"],
+            "confidence_ridge": [models_dir / "joint" / "ridge_confidence.pkl"],
+            "risk_rf": [models_dir / "joint" / "lgbm_risk.pkl"],
+            "momentum_lightgbm": [models_dir / "joint" / "lgbm_momentum.pkl"],
+            "transformer_direction": [models_dir / "joint" / "transformer_direction.keras"],
+            "transformer_gate": [models_dir / "joint" / "transformer_direction.keras"],
+            "tcn_volatility": [models_dir / "joint" / "tcn_volatility_regime.keras"],
+            "tcn_volatility_gate": [models_dir / "joint" / "tcn_volatility_regime.keras"],
+        }
+        return mapping.get(model_name, [models_dir / model_name])
+
     # ------------------------------------------------------------------
     # Private: error log
     # ------------------------------------------------------------------
@@ -667,6 +838,138 @@ class DiagnosticsScreen(Container):
         if self._severity_filter == "All" or self._severity_filter == sev:
             self._write_log_entry(entry)
 
+    def _refresh_error_log(self) -> None:
+        """Load recent live diagnostics and runtime errors from repo artifacts."""
+        entries = self._load_live_log_entries()
+        if not entries:
+            entries = [{
+                "ts": datetime.now(timezone.utc),
+                "sev": "INFO",
+                "msg": "No live diagnostic log entries found yet",
+            }]
+        self._error_log_entries = entries[-200:]
+        self._refilter_error_log()
+
+    def _load_live_log_entries(self) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+
+        for rel_path in _LOG_SOURCES:
+            path = self._project_root / rel_path
+            for line in _tail_lines(path):
+                parsed = self._parse_standard_log_line(line, rel_path.name)
+                if parsed is not None:
+                    entries.append(parsed)
+
+        for rel_path in _JSONL_SOURCES:
+            path = self._project_root / rel_path
+            for line in _tail_lines(path):
+                parsed = self._parse_jsonl_log_line(line, rel_path.name)
+                if parsed is not None:
+                    entries.append(parsed)
+
+        scan_report = _read_json(
+            self._project_root / "trained_data" / "scan_diagnostics_report.json",
+            default={},
+        )
+        if isinstance(scan_report, dict) and scan_report:
+            ts = _parse_dt(scan_report.get("timestamp")) or datetime.now(timezone.utc)
+            summary = scan_report.get("diagnostic_summary", "Scan diagnostics updated")
+            sev = "WARN" if scan_report.get("stalled") else "INFO"
+            entries.append({"ts": ts, "sev": sev, "msg": str(summary)[:240]})
+
+        health = _read_json(
+            self._project_root / "trained_data" / "health_registry_log.json",
+            default={},
+        )
+        if isinstance(health, dict) and health:
+            rejected = int(health.get("cycles_rejected", 0) or 0)
+            states = health.get("module_states", {}) or {}
+            failing = [
+                name for name, state in states.items()
+                if isinstance(state, dict) and (
+                    state.get("last_check_passed") is False or state.get("disabled")
+                )
+            ]
+            sev = "ERR" if rejected or failing else "INFO"
+            msg = (
+                f"Health registry: {health.get('total_preflights', 0)} preflights, "
+                f"{rejected} rejected cycles"
+            )
+            if failing:
+                msg += f", failing: {', '.join(failing[:4])}"
+            entries.append({
+                "ts": datetime.fromtimestamp(
+                    (self._project_root / "trained_data" / "health_registry_log.json").stat().st_mtime,
+                    tz=timezone.utc,
+                ),
+                "sev": sev,
+                "msg": msg,
+            })
+
+        entries.sort(key=lambda e: e.get("ts", datetime.min.replace(tzinfo=timezone.utc)))
+        return entries[-200:]
+
+    def _parse_standard_log_line(
+        self,
+        line: str,
+        source_name: str,
+    ) -> dict[str, Any] | None:
+        match = _LOG_LINE_RE.match(line.strip())
+        if not match:
+            return None
+        ts = _parse_dt(match.group("ts")) or datetime.now(timezone.utc)
+        sev = _severity_from_level(match.group("level"))
+        logger_name = match.group("logger").rsplit(".", 1)[-1]
+        msg = match.group("msg").strip()
+        return {"ts": ts, "sev": sev, "msg": f"{logger_name}: {msg}"[:300]}
+
+    def _parse_jsonl_log_line(
+        self,
+        line: str,
+        source_name: str,
+    ) -> dict[str, Any] | None:
+        try:
+            data = json.loads(line)
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
+        ts = (
+            _parse_dt(data.get("ts"))
+            or _parse_dt(data.get("timestamp"))
+            or _parse_dt(data.get("created_at"))
+            or datetime.now(timezone.utc)
+        )
+        error = data.get("error")
+        status = str(data.get("status", "")).lower()
+        success = data.get("success")
+        sev = "ERR" if error or success is False or status in {"error", "failed"} else "INFO"
+        msg = (
+            data.get("hypothesis")
+            or data.get("summary")
+            or data.get("message")
+            or error
+            or data.get("event_type")
+            or source_name
+        )
+        trade_id = data.get("trade_id")
+        if trade_id:
+            msg = f"{trade_id}: {msg}"
+        return {"ts": ts, "sev": sev, "msg": str(msg)[:300]}
+
+    def _append_error_entry(self, sev: str, msg: str) -> None:
+        entry = {
+            "ts": datetime.now(timezone.utc),
+            "sev": sev,
+            "msg": str(msg)[:300],
+        }
+        if self._error_log_entries and self._error_log_entries[-1].get("msg") == entry["msg"]:
+            return
+        self._error_log_entries.append(entry)
+        self._error_log_entries = self._error_log_entries[-200:]
+        if self._severity_filter == "All" or self._severity_filter == sev:
+            self._write_log_entry(entry)
+
     def _refilter_error_log(self) -> None:
         """Re-render the error log with the current severity filter."""
         try:
@@ -705,8 +1008,8 @@ class DiagnosticsScreen(Container):
     # Private: maintenance tasks
     # ------------------------------------------------------------------
 
-    def _refresh_maintenance(self) -> None:
-        """Populate the maintenance tasks table with system task schedule."""
+    def _refresh_maintenance(self, snap: DashboardSnapshot | None = None) -> None:
+        """Populate the maintenance table from live state and persisted artifacts."""
         try:
             table = self.query_one("#diag-maint-table", DataTable)
         except Exception:
@@ -716,87 +1019,14 @@ class DiagnosticsScreen(Container):
 
         now = datetime.now(timezone.utc)
 
-        # Static list of system maintenance tasks with simulated dates
-        tasks = [
-            {
-                "name": "Journal Compaction",
-                "schedule": "Daily @ 00:00",
-                "last_run": now - timedelta(hours=random.randint(1, 23)),
-                "next_due": now + timedelta(hours=random.randint(1, 23)),
-                "status": "OK",
-            },
-            {
-                "name": "Learnings Consolidation",
-                "schedule": "Every 10 cycles",
-                "last_run": now - timedelta(hours=random.randint(2, 48)),
-                "next_due": now + timedelta(hours=random.randint(1, 12)),
-                "status": "OK",
-            },
-            {
-                "name": "Config Archive",
-                "schedule": "Weekly (Mon)",
-                "last_run": now - timedelta(days=random.randint(1, 6)),
-                "next_due": now + timedelta(days=random.randint(1, 6)),
-                "status": "OK",
-            },
-            {
-                "name": "Model Retraining",
-                "schedule": "Every 500 trades",
-                "last_run": now - timedelta(days=random.randint(3, 14)),
-                "next_due": now + timedelta(days=random.randint(1, 30)),
-                "status": "PENDING" if random.random() > 0.7 else "OK",
-            },
-            {
-                "name": "State Validation",
-                "schedule": "Hourly",
-                "last_run": now - timedelta(minutes=random.randint(5, 55)),
-                "next_due": now + timedelta(minutes=random.randint(5, 55)),
-                "status": "OK",
-            },
-            {
-                "name": "Weight Backup",
-                "schedule": "Daily @ 06:00",
-                "last_run": now - timedelta(hours=random.randint(1, 23)),
-                "next_due": now + timedelta(hours=random.randint(1, 23)),
-                "status": "OK",
-            },
-        ]
-
-        # Check for real files to improve status accuracy
-        journal_path = self._project_root / "trained_data" / "trade_journal_rl.json"
-        if journal_path.exists():
-            try:
-                stat = journal_path.stat()
-                tasks[0]["last_run"] = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
-            except Exception:
-                pass
-
-        learnings_path = self._project_root / ".claude" / "learnings.md"
-        if learnings_path.exists():
-            try:
-                stat = learnings_path.stat()
-                tasks[1]["last_run"] = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
-            except Exception:
-                pass
-
-        weights_snapshot_dir = self._project_root / "trained_data" / "models" / "weight_snapshots"
-        if weights_snapshot_dir.exists():
-            try:
-                snapshots = list(weights_snapshot_dir.iterdir())
-                if snapshots:
-                    latest = max(snapshots, key=lambda p: p.stat().st_mtime)
-                    tasks[5]["last_run"] = datetime.fromtimestamp(
-                        latest.stat().st_mtime, tz=timezone.utc
-                    )
-            except Exception:
-                pass
+        tasks = self._build_maintenance_tasks(now, snap)
 
         for task in tasks:
             name_text = Text(f" {task['name']}", style=_TEXT)
             sched_text = Text(f" {task['schedule']}", style=_DIM)
 
             last_run: datetime = task["last_run"]
-            last_str = _format_age(last_run)
+            last_str = "never" if last_run.timestamp() == 0 else _format_age(last_run)
             last_text = Text(f" {last_str}", style=_DIM)
 
             next_due: datetime = task["next_due"]
@@ -815,6 +1045,163 @@ class DiagnosticsScreen(Container):
                 status_text = Text(f" {status}", style=f"bold {_NEGATIVE}")
 
             table.add_row(name_text, sched_text, last_text, next_text, status_text)
+
+    def _build_maintenance_tasks(
+        self,
+        now: datetime,
+        snap: DashboardSnapshot | None = None,
+    ) -> list[dict[str, Any]]:
+        tasks: list[dict[str, Any]] = []
+
+        def file_time(rel_path: str) -> datetime | None:
+            path = self._project_root / rel_path
+            if not path.exists():
+                return None
+            return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+
+        journal = file_time("trained_data/trade_journal_rl.json")
+        tasks.append(self._make_task(
+            "Journal Compaction",
+            "Daily / on write",
+            journal,
+            timedelta(days=1),
+            missing_status="PENDING",
+        ))
+
+        learnings = file_time(".claude/learnings.md")
+        tasks.append(self._make_task(
+            "Learnings Consolidation",
+            "Every 10 cycles",
+            learnings,
+            timedelta(hours=12),
+            missing_status="PENDING",
+        ))
+
+        config_archive = (
+            file_time(".claude/config_adjustments.json.bak")
+            or file_time(".claude/config_adjustments.json")
+        )
+        tasks.append(self._make_task(
+            "Config Archive",
+            "Weekly",
+            config_archive,
+            timedelta(days=7),
+            missing_status="PENDING",
+        ))
+
+        retrain_state = _read_json(
+            self._project_root / "trained_data" / ".autonomous_retrain_state.json",
+            default={},
+        )
+        retrain_last = None
+        retrain_status = "PENDING"
+        if isinstance(retrain_state, dict) and retrain_state:
+            retrain_last = _parse_dt(
+                retrain_state.get("last_completed_at")
+                or retrain_state.get("last_started_at")
+            )
+            raw_status = str(retrain_state.get("last_status", "unknown")).lower()
+            if raw_status == "success":
+                retrain_status = "OK"
+            elif raw_status == "running":
+                retrain_status = "PENDING"
+            else:
+                retrain_status = "ERROR"
+        tasks.append(self._make_task(
+            "Model Retraining",
+            "Stale/weekly trigger",
+            retrain_last,
+            timedelta(days=5),
+            status=retrain_status,
+            missing_status="PENDING",
+        ))
+
+        health = _read_json(
+            self._project_root / "trained_data" / "health_registry_log.json",
+            default={},
+        )
+        health_status = "PENDING"
+        if isinstance(health, dict) and health:
+            modules = health.get("module_states", {}) or {}
+            failing = [
+                name for name, state in modules.items()
+                if isinstance(state, dict) and (
+                    state.get("last_check_passed") is False or state.get("disabled")
+                )
+            ]
+            health_status = "ERROR" if failing or health.get("cycles_rejected", 0) else "OK"
+        tasks.append(self._make_task(
+            "State Validation",
+            "Every cycle",
+            file_time("trained_data/health_registry_log.json"),
+            timedelta(hours=1),
+            status=health_status,
+            missing_status="PENDING",
+        ))
+
+        latest_snapshot = None
+        snapshots_dir = self._project_root / "trained_data" / "models" / "weight_snapshots"
+        if snapshots_dir.exists():
+            snapshots = [p for p in snapshots_dir.iterdir() if p.is_file()]
+            if snapshots:
+                latest = max(snapshots, key=lambda p: p.stat().st_mtime)
+                latest_snapshot = datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc)
+        tasks.append(self._make_task(
+            "Weight Backup",
+            "Daily @ 06:00",
+            latest_snapshot,
+            timedelta(days=1),
+            missing_status="PENDING",
+        ))
+
+        scan_diag = (
+            file_time("trained_data/scan_diagnostics_state.json")
+            or file_time("trained_data/scan_diagnostics_report.json")
+        )
+        scan_report = _read_json(
+            self._project_root / "trained_data" / "scan_diagnostics_report.json",
+            default={},
+        )
+        scan_status = "OK"
+        if isinstance(scan_report, dict) and scan_report.get("stalled"):
+            scan_status = "ERROR"
+        elif snap is not None and snap.scanner_ready is False:
+            scan_status = "PENDING"
+        tasks.append(self._make_task(
+            "Scan Diagnostics",
+            "Every 10 scans",
+            scan_diag,
+            timedelta(hours=1),
+            status=scan_status,
+            missing_status="PENDING",
+        ))
+
+        return tasks
+
+    def _make_task(
+        self,
+        name: str,
+        schedule: str,
+        last_run: datetime | None,
+        max_age: timedelta,
+        status: str | None = None,
+        missing_status: str = "PENDING",
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        if last_run is None:
+            last_run = datetime.fromtimestamp(0, tz=timezone.utc)
+            task_status = missing_status
+            next_due = now
+        else:
+            next_due = last_run + max_age
+            task_status = status or ("OK" if next_due >= now else "PENDING")
+        return {
+            "name": name,
+            "schedule": schedule,
+            "last_run": last_run,
+            "next_due": next_due,
+            "status": task_status,
+        }
 
     # ------------------------------------------------------------------
     # Private: OANDA connection test

@@ -91,6 +91,10 @@ class ScanEnrichment:
     # hard-block tightening to 0.35.
     max_component_age_days: float = 0.0
 
+    # Running ScannerConfig scalar snapshot for the Config tab.
+    config_profile: str = "smart"
+    config_values: dict = field(default_factory=dict)
+
 
 class EmbeddedScanner:
     """Bridge between the Scanner engine and the Textual TUI.
@@ -655,6 +659,8 @@ class EmbeddedScanner:
             scanned_count=len(result.analyses),
             last_scan_time=datetime.now(timezone.utc),
         )
+        enrichment.config_profile = str(getattr(self._config, "profile", "smart") or "smart")
+        enrichment.config_values = self._snapshot_config_values()
 
         # ── Agent scores from scan results ─────────────────────
         # Aggregate agent data across all directional analyses
@@ -837,6 +843,22 @@ class EmbeddedScanner:
             logger.debug("Model staleness snapshot error: %s", e)
 
         return enrichment
+
+    def _snapshot_config_values(self) -> dict:
+        """Return scalar live ScannerConfig values safe for the TUI snapshot."""
+        if self._config is None:
+            return {}
+        try:
+            import dataclasses
+            values = {}
+            for field_info in dataclasses.fields(self._config):
+                value = getattr(self._config, field_info.name, None)
+                if isinstance(value, (bool, int, float, str)):
+                    values[field_info.name] = value
+            return values
+        except Exception as exc:
+            logger.debug("Config snapshot error: %s", exc)
+            return {}
 
     def shutdown(self) -> None:
         """Clean shutdown. Call before app exits."""

@@ -957,7 +957,10 @@ class BuddyApp(App):
 
     def _tick_brain(self) -> None:
         """Add a line to the brain stream."""
-        log = self.query_one("#brain-log", RichLog)
+        try:
+            log = self.query_one("#brain-log", RichLog)
+        except Exception:
+            return
         now = datetime.now(timezone.utc).strftime("%H:%M:%S")
         line = _fake_brain_line()
         log.write(Text.from_markup(f"[dim]{now}[/] {line}"))
