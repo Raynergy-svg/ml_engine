@@ -1099,18 +1099,80 @@ class IBKRBroker(BrokerClient):
     def get_price_quote(self, instrument: Instrument) -> Dict[str, float]:
         """Get current bid/ask prices for an instrument.
 
+        Requests a snapshot market data tick from TWS/IBGateway, waits up to
+        5 seconds for bid/ask to populate, then cancels the subscription.
+        Falls back to last traded price (midpoint) when only one side is
+        available (common for futures outside RTH).
+
         Args:
             instrument: Trading instrument.
 
         Returns:
-            Dictionary with 'bid' and 'ask' keys.
+            Dictionary with 'bid' and 'ask' keys (both floats > 0).
 
         Raises:
-            NotImplementedError: Implemented in US-009.
+            ConnectionError: If not connected to IBKR.
+            RuntimeError: If no usable quote received within timeout.
         """
-        raise NotImplementedError(
-            "get_price_quote implemented in US-009"
-        )
+        if self._ib is None or not self._connected:
+            raise ConnectionError("Not connected to IBKR. Call connect() first.")
+
+        try:
+            contract = self._build_contract(instrument)
+
+            # reqMktData with snapshot=True fetches a single tick and cancels.
+            # genericTickList="" requests all standard ticks.
+            ticker = self._ib.reqMktData(contract, "", snapshot=True, regulatorySnapshot=False)
+
+            # Poll up to 5 s for both bid and ask to arrive
+            deadline = time.time() + 5.0
+            while time.time() < deadline:
+                self._ib.sleep(0.1)
+                bid = ticker.bid if ticker.bid and ticker.bid > 0 else None
+                ask = ticker.ask if ticker.ask and ticker.ask > 0 else None
+                last = ticker.last if ticker.last and ticker.last > 0 else None
+                close = ticker.close if ticker.close and ticker.close > 0 else None
+
+                if bid is not None and ask is not None:
+                    logger.debug(
+                        "Price quote [%s]: bid=%.4f, ask=%.4f",
+                        instrument.symbol, bid, ask,
+                    )
+                    self._ib.cancelMktData(contract)
+                    return {"bid": float(bid), "ask": float(ask)}
+
+            # Timeout — attempt fallback using last/close
+            self._ib.cancelMktData(contract)
+
+            mid = last or close
+            if mid and mid > 0:
+                # Construct synthetic spread (0.01 % of mid, ≥ 1 tick)
+                tick = instrument.tick_size or 0.01
+                half_spread = max(tick, mid * 0.0001)
+                synthetic_bid = round(mid - half_spread, 6)
+                synthetic_ask = round(mid + half_spread, 6)
+                logger.warning(
+                    "Price quote [%s]: bid/ask timeout — using last/close=%.4f "
+                    "as synthetic mid (spread ±%.4f)",
+                    instrument.symbol, mid, half_spread,
+                )
+                return {"bid": synthetic_bid, "ask": synthetic_ask}
+
+            raise RuntimeError(
+                f"No usable price quote for {instrument.symbol} after 5 s. "
+                "Ensure market data subscriptions are active in TWS."
+            )
+
+        except (ConnectionError, RuntimeError):
+            raise
+        except Exception as e:
+            logger.error(
+                "get_price_quote [%s] failed: %s",
+                instrument.symbol, e, exc_info=True,
+            )
+            raise RuntimeError(
+                f"Failed to fetch price quote for {instrument.symbol}: {e}"
+            ) from e
 
     def get_trades(self) -> List[TradeInfo]:
         """Get list of recent trades (closed or closing).

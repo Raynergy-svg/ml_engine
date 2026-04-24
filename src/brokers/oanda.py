@@ -46,21 +46,44 @@ class OandaBroker(BrokerClient):
         order = client.place_order(instrument, "BUY", 1000, 1.0800, 1.1000, 1.0900)
     """
 
-    def __init__(self, client: Optional[OandaPracticeClient] = None) -> None:
-        """Initialize OandaBroker with an optional OandaPracticeClient.
+    def __init__(
+        self,
+        client: Optional[OandaPracticeClient] = None,
+        *,
+        account_id: Optional[str] = None,
+        api_key: Optional[str] = None,
+        environment: str = "practice",
+    ) -> None:
+        """Initialize OandaBroker.
 
-        If client is None, creates one from environment variables.
+        Accepts either a pre-built OandaPracticeClient OR raw credentials
+        (account_id + api_key). This matches the signature expected by
+        factory.py's create_broker().
+
+        Priority:
+          1. ``client`` kwarg (pre-built instance)
+          2. ``account_id`` + ``api_key`` kwargs (build internally)
+          3. Environment variables OANDA_API_TOKEN / OANDA_ACCOUNT_ID (fallback)
 
         Args:
-            client: Optional OandaPracticeClient instance. If None, creates from env.
+            client: Optional OandaPracticeClient instance.
+            account_id: OANDA account ID (e.g. "001-001-123456-001").
+            api_key: OANDA API key / token.
+            environment: "practice" or "live" (currently practice-only).
 
         Raises:
-            OSError: If client is None and required env vars are missing.
+            OSError: If no credentials are available from any source.
         """
-        if client is None:
-            self._client = OandaPracticeClient.from_env()
-        else:
+        if client is not None:
             self._client = client
+        elif account_id and api_key:
+            # Build OandaPracticeClient from explicit credentials
+            from src.utils.oanda_practice import OandaPracticeConfig
+            cfg = OandaPracticeConfig(api_token=api_key, account_id=account_id)
+            self._client = OandaPracticeClient(cfg)
+        else:
+            # Fall back to environment variables
+            self._client = OandaPracticeClient.from_env()
 
     @classmethod
     def from_env(cls) -> OandaBroker:
