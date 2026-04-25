@@ -21,6 +21,7 @@ This runbook is the single source of truth for operating the Supervisor Console.
 9. [Incident Response — 10-Minute Post-Kill Checklist](#9-incident-response--10-minute-post-kill-checklist)
 10. [On-Call Escalation Checklist](#10-on-call-escalation-checklist)
 11. [Appendix A — Reality Checker Walkthrough](#appendix-a--reality-checker-walkthrough)
+12. [Phase 95 — First Live-Mode Re-Enable Checklist](#12-phase-95--first-live-mode-re-enable-checklist)
 
 ---
 
@@ -345,6 +346,86 @@ All 10 enumerated sections are complete, accurate against source, and operationa
 
 **Signed off:** Reality Checker — 2026-04-16
 **Next review:** on next destructive-hotkey addition (any future US past US-518) or 30-day calendar review, whichever is sooner.
+
+---
+
+## 12. Phase 95 — First Live-Mode Re-Enable Checklist
+
+> Phase 95 (US-601 → US-606) added persistence and observability infrastructure on top of the Phase 91/92 Supervisor Console. This checklist is the operator-facing gate between "code shipped" and "real money trading again."
+>
+> **Context:** The 2026-04-24 ground-truth audit found the bot had been "LIVE" for 8 days and executed zero trades because the TUI process had died and was never restarted. Phase 95 fixes the underlying engineering gaps (no persistence, no state reconciliation, no heartbeat). This checklist proves the fixes are deployed, not just shipped.
+
+### 12.1 Pre-flight (operator must execute)
+
+```
+[ ] 1. Stop currently-running TUI: focus tui pane, press 'q' (or kill via launchctl)
+[ ] 2. Patch US-604 wiring gap (see §12.4 below) — DO NOT SKIP
+[ ] 3. Run: bash scripts/install_launchd_service.sh
+[ ] 4. Run: bash scripts/install_watchdog_service.sh
+[ ] 5. Verify: launchctl list | grep com.buddy.trader     → status 0 (running)
+[ ] 6. Verify: launchctl list | grep com.buddy.watchdog   → status 0 (running)
+[ ] 7. Wait 60s, verify: cat .claude/heartbeat.json       → ts within last 15s, scanner_alive: true
+[ ] 8. Wait 60s, verify: ls -la .claude/state_drift_log.jsonl  → file exists (drift event from initial reconcile)
+[ ] 9. Wait 5 min, verify: ls -la trained_data/dry_run_validation.jsonl → exists + line count growing
+[ ] 10. Confirm state.json mode=dry_run (NOT live!)
+```
+
+### 12.2 48h validation window
+
+```
+[ ] 11. Let the bot run for 48 hours in dry_run with the heartbeat + reconciler + watchdog active
+[ ] 12. Run: python scripts/analyze_dry_run.py trained_data/dry_run_validation.jsonl
+[ ] 13. Confirm distribution health:
+       - At least one pair-cycle row present (scanner is actually running)
+       - No single block_reasons key accounts for > 95% of blocked cycles
+         (would indicate over-tightened gate or broken signal path)
+       - would_submit rate > 0% (bot is finding tradeable setups)
+       - staleness_veto NOT dominant (would indicate stale models)
+       - confidence_gate NOT > 90% of blocks (would indicate threshold mis-calibration)
+```
+
+### 12.3 LIVE re-enable
+
+Only after ALL of §12.1 + §12.2 pass:
+
+```
+[ ] 14. Append distribution summary to .claude/ralph/reports/phase95_evidence.md
+[ ] 15. Re-run architect verdict on phase95_evidence.md; require PASS (not NEEDS_WORK)
+[ ] 16. In TUI: press M to open Mode toggle modal
+[ ] 17. Type 'LIVE' (case-sensitive)
+[ ] 18. Tab → ⚡ Go Live → Enter
+[ ] 19. Verify state.json mode=live, scanner_paused=false, halted=false
+[ ] 20. Confirm Trades tab (F3) updates in real-time
+[ ] 21. Watch first 4h of LIVE operation closely. K (kill) is always one keystroke away.
+```
+
+### 12.4 US-604 Wiring Gap — KNOWN DEFECT (must patch before §12.2)
+
+**Discovered during US-606 close-out, 2026-04-25.**
+
+The `validation_stats` module was wired into `src/scanner/automation/continuous.py:533-540` (used by the CLI ContinuousScanner), but NOT into `src/tui/embedded_scanner.py` (used by the TUI `./buddy` launcher). When the bot runs via `./buddy`, the dry_run validation jsonl will accumulate ZERO rows, and §12.2 step 13 will produce empty distribution analysis.
+
+This is the same TUI-wiring gap pattern that caused the 2026-04-16 ConfigAdjuster orphan-key incident ($3,527 loss).
+
+**Patch required before starting §12.2 window:**
+
+In `src/tui/embedded_scanner.py`, locate the per-cycle hook (where `result` is finalized), and insert the equivalent of `continuous.py:533-540`:
+
+```python
+# US-604: dry-run validation telemetry (mirror of continuous.py:533-540)
+if str(getattr(self.config, "mode", "dry_run")) == "dry_run":
+    try:
+        from src.scanner.automation.validation_stats import ScanDistributionStats
+        if not hasattr(self, "_validation_stats"):
+            self._validation_stats = ScanDistributionStats()
+        self._validation_stats.record_cycle(result.analyses or [])
+    except Exception as _vs_err:
+        logger.debug("validation_stats record error: %s", _vs_err)
+```
+
+After patching, restart TUI and verify `trained_data/dry_run_validation.jsonl` is being appended to within one scan cycle.
+
+**Phase 96 candidate:** Refactor scanner asymmetry so all automation wiring lives in a single shared module (e.g. `src/scanner/automation/automation_pipeline.py`) imported by both `EmbeddedScanner` and `ContinuousScanner`. This permanently eliminates the wiring-gap bug class.
 
 ---
 
