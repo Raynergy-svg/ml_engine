@@ -569,6 +569,21 @@ class EmbeddedScanner:
         except Exception as e:
             logger.debug("Observation logging error: %s", e)
 
+        # Dry-run validation telemetry (US-604) — emit one JSONL row per
+        # directional candidate so analyze_dry_run.py can report gate firing
+        # distributions. Write-only; no execution side effects. Mirrors
+        # continuous.py:529-540. Closes the TUI wiring gap flagged in the
+        # 2026-04-25 phase95_evidence.md US-606 close-out review.
+        try:
+            from src.scanner.automation.validation_stats import (
+                ScanDistributionStats,
+            )
+            if not hasattr(self, "_validation_stats"):
+                self._validation_stats = ScanDistributionStats()
+            self._validation_stats.record_cycle(result.analyses or [])
+        except Exception as _vs_err:
+            logger.debug("validation_stats record error: %s", _vs_err)
+
         # Observation consumer — every 10 cycles
         if (
             self._scan_count % 10 == 0

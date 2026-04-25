@@ -407,23 +407,22 @@ The `validation_stats` module was wired into `src/scanner/automation/continuous.
 
 This is the same TUI-wiring gap pattern that caused the 2026-04-16 ConfigAdjuster orphan-key incident ($3,527 loss).
 
-**Patch required before starting §12.2 window:**
+**Status: PATCHED 2026-04-25.** The wiring was added to `embedded_scanner.py` `_post_scan_automation()` after the observation_log block, mirroring `continuous.py:529-540`. No mode guard — record every cycle regardless of dry_run/live, so the jsonl provides complete gate-firing history.
 
-In `src/tui/embedded_scanner.py`, locate the per-cycle hook (where `result` is finalized), and insert the equivalent of `continuous.py:533-540`:
+If for any reason the patch is reverted or the wiring needs to be re-applied:
 
 ```python
-# US-604: dry-run validation telemetry (mirror of continuous.py:533-540)
-if str(getattr(self.config, "mode", "dry_run")) == "dry_run":
-    try:
-        from src.scanner.automation.validation_stats import ScanDistributionStats
-        if not hasattr(self, "_validation_stats"):
-            self._validation_stats = ScanDistributionStats()
-        self._validation_stats.record_cycle(result.analyses or [])
-    except Exception as _vs_err:
-        logger.debug("validation_stats record error: %s", _vs_err)
+# US-604: dry-run validation telemetry (mirror of continuous.py:529-540)
+try:
+    from src.scanner.automation.validation_stats import ScanDistributionStats
+    if not hasattr(self, "_validation_stats"):
+        self._validation_stats = ScanDistributionStats()
+    self._validation_stats.record_cycle(result.analyses or [])
+except Exception as _vs_err:
+    logger.debug("validation_stats record error: %s", _vs_err)
 ```
 
-After patching, restart TUI and verify `trained_data/dry_run_validation.jsonl` is being appended to within one scan cycle.
+Insert in `_post_scan_automation()` immediately after the observation_log try-block. After patching, restart TUI and verify `trained_data/dry_run_validation.jsonl` is being appended to within one scan cycle.
 
 **Phase 96 candidate:** Refactor scanner asymmetry so all automation wiring lives in a single shared module (e.g. `src/scanner/automation/automation_pipeline.py`) imported by both `EmbeddedScanner` and `ContinuousScanner`. This permanently eliminates the wiring-gap bug class.
 
