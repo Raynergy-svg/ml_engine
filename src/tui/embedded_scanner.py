@@ -129,6 +129,9 @@ class EmbeddedScanner:
         self._online_rl = None
         self._policy_engine = None
         self._config_adjuster = None
+        self._reconciler = None
+        self._reconciler_task = None
+        self._reconciler_thread = None
         self._freshness_check_interval = 10  # every N cycles
 
         # State
@@ -281,6 +284,35 @@ class EmbeddedScanner:
         except Exception as e:
             logger.debug("PolicyEngine init skipped: %s", e)
 
+        # US-602: OANDA state reconciliation watchdog (60s auto-correct)
+        try:
+            from src.scanner.automation.state_reconciler import StateReconciler
+            self._reconciler = StateReconciler(project_root=self._project_root)
+            self._start_reconciler_loop()
+            logger.info("EmbeddedScanner: StateReconciler initialized (60s)")
+        except Exception as e:
+            logger.debug("StateReconciler init skipped: %s", e)
+
+        # US-605: Outcome backfill — catch-up pass against OANDA tx stream.
+        # Best-effort: never allowed to block or crash startup.
+        try:
+            from src.scanner.automation.outcome_backfill import OutcomeBackfill
+            backfill = OutcomeBackfill(project_root=self._project_root)
+            bf_result = backfill.run_once()
+            if bf_result.error:
+                logger.info(
+                    "EmbeddedScanner: OutcomeBackfill skipped (%s)", bf_result.error
+                )
+            else:
+                logger.info(
+                    "EmbeddedScanner: OutcomeBackfill ran (matched=%d, unmatched=%d, cursor=%s)",
+                    bf_result.matched,
+                    len(bf_result.unmatched_trade_ids),
+                    bf_result.last_tx_id,
+                )
+        except Exception as e:  # noqa: BLE001 — never fail boot
+            logger.debug("OutcomeBackfill init skipped: %s", e)
+
         # ConfigAdjuster — consumes pending config adjustments each cycle
         try:
             from src.scanner.automation.config_adjuster import ConfigAdjuster
@@ -292,6 +324,28 @@ class EmbeddedScanner:
                 logger.info("EmbeddedScanner: ConfigAdjuster initialized (no pending)")
         except Exception as e:
             logger.debug("ConfigAdjuster init skipped: %s", e)
+
+    def _start_reconciler_loop(self) -> None:
+        """Run StateReconciler.run_forever on a dedicated asyncio thread.
+
+        Runs in its own event loop so the watchdog ticks every 60s even while
+        the Textual TUI loop is busy rendering or the scan thread is blocking
+        on OANDA. Swallows all errors — never allowed to crash the scanner.
+        """
+        import asyncio as _asyncio
+
+        def _runner() -> None:
+            try:
+                loop = _asyncio.new_event_loop()
+                _asyncio.set_event_loop(loop)
+                self._reconciler_task = loop.create_task(self._reconciler.run_forever())
+                loop.run_forever()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("StateReconciler thread crashed: %s", exc)
+
+        t = threading.Thread(target=_runner, name="state-reconciler", daemon=True)
+        t.start()
+        self._reconciler_thread = t
 
     def run_one_cycle(self) -> Optional[ScanEnrichment]:
         """Run ONE scan cycle synchronously. CALL FROM A THREAD.
