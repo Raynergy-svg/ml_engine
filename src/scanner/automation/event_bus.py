@@ -236,6 +236,7 @@ TRADING_EVENT_TYPES = frozenset({
     "control.resume",
     "control.mode_change",
     "control.signal_veto",
+    "control.reconciler_offline",
     "trade.manual_close",
 })
 

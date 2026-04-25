@@ -35,6 +35,7 @@ from textual.widgets import (
 )
 
 from src.tui.data_provider import DataProvider, DashboardSnapshot
+from src.tui.heartbeat import write_heartbeat
 from src.tui.screens.kill_modal import KillModal
 from src.tui.screens.mode_modal import ModeConfirmModal, check_oanda_credentials
 from src.tui.screens.trades_screen import TradesScreen
@@ -633,6 +634,10 @@ class BuddyApp(App):
         # Brain stream: fake lines in demo only; live uses real scanner output
         if not self._live:
             self.set_interval(0.8, self._tick_brain)
+        # US-603: Layer-2 watchdog heartbeat (every 10s, atomic write).
+        self._last_error_ts: str | None = None
+        self._write_heartbeat_tick()
+        self.set_interval(10.0, self._write_heartbeat_tick)
 
     def on_unmount(self) -> None:
         """Signal background readers to exit cleanly."""
@@ -640,6 +645,32 @@ class BuddyApp(App):
             self._reflection_stop.set()
         except Exception:
             pass
+
+    def _write_heartbeat_tick(self) -> None:
+        """US-603: emit .claude/heartbeat.json for the external watchdog daemon."""
+        try:
+            repo_root = Path(__file__).resolve().parent.parent.parent
+            cycle = 0
+            scanner_alive = False
+            try:
+                snap = self._provider.get_snapshot() if self._provider else None
+                if snap is not None:
+                    cycle = int(getattr(snap, "scan_cycle_count", 0) or 0)
+                    scanner_alive = cycle > 0 or bool(getattr(snap, "trades", []) or [])
+            except Exception:
+                pass
+            if self._live:
+                scanner_alive = scanner_alive or bool(getattr(self, "_scanner_thread", None))
+            write_heartbeat(
+                repo_root,
+                cycle_count=cycle,
+                mode="live" if self._live else "demo",
+                scanner_alive=scanner_alive,
+                last_error_ts=self._last_error_ts,
+            )
+        except Exception as exc:  # heartbeat must never crash the TUI
+            self._last_error_ts = datetime.now(timezone.utc).isoformat()
+            logging.getLogger(__name__).debug("heartbeat write failed: %s", exc)
 
     def _write_boot_sequence(self) -> None:
         log = self.query_one("#brain-log", RichLog)
