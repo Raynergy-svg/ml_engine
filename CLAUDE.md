@@ -1,4 +1,4 @@
-# ML Engine (Buddy) - FX Trading Bot
+# ML Engine (Buddy) — FX Trading Bot
 
 Autonomous ML-powered forex trading system. Scans markets, evaluates setups through multi-agent consensus, executes on OANDA, and learns from outcomes.
 
@@ -10,337 +10,127 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 ```
 
 ## Core Loop
-1. **Scan**: Multi-pair analysis with TCN/Ridge/RF ensemble models
-2. **Agents**: 15-agent team (truth: see `_BASE_WEIGHTS` in `src/scanner/agents/_team.py`):
-   - **Core 12**: trend, mean_reversion, volatility, risk_sentinel, uncertainty, execution_quality, momentum, news_risk, multi_timeframe, pair_performance, session_timing, support_resistance
-   - **Extended 3**: order_flow (OANDA order/position book contrarian, weight 0.95), trader_readiness (Aura human-side readiness, weight 0.50), devil_advocate (adversarial bear-case evaluator, runs LAST, weight 1.30)
-   - Extended 3 are individually toggleable via `ScannerConfig` flags (all default `True`):
-     - `enable_order_flow_agent` — disable to skip OANDA book-depth contrarian signal
-     - `enable_trader_readiness_agent` — disable to skip Aura human-side readiness check
-     - `enable_devil_advocate_agent` — disable to skip adversarial bear-case evaluator (legacy `enable_devil_advocate` still honored for backcompat)
-3. **Gates**: Confidence, momentum, risk — all must pass
-4. **Execute**: ATR-based SL/TP, regime-aware position sizing
-5. **Monitor**: Drawdown guardian, trailing SL, real-time P/L
-6. **Learn**: RL weight updates, trade journal, pattern extraction
+1. **Scan** — multi-pair analysis with TCN/Ridge/RF ensemble models
+2. **Agents** — 15-agent team (truth: `_BASE_WEIGHTS` in `src/scanner/agents/_team.py`)
+   - Core 12: trend, mean_reversion, volatility, risk_sentinel, uncertainty, execution_quality, momentum, news_risk, multi_timeframe, pair_performance, session_timing, support_resistance
+   - Extended 3: order_flow (0.95), trader_readiness (0.50), devil_advocate (1.30, runs LAST). All toggleable via `enable_*_agent` flags in `ScannerConfig`.
+3. **Gates** — confidence, momentum, risk; all must pass
+4. **Execute** — ATR-based SL/TP, regime-aware position sizing
+5. **Monitor** — drawdown guardian, trailing SL, real-time P/L
+6. **Learn** — RL weight updates, trade journal, pattern extraction
 
 ## Key Decisions
 - Soft uncertainty blocking (confidence penalty) over hard circuit breaker
-- ATR-based dynamic SL/TP over hardcoded pip values
+- ATR-based dynamic SL/TP, never hardcoded pips
 - Correlation filter prevents double exposure on correlated pairs
-- Minimum R:R ratio 1.2:1 gate before execution
+- Minimum R:R 1.2:1 gate before execution
 - Position sizing scales to account size (5% base risk on practice)
 
-## Claude Brain (My Memory Layer — Read This First)
-> On every invocation, read these files in order before doing anything else:
-1. `.claude/brain/briefing.md` — my serialized working memory, current situation, next actions
-2. `.claude/brain/session_handoff.md` — raw runtime state written by Buddy at last shutdown
-3. `.claude/brain/open_questions.md` — if any marked URGENT
+## Claude Brain (Read First on Every Invocation)
+1. `.claude/brain/briefing.md` — current situation, hypotheses, next actions
+2. `.claude/brain/session_handoff.md` — runtime state from last shutdown
+3. `.claude/brain/open_questions.md` — only if any marked URGENT
 
-These files are written by me (Claude), for me. They are the reasoning layer on top of Buddy's mechanical systems.
-
-- `briefing.md` — situation, portfolio, trade narrative, hypotheses, decisions, next actions
-- `session_handoff.md` — NAV, open trades, last 10 journal entries, runtime summary (written by Buddy)
-- `trade_narrative.md` — interpreted trade history (not raw journal data)
-- `strategic_log.md` — my decision ledger, append-only
-- `open_questions.md` — active hypotheses and investigations
-- `docs/supervisor_console_runbook.md` — operator runbook for the Supervisor Console (hotkeys, kill-switch procedure, post-kill checklist, escalation). Required reading before any LIVE-mode session.
+Other brain files (read on demand):
+- `trade_narrative.md` — interpreted trade history
+- `strategic_log.md` — append-only decision ledger
+- `docs/supervisor_console_runbook.md` — required reading before LIVE mode
 
 ## Self-Improvement (Buddy's Mechanical Layer)
-- Learnings: `.claude/learnings.md` — date-stamped insights from trade outcomes
-- Rules: `.claude/rules/` — promoted patterns that actively gate behavior
-- State: `.claude/state.json` — session continuity across context windows
-- Config: `.claude/config_adjustments.json` — adaptive parameter tuning
+- `.claude/learnings.md` — date-stamped insights from outcomes
+- `.claude/rules/` — promoted patterns that gate behavior
+- `.claude/state.json` — session continuity
+- `.claude/config_adjustments.json` — adaptive parameter tuning
 
-## Trade Homework System (Phase 96)
+## Trade Homework System (Phase 96 — apprenticeship workbench)
+Buddy is a **student** doing supervised study of past trades. Closed trades become homework; operator grades each via F2 Inbox; corrections become RL training signal.
 
-Buddy is a **student** doing supervised study of past trades, not an autonomous trader. Closed trades become homework material; the operator grades each homework via the F2 Inbox; corrections become RL training signal.
-
-- Closed trades trigger `HomeworkGenerator` (heuristic-driven, NO LLM call)
-- Entries land in `.claude/homework_pending.jsonl`
-- F2 Inbox shows two-pane layout: queue on the left, live detail on the right
-- Filter pills: `[All] [📚 Homework] [🔧 Adjustments]`
-- Hotkeys: V detail, A approve, R reject (note required), E edit, S snooze 24h
-- Approval/edit emits a `TrainingSignal` to the existing RL agent_weights queue
-
-Bootstrap: `python buddy_scanner.py homework --generate-batch --last 17` produces homework entries from existing journal entries.
-
-Spec: `docs/superpowers/specs/2026-04-25-trade-homework-system-design.md`
-Heuristic catalog: `src/scanner/automation/homework/heuristics.py` (~25 patterns across 6 categories — A Setup Validity, B Risk Calibration, C Agent Consensus, D Execution Quality, E Regime/Context, F Meta-Patterns)
+- Closed trades → `HomeworkGenerator` (heuristic-driven, **NO LLM call**) → `.claude/homework_pending.jsonl`
+- F2 Inbox: two-pane (queue + live detail). Filters: `[All] [📚 Homework] [🔧 Adjustments]`. Hotkeys: V/A/R/E/S
+- Approve/edit → `TrainingSignal` → `TrainingSignalApplicator` writes deltas to `agent_weights.json` atomically (Phase 96.5 closes the loop)
+- Bootstrap: `python buddy_scanner.py homework --generate-batch --last N`
+- Heuristic catalog: `src/scanner/automation/homework/heuristics.py` (~25 patterns / 6 categories: A Setup, B Risk, C Consensus, D Execution, E Context, F Meta)
+- Spec: `docs/superpowers/specs/2026-04-25-trade-homework-system-design.md`
 
 ## Key Files
-- `main.py` — CLI entry point (argparse: --dry-run, --watch, --execute, --pairs, etc.)
-- `buddy_scanner.py` — BuddyScanner shim class (library, not CLI)
-- `src/scanner/engine.py` — Core Scanner class with model ensemble
-- `src/scanner/agents/` — ScannerAgentTeam (15 agents: core 12 + order_flow, trader_readiness, devil_advocate) with RL weight learning
-- `src/scanner/execution.py` — ExecutionManager: OANDA trade execution + RL sync
-- `src/scanner/config.py` — ScannerConfig with agent toggles and thresholds
-- `src/scanner/automation/continuous.py` — Watch mode loop
-- `src/scanner/automation/orchestrator.py` — Orchestrator: run_cycle(), get_system_status()
-- `src/risk/position_sizing.py` — DynamicPositionSizer + factory functions (create_regime_aware_position_sizer, etc.)
-- `trained_data/trade_journal_rl.json` — Trade outcomes for RL
-- `trained_data/models/agent_weights.json` — Learned agent weights
+- `main.py` — CLI entry point
+- `buddy_scanner.py` — library shim + `homework` subcommand only
+- `src/scanner/engine.py` — Scanner class with model ensemble
+- `src/scanner/agents/_team.py` — `ScannerAgentTeam` (15 agents + RL learning)
+- `src/scanner/execution.py` — `ExecutionManager` (OANDA + RL sync + flatten_all)
+- `src/scanner/config.py` — `ScannerConfig` (toggles + thresholds + profile dicts)
+- `src/scanner/automation/` — 125+ modules; `continuous.py` = watch loop, `orchestrator.py` = run_cycle
+- `src/scanner/automation/homework/` — homework subsystem (types, store, heuristics, generator, reviewer, applicator, journal_adapter)
+- `src/risk/position_sizing.py` — `DynamicPositionSizer` + regime-aware factories
+- `trained_data/trade_journal_rl.json` — outcomes for RL
+- `trained_data/models/agent_weights.json` — learned weights (regime-keyed)
 
-## TUI Command Bridge
-- `src/tui/app.py` — Textual TUI main app (6 screens, dual-mode live/demo)
-- `src/tui/theme.tcss` — Cyberpunk TCSS theme (neon cyan/magenta/green on void black)
-- `src/tui/data_provider.py` — Thread-safe OANDA data bridge (DashboardSnapshot)
-- `buddy` — Launcher script (auto-sources .env.local, activates venv)
-- Launch: `./buddy` (auto-detects --live if OANDA creds exist, else --demo)
-
-## Agent Specialization Rules — MANDATORY
-> When launching sub-agents via the Agent tool, ALWAYS use a specialized `subagent_type`.
-> NEVER use the default `general-purpose` agent. Every sub-agent MUST have a domain skill.
-
-**Required sub-agent types by task:**
-- UI/UX design decisions → `UX Architect` or `UI Designer`
-- Frontend/TUI code → `Frontend Developer` or `Senior Developer`
-- Code quality review → `Code Reviewer`
-- Architecture decisions → `Software Architect`
-- Performance analysis → `Performance Benchmarker`
-- Testing strategy → `API Tester` or `Test Results Analyzer`
-- Codebase exploration → `Explore` (fast search agent)
-- Implementation planning → `Plan` (architect agent)
-- Security review → `Security Engineer`
-- Database/data work → `Database Optimizer` or `Data Engineer`
-- Documentation → `Technical Writer`
-- DevOps/infra → `DevOps Automator`
-
-**Rationale:** Specialized agents produce higher-quality output because they carry domain-specific knowledge, heuristics, and review criteria. General-purpose agents lack the depth needed for production-grade work.
+## TUI
+- `src/tui/app.py` — Textual TUI (8 screens, dual-mode live/demo)
+- `src/tui/theme.tcss` — cyberpunk TCSS (neon cyan/magenta/green on void black)
+- `src/tui/data_provider.py` — thread-safe OANDA bridge
+- `buddy` — launcher (auto-sources `.env.local`, activates venv)
+- Launch: `./buddy` (auto-detects `--live` if OANDA creds exist, else `--demo`)
 
 ## Ralph (Autonomous Dev Loop)
-- `scripts/ralph.sh` — Iterative AI agent loop for PRD stories
-- `.claude/ralph/prd.json` — 12-story self-improvement loop PRD
-- `.claude/skills/prd/` — PRD generation skill
-- `.claude/skills/ralph/` — PRD-to-JSON conversion skill
-- `.claude/agents/` — 37 LLM personality prompts (reference material)
+- `scripts/ralph.sh` — iterative AI agent loop for PRD stories. Routes complex stories (≥7 ACs or async/benchmark keywords) to Opus, others to Sonnet.
+- `.claude/ralph/prd.json` — active PRD; archives in `.claude/ralph/archive/`
+- `.claude/skills/prd/` and `.claude/skills/ralph/` — PRD skills
 
 ---
 
-## The Refinement Protocol — Follow This Every Single Time
+## Working Rules — Project-Specific Imperatives
 
-When the user sends ANY message that contains a task, request, question, or problem — do the following before doing anything else:
+### Subagent specialization (MANDATORY)
+- **Never** use `general-purpose` subagent. Every Agent dispatch must specify a domain `subagent_type`.
+- TUI/Frontend → `Frontend Developer` · Architecture → `Software Architect` · Code review → `Code Reviewer` · Tests → `API Tester` · Docs → `Technical Writer` · Performance → `Performance Benchmarker` · Security → `Security Engineer` · Data → `Data Engineer` · DevOps → `DevOps Automator` · Codebase exploration → `Explore` · Planning → `Plan`
 
-### STEP 1 — PARSE THE RAW INPUT
+### Token discipline (chat = prose, files = code)
+- **No code blocks > 5 lines in chat replies.** Reference by file:line.
+- Design docs, schemas, dataclasses → `docs/`. Chat replies link.
+- Tables and prose summaries are fine (they compress information). Code blocks usually don't.
+- "Wrote `X` to `path/to/file` — adds Y, replaces Z" beats pasting the diff.
 
-Read the user's message and extract:
-- What they are trying to accomplish (the goal)
-- What environment or file or system is involved (the context)
-- What is broken, missing, or unclear (the problem)
-- What they have already tried, if anything (the history)
-- What they expect as a result (the output)
+### Trading invariants
+- Never execute a trade with R:R < 1.2:1 (hard gate before submission)
+- Always run correlation filter before execution (prevents double exposure on correlated pairs)
+- ATR-based SL/TP only — never suggest hardcoded pip values
+- Drawdown guardian runs every scan cycle — non-negotiable
+- LOW regime `sl_mult >= 1.2` (Phase 91 promoted rule — ranging markets need wider stops)
+- Trend agent `passed=False` is a hard veto on directional trades (Phase 91)
+- Staleness uncertainty tightens to 0.35 when `oldest_age_days > 7` (Phase 91)
+- MR composite veto: MR `passed=False` + `model_disagreement > 0.25` → block_trade=True (Phase 93)
+- Never skip RL sync after a trade closes — outcomes must feed agent weights
 
-If any of these are missing or ambiguous — do NOT guess and execute. Move to Step 2.
+### Self-improvement & state
+- Promote a learning to a rule after 3+ observations (single-observation exceptions allowed only on catastrophic evidence; re-validate after 30 days)
+- Atomic writes for all `.claude/*.json` and `.jsonl` files (`tmp + rename` or `flock` + `fsync`)
+- JSON reads must `try/except` with graceful fallback; never crash on corrupt state files
+- Validate config keys against `ScannerConfig` field names BEFORE writing to `config_adjustments.json` (orphan keys = silent dead writes)
 
-### STEP 2 — DIAGNOSE THE GAPS
+### Code quality non-negotiables
+- No bare `except:` or `except Exception: pass` — log and surface
+- No silent failures in financial paths — surface as trade rejections
+- Specific exception types, not `Exception`, for narrow recoverable errors
+- TypeScript types must be explicit; Python type hints on public APIs
+- Auth checks server-side, never trust client-side
+- Environment variables, never hardcoded secrets
 
-Before rewriting, identify every missing piece. Check for:
+### Refinement protocol (compact)
+On every operator request: parse the goal, identify what's broken/missing/unclear, surface ambiguity if WHAT/WHERE aren't specified, propose options before executing destructive work, confirm before flipping LIVE-mode or pushing to remote. Don't say "should work" — either explain why it works or flag uncertainty.
 
-**Context Gaps:**
-- [ ] Which file, route, component, or function is involved?
-- [ ] What is the current tech stack in play for this specific problem?
-- [ ] Is this client-side, server-side, edge, or database level?
-- [ ] Is this in development, staging, or production?
-
-**Problem Gaps:**
-- [ ] What is the exact error message or behavior?
-- [ ] What is the expected behavior vs actual behavior?
-- [ ] Is there a code sample available?
-- [ ] When did it start breaking — what changed?
-
-**Constraint Gaps:**
-- [ ] Are there architectural constraints (can't change X, must use Y)?
-- [ ] Are there performance requirements?
-- [ ] Are there security or compliance concerns (financial data, auth, PII)?
-- [ ] Is there a deadline or urgency level?
-
-**Output Gaps:**
-- [ ] Does the user want code, explanation, a plan, a review, or a decision?
-- [ ] Should the output be a full rewrite, a patch, a diff, or pseudocode?
-- [ ] How much detail is needed?
-
-### STEP 3 — RECONSTRUCT THE PROMPT
-
-Rewrite the user's raw request into a precise, structured engineering prompt:
-
-```
-🔧 REFINED PROMPT
-─────────────────────────────────────────
-[CONTEXT]
-What system, file, component, or layer this touches.
-Stack details relevant to this specific problem.
-
-[GOAL]
-What the user is trying to achieve in one clear sentence.
-
-[PROBLEM]
-What is broken, missing, unclear, or needed.
-Include error messages or behavior description if provided.
-
-[CONSTRAINTS]
-What cannot be changed. What must be preserved.
-Performance, security, or architectural limits.
-
-[WHAT I TRIED]
-What the user has already attempted (if anything).
-
-[OUTPUT FORMAT]
-Exactly what the user expects back:
-- Working code (which file/function?)
-- Explanation of root cause
-- Step-by-step plan
-- Architecture review
-- Decision comparison
-─────────────────────────────────────────
-```
-
-### STEP 4 — CONFIRM BEFORE EXECUTING
-
-After presenting the refined prompt, always ask:
-
-```
-Does this capture what you need?
-Reply YES to proceed, or tell me what to adjust.
-```
-
-Do not execute until the user confirms. Do not assume silence is confirmation.
-
-### STEP 5 — ITERATE IF NEEDED
-
-If the user edits or corrects the refined prompt:
-- Absorb the correction
-- Update the refined prompt
-- Show the updated version
-- Ask for confirmation again
-
-Repeat until the user says YES or equivalent.
-
-### STEP 6 — EXECUTE DEEPLY
-
-Once confirmed, execute with full depth and precision:
-- Never truncate code
-- Never skip error handling
-- Never ignore edge cases
-- Always explain WHY, not just WHAT
-- Always include the impact on the rest of the system if relevant
-- Always flag anything that could break in production
+### What we never do
+- Execute on `main` without operator consent (worktrees on request)
+- Truncate code mid-function or stub with TODO
+- Hardcode values that belong in env vars
+- Flip dry_run → live without typed confirmation
+- Use LLM in the runtime hot path (per-scan, per-trade) — Buddy's runtime is Claude-free; Claude is for planning, post-mortems, and brainstorming only
 
 ---
 
-## Execution Standards — Always Apply These
-
-### Code Quality Rules
-- TypeScript types must be explicit — no `any` unless absolutely justified and commented
-- All async functions must have proper error handling (try/catch or Result types)
-- No silent failures — errors must be logged or surfaced
-- Environment variables must never be hardcoded
-- Auth checks must happen server-side, never trust client-side only
-- Financial data operations must be wrapped in transactions where applicable
-
-### Response Structure for Code Tasks
-1. **Root cause** — why it broke or why the old approach won't work
-2. **The fix** — exact code, complete, not truncated
-3. **Where it goes** — exact file path and location within the file
-4. **What it affects** — any other files or systems that need updating
-5. **How to verify** — how to test that the fix works
-6. **Watch out for** — one edge case or future risk to be aware of
-
-### Response Structure for Architecture / Decision Tasks
-1. **Restate the decision** — confirm what's being decided
-2. **Options table** — compare all viable options across: complexity, performance, maintainability, risk, cost
-3. **Recommendation** — pick one and say why clearly
-4. **Migration path** — if changing existing system, outline steps
-5. **Rollback plan** — how to undo if it goes wrong
-
-### Response Structure for Debugging Tasks
-1. **Reproduce the problem** — confirm understanding of the failure
-2. **Likely causes ranked** — from most to least probable
-3. **Diagnostic steps** — what to check first, in order
-4. **The fix** — once cause is confirmed
-5. **Prevention** — one thing to add to prevent this class of bug
-
----
-
-## Domain-Specific Knowledge — Apply Contextually
-
-### FX Trading System (this project)
-- Never execute trades without all three gates passing (confidence, momentum, risk)
-- ATR-based SL/TP is mandatory — never suggest hardcoded pip values
-- Always check correlation filter before recommending new positions
-- RL sync after trade close is non-negotiable — outcomes must feed agent weights
-- R:R ratio below 1.2:1 is a hard no — surface this immediately
-
-### Authentication & Sessions (Supabase + Next.js)
-- Always consider the App Router vs Pages Router distinction for session handling
-- Cookie SameSite settings matter for OAuth — flag this proactively
-- `AuthSessionMissingError` usually means session not initialized before use — check middleware order
-- Server Components cannot use browser cookies directly — use `createServerComponentClient`
-- OAuth redirects in production often fail due to missing redirect URLs in Supabase dashboard
-
-### Database & RLS (Supabase / PostgreSQL)
-- Always ask: does this query run inside or outside RLS context?
-- Service role key bypasses RLS — flag any use of it on the client side as a critical security issue
-- Index every foreign key and every column used in WHERE clauses on large tables
-- Financial transactions must use PostgreSQL transactions — never multi-step without rollback
-
-### AI Integration
-- Always stream long responses — never block UI on full completion
-- Rate limits hit unexpectedly in production — implement exponential backoff
-- Prompt injection is a real risk in financial contexts — sanitize user input before injecting into prompts
-- Token costs scale with conversation history — trim or summarize long contexts
-
-### Deployment (Vercel)
-- Environment variables set in Vercel dashboard, not in `.env` committed to git
-- Edge functions have no Node.js APIs — flag `fs`, `crypto`, etc. as incompatible
-- Build errors in Vercel are often TypeScript errors that passed locally — run `tsc --noEmit` before pushing
-
----
-
-## How to Handle Specific Input Types
-
-- **Code with no explanation** → "I see code but no context. Tell me: what should this do, and what's it doing instead?"
-- **"it's broken" / "not working"** → "What's the error message or behavior? And what did you expect to happen?"
-- **"make this better"** → "Better in what way? Performance, readability, security, or something else?"
-- **"which is better, X or Y"** → Always deliver a comparison table. Never just say "X is better."
-- **"build X"** → Confirm scaffold structure first. Never build full implementation without confirming structure.
-- **One-word / one-line request** → Always run the full refinement protocol. Highest-risk inputs.
-- **"you know what I mean"** → You do not. Run the refinement protocol.
-- **Clearly frustrated user** → Acknowledge briefly, make best refined guess at the prompt, show it, let them correct.
-
----
-
-## What You Never Do
-- Never execute a vague request without refining it first
-- Never truncate code mid-function
-- Never suggest solutions outside the confirmed tech stack without flagging it
-- Never assume the user wants a full rewrite when they asked for a fix
-- Never hardcode values that belong in environment variables
-- Never skip error handling in financial or auth-related code
-- Never say "this should work" — either it works and you can explain why, or flag the uncertainty
-- Never produce a wall of text without structure — always use headers, sections, and code blocks
-- Never ignore a security implication — always surface it even if it's not what was asked
-
-## Token Discipline — Code Lives in Files, Not Chat
-**Promoted 2026-04-25 from operator feedback ("youre wasting my tokens").**
-
-- **Never paste code blocks > 5 lines into a chat reply.** If a snippet matters, it goes into the actual file or the spec doc. Chat is for prose decisions, not source listings.
-- **Reference code by file:line, not by reproduction.** Say "the heuristic catalog lives in `homework/generator.py:HEURISTICS`" instead of pasting the dataclass back at the user.
-- **Design docs, schemas, and dataclasses go to `docs/` files.** Chat replies link to them.
-- **Tables, decision matrices, and prose summaries are fine.** Those compress information. Code blocks usually don't.
-- **Exception: ≤5-line snippets that are the actual answer to a "what does X look like" question.** Even then, prefer naming the location over pasting.
-- **When unsure, write to file first, then summarize the change in chat.** "Wrote `X` to `path/to/file.py` — it adds `Y` and replaces `Z`." That's the chat reply. The file has the code.
-
----
-
-## Quick Reference — Refinement Prompt Template
-
-```
-WHAT:   What is the goal in one sentence?
-WHERE:  What file, system, or layer?
-BROKEN: What's wrong or missing?
-LOCKED: What can't change?
-TRIED:  What's been attempted?
-WANT:   What does the output look like?
-```
-
-If you can't fill in WHAT and WHERE — ask before proceeding.
-If you can fill them all in — write the refined prompt, show it, confirm, then execute.
+## Pointers (deep dives, only when needed)
+- Operator runbook: `docs/supervisor_console_runbook.md`
+- Phase index: `.claude/ralph/archive/` (chronological)
+- Trading rules ledger: `.claude/rules/trading.md`
+- Improvement rules: `.claude/rules/improvement.md`
+- Brain index: `.claude/brain/briefing.md` (current situation always at top)
