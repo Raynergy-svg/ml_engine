@@ -428,6 +428,38 @@ Insert in `_post_scan_automation()` immediately after the observation_log try-bl
 
 ---
 
+## Homework Review Workflow
+
+The F2 Inbox now contains two streams: configuration adjustments (existing) and trade homework (new in Phase 96).
+
+### Bootstrap your first session
+
+If the inbox is empty, generate homework from existing journal entries:
+
+```
+python buddy_scanner.py homework --generate-batch --last 17
+```
+
+This studies the last 17 closed trades and produces ~17 entries in the inbox.
+
+### Reviewing homework
+
+1. Press `F2` to open the inbox.
+2. The two-pane layout shows: **queue on left, detail on right**.
+3. Use ↑↓ to navigate the queue. The detail pane updates automatically.
+4. For each homework entry, decide:
+   - **A** — approve. Buddy's analysis was right; deltas applied.
+   - **R** — reject. Buddy was wrong; type a one-sentence note explaining what he missed.
+   - **E** — edit. Buddy was partly right; modify the proposed deltas before applying.
+   - **S** — snooze 24h. Come back later.
+5. Cursor stays at same position after action — A-A-A-A through the queue at speed.
+
+### Mental model
+
+You are the master; Buddy is the apprentice. He does the fast pattern-matching against the heuristic catalog. You bring judgment about what matters and why. Approval = "yes, learn this." Rejection with a note = "no, you missed X" — and X becomes a candidate for a future heuristic.
+
+---
+
 ## Document Provenance
 
 - **Owner:** Supervisor Console maintainer.

@@ -51,6 +51,22 @@ These files are written by me (Claude), for me. They are the reasoning layer on 
 - State: `.claude/state.json` — session continuity across context windows
 - Config: `.claude/config_adjustments.json` — adaptive parameter tuning
 
+## Trade Homework System (Phase 96)
+
+Buddy is a **student** doing supervised study of past trades, not an autonomous trader. Closed trades become homework material; the operator grades each homework via the F2 Inbox; corrections become RL training signal.
+
+- Closed trades trigger `HomeworkGenerator` (heuristic-driven, NO LLM call)
+- Entries land in `.claude/homework_pending.jsonl`
+- F2 Inbox shows two-pane layout: queue on the left, live detail on the right
+- Filter pills: `[All] [📚 Homework] [🔧 Adjustments]`
+- Hotkeys: V detail, A approve, R reject (note required), E edit, S snooze 24h
+- Approval/edit emits a `TrainingSignal` to the existing RL agent_weights queue
+
+Bootstrap: `python buddy_scanner.py homework --generate-batch --last 17` produces homework entries from existing journal entries.
+
+Spec: `docs/superpowers/specs/2026-04-25-trade-homework-system-design.md`
+Heuristic catalog: `src/scanner/automation/homework/heuristics.py` (~25 patterns across 6 categories — A Setup Validity, B Risk Calibration, C Agent Consensus, D Execution Quality, E Regime/Context, F Meta-Patterns)
+
 ## Key Files
 - `main.py` — CLI entry point (argparse: --dry-run, --watch, --execute, --pairs, etc.)
 - `buddy_scanner.py` — BuddyScanner shim class (library, not CLI)
