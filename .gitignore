@@ -107,3 +107,6 @@ training_report_*.md
 # Jupyter checkpoints
 .ipynb_checkpoints/
 4test_sample_training_report.md
+.claude/homework_pending.jsonl
+.claude/homework_history.jsonl
+.claude/rejected_heuristics_log.jsonl
