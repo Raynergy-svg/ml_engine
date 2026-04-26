@@ -54,7 +54,7 @@ src/scanner/automation/homework/
   ├── generator.py     HomeworkGenerator   — closed trade → markdown analysis
   ├── store.py         HomeworkStore       — .jsonl pending + history (atomic writes)
   ├── reviewer.py      HomeworkReviewer    — A/R/E/S transitions + RL signal emit
-  └── heuristics.py    HEURISTIC_CATALOG   — ~20 hand-coded patterns, growable
+  └── heuristics.py    HEURISTIC_CATALOG   — ~25 hand-coded patterns across 6 categories, growable
 
 src/tui/screens/
   └── inbox_screen.py  ← EXTENDED          — two-pane layout, type-aware rendering
@@ -141,26 +141,88 @@ A `Heuristic` is a 4-tuple:
 
 Multiple heuristics may fire on the same trade. The highest-confidence match becomes `proposed_lesson`. All matches appear in the markdown analysis under "Detected patterns."
 
-### 4.3 Initial catalog (~20 heuristics)
+### 4.3 Initial catalog (~25 heuristics across 6 categories)
 
-Living in `src/scanner/automation/homework/heuristics.py`. Each heuristic is independently testable. Categories:
+Living in `src/scanner/automation/homework/heuristics.py`. Each heuristic is independently testable. The catalog is organized around **5 categories used by professional discretionary trade review** (Steenbarger, Bellafiore, Seykota, Raschke) plus **1 category specific to algorithmic systems** (López de Prado meta-labeling). Sources cited in §4.6.
 
-| Category | Example heuristic | Confidence |
+Every closed trade is evaluated against every heuristic. Multiple matches are ranked by confidence; the highest becomes the primary lesson. All matches appear in the markdown analysis.
+
+#### A — Setup Validity (was the entry signal genuine?)
+*Bellafiore: "Was I right and lucky, or right and skilled?"*
+
+| ID | Heuristic | Confidence |
 |---|---|---|
-| **Agent veto issues** | `trend_veto_unhonored` — SL outcome + trend.passed=False on directional trade | 0.85 |
-| | `mr_composite_match` — SL outcome + MR.passed=False + disagreement>0.25 (Phase 93 pattern) | 0.90 |
-| **Regime mismatches** | `zero_trend_directional` — SL outcome + ADX<5 (no trend, directional was wrong setup) | 0.80 |
-| | `low_regime_tight_sl` — SL outcome + regime=LOW + sl_mult<1.2 (Phase 91 pattern) | 0.85 |
-| **Outcome shapes** | `mfe_zero_directional_loss` — SL + MFE/ATR<0.2 (price never moved in our favor) | 0.70 |
-| | `slow_tp_could_widen` — TP + duration>240min (TP hit slowly, consider wider TP mult) | 0.60 |
-| | `early_sl_bad_timing` — SL + duration<5min (stopped too fast, possibly poor entry) | 0.65 |
-| **High-consensus winners** | `high_consensus_winner` — TP + WVS>0.75 (reinforce confluence pattern) | 0.75 |
-| | `unanimous_directional_winner` — TP + 13+/15 agents passed (extremely high consensus) | 0.85 |
-| **Staleness flags** | `stale_models_loss` — SL + oldest_age_days>5 (Phase 91 staleness territory) | 0.70 |
-| **Spread/cost** | `spread_eaten_winner` — winner where spread_pips > 0.3 × tp_pips (high cost trade) | 0.55 |
-| **Correlation** | `correlated_co_loss` — SL + another correlated pair also closed at SL within 30min | 0.65 |
+| A1 | `setup_adx_trend_mismatch` — directional trade with ADX<10 (no trend present, wrong setup type for a momentum/trend strategy) | 0.85 |
+| A2 | `setup_volatility_regime_mismatch` — strategy doesn't fit current `regime` (e.g., mean-reversion taken in trending HIGH regime, or directional in ranging LOW regime) | 0.80 |
+| A3 | `setup_session_mismatch` — pair traded in wrong session (e.g., AUD/NZD trade taken during illiquid Tokyo→London handoff) | 0.65 |
+| A4 | `setup_rsi_neutral` — directional entry while RSI in 45–55 zone (no momentum bias either direction; setup quality low) | 0.70 |
 
-The full list lives in `heuristics.py`. New heuristics added when operator rejects an analysis with a correction note that doesn't match existing patterns.
+#### B — Risk Calibration
+*Kelly Criterion / Ed Seykota / Phase 91 lessons*
+
+| ID | Heuristic | Confidence |
+|---|---|---|
+| B1 | `risk_rr_below_breakeven` — R:R ratio combined with implied win-rate produces negative expectancy (Kelly violation) | 0.90 |
+| B2 | `risk_sl_too_tight_for_atr` — `sl_pips / atr_pips < 1.0` (stop inside normal noise; whipsaw nearly guaranteed) | 0.85 |
+| B3 | `risk_low_regime_sl_violation` — regime=LOW + `sl_mult<1.2` (the Phase 91 promoted rule — ranging markets need wider stops, not tighter) | 0.95 |
+| B4 | `risk_correlated_double_exposure` — another correlated pair already open at trade entry (effective leverage doubled vs intended) | 0.75 |
+
+#### C — Agent Consensus Quality
+*Bayesian voting integrity / Phase 91+93 promoted patterns*
+
+| ID | Heuristic | Confidence |
+|---|---|---|
+| C1 | `consensus_trend_veto_unhonored` — SL outcome + trend agent `passed=False` on directional trade (Phase 91 pattern: WVS arithmetic should not override individual hard-veto signals) | 0.90 |
+| C2 | `consensus_mr_composite_match` — SL + MR `passed=False` + `model_disagreement>0.25` (Phase 93 composite veto fingerprint — would have caught this trade) | 0.90 |
+| C3 | `consensus_disagreement_at_floor` — SL + `model_disagreement` within 0.03 of `disagreement_hard_floor` (boundary case — gate may need tightening) | 0.70 |
+| C4 | `consensus_high_winner` — TP + WVS>0.75 + ≥10 agents passed (high-confluence pattern; reinforce) | 0.80 |
+| C5 | `consensus_single_agent_dragged` — outcome opposite to majority vote, dominated by one high-weight agent's contrarian read (audit that agent's weight) | 0.65 |
+
+#### D — Execution Quality
+*Bellafiore "tape reading" / Steenbarger deliberate-practice categories*
+
+| ID | Heuristic | Confidence |
+|---|---|---|
+| D1 | `exec_mfe_zero_directional_loss` — SL + `mfe_pips/atr_pips < 0.2` (price never moved in our favor — the 04-15 catastrophic-streak fingerprint; entry was directionally wrong from tick 1) | 0.85 |
+| D2 | `exec_whipsaw_reversal` — SL hit, then price reversed past entry within 2× ATR over the next 60 minutes (stop was too tight; trade thesis was correct, exit was premature) | 0.80 |
+| D3 | `exec_slow_tp_widening_candidate` — TP + `duration_minutes > 4 × expected_hold_minutes` (TP hit slowly; consider wider `tp_mult` to capture more) | 0.60 |
+| D4 | `exec_fast_sl_bad_timing` — SL + `duration_minutes < 5` (stopped almost immediately — likely news event, bad fill, or pre-trade signal stale) | 0.70 |
+| D5 | `exec_slippage_cost_winner` — winner where realized fill price differed from expected entry by > 0.3 × `sl_pips` (slippage ate edge; review broker latency) | 0.55 |
+
+#### E — Regime / Context Drift
+*Raschke regime-fingerprint analysis / Phase 91 staleness-block lesson*
+
+| ID | Heuristic | Confidence |
+|---|---|---|
+| E1 | `context_stale_models` — SL + `oldest_age_days > 7` (Phase 91 staleness threshold; models predicting old regime into new market) | 0.85 |
+| E2 | `context_regime_transition` — entered in regime X, closed in regime Y (regime shift mid-trade — was thesis still valid after shift?) | 0.65 |
+| E3 | `context_news_window` — known high-impact news (NFP, FOMC, CPI, ECB) during trade duration; outcome may reflect news shock not setup quality | 0.70 |
+| E4 | `context_correlated_co_loss` — ≥2 correlated pairs closed at SL within 30 min of each other (regime issue not single-trade issue; consider regime-pause heuristic) | 0.75 |
+
+#### F — Meta-Patterns (algorithmic system specific)
+*López de Prado "Advances in Financial ML" Ch. 3 (meta-labeling) and Ch. 4 (sample weights)*
+
+| ID | Heuristic | Confidence |
+|---|---|---|
+| F1 | `meta_repeat_fingerprint` — last N≥3 trades sharing this gate-combination all lost (suggests structural hole in the gate logic itself, not bad luck) | 0.85 |
+| F2 | `meta_lucky_winner` — TP, but `mae_pips > 0.7 × sl_pips` (trade nearly stopped before reversing; profit depended on luck not skill — don't reinforce confidently) | 0.70 |
+| F3 | `meta_underrepresented_setup` — setup-type cluster has <10 examples in training data (model was extrapolating; outcome carries low evidential weight either way) | 0.60 |
+
+The catalog is **growable**: when the operator rejects an analysis with a correction note that doesn't match an existing pattern, that note becomes a candidate for a new heuristic. A future phase will surface high-frequency rejection-notes for review and promote them into formal `Heuristic` entries.
+
+### 4.6 Sources
+
+The catalog is grounded in established trade-review literature, not invented:
+
+- **Brett Steenbarger** — *Trading Psychology 2.0* (2015): deliberate-practice categories (setup quality, execution quality, risk management, emotional state). Maps to categories A, D.
+- **Mike Bellafiore** — *One Good Trade* (2010): prop-trader review framework — reading the tape, market context, setup, R:R calibration. Maps to A, B, D.
+- **Linda Raschke** — *Street Smarts* (1996): regime-fingerprint analysis, time-of-day patterns, correlation drag. Maps to E.
+- **Marcos López de Prado** — *Advances in Financial Machine Learning* (2018): meta-labeling (Ch. 3), sample weights (Ch. 4), triple-barrier method. Maps to F1, F3.
+- **Ed Seykota** — *Market Wizards* interviews: position sizing under Kelly, slippage analysis, whipsaw detection. Maps to B, D2, D5.
+- **Ernest Chan** — *Algorithmic Trading: Winning Strategies and Their Rationale* (2013): backtest review — performance by regime, drawdown clustering. Maps to E1, E2, F1.
+- **Phase 91 / 93 promoted rules** — `.claude/rules/trading.md`: in-house lessons from the 04-15 catastrophic streak (trend hard-veto, MR composite veto, LOW regime SL floor, staleness block). Maps to B3, C1, C2, E1.
+
+Each heuristic in `heuristics.py` carries a `source` field referencing the originating literature or rule, so the catalog stays auditable.
 
 ### 4.4 Agent reinforcement scoring
 
