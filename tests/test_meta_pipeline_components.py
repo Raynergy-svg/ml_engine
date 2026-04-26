@@ -137,21 +137,125 @@ def test_rollback_marks_record_and_undoes_shadow():
 
 # ---- ConfigAdjuster.revert_by_id ----
 
-def test_revert_by_id_restores_old_values(tmp_path):
-    cfg = SimpleNamespace(min_confidence=0.5)
-    adjuster = ConfigAdjuster(persistence_path=tmp_path / "adj.json")
-    adjuster.collect_adjustment(
-        source="meta_manager_canary:abc123",
-        key="min_confidence",
-        value=0.6,
-        reason="canary deploy",
-        cycle=0,
+def test_canary_routes_through_approver(tmp_path, caplog):
+    """Full-chain integration: _apply_canary must move proposals from
+    pending → approved-history via AdjustmentApprover, so apply_adjustments
+    can read them without raising BypassAttempt (US-508 write-guard).
+    """
+    from src.scanner.automation.adjustment_approver import AdjustmentApprover
+
+    pending = tmp_path / "pending.json"
+    approved = tmp_path / "approved.json"
+    cfg = SimpleNamespace(min_confidence=50.0)
+    adjuster = ConfigAdjuster(
+        persistence_path=approved,
+        pending_path=pending,
     )
-    adjuster.apply_adjustments(cfg, current_cycle=100)
-    assert cfg.min_confidence == 0.6
+    approver = AdjustmentApprover(pending_path=pending, approved_path=approved)
+    deployer = StagedDeployer(
+        config=cfg,
+        config_adjuster=adjuster,
+        adjustment_approver=approver,
+    )
+    pkg = ChangePackage(kind=ChangeKind.CONFIG, deploy_target=DeployStage.CANARY)
+    # Use in-bounds value (validator: min_confidence ∈ [10.0, 100.0])
+    pkg.proposal = Proposal(config_delta={"min_confidence": {"old": 50.0, "new": 60.0}})
+
+    deployer.advance(pkg, current_cycle=100)
+
+    assert pkg.stage == ChangeStage.DEPLOYED_CANARY
+    assert cfg.min_confidence == 60.0
+    # And revert_by_id should pick up the now-recorded history entry
+    reverted = adjuster.revert_by_id(cfg, source_substring=pkg.change_id)
+    assert len(reverted) == 1
+    assert cfg.min_confidence == 50.0
+
+
+def test_canary_redeploy_with_same_change_id_actually_mutates(tmp_path):
+    """Regression: ConfigAdjuster._write_pending_proposal short-circuits on a
+    duplicate (source, key, value) signature. Before the fix, collect_adjustment
+    still returned a fresh proposal_id whose row had never been written, causing
+    AdjustmentApprover.approve() to fail to find it and the canary to silently
+    no-op. Re-deploys (rollback → retry, or any idempotent re-advance) must
+    still mutate config correctly.
+    """
+    from src.scanner.automation.adjustment_approver import AdjustmentApprover
+
+    pending = tmp_path / "pending.json"
+    approved = tmp_path / "approved.json"
+    cfg = SimpleNamespace(min_confidence=50.0)
+    adjuster = ConfigAdjuster(persistence_path=approved, pending_path=pending)
+    approver = AdjustmentApprover(pending_path=pending, approved_path=approved)
+    deployer = StagedDeployer(
+        config=cfg,
+        config_adjuster=adjuster,
+        adjustment_approver=approver,
+    )
+    pkg = ChangePackage(kind=ChangeKind.CONFIG, deploy_target=DeployStage.CANARY)
+    pkg.proposal = Proposal(config_delta={"min_confidence": {"old": 50.0, "new": 60.0}})
+
+    # First deploy lands cleanly.
+    deployer.advance(pkg, current_cycle=100)
+    assert cfg.min_confidence == 60.0
+
+    # Simulate a rollback — revert through the meta path, then redeploy the
+    # SAME package. The (source, key, value) signature collides with the row
+    # already in pending_adjustments.json. Pre-fix: collect_adjustment returns
+    # a phantom id, approve() doesn't find it, apply_adjustments is a no-op.
+    deployer.rollback(pkg, reason="forced_for_redeploy_test")
+    assert cfg.min_confidence == 50.0
+
+    # Reset stage so advance() will re-apply rather than be idempotent-skipped.
+    pkg.deploy_target = DeployStage.CANARY
+    pkg.stage = ChangeStage.APPROVED
+    deployer.advance(pkg, current_cycle=200)
+    assert cfg.min_confidence == 60.0, (
+        "Re-deploy of same change_id failed to mutate config — "
+        "duplicate-suppression in _write_pending_proposal returned a phantom id"
+    )
+
+
+def test_canary_skips_when_approver_missing(tmp_path, caplog):
+    """Without an approver, the meta pipeline cannot move its own proposals
+    past the human-approval gate. _apply_canary must log loudly and bail
+    rather than letting apply_adjustments raise BypassAttempt.
+    """
+    import logging as _logging
+    cfg = SimpleNamespace(min_confidence=50.0)
+    adjuster = ConfigAdjuster(persistence_path=tmp_path / "approved.json")
+    deployer = StagedDeployer(
+        config=cfg,
+        config_adjuster=adjuster,
+        adjustment_approver=None,
+    )
+    pkg = ChangePackage(kind=ChangeKind.CONFIG, deploy_target=DeployStage.CANARY)
+    pkg.proposal = Proposal(config_delta={"min_confidence": {"old": 50.0, "new": 60.0}})
+
+    with caplog.at_level(_logging.ERROR, logger="src.scanner.automation.staged_deployer"):
+        deployer.advance(pkg, current_cycle=100)
+
+    assert any("canary_no_approver" in rec.message for rec in caplog.records)
+    assert cfg.min_confidence == 50.0  # unchanged
+
+
+def test_revert_by_id_restores_old_values(tmp_path):
+    # revert_by_id walks self._history (in-memory list of applied adjustments)
+    # in reverse and restores each entry's old_value. Seed history directly so
+    # the test exercises the revert contract in isolation from the approver
+    # pipeline (collect → AdjustmentApprover.approve → apply_adjustments).
+    cfg = SimpleNamespace(min_confidence=60.0)  # current state after a hypothetical apply
+    adjuster = ConfigAdjuster(persistence_path=tmp_path / "adj.json")
+    adjuster._history.append({
+        "key": "min_confidence",
+        "old_value": 50.0,
+        "new_value": 60.0,
+        "source": "meta_manager_canary:abc123",
+        "reason": "canary deploy",
+        "cycle": 100,
+    })
     reverted = adjuster.revert_by_id(cfg, source_substring="abc123")
     assert len(reverted) == 1
-    assert cfg.min_confidence == 0.5
+    assert cfg.min_confidence == 50.0
 
 
 # ---- PostDeployCritic ----

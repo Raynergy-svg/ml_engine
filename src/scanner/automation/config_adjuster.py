@@ -84,7 +84,7 @@ class ConfigAdjuster:
         value: Any,
         reason: str,
         cycle: int = 0,
-    ) -> None:
+    ) -> Optional[str]:
         """Propose an adjustment from any module.
 
         US-508: validates key against ScannerConfig schema and writes to
@@ -96,6 +96,11 @@ class ConfigAdjuster:
             value: New value to set.
             reason: Human-readable reason for the change.
             cycle: Current scan cycle number.
+
+        Returns:
+            The proposal_id if validation passed (proposal queued), else None.
+            The meta pipeline's StagedDeployer needs the id to auto-approve
+            its own canary proposals via AdjustmentApprover.
         """
         from src.scanner.automation.adjustment_validator import validate_adjustment
 
@@ -116,10 +121,14 @@ class ConfigAdjuster:
             "snooze_until": None,
         }
 
-        self._write_pending_proposal(proposal)
+        # _write_pending_proposal returns the id actually present in the
+        # pending file — either the new one or, if a duplicate (source, key,
+        # value) was already pending, the existing one. The caller needs
+        # whichever id resolves so AdjustmentApprover.approve() can find it.
+        effective_id = self._write_pending_proposal(proposal) or proposal_id
 
         self._emit_event("adjustment.proposed", {
-            "proposal_id": proposal_id,
+            "proposal_id": effective_id,
             "key": key,
             "value": value,
             "source": source,
@@ -131,11 +140,13 @@ class ConfigAdjuster:
                 "ConfigAdjuster: rejected proposal from %s: %s = %s — %s",
                 source, key, value, validation.error_message,
             )
-        else:
-            logger.info(
-                "ConfigAdjuster: proposal %s queued from %s: %s = %s",
-                proposal_id[:8], source, key, value,
-            )
+            return None
+
+        logger.info(
+            "ConfigAdjuster: proposal %s queued from %s: %s = %s",
+            effective_id[:8], source, key, value,
+        )
+        return effective_id
 
     def apply_adjustments(self, config: Any, current_cycle: int = 0) -> List[Dict[str, Any]]:
         """Apply approved adjustments from config_adjustments.json to config.
@@ -337,12 +348,18 @@ class ConfigAdjuster:
             logger.debug("ConfigAdjuster: Failed to load approved history: %s", e)
         return []
 
-    def _write_pending_proposal(self, proposal: Dict[str, Any]) -> None:
+    def _write_pending_proposal(self, proposal: Dict[str, Any]) -> Optional[str]:
         """Atomically append one proposal to pending_adjustments.json.
 
         Identical proposals are idempotent: once a source has suggested the same
         key/value, keep the existing row instead of creating another operator
         approval item every scan cycle.
+
+        Returns the proposal_id of the row now in the pending file — either
+        the freshly-written one or the existing duplicate. The meta pipeline's
+        StagedDeployer needs this id to call AdjustmentApprover.approve(); if
+        we returned None on duplicate, the auto-approval would fail-silently
+        and the canary would appear to deploy without actually mutating config.
         """
         data: Dict[str, Any] = {"proposals": []}
         if self._pending_path.exists():
@@ -355,19 +372,23 @@ class ConfigAdjuster:
         signature = _proposal_signature(proposal)
         for existing in proposals:
             if _proposal_signature(existing) == signature:
+                existing_id = existing.get("id")
                 logger.debug(
-                    "ConfigAdjuster: duplicate proposal suppressed from %s: %s = %s",
+                    "ConfigAdjuster: duplicate proposal suppressed from %s: %s = %s "
+                    "(reusing existing id=%s)",
                     proposal.get("source", "unknown"),
                     proposal.get("key"),
                     proposal.get("proposed_value"),
+                    (existing_id or "")[:8],
                 )
-                return
+                return existing_id
 
         proposals.append(proposal)
         self._pending_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._pending_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
         tmp.rename(self._pending_path)
+        return proposal.get("id")
 
     def _emit_event(self, event_type: str, payload: Dict[str, Any]) -> None:
         try:

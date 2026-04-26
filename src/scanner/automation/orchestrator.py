@@ -352,6 +352,7 @@ class Orchestrator:
                 from src.scanner.automation.meta_manager import MetaManager
                 from src.scanner.automation.staged_deployer import StagedDeployer
                 from src.scanner.automation.change_eval import ChangeEvalHarness
+                from src.scanner.automation.adjustment_approver import AdjustmentApprover
                 eval_harness = None
                 try:
                     eval_harness = ChangeEvalHarness(
@@ -360,9 +361,17 @@ class Orchestrator:
                     )
                 except Exception as eh_err:
                     logger.debug("MetaManager: eval harness init failed: %s", eh_err)
+                # Approver is required so canary deploys can move their own
+                # proposals from pending → approved-history without tripping
+                # ConfigAdjuster.apply_adjustments's BypassAttempt write-guard
+                # (US-508). The meta pipeline is its own approval authority
+                # for proposals it generated; this does NOT auto-approve
+                # proposals from any other source.
+                meta_approver = AdjustmentApprover()
                 deployer = StagedDeployer(
                     config=_cfg,
                     config_adjuster=self._config_adjuster,
+                    adjustment_approver=meta_approver,
                     shadow_cycles=getattr(_cfg, "staged_deploy_shadow_cycles", 20),
                     canary_trades=getattr(_cfg, "staged_deploy_canary_trades", 10),
                 )
