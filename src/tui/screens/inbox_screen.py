@@ -1,13 +1,19 @@
 """
-INBOX SCREEN (F2) — Adjustment Inbox
+INBOX SCREEN (F2) — Unified Inbox (Adjustments + Homework)
 
-Morning operator dashboard: lists pending config proposals before Buddy runs.
-A/R/S/V row actions let the operator approve, reject, snooze, or inspect each.
+Morning operator dashboard. Two-pane layout:
+- LEFT:  unified queue (config adjustment proposals + trade homework entries)
+- RIGHT: live detail markdown that updates on arrow-key navigation
+
+Filter pills cycle the queue between [All] [📚 Homework] [🔧 Adjustments].
+A/R/E/S row actions dispatch by entry_type — homework uses HomeworkReviewer,
+adjustments use the existing AdjustmentApprover path. Phase 96 Task 5.
 """
 from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -17,9 +23,19 @@ from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Input, Label, Static, TabbedContent
+from textual.widgets import (
+    Button,
+    DataTable,
+    Input,
+    Label,
+    Markdown,
+    Static,
+    TabbedContent,
+)
+
+from src.scanner.automation.homework import HomeworkEntry, HomeworkStore
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +45,47 @@ _APPROVED_PATH = _PROJECT_ROOT / ".claude" / "config_adjustments.json"
 
 # Proposals in terminal states are not shown (approved already moved out, rejected is done)
 _ACTIVE_STATUSES = ("pending", "snoozed", "invalid")
+
+
+# ── Unified row adapter ──────────────────────────────────────────────
+
+
+@dataclass
+class UnifiedInboxRow:
+    """Single row in the unified inbox.
+
+    Wraps either a config-adjustment proposal dict or a HomeworkEntry. The
+    `entry_type` discriminator lets the screen dispatch A/R/E/S to the
+    appropriate backend (HomeworkReviewer vs AdjustmentApprover).
+    """
+    entry_type: str  # "homework" | "adjustment"
+    timestamp: str
+    subject: str
+    detail_summary: str  # short summary for the queue column
+    pl: Optional[float]  # for homework only — colors the row
+    raw_entry: Any       # the actual HomeworkEntry or proposal dict
+
+
+def _adjustment_to_row(p: dict) -> UnifiedInboxRow:
+    return UnifiedInboxRow(
+        entry_type="adjustment",
+        timestamp=str(p.get("timestamp", ""))[:19],
+        subject=str(p.get("key", "?")),
+        detail_summary=f"{p.get('current_value', '?')} → {p.get('proposed_value', '?')}",
+        pl=None,
+        raw_entry=p,
+    )
+
+
+def _homework_to_row(e: HomeworkEntry) -> UnifiedInboxRow:
+    return UnifiedInboxRow(
+        entry_type="homework",
+        timestamp=str(e.generated_at)[:19],
+        subject=f"#{e.trade_id} {e.pair} {e.direction}",
+        detail_summary=f"{e.close_reason}  {e.realized_pl:+.2f}",
+        pl=e.realized_pl,
+        raw_entry=e,
+    )
 
 
 # ── Modals ───────────────────────────────────────────────────────────
@@ -277,6 +334,91 @@ class PreviewModal(ModalScreen[None]):
         self.dismiss()
 
 
+class HomeworkEditModal(ModalScreen[Optional[dict]]):
+    """Capture an operator note while editing a homework entry's lesson.
+
+    Returned dict shape: {"note": str, "lesson_override": str}. Returns
+    None on cancel — the reviewer treats no-edit as a no-op.
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel", show=True)]
+
+    DEFAULT_CSS = """
+    HomeworkEditModal {
+        align: center middle;
+    }
+
+    #edit-dialog {
+        width: 76;
+        height: auto;
+        background: #0a0a0f;
+        border: double #00ff41;
+        padding: 1 2;
+    }
+
+    #edit-title {
+        text-align: center;
+        color: #00ff41;
+        text-style: bold;
+        padding: 0 0 1 0;
+    }
+
+    #edit-prompt {
+        color: #ffab00;
+        padding: 0 0 0 0;
+    }
+
+    .edit-input {
+        margin: 1 0 1 0;
+        border: solid #00ff41;
+        background: #131320;
+    }
+
+    #edit-buttons {
+        align: center middle;
+        height: 3;
+    }
+
+    #edit-confirm, #edit-cancel-btn {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, homework_id: str, current_lesson: str = "") -> None:
+        super().__init__()
+        self._homework_id = homework_id
+        self._current_lesson = current_lesson
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="edit-dialog"):
+            yield Label(f"✎ Edit Homework {self._homework_id[:16]}…", id="edit-title")
+            yield Label("Operator note (required):", id="edit-prompt")
+            yield Input(placeholder="why this lesson is wrong/right…", id="edit-note", classes="edit-input")
+            yield Label("Lesson override (optional):", id="edit-prompt")
+            yield Input(
+                placeholder=self._current_lesson[:60] or "(leave empty to keep proposed)",
+                id="edit-lesson",
+                classes="edit-input",
+            )
+            with Horizontal(id="edit-buttons"):
+                yield Button("✓ Save", id="edit-confirm", variant="success")
+                yield Button("← Cancel", id="edit-cancel-btn", variant="default")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "edit-confirm":
+            note = self.query_one("#edit-note", Input).value or ""
+            lesson = self.query_one("#edit-lesson", Input).value or ""
+            if not note.strip():
+                # operator note is required for an edit transition
+                return
+            self.dismiss({"note": note, "lesson_override": lesson})
+        elif event.button.id == "edit-cancel-btn":
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 # ── InboxScreen ──────────────────────────────────────────────────────
 
 
@@ -292,8 +434,10 @@ class InboxScreen(Container):
     BINDINGS = [
         Binding("a", "approve", "Approve", show=True),
         Binding("r", "reject", "Reject", show=True),
+        Binding("e", "edit", "Edit", show=True),
         Binding("s", "snooze", "Snooze 24h", show=True),
         Binding("v", "view_detail", "View Detail", show=True),
+        Binding("tab", "cycle_filter", "Filter", show=True),
     ]
 
     DEFAULT_CSS = """
@@ -318,11 +462,47 @@ class InboxScreen(Container):
         padding: 0 2;
     }
 
-    #inbox-table-panel {
+    #filter-bar {
+        height: 3;
+        align: left middle;
+        padding: 0 1;
+    }
+
+    .filter-pill {
+        margin: 0 1;
+        background: #1a1a2a;
+        color: #6666aa;
+        border: solid #2a2a4a;
+    }
+
+    .filter-pill.active {
+        background: #2a2a4a;
+        color: #ff00ff;
+        text-style: bold;
+        border: solid #ff00ff;
+    }
+
+    #two-pane-row {
+        height: 1fr;
+    }
+
+    #inbox-queue {
+        width: 1fr;
         height: 1fr;
         border: solid #2a2a4a;
         background: #131320;
-        padding: 0 1;
+    }
+
+    #detail-pane {
+        width: 1fr;
+        height: 1fr;
+        border: solid #7c4dff;
+        background: #0a0a0f;
+        padding: 1 2;
+    }
+
+    #detail-pane-md {
+        color: #e0e0ff;
     }
 
     #inbox-actions {
@@ -342,10 +522,6 @@ class InboxScreen(Container):
         text-align: center;
         display: none;
     }
-
-    #inbox-table {
-        height: 1fr;
-    }
     """
 
     def __init__(self, project_root: str = "", **kwargs) -> None:
@@ -353,10 +529,16 @@ class InboxScreen(Container):
         self._project_root = Path(project_root) if project_root else _PROJECT_ROOT
         self._pending_path = self._project_root / ".claude" / "pending_adjustments.json"
         self._approved_path = self._project_root / ".claude" / "config_adjustments.json"
-        # Proposal list (all actionable statuses)
+        # Proposal list (all actionable statuses) — kept for PreviewModal/bulk actions
         self._proposals: list[dict[str, Any]] = []
-        # Map from DataTable row_key → proposal dict
-        self._row_to_proposal: dict[str, dict[str, Any]] = {}
+        # Unified queue: adjustments + homework, currently visible (post-filter)
+        self._current_rows: list[UnifiedInboxRow] = []
+        # Map from DataTable row_key → row
+        self._row_to_row: dict[str, UnifiedInboxRow] = {}
+        # Active filter: "all" | "homework" | "adjustments"
+        self._current_filter: str = "all"
+        # Filter pill IDs in cycle order (for Tab key)
+        self._filter_cycle = ["all", "homework", "adjustments"]
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -364,15 +546,29 @@ class InboxScreen(Container):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="inbox-header"):
-            yield Label("◈ ADJUSTMENT INBOX", id="inbox-title")
-            yield Label("A approve  R reject  S snooze 24h  V detail", id="inbox-subtitle")
-
-        with Vertical(id="inbox-table-panel"):
-            yield DataTable(id="inbox-table", cursor_type="row")
-            yield Static(
-                "No pending adjustments. Buddy is running on current config.",
-                id="inbox-empty",
+            yield Label("◈ UNIFIED INBOX", id="inbox-title")
+            yield Label(
+                "A approve  R reject  E edit  S snooze 24h  V detail  Tab filter",
+                id="inbox-subtitle",
             )
+
+        with Horizontal(id="filter-bar"):
+            yield Button("All", id="filter-all", classes="filter-pill active")
+            yield Button("📚 Homework", id="filter-homework", classes="filter-pill")
+            yield Button("🔧 Adjustments", id="filter-adjustments", classes="filter-pill")
+
+        with Horizontal(id="two-pane-row"):
+            yield DataTable(id="inbox-queue", cursor_type="row")
+            with VerticalScroll(id="detail-pane"):
+                yield Markdown(
+                    "_Select an entry to view detail…_",
+                    id="detail-pane-md",
+                )
+
+        yield Static(
+            "No pending entries. Buddy is running on current config.",
+            id="inbox-empty",
+        )
 
         with Horizontal(id="inbox-actions"):
             yield Button("◈ Preview net config", id="preview-btn", variant="default",
@@ -383,11 +579,8 @@ class InboxScreen(Container):
                          classes="inbox-action-btn")
 
     def on_mount(self) -> None:
-        table = self.query_one("#inbox-table", DataTable)
-        table.add_columns(
-            "Timestamp", "Field", "Current", "Proposed",
-            "Reason", "Source", "Validation", "Status",
-        )
+        table = self.query_one("#inbox-queue", DataTable)
+        table.add_columns("Type", "When", "Subject", "Detail")
         self._load_proposals()
         self.set_interval(5.0, self._load_proposals)
         self._subscribe_events()
@@ -397,11 +590,13 @@ class InboxScreen(Container):
     # ------------------------------------------------------------------
 
     def _load_proposals(self) -> None:
-        """Read pending_adjustments.json and refresh the table."""
+        """Read both adjustment proposals + homework entries, refresh the unified queue."""
         proposals = self._read_proposals()
         self._proposals = proposals
-        self._rebuild_table(proposals)
-        self._update_tab_label(len([p for p in proposals if p.get("status") == "pending"]))
+        rows = self._load_unified_rows()
+        self._current_rows = rows
+        self._rebuild_table(rows)
+        self._update_tab_label(self._count_actionable(proposals, rows))
 
     def _read_proposals(self) -> list[dict[str, Any]]:
         """Load actionable proposals from pending_adjustments.json."""
@@ -415,85 +610,89 @@ class InboxScreen(Container):
             logger.warning("InboxScreen: failed to load proposals: %s", e)
             return []
 
-    def _rebuild_table(self, proposals: list[dict[str, Any]]) -> None:
-        """Repopulate the DataTable from the proposal list."""
-        table = self.query_one("#inbox-table", DataTable)
+    def _load_unified_rows(self) -> list[UnifiedInboxRow]:
+        """Read homework + adjustments, merge sorted by timestamp desc."""
+        rows: list[UnifiedInboxRow] = []
+
+        # Homework — pending only, skip un-expired snoozed entries
+        try:
+            store = HomeworkStore()
+            for e in store.list_pending():
+                status = e.status or "pending"
+                if status.startswith("snoozed_until_") and not self._snooze_expired(status):
+                    continue
+                rows.append(_homework_to_row(e))
+        except Exception as ex:
+            logger.debug("InboxScreen homework read error: %s", ex)
+
+        # Adjustments — reuse already-loaded list
+        for p in self._proposals:
+            rows.append(_adjustment_to_row(p))
+
+        # Apply current filter
+        if self._current_filter == "homework":
+            rows = [r for r in rows if r.entry_type == "homework"]
+        elif self._current_filter == "adjustments":
+            rows = [r for r in rows if r.entry_type == "adjustment"]
+
+        rows.sort(key=lambda r: r.timestamp, reverse=True)
+        return rows
+
+    @staticmethod
+    def _snooze_expired(status: str) -> bool:
+        """Return True if a 'snoozed_until_X' status's timestamp is in the past."""
+        try:
+            ts = status.replace("snoozed_until_", "")
+            until = datetime.fromisoformat(ts)
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) >= until
+        except (ValueError, TypeError):
+            return False
+
+    @staticmethod
+    def _count_actionable(proposals: list[dict[str, Any]], rows: list[UnifiedInboxRow]) -> int:
+        """Tab badge count = pending adjustments + visible homework entries."""
+        adj_pending = len([p for p in proposals if p.get("status") == "pending"])
+        hw_visible = len([r for r in rows if r.entry_type == "homework"])
+        return adj_pending + hw_visible
+
+    def _rebuild_table(self, rows: list[UnifiedInboxRow]) -> None:
+        """Repopulate the DataTable from the unified row list."""
+        table = self.query_one("#inbox-queue", DataTable)
         table.clear()
-        self._row_to_proposal = {}
+        self._row_to_row = {}
 
         try:
             empty_label = self.query_one("#inbox-empty", Static)
-            empty_label.display = not bool(proposals)
-            table.display = bool(proposals)
+            empty_label.display = not bool(rows)
+            table.display = bool(rows)
         except Exception:
             pass
 
-        if not proposals:
+        if not rows:
+            self._render_detail(None)
             return
 
-        # Try to read current ScannerConfig defaults for the "Current" column
-        current_values = self._get_current_config_values()
+        for idx, r in enumerate(rows):
+            type_glyph = "📚 HW" if r.entry_type == "homework" else "🔧 ADJ"
+            ts = r.timestamp.replace("T", " ")[:16]
+            subj = r.subject[:36]
+            detail = r.detail_summary[:40]
 
-        for proposal in proposals:
-            proposal_id = proposal.get("id", "")
-            key = proposal.get("key", "?")
-            proposed_val = proposal.get("proposed_value")
-            status = proposal.get("status", "?")
-            val_dict = proposal.get("validation") or {}
-            is_valid = val_dict.get("valid", False)
-            ts = (proposal.get("timestamp") or "")[:16].replace("T", " ")
-            reason = (proposal.get("reason") or "")[:40]
-            source = proposal.get("source", "?")
-            current_val = current_values.get(key, "?")
-
-            # Validation display
-            if status == "invalid" or not is_valid:
-                val_display = "✗ INVALID"
-            elif status == "snoozed":
-                snooze_until = proposal.get("snooze_until", "")
-                snooze_str = snooze_until[:16].replace("T", " ") if snooze_until else "?"
-                val_display = f"⏸ snoozed → {snooze_str}"
+            # Color homework rows by P/L sign
+            if r.entry_type == "homework" and r.pl is not None:
+                color = "#00ff41" if r.pl >= 0 else "#ff1744"
+                detail_cell: Any = Text(detail, style=color)
             else:
-                val_display = "✓ VALID"
+                detail_cell = detail
 
-            # Status display
-            status_display = status.upper()
+            row_key = f"row-{idx}-{r.entry_type}"
+            table.add_row(type_glyph, ts, subj, detail_cell, key=row_key)
+            self._row_to_row[row_key] = r
 
-            row_key = proposal_id or f"row-{key}"
-            table.add_row(
-                ts,
-                key,
-                str(current_val),
-                str(proposed_val),
-                reason,
-                source,
-                val_display,
-                status_display,
-                key=row_key,
-            )
-            self._row_to_proposal[row_key] = proposal
-
-        # Highlight invalid rows — apply style to validation column
-        self._highlight_invalid_rows(proposals)
-
-    def _highlight_invalid_rows(self, proposals: list[dict[str, Any]]) -> None:
-        """Apply red-text styled cells to invalid rows via Rich Text."""
-        table = self.query_one("#inbox-table", DataTable)
-        for proposal in proposals:
-            val_dict = proposal.get("validation") or {}
-            status = proposal.get("status", "")
-            is_invalid = status == "invalid" or not val_dict.get("valid", False)
-            if not is_invalid:
-                continue
-            proposal_id = proposal.get("id", "")
-            row_key = proposal_id or f"row-{proposal.get('key', '')}"
-            key_col = 1  # "Field" column index
-            try:
-                table.update_cell(row_key, "Field", Text(proposal.get("key", "?"), style="bold #ff1744"))
-                table.update_cell(row_key, "Status", Text("INVALID", style="bold #ff1744"))
-                table.update_cell(row_key, "Validation", Text("✗ INVALID", style="bold #ff1744"))
-            except Exception:
-                pass
+        # Render detail for first row
+        self._render_detail(rows[0])
 
     def _get_current_config_values(self) -> dict[str, Any]:
         """Return {field_name: current_value} from a fresh ScannerConfig instance."""
@@ -506,16 +705,175 @@ class InboxScreen(Container):
             return {}
 
     # ------------------------------------------------------------------
-    # Actions (BINDINGS)
+    # Detail pane rendering
+    # ------------------------------------------------------------------
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """When user navigates with arrow keys, update the detail pane."""
+        try:
+            cursor = event.cursor_row
+        except AttributeError:
+            cursor = getattr(event, "cursor_row", -1)
+        if 0 <= cursor < len(self._current_rows):
+            self._render_detail(self._current_rows[cursor])
+
+    def _render_detail(self, row: Optional[UnifiedInboxRow]) -> None:
+        """Update the right-pane Markdown widget for the focused row."""
+        try:
+            pane = self.query_one("#detail-pane-md", Markdown)
+        except Exception:
+            return
+
+        if row is None:
+            pane.update("_Inbox is empty._")
+            return
+
+        if row.entry_type == "homework":
+            entry: HomeworkEntry = row.raw_entry
+            md = entry.analysis_markdown or self._fallback_homework_md(entry)
+            pane.update(md)
+        else:
+            p = row.raw_entry
+            val = (p.get("validation") or {})
+            valid_glyph = "✓" if val.get("valid") else "✗"
+            md = (
+                "## 🔧 Configuration Adjustment\n\n"
+                f"**Field:** `{p.get('key', '?')}`  \n"
+                f"**Current:** `{p.get('current_value', '—')}`  \n"
+                f"**Proposed:** `{p.get('proposed_value', '?')}`  \n"
+                f"**Source:** {p.get('source', 'unknown')}  \n"
+                f"**Status:** {p.get('status', '?')}  \n"
+                f"**Validation:** {valid_glyph} {val.get('error_message', '')}\n\n"
+                "### Reason\n\n"
+                f"{p.get('reason', '_(no reason)_')}\n\n"
+                "---\n\n"
+                "**Hotkeys:** `A` approve · `R` reject · `S` snooze · `V` detail modal\n"
+            )
+            pane.update(md)
+
+    @staticmethod
+    def _fallback_homework_md(entry: HomeworkEntry) -> str:
+        """Used when analysis_markdown is empty — render a compact summary."""
+        return (
+            f"## 📚 Homework — Trade #{entry.trade_id} {entry.pair} {entry.direction}\n\n"
+            f"**Outcome:** {entry.close_reason}  ({entry.realized_pl:+.2f})  \n"
+            f"**Regime:** {entry.regime} | **R:R:** {entry.rr_ratio:.2f} | "
+            f"**Conf:** {entry.confidence:.2f}\n\n"
+            "### Proposed Lesson\n\n"
+            f"{entry.proposed_lesson or '_(none)_'}\n\n"
+            "**Hotkeys:** `A` approve · `R` reject · `E` edit · `S` snooze\n"
+        )
+
+    # ------------------------------------------------------------------
+    # Actions (BINDINGS) — dispatch by entry_type
     # ------------------------------------------------------------------
 
     def action_approve(self) -> None:
-        """A — approve the focused proposal (only if validation.valid == True)."""
-        proposal = self._focused_proposal()
-        if proposal is None:
-            self.notify("No proposal selected.", severity="warning")
+        """A — approve the focused row (homework or adjustment)."""
+        row = self._focused_row()
+        if row is None:
+            self.notify("No entry selected.", severity="warning")
+            return
+        if row.entry_type == "homework":
+            self._approve_homework(row.raw_entry)
+        else:
+            self._approve_adjustment(row.raw_entry)
+
+    def action_reject(self) -> None:
+        """R — reject the focused row (modal captures reason)."""
+        row = self._focused_row()
+        if row is None:
+            self.notify("No entry selected.", severity="warning")
+            return
+        if row.entry_type == "homework":
+            entry: HomeworkEntry = row.raw_entry
+            label = f"#{entry.trade_id} {entry.pair}"
+
+            def _on_homework_reject(reason: Optional[str]) -> None:
+                if not reason:
+                    return
+                self._reject_homework(entry, reason)
+
+            self.app.push_screen(RejectModal(label), callback=_on_homework_reject)
+        else:
+            proposal = row.raw_entry
+            key = proposal.get("key", "?")
+            self.app.push_screen(RejectModal(key), callback=self._on_reject_result)
+
+    def action_edit(self) -> None:
+        """E — edit operator note + lesson override (homework only)."""
+        row = self._focused_row()
+        if row is None:
+            self.notify("No entry selected.", severity="warning")
+            return
+        if row.entry_type != "homework":
+            self.notify("Edit only applies to homework entries.", severity="warning")
             return
 
+        entry: HomeworkEntry = row.raw_entry
+
+        def _on_edit_result(payload: Optional[dict]) -> None:
+            if not payload:
+                return
+            self._apply_homework_edit(entry, payload)
+
+        self.app.push_screen(
+            HomeworkEditModal(entry.homework_id, entry.proposed_lesson),
+            callback=_on_edit_result,
+        )
+
+    def action_snooze(self) -> None:
+        """S — snooze the focused row for 24 hours."""
+        row = self._focused_row()
+        if row is None:
+            self.notify("No entry selected.", severity="warning")
+            return
+        if row.entry_type == "homework":
+            self._snooze_homework(row.raw_entry)
+        else:
+            self._snooze_adjustment(row.raw_entry)
+
+    def action_view_detail(self) -> None:
+        """V — show full proposal detail in a modal (adjustments only — homework uses pane)."""
+        row = self._focused_row()
+        if row is None:
+            self.notify("No entry selected.", severity="warning")
+            return
+        if row.entry_type == "homework":
+            # Detail pane already shows homework markdown; no separate modal needed
+            self.notify("Homework detail is in the right pane.", severity="information")
+            return
+        self.app.push_screen(DetailModal(row.raw_entry))
+
+    def action_cycle_filter(self) -> None:
+        """Tab — cycle filter pills All → Homework → Adjustments → All."""
+        try:
+            idx = self._filter_cycle.index(self._current_filter)
+        except ValueError:
+            idx = 0
+        self._set_filter(self._filter_cycle[(idx + 1) % len(self._filter_cycle)])
+
+    def _set_filter(self, name: str) -> None:
+        """Switch active filter, refresh pill styling, reload rows."""
+        if name not in self._filter_cycle:
+            return
+        self._current_filter = name
+        for fid in self._filter_cycle:
+            try:
+                btn = self.query_one(f"#filter-{fid}", Button)
+                if fid == name:
+                    btn.add_class("active")
+                else:
+                    btn.remove_class("active")
+            except Exception:
+                pass
+        self._load_proposals()
+
+    # ------------------------------------------------------------------
+    # Adjustment-side helpers
+    # ------------------------------------------------------------------
+
+    def _approve_adjustment(self, proposal: dict[str, Any]) -> None:
         val_dict = proposal.get("validation") or {}
         if not val_dict.get("valid"):
             self.notify(
@@ -523,11 +881,12 @@ class InboxScreen(Container):
                 severity="error",
             )
             return
-
         if proposal.get("status") not in ("pending", "snoozed"):
-            self.notify(f"Proposal is {proposal.get('status')} — cannot approve.", severity="warning")
+            self.notify(
+                f"Proposal is {proposal.get('status')} — cannot approve.",
+                severity="warning",
+            )
             return
-
         proposal_id = proposal.get("id", "")
         try:
             from src.scanner.automation.adjustment_approver import AdjustmentApprover
@@ -545,24 +904,15 @@ class InboxScreen(Container):
                 self.notify("Approval failed — check logs.", severity="error")
         except Exception as e:
             self.notify(f"Approval error: {e}", severity="error")
-            logger.exception("InboxScreen.action_approve failed")
-
-    def action_reject(self) -> None:
-        """R — open reject modal to capture reason, then reject."""
-        proposal = self._focused_proposal()
-        if proposal is None:
-            self.notify("No proposal selected.", severity="warning")
-            return
-
-        key = proposal.get("key", "?")
-        self.app.push_screen(RejectModal(key), callback=self._on_reject_result)
+            logger.exception("InboxScreen._approve_adjustment failed")
 
     def _on_reject_result(self, reason: Optional[str]) -> None:
         if reason is None:
             return
-        proposal = self._focused_proposal()
-        if proposal is None:
+        row = self._focused_row()
+        if row is None or row.entry_type != "adjustment":
             return
+        proposal = row.raw_entry
         proposal_id = proposal.get("id", "")
         try:
             from src.scanner.automation.adjustment_approver import AdjustmentApprover
@@ -578,15 +928,9 @@ class InboxScreen(Container):
                 self.notify("Reject failed — proposal not found.", severity="error")
         except Exception as e:
             self.notify(f"Reject error: {e}", severity="error")
-            logger.exception("InboxScreen.action_reject failed")
+            logger.exception("InboxScreen._on_reject_result failed")
 
-    def action_snooze(self) -> None:
-        """S — snooze the focused proposal for 24 hours."""
-        proposal = self._focused_proposal()
-        if proposal is None:
-            self.notify("No proposal selected.", severity="warning")
-            return
-
+    def _snooze_adjustment(self, proposal: dict[str, Any]) -> None:
         proposal_id = proposal.get("id", "")
         try:
             from src.scanner.automation.adjustment_approver import AdjustmentApprover
@@ -604,23 +948,87 @@ class InboxScreen(Container):
                 self.notify("Snooze failed — proposal not found.", severity="error")
         except Exception as e:
             self.notify(f"Snooze error: {e}", severity="error")
-            logger.exception("InboxScreen.action_snooze failed")
+            logger.exception("InboxScreen._snooze_adjustment failed")
 
-    def action_view_detail(self) -> None:
-        """V — show full proposal detail in a modal."""
-        proposal = self._focused_proposal()
-        if proposal is None:
-            self.notify("No proposal selected.", severity="warning")
-            return
-        self.app.push_screen(DetailModal(proposal))
+    # ------------------------------------------------------------------
+    # Homework-side helpers
+    # ------------------------------------------------------------------
+
+    def _approve_homework(self, entry: HomeworkEntry) -> None:
+        try:
+            from src.scanner.automation.homework.reviewer import HomeworkReviewer
+            signal = HomeworkReviewer(store=HomeworkStore()).approve(entry.homework_id)
+            if signal:
+                self.notify(
+                    f"✓ Approved homework #{entry.trade_id} — {len(signal.agent_weight_deltas)} agent deltas",
+                    severity="information",
+                )
+                self._load_proposals()
+            else:
+                self.notify("Approve failed — entry not found in pending.", severity="error")
+        except Exception as e:
+            self.notify(f"Homework approve error: {e}", severity="error")
+            logger.exception("InboxScreen._approve_homework failed")
+
+    def _reject_homework(self, entry: HomeworkEntry, note: str) -> None:
+        try:
+            from src.scanner.automation.homework.reviewer import HomeworkReviewer
+            signal = HomeworkReviewer(store=HomeworkStore()).reject(entry.homework_id, note=note)
+            if signal:
+                self.notify(f"✗ Rejected homework #{entry.trade_id}", severity="information")
+                self._load_proposals()
+            else:
+                self.notify("Reject failed — entry not found.", severity="error")
+        except Exception as e:
+            self.notify(f"Homework reject error: {e}", severity="error")
+            logger.exception("InboxScreen._reject_homework failed")
+
+    def _apply_homework_edit(self, entry: HomeworkEntry, payload: dict) -> None:
+        try:
+            from src.scanner.automation.homework.reviewer import HomeworkReviewer
+            edits: dict[str, Any] = {"note": payload.get("note", "")}
+            lesson = (payload.get("lesson_override") or "").strip()
+            if lesson:
+                edits["lesson_override"] = lesson
+            signal = HomeworkReviewer(store=HomeworkStore()).edit(
+                entry.homework_id, edits=edits
+            )
+            if signal:
+                self.notify(f"✎ Edited homework #{entry.trade_id}", severity="information")
+                self._load_proposals()
+            else:
+                self.notify("Edit failed — entry not found.", severity="error")
+        except Exception as e:
+            self.notify(f"Homework edit error: {e}", severity="error")
+            logger.exception("InboxScreen._apply_homework_edit failed")
+
+    def _snooze_homework(self, entry: HomeworkEntry) -> None:
+        try:
+            from src.scanner.automation.homework.reviewer import HomeworkReviewer
+            ok = HomeworkReviewer(store=HomeworkStore()).snooze(entry.homework_id, hours=24)
+            if ok:
+                self.notify(f"⏸ Snoozed homework #{entry.trade_id} 24h", severity="information")
+                self._load_proposals()
+            else:
+                self.notify("Snooze failed — entry not found.", severity="error")
+        except Exception as e:
+            self.notify(f"Homework snooze error: {e}", severity="error")
+            logger.exception("InboxScreen._snooze_homework failed")
+
+    # ------------------------------------------------------------------
+    # Buttons
+    # ------------------------------------------------------------------
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "preview-btn":
+        bid = event.button.id
+        if bid == "preview-btn":
             self.app.push_screen(PreviewModal(self._proposals))
-        elif event.button.id == "approve-all-btn":
+        elif bid == "approve-all-btn":
             self.action_approve_all()
-        elif event.button.id == "reject-all-btn":
+        elif bid == "reject-all-btn":
             self.action_reject_all()
+        elif bid in ("filter-all", "filter-homework", "filter-adjustments"):
+            self._set_filter(bid.replace("filter-", ""))
 
     def action_approve_all(self) -> None:
         """Approve every valid pending/snoozed proposal."""
@@ -709,24 +1117,26 @@ class InboxScreen(Container):
         except Exception:
             pass  # Event bus unavailable — 5s polling interval is the fallback
 
-    def _focused_proposal(self) -> Optional[dict[str, Any]]:
-        """Return the proposal dict for the currently highlighted DataTable row."""
-        table = self.query_one("#inbox-table", DataTable)
+    def _focused_row(self) -> Optional[UnifiedInboxRow]:
+        """Return the UnifiedInboxRow for the currently highlighted DataTable row."""
+        try:
+            table = self.query_one("#inbox-queue", DataTable)
+        except Exception:
+            return None
         if table.row_count == 0:
             return None
         try:
-            row_keys = list(table.rows.keys())
             cursor = table.cursor_row
+            if 0 <= cursor < len(self._current_rows):
+                return self._current_rows[cursor]
+            # Fallback: row_keys lookup if cursor is out of sync
+            row_keys = list(table.rows.keys())
             if cursor >= len(row_keys):
                 return None
             rk = str(row_keys[cursor].value)
-            return self._row_to_proposal.get(rk)
+            return self._row_to_row.get(rk)
         except Exception:
             return None
-
-    def _render_empty_state(self) -> None:
-        """Called when no proposals exist — render empty message."""
-        pass  # Handled by DataTable being empty; caller checks row_count
 
     def update_from_snapshot(self, snap: Any) -> None:
         """Called by app.py on every data refresh — re-checks proposal count."""
