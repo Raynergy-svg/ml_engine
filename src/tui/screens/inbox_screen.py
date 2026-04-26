@@ -35,7 +35,11 @@ from textual.widgets import (
     TabbedContent,
 )
 
+from src.scanner.automation.adjustment_approver import AdjustmentApprover
+from src.scanner.automation.event_bus import get_event_bus
 from src.scanner.automation.homework import HomeworkEntry, HomeworkStore
+from src.scanner.automation.homework.reviewer import HomeworkReviewer
+from src.scanner.config import ScannerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -299,9 +303,8 @@ class PreviewModal(ModalScreen[None]):
     def _build_diff(self) -> list[str]:
         """Compute what ScannerConfig would look like if all pending valid proposals applied."""
         try:
-            from src.scanner.config import ScannerConfig
             cfg = ScannerConfig()
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             return [f"  [Cannot load ScannerConfig: {e}]"]
 
         valid_pending = [
@@ -696,12 +699,12 @@ class InboxScreen(Container):
 
     def _get_current_config_values(self) -> dict[str, Any]:
         """Return {field_name: current_value} from a fresh ScannerConfig instance."""
+        import dataclasses
         try:
-            from src.scanner.config import ScannerConfig
             cfg = ScannerConfig()
-            import dataclasses
             return {f.name: getattr(cfg, f.name) for f in dataclasses.fields(cfg)}
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            logger.warning("InboxScreen._get_current_config_values failed: %s", exc)
             return {}
 
     # ------------------------------------------------------------------
@@ -889,7 +892,6 @@ class InboxScreen(Container):
             return
         proposal_id = proposal.get("id", "")
         try:
-            from src.scanner.automation.adjustment_approver import AdjustmentApprover
             approver = AdjustmentApprover(
                 pending_path=self._pending_path,
                 approved_path=self._approved_path,
@@ -915,7 +917,6 @@ class InboxScreen(Container):
         proposal = row.raw_entry
         proposal_id = proposal.get("id", "")
         try:
-            from src.scanner.automation.adjustment_approver import AdjustmentApprover
             approver = AdjustmentApprover(
                 pending_path=self._pending_path,
                 approved_path=self._approved_path,
@@ -933,7 +934,6 @@ class InboxScreen(Container):
     def _snooze_adjustment(self, proposal: dict[str, Any]) -> None:
         proposal_id = proposal.get("id", "")
         try:
-            from src.scanner.automation.adjustment_approver import AdjustmentApprover
             approver = AdjustmentApprover(
                 pending_path=self._pending_path,
                 approved_path=self._approved_path,
@@ -956,7 +956,6 @@ class InboxScreen(Container):
 
     def _approve_homework(self, entry: HomeworkEntry) -> None:
         try:
-            from src.scanner.automation.homework.reviewer import HomeworkReviewer
             signal = HomeworkReviewer(store=HomeworkStore()).approve(entry.homework_id)
             if signal:
                 self.notify(
@@ -972,7 +971,6 @@ class InboxScreen(Container):
 
     def _reject_homework(self, entry: HomeworkEntry, note: str) -> None:
         try:
-            from src.scanner.automation.homework.reviewer import HomeworkReviewer
             signal = HomeworkReviewer(store=HomeworkStore()).reject(entry.homework_id, note=note)
             if signal:
                 self.notify(f"✗ Rejected homework #{entry.trade_id}", severity="information")
@@ -985,7 +983,6 @@ class InboxScreen(Container):
 
     def _apply_homework_edit(self, entry: HomeworkEntry, payload: dict) -> None:
         try:
-            from src.scanner.automation.homework.reviewer import HomeworkReviewer
             edits: dict[str, Any] = {"note": payload.get("note", "")}
             lesson = (payload.get("lesson_override") or "").strip()
             if lesson:
@@ -1004,7 +1001,6 @@ class InboxScreen(Container):
 
     def _snooze_homework(self, entry: HomeworkEntry) -> None:
         try:
-            from src.scanner.automation.homework.reviewer import HomeworkReviewer
             ok = HomeworkReviewer(store=HomeworkStore()).snooze(entry.homework_id, hours=24)
             if ok:
                 self.notify(f"⏸ Snoozed homework #{entry.trade_id} 24h", severity="information")
@@ -1040,7 +1036,6 @@ class InboxScreen(Container):
 
         # Homework: iterate visible rows in current filtered queue
         try:
-            from src.scanner.automation.homework.reviewer import HomeworkReviewer
             reviewer = HomeworkReviewer(store=HomeworkStore())
             hw_rows = [r for r in self._current_rows if r.entry_type == "homework"]
             for row in hw_rows:
@@ -1060,7 +1055,6 @@ class InboxScreen(Container):
 
         # Adjustments: keep existing AdjustmentApprover.approve_all() behavior
         try:
-            from src.scanner.automation.adjustment_approver import AdjustmentApprover
             approver = AdjustmentApprover(
                 pending_path=self._pending_path,
                 approved_path=self._approved_path,
@@ -1091,7 +1085,6 @@ class InboxScreen(Container):
 
         # Homework: iterate visible rows; reject() requires a non-empty note
         try:
-            from src.scanner.automation.homework.reviewer import HomeworkReviewer
             reviewer = HomeworkReviewer(store=HomeworkStore())
             hw_rows = [r for r in self._current_rows if r.entry_type == "homework"]
             for row in hw_rows:
@@ -1111,7 +1104,6 @@ class InboxScreen(Container):
 
         # Adjustments: keep existing AdjustmentApprover.reject_all() behavior
         try:
-            from src.scanner.automation.adjustment_approver import AdjustmentApprover
             approver = AdjustmentApprover(
                 pending_path=self._pending_path,
                 approved_path=self._approved_path,
@@ -1163,7 +1155,6 @@ class InboxScreen(Container):
     async def _watch_adjustment_events(self) -> None:
         """Async worker: subscribe to EventBus and reload proposals on adjustment.* events."""
         try:
-            from src.scanner.automation.event_bus import get_event_bus
             bus = get_event_bus()
             async for event in bus.subscribe():
                 if event.get("event_type", "").startswith("adjustment."):
