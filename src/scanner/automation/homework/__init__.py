@@ -12,6 +12,7 @@ See docs/superpowers/specs/2026-04-25-trade-homework-system-design.md.
 
 from src.scanner.automation.homework.generator import HomeworkGenerator
 from src.scanner.automation.homework.heuristics import HEURISTIC_CATALOG
+from src.scanner.automation.homework.journal_adapter import normalize_trade
 from src.scanner.automation.homework.reviewer import HomeworkReviewer
 from src.scanner.automation.homework.store import HomeworkStore
 from src.scanner.automation.homework.types import (
@@ -28,4 +29,5 @@ __all__ = [
     "HomeworkGenerator",
     "HomeworkReviewer",
     "HEURISTIC_CATALOG",
+    "normalize_trade",
 ]
