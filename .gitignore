@@ -93,8 +93,11 @@ trained_data/cache/
 trained_data/*.tmp
 trained_data/*.lock
 trained_data/**/*.lock
+trained_data/*.bak
+trained_data/**/*.bak
 trained_data/backups/
 trained_data/backtest_results/
+trained_data/background_activity.json
 trained_data/observations.*.jsonl
 market_data/*.csv
 
