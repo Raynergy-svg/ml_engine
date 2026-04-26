@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from src.scanner.automation.homework.applicator import TrainingSignalApplicator
 from src.scanner.automation.homework.generator import HomeworkGenerator
 from src.scanner.automation.homework.reviewer import HomeworkReviewer
 from src.scanner.automation.homework.store import HomeworkStore
@@ -29,6 +30,22 @@ def isolated_paths(tmp_path: Path):
         "rejected": tmp_path / "rejected_heuristics_log.jsonl",
         "weights": tmp_path / "agent_weights.json",
     }
+
+
+@pytest.fixture(autouse=True)
+def isolate_default_weights(tmp_path: Path, monkeypatch) -> Path:
+    """Redirect TrainingSignalApplicator's default weights path so integration
+    tests that build HomeworkReviewer without an explicit applicator can't
+    mutate production agent_weights.json."""
+    weights_file = tmp_path / "default_isolated_agent_weights.json"
+    weights_file.write_text(json.dumps({
+        "NORMAL": {"trend": 1.0, "mean_reversion": 0.9},
+    }))
+    monkeypatch.setattr(
+        "src.scanner.automation.homework.applicator.DEFAULT_WEIGHTS_PATH",
+        weights_file,
+    )
+    return weights_file
 
 
 def test_full_flow_approve_emits_signal_and_moves_to_history(isolated_paths) -> None:
@@ -124,3 +141,64 @@ def test_full_flow_reject_with_note(isolated_paths) -> None:
     assert isolated_paths["rejected"].exists()
     log_text = isolated_paths["rejected"].read_text()
     assert entry.homework_id in log_text
+
+
+def test_approve_actually_updates_agent_weights(isolated_paths) -> None:
+    """Phase 96.5 close-the-loop: signals must affect on-disk weights, not just be returned.
+
+    Before this fix, HomeworkReviewer.approve() returned a TrainingSignal with deltas
+    that nothing consumed. agent_weights.json sat untouched. This test fails on v1
+    and passes once TrainingSignalApplicator is wired in.
+    """
+    # Seed weights file with current production-shape data
+    weights_file = isolated_paths["weights"]
+    weights_file.write_text(json.dumps({
+        "NORMAL": {"trend": 1.0, "mean_reversion": 0.9, "uncertainty": 1.1},
+        "HIGH": {"trend": 1.15, "mean_reversion": 0.9},
+    }))
+
+    applicator = TrainingSignalApplicator(weights_path=weights_file)
+    store = HomeworkStore(
+        pending_path=isolated_paths["pending"],
+        history_path=isolated_paths["history"],
+    )
+    reviewer = HomeworkReviewer(
+        store=store,
+        rejected_log_path=isolated_paths["rejected"],
+        applicator=applicator,
+    )
+    gen = HomeworkGenerator()
+
+    # SL outcome where trend voted NO (correctly skeptical → reinforce)
+    # and mean_reversion voted YES (was wrong → penalize)
+    trade = {
+        "trade_id": "1220", "pair": "EUR_AUD", "direction": "SHORT",
+        "entry_price": 1.6543, "sl_price": 1.6580, "tp_price": 1.6470,
+        "sl_pips": 37.0, "tp_pips": 73.0, "rr_ratio": 1.97,
+        "confidence": 0.68, "weighted_vote_score": 0.76, "regime": "NORMAL",
+        "agents": [
+            {"name": "trend", "passed": False, "score": 0.45, "weight": 1.15},
+            {"name": "mean_reversion", "passed": True, "score": 0.55, "weight": 0.90},
+        ],
+        "gate_details": {"adx": 1.0, "rsi": 48.0, "atr_pips": 12.3,
+                         "model_disagreement": 0.20, "disagreement_hard_floor": 0.50},
+    }
+    outcome = {
+        "close_time": "2026-04-15T02:46:03Z", "close_price": 1.6580,
+        "realized_pl": -354.56, "close_reason": "SL",
+        "duration_minutes": 32, "mfe_pips": 4.0, "mae_pips": 39.0,
+    }
+    entry = gen.generate(trade, outcome)
+    store.add(entry)
+
+    # Approve — applicator should run inline
+    signal = reviewer.approve(entry.homework_id)
+    assert signal is not None
+    assert signal.regime == "NORMAL"
+
+    # NOW agent_weights.json should reflect the change
+    after = json.loads(weights_file.read_text())
+    assert after["NORMAL"]["trend"] > 1.0, "trend should have been reinforced (was correctly skeptical)"
+    assert after["NORMAL"]["mean_reversion"] < 0.9, "mean_reversion should have been penalized"
+    # Other regime untouched
+    assert after["HIGH"]["trend"] == 1.15

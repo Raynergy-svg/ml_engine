@@ -10,6 +10,7 @@ Public API:
 See docs/superpowers/specs/2026-04-25-trade-homework-system-design.md.
 """
 
+from src.scanner.automation.homework.applicator import TrainingSignalApplicator
 from src.scanner.automation.homework.generator import HomeworkGenerator
 from src.scanner.automation.homework.heuristics import HEURISTIC_CATALOG
 from src.scanner.automation.homework.journal_adapter import normalize_trade
@@ -28,6 +29,7 @@ __all__ = [
     "HomeworkStore",
     "HomeworkGenerator",
     "HomeworkReviewer",
+    "TrainingSignalApplicator",
     "HEURISTIC_CATALOG",
     "normalize_trade",
 ]

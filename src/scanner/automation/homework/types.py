@@ -95,3 +95,4 @@ class TrainingSignal:
     heuristic_fired: Optional[str]
     operator_action: str  # approved | edited | rejected
     operator_note: Optional[str] = None
+    regime: str = "UNKNOWN"  # which regime row in agent_weights.json the deltas target

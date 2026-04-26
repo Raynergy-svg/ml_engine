@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.scanner.automation.homework.applicator import TrainingSignalApplicator
 from src.scanner.automation.homework.store import (
     DEFAULT_PENDING_PATH,
     HomeworkStore,
@@ -47,9 +48,11 @@ class HomeworkReviewer:
         self,
         store: HomeworkStore,
         rejected_log_path: Optional[Path] = None,
+        applicator: Optional[TrainingSignalApplicator] = None,
     ) -> None:
         self.store = store
         self.rejected_log_path = rejected_log_path or DEFAULT_REJECTED_LOG_PATH
+        self._applicator = applicator if applicator is not None else TrainingSignalApplicator()
 
     # ---------------- public API ----------------
 
@@ -62,6 +65,7 @@ class HomeworkReviewer:
         moved = self.store.move_to_history(homework_id, grade="approved", note=None, edits=None)
         if not moved:
             return None
+        self._safe_apply(signal, homework_id)
         return signal
 
     def reject(self, homework_id: str, note: str) -> Optional[TrainingSignal]:
@@ -115,6 +119,7 @@ class HomeworkReviewer:
         )
         if not moved:
             return None
+        self._safe_apply(signal, homework_id)
         return signal
 
     def snooze(self, homework_id: str, hours: float = 24.0) -> bool:
@@ -165,7 +170,25 @@ class HomeworkReviewer:
             heuristic_fired=None,  # the generator doesn't currently surface this; future work
             operator_action=action,
             operator_note=note,
+            regime=entry.regime,
         )
+
+    def _safe_apply(self, signal: TrainingSignal, homework_id: str) -> None:
+        """Apply the signal to agent_weights.json. Failures are logged, not raised.
+
+        We've already moved the homework to history at this point. If the apply
+        fails (corrupt weights file, disk full, etc.) we log the exception so
+        ops can investigate, but the operator's decision is already durable.
+        Skip applying when there are no deltas (rejected signals).
+        """
+        if not signal.agent_weight_deltas and not signal.regime_prior_deltas:
+            return
+        try:
+            self._applicator.apply(signal)
+        except (OSError, ValueError, KeyError) as e:
+            logger.exception(
+                "HomeworkReviewer: applicator failed for %s: %s", homework_id, e
+            )
 
     def _log_rejected_heuristic(self, entry: HomeworkEntry, note: str) -> None:
         """Append rejected-heuristic event to log for future catalog tuning."""

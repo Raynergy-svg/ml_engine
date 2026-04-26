@@ -7,6 +7,7 @@ from typing import List
 
 import pytest
 
+from src.scanner.automation.homework.applicator import TrainingSignalApplicator
 from src.scanner.automation.homework.generator import HomeworkGenerator
 from src.scanner.automation.homework.reviewer import HomeworkReviewer
 from src.scanner.automation.homework.store import HomeworkStore
@@ -20,6 +21,22 @@ def store(tmp_path: Path) -> HomeworkStore:
         history_path=tmp_path / "homework_history.jsonl",
         quarantine_path=tmp_path / "quarantine.jsonl",
     )
+
+
+@pytest.fixture(autouse=True)
+def isolate_weights(tmp_path: Path, monkeypatch) -> Path:
+    """Redirect TrainingSignalApplicator's default weights path into tmp_path so
+    HomeworkReviewer(store=store) (no explicit applicator) cannot mutate production
+    agent_weights.json during reviewer unit tests."""
+    weights_file = tmp_path / "agent_weights.json"
+    weights_file.write_text(json.dumps({
+        "NORMAL": {"trend": 1.0, "mean_reversion": 0.9},
+    }))
+    monkeypatch.setattr(
+        "src.scanner.automation.homework.applicator.DEFAULT_WEIGHTS_PATH",
+        weights_file,
+    )
+    return weights_file
 
 
 @pytest.fixture
