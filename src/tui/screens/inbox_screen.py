@@ -24,6 +24,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -703,8 +704,8 @@ class InboxScreen(Container):
             empty_label = self.query_one("#inbox-empty", Static)
             empty_label.display = not bool(rows)
             table.display = bool(rows)
-        except Exception:
-            pass
+        except NoMatches:
+            logger.debug("InboxScreen._rebuild_table: #inbox-empty not mounted yet")
 
         if not rows:
             self._render_detail(None)
@@ -757,7 +758,8 @@ class InboxScreen(Container):
         """Update the right-pane Markdown widget for the focused row."""
         try:
             pane = self.query_one("#detail-pane-md", Markdown)
-        except Exception:
+        except NoMatches:
+            logger.debug("InboxScreen._render_detail: #detail-pane-md not mounted")
             return
 
         if row is None:
@@ -901,8 +903,8 @@ class InboxScreen(Container):
                     btn.add_class("active")
                 else:
                     btn.remove_class("active")
-            except Exception:
-                pass
+            except NoMatches:
+                logger.debug("InboxScreen filter pill #filter-%s not mounted", fid)
         self._load_proposals()
 
     # ------------------------------------------------------------------
@@ -1169,8 +1171,8 @@ class InboxScreen(Container):
                 tab.label = f"◈ Inbox ({pending_count})"
             else:
                 tab.label = "◈ Inbox"
-        except Exception:
-            pass
+        except NoMatches:
+            logger.debug("InboxScreen._update_tab_label: #main-tabs/inbox tab not mounted")
 
     # ------------------------------------------------------------------
     # Event bus subscription (auto-refresh on adjustment.* events)
@@ -1192,14 +1194,16 @@ class InboxScreen(Container):
             async for event in bus.subscribe():
                 if event.get("event_type", "").startswith("adjustment."):
                     self.call_later(self._load_proposals)
-        except Exception:
-            pass  # Event bus unavailable — 5s polling interval is the fallback
+        except (RuntimeError, AttributeError, OSError) as e:
+            # Event bus unavailable — 5s polling interval is the fallback
+            logger.debug("InboxScreen event bus subscribe failed (using poll fallback): %s", e)
 
     def _focused_row(self) -> Optional[UnifiedInboxRow]:
         """Return the UnifiedInboxRow for the currently highlighted DataTable row."""
         try:
             table = self.query_one("#inbox-queue", DataTable)
-        except Exception:
+        except NoMatches:
+            logger.debug("InboxScreen._focused_row: #inbox-queue not mounted")
             return None
         if table.row_count == 0:
             return None
@@ -1213,7 +1217,8 @@ class InboxScreen(Container):
                 return None
             rk = str(row_keys[cursor].value)
             return self._row_to_row.get(rk)
-        except Exception:
+        except (IndexError, AttributeError, KeyError) as e:
+            logger.debug("InboxScreen._focused_row cursor lookup failed: %s", e)
             return None
 
     def update_from_snapshot(self, snap: Any) -> None:
