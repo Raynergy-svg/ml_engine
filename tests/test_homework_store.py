@@ -114,3 +114,53 @@ class TestHomeworkStoreMoveToHistory:
         )
         moved = store.move_to_history("nonexistent", grade="approved", note=None, edits=None)
         assert moved is False
+
+
+class TestHomeworkStoreCrashRecovery:
+    """Simulate the crash window between history-append and pending-rewrite."""
+
+    def test_list_pending_dedupes_against_history(self, tmp_path: Path) -> None:
+        """If an id is in BOTH pending and history (crash mid-move), list_pending hides it."""
+        store = HomeworkStore(
+            pending_path=tmp_path / "homework_pending.jsonl",
+            history_path=tmp_path / "homework_history.jsonl",
+        )
+        # Simulate the crash state: same entry in both files
+        store.add(_make_entry(trade_id="1220"))
+        # Manually append a history copy to simulate post-history-pre-rewrite crash
+        import dataclasses
+        entry = _make_entry(trade_id="1220")
+        store._append_locked(store.history_path, dataclasses.asdict(entry))
+
+        # Crash-recovery contract: list_pending no longer returns the duplicate
+        pending = store.list_pending()
+        assert pending == [], "list_pending must filter out ids already in history"
+
+    def test_move_to_history_retry_after_crash_is_idempotent(self, tmp_path: Path) -> None:
+        """Calling move_to_history a second time after a partial crash converges."""
+        store = HomeworkStore(
+            pending_path=tmp_path / "homework_pending.jsonl",
+            history_path=tmp_path / "homework_history.jsonl",
+        )
+        store.add(_make_entry(trade_id="1220"))
+
+        # Simulate crash state: history has the entry but pending was not rewritten
+        import dataclasses
+        graded = dataclasses.replace(
+            _make_entry(trade_id="1220"),
+            status="approved",
+            operator_grade="approved",
+            reviewed_at="2026-04-26T01:00:00Z",
+        )
+        store._append_locked(store.history_path, dataclasses.asdict(graded))
+
+        # Retry: the second move should NOT double-append to history,
+        # but SHOULD finish the rewrite-pending step.
+        moved = store.move_to_history("hw-1220", grade="approved", note=None, edits=None)
+        assert moved is True
+
+        history = store.list_history()
+        assert len(history) == 1, "history must not double-count after recovery retry"
+        # Pending file is now clean
+        # (use raw read to bypass dedupe filter — file should be empty)
+        assert store._read_jsonl(store.pending_path) == []

@@ -51,12 +51,25 @@ class HomeworkStore:
     # ---------------- public API ----------------
 
     def add(self, entry: HomeworkEntry) -> None:
-        """Append entry to pending.jsonl atomically."""
-        self._append_atomic(self.pending_path, dataclasses.asdict(entry))
+        """Append entry to pending.jsonl with file lock + fsync."""
+        self._append_locked(self.pending_path, dataclasses.asdict(entry))
 
     def list_pending(self) -> List[HomeworkEntry]:
-        """Read all pending entries. Corrupt lines are quarantined."""
-        return self._read_jsonl(self.pending_path)
+        """Read all pending entries. Corrupt lines are quarantined.
+
+        Idempotency note: any entry whose homework_id is already present in
+        history is filtered out. This closes the crash window in
+        move_to_history (history append succeeded, pending rewrite did not):
+        the next list_pending call simply doesn't see the duplicate, and a
+        retry of move_to_history will skip the history append (already in
+        history) and proceed to rewrite pending. End state matches the
+        no-crash path.
+        """
+        raw = self._read_jsonl(self.pending_path)
+        history_ids = self._history_id_set()
+        if not history_ids:
+            return raw
+        return [e for e in raw if e.homework_id not in history_ids]
 
     def list_history(self) -> List[HomeworkEntry]:
         """Read all graded entries from history."""
@@ -73,10 +86,18 @@ class HomeworkStore:
 
         Returns True on success, False if homework_id not found.
 
-        Atomicity: rewrites pending file without the moved entry, appends to
-        history. If history append fails, pending is restored.
+        Atomicity: history append happens first (durable), then pending is
+        rewritten without the moved entry. If we crash between those two
+        steps the entry is briefly in both files, but list_pending filters
+        out any id already in history, so the system stays consistent and
+        a retry is safe. The history append itself is idempotent — if the
+        entry is already in history we skip the append and only do the
+        pending rewrite.
         """
-        pending = self.list_pending()
+        # Use the raw pending file (not the dedupe-filtered list_pending)
+        # because we may be recovering from a crash where the entry is
+        # both in pending and in history.
+        pending = self._read_jsonl(self.pending_path)
         target_idx = next(
             (i for i, e in enumerate(pending) if e.homework_id == homework_id),
             None,
@@ -88,16 +109,24 @@ class HomeworkStore:
         target = pending.pop(target_idx)
         graded = dataclasses.replace(
             target,
-            status=grade if grade != "approved" else "approved",
+            status=grade,
             operator_grade=grade,
             operator_note=note,
             operator_edits=edits,
             reviewed_at=datetime.now(timezone.utc).isoformat(),
         )
 
-        # Append graded to history first (durable)
-        self._append_atomic(self.history_path, dataclasses.asdict(graded))
-        # Then rewrite pending without the moved entry (also atomic)
+        # Idempotent history append: skip if already there (crash-recovery path).
+        if homework_id not in self._history_id_set():
+            self._append_locked(self.history_path, dataclasses.asdict(graded))
+        else:
+            logger.info(
+                "HomeworkStore.move_to_history: %s already in history; "
+                "skipping append (recovery from prior crash)",
+                homework_id,
+            )
+
+        # Then rewrite pending without the moved entry (atomic via tmp+rename).
         self._rewrite_atomic(
             self.pending_path,
             [dataclasses.asdict(e) for e in pending],
@@ -113,14 +142,23 @@ class HomeworkStore:
         payloads = [dataclasses.asdict(e) for e in entries]
         self._rewrite_atomic(self.pending_path, payloads)
 
+    def _history_id_set(self) -> set:
+        """Set of homework_ids currently in history. Used for dedupe."""
+        return {e.homework_id for e in self._read_jsonl(self.history_path)}
+
     # ---------------- internals ----------------
 
-    def _append_atomic(self, path: Path, payload: dict) -> None:
-        """Atomic JSONL append: write to .tmp, fsync, append-rename to target."""
+    def _append_locked(self, path: Path, payload: dict) -> None:
+        """JSONL append protected by exclusive file lock + fsync.
+
+        Not "atomic" in the rename-replace sense (that would clobber prior
+        lines for an append). The durability guarantee here is: under
+        concurrent writers, lines do not interleave (flock), and a written
+        line survives a crash (fsync). Append-only files are inherently
+        crash-safe at line granularity.
+        """
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(payload, sort_keys=True, default=str) + "\n"
-        # JSONL append is the rare case where atomicity = open in "a" mode + fsync
-        # because rename-replace would lose previous lines. Use file lock.
         with open(path, "a", encoding="utf-8") as fh:
             try:
                 fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
@@ -182,5 +220,5 @@ class HomeworkStore:
                 "HomeworkStore: quarantined corrupt line %d in %s: %s",
                 line_no, source, reason,
             )
-        except Exception as e:
+        except OSError as e:
             logger.exception("HomeworkStore._quarantine failed: %s", e)

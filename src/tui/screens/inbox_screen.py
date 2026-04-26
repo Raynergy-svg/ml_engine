@@ -153,7 +153,7 @@ class RejectModal(ModalScreen[Optional[str]]):
         with Vertical(id="reject-dialog"):
             yield Label(f"✗ Reject '{self._proposal_key}'", id="reject-title")
             yield Label("Reason for rejection:", id="reject-prompt")
-            yield Input(placeholder="e.g. bounds too aggressive", id="reject-input")
+            yield Input(placeholder="e.g. bounds too aggressive", id="reject-input", max_length=256)
             with Horizontal(id="reject-buttons"):
                 yield Button("✕ Reject", id="reject-confirm", variant="error")
                 yield Button("← Back", id="reject-cancel-btn", variant="default")
