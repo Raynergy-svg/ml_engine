@@ -289,3 +289,244 @@ def suppress_logging(level: int = logging.WARNING):
         yield
     finally:
         root.setLevel(prev)
+
+
+# ---------------------------------------------------------------------------
+# CLI: subcommand dispatcher (Phase 96 — homework subcommand bootstrap).
+#
+# `buddy_scanner.py` historically functioned only as a library shim. The
+# homework subsystem (Phase 96) needs a small operator-facing CLI so we can
+# bootstrap the inbox from the existing trade journal without dragging in the
+# full main.py argparse tree. We register only the homework subcommand here;
+# all other CLI flows continue to live in main.py.
+# ---------------------------------------------------------------------------
+
+
+def _normalize_trade(trade: dict) -> tuple[dict, dict] | None:
+    """Return a (trade, outcome) pair in the shape the HomeworkGenerator expects.
+
+    Two journal shapes exist in the wild:
+
+    1. **Nested-shape** (test fixtures, future schema): `outcome` is a dict
+       with keys like `close_reason`, `close_time`, `realized_pl`, …; `agents`
+       is a list of `{name, passed, score, weight, …}` dicts.
+
+    2. **Flat-shape** (legacy production journal at trained_data/...): `outcome`
+       is a string ("win"/"loss"); `close_reason`, `close_time`, `realized_pl`
+       are promoted to the trade's top level; `agents` is a dict containing
+       `agent_reasons` (the actual list of per-agent verdicts).
+
+    Returns None if the trade is not closed (no `close_reason`).
+    """
+    if not isinstance(trade, dict):
+        return None
+
+    outcome_raw = trade.get("outcome")
+
+    # Shape 1: nested outcome dict.
+    if isinstance(outcome_raw, dict):
+        if not outcome_raw.get("close_reason"):
+            return None
+        return trade, outcome_raw
+
+    # Shape 2: flat journal — synthesize nested outcome and re-shape agents.
+    close_reason = trade.get("close_reason")
+    if not close_reason:
+        return None
+
+    outcome = {
+        "close_time": trade.get("close_time", ""),
+        "close_price": float(trade.get("close_price", trade.get("fill_price", 0.0)) or 0.0),
+        "realized_pl": float(trade.get("realized_pl", 0.0) or 0.0),
+        "close_reason": close_reason,
+        "duration_minutes": int(trade.get("duration_minutes", 0) or 0),
+        "mfe_pips": float(trade.get("mfe_pips", 0.0) or 0.0),
+        "mae_pips": float(trade.get("mae_pips", 0.0) or 0.0),
+    }
+
+    # Build a shallow-copied trade with `agents` reshaped to list-of-dicts and
+    # weighted_vote_score promoted to top-level (the generator reads it from
+    # the trade record, not from the agents block).
+    agents_raw = trade.get("agents")
+    agents_list: list[dict] = []
+    weighted_vote_score = float(trade.get("weighted_vote_score", 0.0) or 0.0)
+    if isinstance(agents_raw, dict):
+        agents_list = list(agents_raw.get("agent_reasons", []) or [])
+        if "weighted_vote_score" in agents_raw:
+            weighted_vote_score = float(agents_raw.get("weighted_vote_score") or 0.0)
+    elif isinstance(agents_raw, list):
+        agents_list = agents_raw
+
+    # Regime field in the production journal is a dict; the generator stores
+    # it as a string. Reduce to volatility_regime label.
+    regime_raw = trade.get("regime")
+    if isinstance(regime_raw, dict):
+        regime_label = str(regime_raw.get("volatility_regime", "UNKNOWN"))
+    else:
+        regime_label = str(regime_raw or "UNKNOWN")
+
+    normalized_trade = dict(trade)
+    normalized_trade["agents"] = agents_list
+    normalized_trade["weighted_vote_score"] = weighted_vote_score
+    normalized_trade["regime"] = regime_label
+
+    return normalized_trade, outcome
+
+
+def _cmd_homework(args) -> int:
+    """Handle the 'homework' subcommand."""
+    import json
+    import os
+    import sys
+    from datetime import datetime
+    from pathlib import Path
+
+    from src.scanner.automation.homework import (
+        HomeworkGenerator,
+        HomeworkStore,
+    )
+
+    if not args.generate_batch:
+        print("Use --generate-batch to produce homework entries.")
+        return 1
+
+    journal_path = Path(
+        os.environ.get(
+            "BUDDY_TRADE_JOURNAL_PATH",
+            "trained_data/trade_journal_rl.json",
+        )
+    )
+    pending_path = (
+        Path(os.environ["BUDDY_HOMEWORK_PENDING_PATH"])
+        if os.environ.get("BUDDY_HOMEWORK_PENDING_PATH")
+        else None
+    )
+    history_path = (
+        Path(os.environ["BUDDY_HOMEWORK_HISTORY_PATH"])
+        if os.environ.get("BUDDY_HOMEWORK_HISTORY_PATH")
+        else None
+    )
+
+    if not journal_path.exists():
+        print(f"Trade journal not found: {journal_path}", file=sys.stderr)
+        return 2
+
+    try:
+        journal = json.loads(journal_path.read_text())
+    except json.JSONDecodeError as exc:
+        print(f"Trade journal is not valid JSON: {exc}", file=sys.stderr)
+        return 2
+
+    if not isinstance(journal, list):
+        print("Journal must be a JSON list of trade entries.", file=sys.stderr)
+        return 2
+
+    store = HomeworkStore(pending_path=pending_path, history_path=history_path)
+    already_graded_ids = {e.trade_id for e in store.list_history()}
+    already_pending_ids = {e.trade_id for e in store.list_pending()}
+
+    candidates: list[tuple[dict, dict]] = []
+    for raw_trade in journal:
+        normalized = _normalize_trade(raw_trade)
+        if normalized is None:
+            continue
+        trade, outcome = normalized
+        tid = str(trade.get("trade_id", ""))
+        if not args.include_graded and tid in already_graded_ids:
+            continue
+        if tid in already_pending_ids:
+            continue
+        if args.since:
+            try:
+                close_dt = datetime.fromisoformat(
+                    str(outcome.get("close_time", "")).replace("Z", "+00:00")
+                )
+                since_dt = datetime.fromisoformat(args.since)
+                if close_dt < since_dt:
+                    continue
+            except Exception:
+                # Malformed timestamp shouldn't kill the whole batch.
+                pass
+        candidates.append((trade, outcome))  # noqa: PERF401 — explicit pair
+
+    if args.last is not None:
+        candidates = candidates[-int(args.last):]
+
+    gen = HomeworkGenerator()
+    generated = 0
+    for trade, outcome in candidates:
+        try:
+            entry = gen.generate(trade, outcome)
+            store.add(entry)
+            generated += 1
+            preview = (entry.proposed_lesson or "").strip().replace("\n", " ")[:60]
+            print(
+                f"  ✓ #{trade.get('trade_id')} {trade.get('pair')} "
+                f"{trade.get('direction')} → {outcome.get('close_reason')}  ({preview})"
+            )
+        except Exception as exc:
+            print(
+                f"  ✗ #{trade.get('trade_id', '?')}: generation failed — {exc}",
+                file=sys.stderr,
+            )
+
+    print(f"\nGenerated {generated} homework entries from {len(candidates)} candidates.")
+    print(f"Pending file: {store.pending_path}")
+    print("Open the F2 Inbox in the TUI to review.")
+    return 0
+
+
+def _build_arg_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="buddy_scanner.py",
+        description="Buddy scanner CLI — operator entrypoints for the homework subsystem.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    homework_p = subparsers.add_parser(
+        "homework",
+        help="Generate / manage trade homework entries (Phase 96)",
+    )
+    homework_p.add_argument(
+        "--generate-batch",
+        action="store_true",
+        help="Generate homework for closed trades from the journal",
+    )
+    homework_p.add_argument(
+        "--last",
+        type=int,
+        default=None,
+        help="Only the last N closed trades (default: all unstudied)",
+    )
+    homework_p.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        help="Only trades closed since YYYY-MM-DD",
+    )
+    homework_p.add_argument(
+        "--include-graded",
+        action="store_true",
+        help="Include trades that already have homework history",
+    )
+
+    return parser
+
+
+def _main(argv: list[str] | None = None) -> int:
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "homework":
+        return _cmd_homework(args)
+
+    parser.print_help()
+    return 2
+
+
+if __name__ == "__main__":
+    import sys as _sys
+
+    _sys.exit(_main())
