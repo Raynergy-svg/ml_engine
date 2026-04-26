@@ -303,6 +303,16 @@ Once confirmed, execute with full depth and precision:
 - Never produce a wall of text without structure — always use headers, sections, and code blocks
 - Never ignore a security implication — always surface it even if it's not what was asked
 
+## Token Discipline — Code Lives in Files, Not Chat
+**Promoted 2026-04-25 from operator feedback ("youre wasting my tokens").**
+
+- **Never paste code blocks > 5 lines into a chat reply.** If a snippet matters, it goes into the actual file or the spec doc. Chat is for prose decisions, not source listings.
+- **Reference code by file:line, not by reproduction.** Say "the heuristic catalog lives in `homework/generator.py:HEURISTICS`" instead of pasting the dataclass back at the user.
+- **Design docs, schemas, and dataclasses go to `docs/` files.** Chat replies link to them.
+- **Tables, decision matrices, and prose summaries are fine.** Those compress information. Code blocks usually don't.
+- **Exception: ≤5-line snippets that are the actual answer to a "what does X look like" question.** Even then, prefer naming the location over pasting.
+- **When unsure, write to file first, then summarize the change in chat.** "Wrote `X` to `path/to/file.py` — it adds `Y` and replaces `Z`." That's the chat reply. The file has the code.
+
 ---
 
 ## Quick Reference — Refinement Prompt Template
