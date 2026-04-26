@@ -11,6 +11,14 @@ Organized into 6 categories per spec §4.3:
 Predicates take a TradeView and an OutcomeView (SimpleNamespace-like). Adding
 new heuristics: append a Heuristic(...) entry. Generator picks them up at
 import time. Each entry MUST have a `source` field for auditability.
+
+Performance note: catalog is scanned linearly per trade by
+HomeworkGenerator._run_heuristics. Each predicate is a fast lambda on
+already-loaded trade/outcome views (microseconds per call). At 25 entries
+and ~20 trades/day this is ~2.5ms/day total — linear scan is fine to
+~100 entries. If the catalog crosses that threshold OR predicates start
+touching disk/network (they should not), revisit with category-indexed
+dispatch and per-predicate timing.
 """
 from __future__ import annotations
 

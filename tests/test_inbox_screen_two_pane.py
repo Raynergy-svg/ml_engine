@@ -201,3 +201,57 @@ def test_adjustment_to_row_adapter_works() -> None:
     assert "0.5" in row.detail_summary and "0.55" in row.detail_summary
     assert row.pl is None
     assert row.raw_entry is proposal
+
+
+def test_proposals_cache_skips_reparse_when_mtime_unchanged(tmp_path: Path) -> None:
+    """_read_proposals must use the mtime cache when the file hasn't changed."""
+    import json as _json
+    from src.tui.screens.inbox_screen import InboxScreen
+
+    pending = tmp_path / ".claude" / "pending_adjustments.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text(_json.dumps({"proposals": [
+        {"id": "a", "status": "pending", "key": "k", "current_value": 1, "proposed_value": 2}
+    ]}))
+
+    screen = InboxScreen(project_root=str(tmp_path))
+
+    # First read populates the cache
+    first = screen._read_proposals()
+    assert len(first) == 1
+    assert screen._proposals_cache is not None
+    cached_mtime = screen._proposals_cache[0]
+
+    # Second read with same file mtime returns the same list object (cache hit)
+    second = screen._read_proposals()
+    assert second is first, "cache hit must return the cached list, not re-parse"
+    assert screen._proposals_cache[0] == cached_mtime
+
+
+def test_proposals_cache_invalidates_on_mtime_change(tmp_path: Path) -> None:
+    """_read_proposals must re-parse after file is rewritten."""
+    import json as _json
+    import os as _os
+    from src.tui.screens.inbox_screen import InboxScreen
+
+    pending = tmp_path / ".claude" / "pending_adjustments.json"
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text(_json.dumps({"proposals": [
+        {"id": "a", "status": "pending", "key": "k", "current_value": 1, "proposed_value": 2}
+    ]}))
+
+    screen = InboxScreen(project_root=str(tmp_path))
+    screen._read_proposals()
+    first_cached = screen._proposals_cache
+
+    # Bump mtime by ~10ms (nanosecond-resolution stat) and rewrite
+    new_mtime = pending.stat().st_mtime_ns + 10_000_000
+    pending.write_text(_json.dumps({"proposals": [
+        {"id": "a", "status": "pending", "key": "k", "current_value": 1, "proposed_value": 2},
+        {"id": "b", "status": "pending", "key": "k2", "current_value": 3, "proposed_value": 4},
+    ]}))
+    _os.utime(pending, ns=(new_mtime, new_mtime))
+
+    second = screen._read_proposals()
+    assert len(second) == 2, "cache must invalidate when mtime changes"
+    assert screen._proposals_cache != first_cached

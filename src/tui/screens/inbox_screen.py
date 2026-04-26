@@ -542,6 +542,10 @@ class InboxScreen(Container):
         self._current_filter: str = "all"
         # Filter pill IDs in cycle order (for Tab key)
         self._filter_cycle = ["all", "homework", "adjustments"]
+        # mtime-keyed read caches — fine <100 entries today, prevents pathological
+        # re-parse at 10k+. Key: stat result tuple. Value: parsed payload.
+        self._proposals_cache: tuple[int, list[dict[str, Any]]] | None = None
+        self._homework_cache: tuple[tuple[int, int], list[Any]] | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -601,31 +605,60 @@ class InboxScreen(Container):
         self._rebuild_table(rows)
         self._update_tab_label(self._count_actionable(proposals, rows))
 
+    @staticmethod
+    def _stat_mtime_ns(path: Path) -> int:
+        """Return mtime in nanoseconds, or 0 if path is missing/unreadable."""
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return 0
+
     def _read_proposals(self) -> list[dict[str, Any]]:
-        """Load actionable proposals from pending_adjustments.json."""
+        """Load actionable proposals from pending_adjustments.json (mtime-cached)."""
         if not self._pending_path.exists():
+            self._proposals_cache = None
             return []
+        mtime = self._stat_mtime_ns(self._pending_path)
+        if self._proposals_cache is not None and self._proposals_cache[0] == mtime:
+            return self._proposals_cache[1]
         try:
             data = json.loads(self._pending_path.read_text())
             all_proposals = data.get("proposals", [])
-            return [p for p in all_proposals if p.get("status") in _ACTIVE_STATUSES]
-        except Exception as e:
+            result = [p for p in all_proposals if p.get("status") in _ACTIVE_STATUSES]
+        except (OSError, json.JSONDecodeError) as e:
             logger.warning("InboxScreen: failed to load proposals: %s", e)
             return []
+        self._proposals_cache = (mtime, result)
+        return result
 
     def _load_unified_rows(self) -> list[UnifiedInboxRow]:
-        """Read homework + adjustments, merge sorted by timestamp desc."""
+        """Read homework + adjustments, merge sorted by timestamp desc.
+
+        Homework reads are mtime-cached against (pending_mtime, history_mtime)
+        — both files participate because list_pending() dedupes against
+        history. Either changing invalidates the cache.
+        """
         rows: list[UnifiedInboxRow] = []
 
-        # Homework — pending only, skip un-expired snoozed entries
+        # Homework — pending only, skip un-expired snoozed entries.
+        # Key the cache on both file mtimes since list_pending dedupes on history.
         try:
             store = HomeworkStore()
-            for e in store.list_pending():
+            cache_key = (
+                self._stat_mtime_ns(store.pending_path),
+                self._stat_mtime_ns(store.history_path),
+            )
+            if self._homework_cache is not None and self._homework_cache[0] == cache_key:
+                hw_entries = self._homework_cache[1]
+            else:
+                hw_entries = store.list_pending()
+                self._homework_cache = (cache_key, hw_entries)
+            for e in hw_entries:
                 status = e.status or "pending"
                 if status.startswith("snoozed_until_") and not self._snooze_expired(status):
                     continue
                 rows.append(_homework_to_row(e))
-        except Exception as ex:
+        except (OSError, ValueError) as ex:
             logger.debug("InboxScreen homework read error: %s", ex)
 
         # Adjustments — reuse already-loaded list
