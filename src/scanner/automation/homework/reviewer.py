@@ -58,7 +58,7 @@ class HomeworkReviewer:
         entry = self._find(homework_id)
         if entry is None:
             return None
-        signal = self._build_signal(entry, action="approved", note=None, edits=None)
+        signal = self._build_signal(entry, action="approved", note=None)
         moved = self.store.move_to_history(homework_id, grade="approved", note=None, edits=None)
         if not moved:
             return None
@@ -75,7 +75,7 @@ class HomeworkReviewer:
         # Log the heuristic that fired so we can tune the catalog later.
         self._log_rejected_heuristic(entry, note)
 
-        signal = self._build_signal(entry, action="rejected", note=note.strip(), edits=None)
+        signal = self._build_signal(entry, action="rejected", note=note.strip())
         # Rejected signals carry empty deltas — operator's note is the future training data
         signal = dataclasses.replace(
             signal,
@@ -100,7 +100,6 @@ class HomeworkReviewer:
             entry,
             action="edited",
             note=edits.get("note"),
-            edits=edits,
         )
         # Override deltas if edits supply them
         if "agent_weight_deltas" in edits:
@@ -133,9 +132,7 @@ class HomeworkReviewer:
                 )
             else:
                 new_pending.append(e)
-        # Use store internals — atomic rewrite
-        payloads = [dataclasses.asdict(e) for e in new_pending]
-        self.store._rewrite_atomic(self.store.pending_path, payloads)
+        self.store.rewrite_pending(new_pending)
         return True
 
     # ---------------- internals ----------------
@@ -151,7 +148,6 @@ class HomeworkReviewer:
         entry: HomeworkEntry,
         action: str,
         note: Optional[str],
-        edits: Optional[Dict[str, Any]],
     ) -> TrainingSignal:
         """Convert HomeworkEntry into the proposed TrainingSignal payload."""
         deltas: Dict[str, float] = {}
@@ -188,5 +184,5 @@ class HomeworkReviewer:
                     + "\n"
                 )
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-        except Exception as e:
+        except OSError as e:
             logger.exception("HomeworkReviewer._log_rejected_heuristic failed: %s", e)

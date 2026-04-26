@@ -104,6 +104,15 @@ class HomeworkStore:
         )
         return True
 
+    def rewrite_pending(self, entries: List[HomeworkEntry]) -> None:
+        """Atomically rewrite the entire pending file with the given entries.
+
+        Used by snooze (and any future bulk-edit operation) to update entries
+        in place without going through the pending → history move path.
+        """
+        payloads = [dataclasses.asdict(e) for e in entries]
+        self._rewrite_atomic(self.pending_path, payloads)
+
     # ---------------- internals ----------------
 
     def _append_atomic(self, path: Path, payload: dict) -> None:
