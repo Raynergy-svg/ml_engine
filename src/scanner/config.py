@@ -140,6 +140,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_meta_manager": False,
         "meta_manager_max_concurrent": 1,
         "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "meta_manager_use_llm": False,
         "staged_deploy_shadow_cycles": 20,
         "staged_deploy_canary_trades": 10,
     },
@@ -183,6 +184,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_meta_manager": False,
         "meta_manager_max_concurrent": 1,
         "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "meta_manager_use_llm": False,
         "staged_deploy_shadow_cycles": 20,
         "staged_deploy_canary_trades": 10,
     },
@@ -298,6 +300,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_meta_manager": False,
         "meta_manager_max_concurrent": 1,
         "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "meta_manager_use_llm": False,
         "staged_deploy_shadow_cycles": 20,
         "staged_deploy_canary_trades": 10,
     },
@@ -372,10 +375,15 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_trader_readiness_agent": True,
         "enable_order_flow_agent": True,
         "enable_devil_advocate_agent": True,
-        # Meta-cybernetic change pipeline (default OFF, see ScannerConfig)
-        "enable_meta_manager": False,
+        # Meta-cybernetic change pipeline — enabled in `smart` (live profile)
+        # only. Other profiles keep the default-OFF posture from
+        # ScannerConfig. use_llm=False keeps the runtime Claude-free; the
+        # constitution + scorecard + revert_by_id are pure-Python gates and
+        # govern every change without LLM enrichment.
+        "enable_meta_manager": True,
         "meta_manager_max_concurrent": 1,
         "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "meta_manager_use_llm": False,
         "staged_deploy_shadow_cycles": 20,
         "staged_deploy_canary_trades": 10,
     },
@@ -965,6 +973,13 @@ class ScannerConfig:
     enable_meta_manager: bool = False
     meta_manager_max_concurrent: int = 1
     meta_manager_constitution_path: str = ".claude/rules/constitution.json"
+    # When False, MetaManager is constructed with a no-op specialist_invoker
+    # so the 9-stage pipeline runs without invoking Claude (constitution +
+    # scorecard + revert_by_id are pure Python and gate everything that
+    # matters). Honors the project rule: Buddy's runtime is Claude-free.
+    # Flip to True only when you explicitly want enrichment text in the
+    # change ledger and accept LLM in the runtime hot path.
+    meta_manager_use_llm: bool = False
     staged_deploy_shadow_cycles: int = 20
     staged_deploy_canary_trades: int = 10
 

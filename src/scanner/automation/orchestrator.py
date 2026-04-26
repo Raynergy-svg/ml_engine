@@ -375,10 +375,26 @@ class Orchestrator:
                     shadow_cycles=getattr(_cfg, "staged_deploy_shadow_cycles", 20),
                     canary_trades=getattr(_cfg, "staged_deploy_canary_trades", 10),
                 )
+                # Honor the project rule that Buddy's runtime is Claude-free.
+                # When meta_manager_use_llm=False (default), inject a no-op
+                # specialist_invoker so the 9-stage pipeline operates on
+                # pure-Python policy alone (constitution + scorecard +
+                # revert_by_id all gate deterministically). Specialists
+                # enrich the change ledger; they don't gate anything.
+                _meta_use_llm = bool(getattr(_cfg, "meta_manager_use_llm", False))
+                _invoker = None  # MetaManager picks _default_specialist_invoker (calls Claude)
+                if not _meta_use_llm:
+                    _invoker = lambda mode, prompt: ""  # noqa: E731
+                    logger.info(
+                        "MetaManager: LLM disabled (meta_manager_use_llm=False) — "
+                        "specialists return empty enrichment; constitution + "
+                        "scorecard still gate."
+                    )
                 self._meta_manager = MetaManager(
                     config=_cfg,
                     eval_harness=eval_harness,
                     staged_deployer=deployer,
+                    specialist_invoker=_invoker,
                     max_concurrent=getattr(_cfg, "meta_manager_max_concurrent", 1),
                 )
                 logger.info("MetaManager initialized in orchestrator")
