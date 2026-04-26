@@ -84,6 +84,8 @@ Buddy is a **student** doing supervised study of past trades. Closed trades beco
 ### Subagent specialization (MANDATORY)
 - **Never** use `general-purpose` subagent. Every Agent dispatch must specify a domain `subagent_type`.
 - TUI/Frontend → `Frontend Developer` · Architecture → `Software Architect` · Code review → `Code Reviewer` · Tests → `API Tester` · Docs → `Technical Writer` · Performance → `Performance Benchmarker` · Security → `Security Engineer` · Data → `Data Engineer` · DevOps → `DevOps Automator` · Codebase exploration → `Explore` · Planning → `Plan`
+- **Subagents always pick their own skills.** Brief them on the goal/constraints/done-criteria; do NOT prescribe which Superpowers skill to use. They invoke whatever skills (TDD, debugging, requesting-code-review, etc.) the task warrants. Controller's job is goal+context, not method.
+- **Parallelize by default.** Independent follow-ups dispatch in a single message with multiple Agent blocks. Sequential only when there's a real dependency.
 
 ### Token discipline (chat = prose, files = code)
 - **No code blocks > 5 lines in chat replies.** Reference by file:line.
