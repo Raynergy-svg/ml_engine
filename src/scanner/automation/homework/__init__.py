@@ -10,6 +10,7 @@ Public API:
 See docs/superpowers/specs/2026-04-25-trade-homework-system-design.md.
 """
 
+from src.scanner.automation.homework.store import HomeworkStore
 from src.scanner.automation.homework.types import (
     HomeworkEntry,
     Heuristic,
@@ -20,4 +21,5 @@ __all__ = [
     "HomeworkEntry",
     "Heuristic",
     "TrainingSignal",
+    "HomeworkStore",
 ]
