@@ -40,6 +40,17 @@ class EventType(Enum):
     REVIEW_COMPLETE = "review_complete"
     CHAIN_COMPLETE = "chain_complete"
     CHAIN_ERROR = "chain_error"
+    # Meta-cybernetic change pipeline events. Emitted by MetaManager and
+    # consumed by observers (TUI, dashboards, post-deploy critic).
+    INCIDENT_OPENED = "incident_opened"
+    CHANGE_PROPOSED = "change_proposed"
+    EVAL_COMPLETE = "eval_complete"
+    CONSTITUTION_CHECKED = "constitution_checked"
+    APPROVAL_REQUESTED = "approval_requested"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    DEPLOYED = "deployed"
+    POST_DEPLOY_REVIEW = "post_deploy_review"
 
 
 @dataclass

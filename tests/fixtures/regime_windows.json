@@ -1,0 +1,8 @@
+{
+  "windows": [
+    {"name": "trending_2026q1", "pair": "EUR_USD", "days": 30, "regime": "trending"},
+    {"name": "ranging_2026q2", "pair": "EUR_USD", "days": 30, "regime": "ranging"},
+    {"name": "news_heavy_2026q1", "pair": "USD_JPY", "days": 14, "regime": "news_heavy"},
+    {"name": "low_liquidity_2026q1", "pair": "AUD_USD", "days": 14, "regime": "low_liquidity"}
+  ]
+}

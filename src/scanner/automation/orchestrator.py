@@ -336,6 +336,47 @@ class Orchestrator:
         except Exception as e:
             logger.debug("Tier 7: PolicyEngine not available: %s", e)
 
+        # Meta-cybernetic change pipeline (gated by config.enable_meta_manager).
+        # Lazy: when disabled, no Claude subprocess and no approval queue work
+        # ever fires.
+        self._meta_manager = None
+        try:
+            _cfg = getattr(self, "_config", None)
+            _meta_enabled = bool(getattr(_cfg, "enable_meta_manager", False))
+            # Surface the flag via env so cheap callers (cycle_autonomy,
+            # prd_agent_chain) can route via meta_manager.is_enabled() without
+            # importing the heavy config singleton on every signal.
+            import os
+            os.environ["BUDDY_META_MANAGER_ENABLED"] = "1" if _meta_enabled else "0"
+            if _meta_enabled:
+                from src.scanner.automation.meta_manager import MetaManager
+                from src.scanner.automation.staged_deployer import StagedDeployer
+                from src.scanner.automation.change_eval import ChangeEvalHarness
+                eval_harness = None
+                try:
+                    eval_harness = ChangeEvalHarness(
+                        replay_validator=None,
+                        qa_pipeline=self._qa_pipeline,
+                    )
+                except Exception as eh_err:
+                    logger.debug("MetaManager: eval harness init failed: %s", eh_err)
+                deployer = StagedDeployer(
+                    config=_cfg,
+                    config_adjuster=self._config_adjuster,
+                    shadow_cycles=getattr(_cfg, "staged_deploy_shadow_cycles", 20),
+                    canary_trades=getattr(_cfg, "staged_deploy_canary_trades", 10),
+                )
+                self._meta_manager = MetaManager(
+                    config=_cfg,
+                    eval_harness=eval_harness,
+                    staged_deployer=deployer,
+                    max_concurrent=getattr(_cfg, "meta_manager_max_concurrent", 1),
+                )
+                logger.info("MetaManager initialized in orchestrator")
+        except Exception as e:
+            logger.warning("MetaManager init failed: %s", e)
+            self._meta_manager = None
+
         # Build dispatch table from initialized modules
 
         try:
@@ -591,6 +632,15 @@ class Orchestrator:
             callable=lambda: self._model_freshness_check_dispatch(),
             condition=lambda: True,
             interval=10,
+            critical=False,
+        ))
+
+        # Step 17: Meta-cybernetic change pipeline drain (every 5 cycles when enabled)
+        self._dispatch_table.append(DispatchStep(
+            name="meta_pipeline_drain",
+            callable=lambda: self._meta_pipeline_drain_dispatch(),
+            condition=lambda: self._meta_manager is not None,
+            interval=5,
             critical=False,
         ))
 
@@ -1238,6 +1288,21 @@ class Orchestrator:
                 logger.debug("Tier 7: Policy audit clean (env=%s)", env.get("account_mode", "unknown"))
         except Exception as e:
             logger.debug("Tier 7: Policy audit failed: %s", e)
+
+    def _meta_pipeline_drain_dispatch(self) -> None:
+        """Walk every in-flight ChangePackage one stage forward.
+
+        Reads the approval queue, advances approved packages to their target
+        deploy stage, and routes already-deployed packages through the
+        post-deploy critic for promotion or rollback. Pure delegation —
+        all decision logic lives in MetaManager.drain.
+        """
+        try:
+            counters = self._meta_manager.drain(current_cycle=self._cycle_count)
+            if any(v for v in counters.values()):
+                logger.info("meta_pipeline.drain %s", counters)
+        except Exception as e:
+            logger.warning("meta_pipeline.drain_failed err=%s", e)
 
     def _model_freshness_check_dispatch(self) -> None:
         """Check model freshness and warn/trigger retrain on staleness.

@@ -61,6 +61,20 @@ tensorboard/
 .claude/state.json.lock
 .aura/
 
+# Meta-cybernetic change pipeline runtime state
+.claude/meta/changes/*.json
+.claude/meta/changes/*.json.bak
+.claude/meta/changes/*.json.lock
+.claude/meta/changes.jsonl
+.claude/meta/scorecards.jsonl
+.claude/approval_queue/pending/*.json
+.claude/approval_queue/approved/*.json
+.claude/approval_queue/rejected/*.json
+.claude/approval_queue/**/*.lock
+.claude/approval_queue/**/*.bak
+.claude/rules/constitution.json.lock
+.claude/rules/constitution.json.bak
+
 # Local runtime artifacts
 cache/
 output/

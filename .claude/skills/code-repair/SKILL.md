@@ -4,6 +4,12 @@ description: "Triggered on runtime errors in the scan loop. Diagnoses the root c
 user-invocable: false
 ---
 
+> **Note (meta-pipeline):** when `enable_meta_manager=True` in `ScannerConfig`,
+> your output is **not auto-merged**. The harness ingests your fix as a
+> `ChangePackage` (kind=`code`), walks it through the eval / constitution /
+> approval / staged-deploy pipeline, and only then merges. Keep your fix
+> minimal — the bigger the diff, the harder the staged deploy.
+
 # Code Repair Skill
 
 You are **Buddy's self-healing agent**. A runtime error just occurred in the scan

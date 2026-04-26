@@ -665,8 +665,30 @@ class PerformancePRDGenerator:
                     analysis_summary=analysis,
                 )
 
-            # Spawn ralph
-            ralph_spawned = self.spawn_ralph(background=True)
+            # When the meta-cybernetic pipeline is active, the gaps go through
+            # MetaManager.intake instead of spawning Ralph directly. The PRD
+            # is still written to disk so the human dossier in the approval
+            # queue can link to it.
+            ralph_spawned = False
+            try:
+                from src.scanner.automation.meta_manager import is_enabled as _meta_enabled, route_incident
+                if _meta_enabled():
+                    routed = route_incident({
+                        "kind": "perf_gap",
+                        "gaps": [g if isinstance(g, dict) else getattr(g, "to_dict", lambda: {})() for g in gaps][:10],
+                        "stories_count": stories_count,
+                        "prd_branch": prd.get("branchName", ""),
+                        "analysis_summary": analysis,
+                    })
+                    if routed:
+                        logger.info("PerformancePRDGenerator: gaps routed to meta-pipeline (no Ralph spawn)")
+                    else:
+                        ralph_spawned = self.spawn_ralph(background=True)
+                else:
+                    ralph_spawned = self.spawn_ralph(background=True)
+            except Exception as _e:
+                logger.debug("PerformancePRDGenerator.meta_route_failed err=%s", _e)
+                ralph_spawned = self.spawn_ralph(background=True)
 
             # Update marker
             self._last_run_marker.parent.mkdir(parents=True, exist_ok=True)

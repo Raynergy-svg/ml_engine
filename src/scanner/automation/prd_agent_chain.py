@@ -486,7 +486,23 @@ class PRDAgentChain:
     # ─── Lifecycle ──────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Start the filesystem watcher."""
+        """Start the filesystem watcher.
+
+        When the meta-cybernetic change pipeline is enabled, the watcher is
+        downgraded to a passive signal — it observes PRD completion events
+        but does not spawn Ralph or the code reviewer directly. Those flows
+        are then driven by MetaManager's intake. This avoids two competing
+        pipelines fighting over the same change set.
+        """
+        try:
+            from src.scanner.automation.meta_manager import is_enabled as _meta_enabled
+            if _meta_enabled():
+                self._auto_spawn = False
+                self._auto_review = False
+                self._auto_fix = False
+                logger.info("PRDAgentChain: meta-pipeline active — watcher in passive mode")
+        except Exception as _e:
+            logger.debug("PRDAgentChain.meta_check_failed err=%s", _e)
         logger.info("PRDAgentChain: starting watcher...")
         self._watcher.start()
 

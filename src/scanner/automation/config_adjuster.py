@@ -230,6 +230,32 @@ class ConfigAdjuster:
             "pending": dict(self._pending),
         }
 
+    def revert_by_id(self, config: Any, source_substring: str) -> List[Dict[str, Any]]:
+        """Revert every history entry whose `source` contains `source_substring`.
+
+        Used by the meta pipeline's StagedDeployer when a canary/live deploy
+        fails its post-deploy review. Walks the history in reverse and resets
+        each affected key to its prior `old_value`.
+        """
+        reverted: List[Dict[str, Any]] = []
+        for record in reversed(list(self._history)):
+            source = record.get("source", "")
+            if source_substring not in source:
+                continue
+            key = record.get("key")
+            if not key:
+                continue
+            try:
+                setattr(config, key, record.get("old_value"))
+                reverted.append({**record, "reverted_at": datetime.now(timezone.utc).isoformat()})
+                logger.info(
+                    "ConfigAdjuster.revert_by_id: %s = %s (source=%s)",
+                    key, record.get("old_value"), source,
+                )
+            except Exception as e:
+                logger.warning("ConfigAdjuster.revert_by_id failed key=%s err=%s", key, e)
+        return reverted
+
     def save_state(self) -> None:
         """Persist applied_ids and rate-limit state to config_adjustments.json.
 

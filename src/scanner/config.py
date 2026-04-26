@@ -136,6 +136,12 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "use_rl_sizer": True,
         "use_rl_gates": True,
         "use_rl_exits": True,
+        # Meta-cybernetic change pipeline (default OFF, see ScannerConfig)
+        "enable_meta_manager": False,
+        "meta_manager_max_concurrent": 1,
+        "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "staged_deploy_shadow_cycles": 20,
+        "staged_deploy_canary_trades": 10,
     },
     # Fewer trades, higher signal quality requirements.
     "conservative": {
@@ -173,6 +179,12 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_trader_readiness_agent": True,
         "devil_advocate_block_threshold": 0.60,
         "devil_advocate_warn_threshold": 0.40,
+        # Meta-cybernetic change pipeline (default OFF, see ScannerConfig)
+        "enable_meta_manager": False,
+        "meta_manager_max_concurrent": 1,
+        "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "staged_deploy_shadow_cycles": 20,
+        "staged_deploy_canary_trades": 10,
     },
     # More trade frequency with looser gates (still risk-bounded).
     "aggressive": {
@@ -282,6 +294,12 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_order_flow_agent": True,
         "devil_advocate_block_threshold": 0.60,
         "devil_advocate_warn_threshold": 0.40,
+        # Meta-cybernetic change pipeline (default OFF, see ScannerConfig)
+        "enable_meta_manager": False,
+        "meta_manager_max_concurrent": 1,
+        "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "staged_deploy_shadow_cycles": 20,
+        "staged_deploy_canary_trades": 10,
     },
     # Smart: Agent-driven with RL integration.  Sub-inference agents run on
     # ALL candidates (not just gate-passed) so the agent team can promote
@@ -354,6 +372,12 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_trader_readiness_agent": True,
         "enable_order_flow_agent": True,
         "enable_devil_advocate_agent": True,
+        # Meta-cybernetic change pipeline (default OFF, see ScannerConfig)
+        "enable_meta_manager": False,
+        "meta_manager_max_concurrent": 1,
+        "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "staged_deploy_shadow_cycles": 20,
+        "staged_deploy_canary_trades": 10,
     },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
@@ -931,6 +955,18 @@ class ScannerConfig:
     auto_ralph_min_trades: int = 10  # Min trades needed before analysis runs
     auto_ralph_check_interval_hours: int = 24  # Hours between autonomous PRD checks
     auto_ralph_max_gaps_per_run: int = 5  # Max stories per auto-generated PRD
+
+    # --- Meta-Cybernetic Change Pipeline ---
+    # When enabled, every self-heal / drift / perf-gap signal opens a
+    # ChangePackage that walks the 9-stage pipeline (intake → diagnosis →
+    # proposal → eval → constitution → human approval → staged deploy →
+    # monitor → post-deploy review). Default OFF — flip on after the
+    # smoke test on practice. See plan: ".../meta-cybernetic change pipeline".
+    enable_meta_manager: bool = False
+    meta_manager_max_concurrent: int = 1
+    meta_manager_constitution_path: str = ".claude/rules/constitution.json"
+    staged_deploy_shadow_cycles: int = 20
+    staged_deploy_canary_trades: int = 10
 
     # Loaded YAML config (lazy loaded)
     _yaml_config: Optional[Dict[str, Any]] = field(default=None, repr=False)

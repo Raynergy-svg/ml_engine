@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "description": "Machine-checkable invariants enforced against every ChangePackage before approval. Pure-Python evaluation, no LLM. The Policy Auditor specialist provides a qualitative second opinion.",
+  "clauses": [
+    {
+      "id": "C1",
+      "name": "no_widen_max_risk",
+      "kind": "config_delta",
+      "field_pattern": "max_*_risk|max_drawdown_*",
+      "rule": "monotonic_non_increasing"
+    },
+    {
+      "id": "C2",
+      "name": "no_disable_supervision",
+      "kind": "config_delta",
+      "field": "enable_supervision_mode",
+      "rule": "no_true_to_false"
+    },
+    {
+      "id": "C3",
+      "name": "freshness_floor",
+      "kind": "config_delta",
+      "field": "max_component_age_days",
+      "rule": "le_constant",
+      "constant": 7
+    },
+    {
+      "id": "C4",
+      "name": "min_eval_confidence",
+      "kind": "scorecard",
+      "field": "trading_quality.win_rate",
+      "rule": "ge_constant",
+      "constant": 0.5
+    },
+    {
+      "id": "C5",
+      "name": "broker_change_requires_test",
+      "kind": "diff",
+      "rule": "if_any_changed:src/scanner/execution.py:then_any_changed:tests/scanner/test_execution_*.py"
+    },
+    {
+      "id": "C6",
+      "name": "rollback_required_for_live",
+      "kind": "package",
+      "rule": "if:deploy_target==live:then_nonempty:rollback_plan"
+    },
+    {
+      "id": "C7",
+      "name": "rr_floor_holds",
+      "kind": "config_delta",
+      "field": "min_rr_ratio",
+      "rule": "ge_constant",
+      "constant": 1.2
+    }
+  ]
+}

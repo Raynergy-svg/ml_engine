@@ -265,7 +265,27 @@ class CycleAutonomyTriggers:
         All constraints (single-flight lock, daily budget, logging) are
         enforced by invoke_claude_reflection itself. We just construct the
         prompt and call it.
+
+        When the meta-cybernetic change pipeline is active, the autonomy
+        trigger is rerouted into MetaManager.intake so the Claude spawn
+        happens inside the Incident Analyst stage (with the rest of the
+        9-stage pipeline downstream of it) rather than as a one-shot.
         """
+        try:
+            from src.scanner.automation.meta_manager import is_enabled as _meta_enabled, route_incident
+            if _meta_enabled():
+                routed = route_incident({
+                    "kind": trade_id,  # one of "self_heal", "rejection", "losing_streak", etc.
+                    "mode": mode,
+                    "trigger_prompt_preview": prompt[:1500],
+                    "diag": getattr(self, "_pending_diag", None),
+                })
+                if routed:
+                    self._brain(f"[cyan]  ◆ autonomy trigger routed to meta-pipeline ({trade_id})[/]")
+                    return
+        except Exception as _e:
+            logger.debug("cycle_autonomy.meta_route_failed err=%s", _e)
+
         try:
             from src.scanner.automation.claude_subprocess import (
                 invoke_claude_reflection,
