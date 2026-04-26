@@ -101,6 +101,87 @@ def test_homework_to_row_adapter_works() -> None:
     assert row.raw_entry is entry
 
 
+def test_action_approve_all_drains_homework_pending(tmp_path, monkeypatch) -> None:
+    """Bulk approve_all must process homework entries, not just adjustments.
+
+    Reproduces the operator-reported bug: 'cant approve all, because approve
+    is stuck behind valid' — homework entries were silently skipped because
+    action_approve_all only called AdjustmentApprover.
+    """
+    from src.scanner.automation.homework import HomeworkEntry, HomeworkStore
+    from src.tui.screens.inbox_screen import (
+        InboxScreen,
+        UnifiedInboxRow,
+        _homework_to_row,
+    )
+
+    # Isolated jsonl files in tmp_path
+    pending_path = tmp_path / "homework_pending.jsonl"
+    history_path = tmp_path / "homework_history.jsonl"
+    quarantine_path = tmp_path / "homework_quarantine.jsonl"
+    store = HomeworkStore(
+        pending_path=pending_path,
+        history_path=history_path,
+        quarantine_path=quarantine_path,
+    )
+
+    # Seed 3 homework entries
+    for i in range(3):
+        store.add(HomeworkEntry(
+            homework_id=f"hw-{i}",
+            trade_id=f"100{i}",
+            generated_at="2026-04-25T22:00:00Z",
+            pair="EUR_USD",
+            direction="LONG",
+            entry_price=1.10,
+            sl_price=1.09,
+            tp_price=1.12,
+            rr_ratio=2.0,
+            confidence=0.65,
+            weighted_vote_score=0.70,
+            regime="NORMAL",
+            agent_verdicts=[],
+            close_time="2026-04-25T22:30:00Z",
+            close_price=1.09,
+            realized_pl=-50.0,
+            close_reason="SL",
+            duration_minutes=30,
+            mfe_pips=2.0,
+            mae_pips=12.0,
+            analysis_markdown="x",
+            proposed_lesson="y",
+            confidence_in_analysis=0.7,
+            agents_to_reinforce=[],
+            agents_to_penalize=[],
+        ))
+    assert len(store.list_pending()) == 3
+
+    # Patch HomeworkStore() default-constructor to return our isolated store
+    import src.tui.screens.inbox_screen as inbox_mod
+    monkeypatch.setattr(inbox_mod, "HomeworkStore", lambda: store)
+
+    # Build a stub screen object with the minimum attributes the method touches
+    class _StubScreen:
+        _current_rows = [_homework_to_row(e) for e in store.list_pending()]
+        _pending_path = tmp_path / "no_adjustments.json"  # nonexistent → empty
+        _approved_path = tmp_path / "approved.json"
+        _proposals: list = []
+        notify = staticmethod(lambda *a, **kw: None)
+        _load_proposals = staticmethod(lambda: None)
+
+    InboxScreen.action_approve_all(_StubScreen())  # type: ignore[arg-type]
+
+    # All 3 homework entries should be drained from pending
+    remaining = store.list_pending()
+    assert len(remaining) == 0, (
+        f"Expected 0 pending after bulk approve, got {len(remaining)}"
+    )
+    # All 3 should now be in history with grade=approved
+    history = store.list_history()
+    assert len(history) == 3
+    assert all(e.operator_grade == "approved" for e in history)
+
+
 def test_adjustment_to_row_adapter_works() -> None:
     """_adjustment_to_row must produce a UnifiedInboxRow from a proposal dict."""
     from src.tui.screens.inbox_screen import _adjustment_to_row

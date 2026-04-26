@@ -573,7 +573,7 @@ class InboxScreen(Container):
         with Horizontal(id="inbox-actions"):
             yield Button("◈ Preview net config", id="preview-btn", variant="default",
                          classes="inbox-action-btn")
-            yield Button("✓ Approve all valid", id="approve-all-btn", variant="success",
+            yield Button("✓ Approve all", id="approve-all-btn", variant="success",
                          classes="inbox-action-btn")
             yield Button("✕ Reject all", id="reject-all-btn", variant="error",
                          classes="inbox-action-btn")
@@ -1031,7 +1031,34 @@ class InboxScreen(Container):
             self._set_filter(bid.replace("filter-", ""))
 
     def action_approve_all(self) -> None:
-        """Approve every valid pending/snoozed proposal."""
+        """Approve every pending homework + every valid pending/snoozed adjustment in the queue."""
+        hw_approved = 0
+        hw_failed = 0
+        adj_approved = 0
+        adj_skipped = 0
+        adj_failed = 0
+
+        # Homework: iterate visible rows in current filtered queue
+        try:
+            from src.scanner.automation.homework.reviewer import HomeworkReviewer
+            reviewer = HomeworkReviewer(store=HomeworkStore())
+            hw_rows = [r for r in self._current_rows if r.entry_type == "homework"]
+            for row in hw_rows:
+                try:
+                    entry = row.raw_entry
+                    signal = reviewer.approve(entry.homework_id)
+                    if signal is not None:
+                        hw_approved += 1
+                    else:
+                        hw_failed += 1
+                except Exception:
+                    hw_failed += 1
+                    logger.exception("InboxScreen.action_approve_all: homework approve failed")
+        except Exception as e:
+            logger.exception("InboxScreen.action_approve_all: homework loop init failed")
+            self.notify(f"Homework approve init error: {e}", severity="error")
+
+        # Adjustments: keep existing AdjustmentApprover.approve_all() behavior
         try:
             from src.scanner.automation.adjustment_approver import AdjustmentApprover
             approver = AdjustmentApprover(
@@ -1039,43 +1066,70 @@ class InboxScreen(Container):
                 approved_path=self._approved_path,
             )
             result = approver.approve_all()
-            approved = result.get("approved", 0)
-            skipped = result.get("skipped", 0)
-            failed = len(result.get("failed", []))
-            if failed:
-                self.notify(
-                    f"Approved {approved}; {failed} failed; {skipped} invalid skipped.",
-                    severity="warning",
-                )
-            else:
-                self.notify(
-                    f"Approved {approved} proposal(s); {skipped} invalid skipped.",
-                    severity="information",
-                )
-            self._load_proposals()
+            adj_approved = result.get("approved", 0)
+            adj_skipped = result.get("skipped", 0)
+            adj_failed = len(result.get("failed", []))
         except Exception as e:
-            self.notify(f"Approve all error: {e}", severity="error")
-            logger.exception("InboxScreen.action_approve_all failed")
+            logger.exception("InboxScreen.action_approve_all: adjustment approve failed")
+            self.notify(f"Adjustment approve error: {e}", severity="error")
+
+        total_failed = hw_failed + adj_failed
+        msg = (
+            f"Approved {hw_approved} homework + {adj_approved} adjustments; "
+            f"{total_failed} failed; {adj_skipped} invalid skipped."
+        )
+        self.notify(msg, severity="warning" if total_failed else "information")
+        self._load_proposals()
 
     def action_reject_all(self) -> None:
-        """Reject every actionable proposal in the inbox."""
+        """Reject every pending homework + every actionable adjustment in the queue."""
+        hw_rejected = 0
+        hw_failed = 0
+        adj_rejected = 0
+        adj_failed = 0
+        bulk_note = "bulk reject from inbox"
+
+        # Homework: iterate visible rows; reject() requires a non-empty note
+        try:
+            from src.scanner.automation.homework.reviewer import HomeworkReviewer
+            reviewer = HomeworkReviewer(store=HomeworkStore())
+            hw_rows = [r for r in self._current_rows if r.entry_type == "homework"]
+            for row in hw_rows:
+                try:
+                    entry = row.raw_entry
+                    signal = reviewer.reject(entry.homework_id, note=bulk_note)
+                    if signal is not None:
+                        hw_rejected += 1
+                    else:
+                        hw_failed += 1
+                except Exception:
+                    hw_failed += 1
+                    logger.exception("InboxScreen.action_reject_all: homework reject failed")
+        except Exception as e:
+            logger.exception("InboxScreen.action_reject_all: homework loop init failed")
+            self.notify(f"Homework reject init error: {e}", severity="error")
+
+        # Adjustments: keep existing AdjustmentApprover.reject_all() behavior
         try:
             from src.scanner.automation.adjustment_approver import AdjustmentApprover
             approver = AdjustmentApprover(
                 pending_path=self._pending_path,
                 approved_path=self._approved_path,
             )
-            result = approver.reject_all("bulk reject from inbox")
-            rejected = result.get("rejected", 0)
-            failed = len(result.get("failed", []))
-            if failed:
-                self.notify(f"Rejected {rejected}; {failed} failed.", severity="warning")
-            else:
-                self.notify(f"Rejected {rejected} proposal(s).", severity="information")
-            self._load_proposals()
+            result = approver.reject_all(bulk_note)
+            adj_rejected = result.get("rejected", 0)
+            adj_failed = len(result.get("failed", []))
         except Exception as e:
-            self.notify(f"Reject all error: {e}", severity="error")
-            logger.exception("InboxScreen.action_reject_all failed")
+            logger.exception("InboxScreen.action_reject_all: adjustment reject failed")
+            self.notify(f"Adjustment reject error: {e}", severity="error")
+
+        total_failed = hw_failed + adj_failed
+        msg = (
+            f"Rejected {hw_rejected} homework + {adj_rejected} adjustments; "
+            f"{total_failed} failed."
+        )
+        self.notify(msg, severity="warning" if total_failed else "information")
+        self._load_proposals()
 
     # ------------------------------------------------------------------
     # Tab label update
