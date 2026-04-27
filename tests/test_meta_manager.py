@@ -323,3 +323,65 @@ def test_build_surgeon_prompt_contains_scannerconfig_field_whitelist():
     assert "atr_sl_multiplier" in prompt
     # Anchor on the structural marker so a surgeon LLM can find the list.
     assert "VALID_CONFIG_KEYS" in prompt
+
+
+def test_intake_drops_duplicate_proposal(tmp_layout, fake_specialist_invoker):
+    """G8: two incidents with identical (kind, proposed_config_delta) collapse;
+    the second drops with rejection_reason='duplicate_proposal'."""
+    from src.scanner.automation.meta_manager import MetaManager
+    from src.scanner.automation.meta_types import ChangeStage
+    mm = _build_manager(tmp_layout, fake_specialist_invoker)
+    incident = {
+        "kind": "tp_too_fast",
+        "summary": "first",
+        "proposed_config_delta": {"atr_tp_multiplier": {"new": 1.6, "old": 1.5}},
+    }
+    pkg_a = mm.intake(incident)
+    incident_b = dict(incident)
+    incident_b["summary"] = "duplicate of first"
+    pkg_b = mm.intake(incident_b)
+    assert pkg_b.stage == ChangeStage.ABORTED
+    assert pkg_b.rejection_reason == "duplicate_proposal"
+    # First package should NOT be aborted by this dedup check.
+    assert pkg_a.stage != ChangeStage.ABORTED or pkg_a.rejection_reason != "duplicate_proposal"
+
+
+def test_intake_attaches_historical_outcomes_when_episodic_memory_present(tmp_layout, fake_specialist_invoker):
+    """G3: when episodic_memory is injected and incident.setup_features
+    is present, query_similar runs and historical_outcomes attaches to
+    the package's incident dict."""
+    from src.scanner.automation.meta_manager import MetaManager
+
+    class FakeEpisodicMemory:
+        def __init__(self):
+            self.queries = []
+        def query_similar(self, **kwargs):
+            self.queries.append(kwargs)
+            return {"matched_episodes": 8, "loss_rate": 0.75, "sample": []}
+
+    fake = FakeEpisodicMemory()
+    mm = _build_manager(tmp_layout, fake_specialist_invoker)
+    mm._episodic_memory = fake
+    incident = {
+        "kind": "tp_too_fast",
+        "summary": "...",
+        "setup_features": {
+            "pair": "EUR_USD", "direction": "long", "regime": "LOW",
+            "session": "LON", "news_risk_score": 0.1, "uncertainty_score": 0.3,
+        },
+    }
+    pkg = mm.intake(incident)
+    assert "historical_outcomes" in pkg.incident
+    assert pkg.incident["historical_outcomes"]["loss_rate"] == 0.75
+    assert len(fake.queries) == 1
+
+
+def test_intake_no_episodic_query_when_episodic_memory_none(tmp_layout, fake_specialist_invoker):
+    """When MetaManager has no episodic_memory injection, intake doesn't
+    invent historical_outcomes."""
+    from src.scanner.automation.meta_manager import MetaManager
+    mm = _build_manager(tmp_layout, fake_specialist_invoker)
+    # mm._episodic_memory should be None by default
+    assert mm._episodic_memory is None
+    pkg = mm.intake({"kind": "any", "summary": "..."})
+    assert "historical_outcomes" not in pkg.incident or pkg.incident.get("historical_outcomes") is None

@@ -146,19 +146,60 @@ class MetaManager:
 
     def intake(self, incident: Dict[str, Any]) -> ChangePackage:
         """Open a new package, run Incident Analyst, persist."""
+        # G8: dedup check before any expensive processing.
+        incident_dict = dict(incident or {})
+        incident_delta = incident_dict.get("proposed_config_delta") or {}
+        candidate = ChangePackage(
+            incident=incident_dict,
+            proposal=Proposal(config_delta=dict(incident_delta)) if incident_delta else None,
+        )
+        candidate_hash = candidate.dedup_hash()
+        if self._is_duplicate_in_flight(candidate_hash):
+            logger.info(
+                "meta_manager.intake_dup_dropped change_id=%s hash=%s",
+                candidate.change_id, candidate_hash,
+            )
+            candidate.stage = ChangeStage.ABORTED
+            candidate.rejection_reason = "duplicate_proposal"
+            candidate.touch("duplicate_proposal_dropped")
+            # Drop the stub proposal — downstream consumers should not see a
+            # synthetic Proposal that the surgeon never produced.
+            candidate.proposal = None
+            self._persist(candidate)
+            self._append_ledger(candidate, "duplicate_dropped")
+            return candidate
+
+        # G3: episodic memory query — attach historical_outcomes for downstream use.
+        if self._episodic_memory is not None:
+            try:
+                features = incident_dict.get("setup_features") or {}
+                if features:
+                    outcomes = self._episodic_memory.query_similar(
+                        pair=features.get("pair", ""),
+                        direction=features.get("direction", ""),
+                        regime=features.get("regime", ""),
+                        session=features.get("session", ""),
+                        news_risk_score=float(features.get("news_risk_score", 0.0)),
+                        uncertainty_score=float(features.get("uncertainty_score", 0.0)),
+                    )
+                    incident_dict["historical_outcomes"] = outcomes
+            except Exception as e:
+                logger.warning("meta_manager.intake_episodic_query_failed err=%s", e)
+                incident_dict["historical_outcomes"] = None
+
         if self._concurrent_count() >= self._max_concurrent:
             logger.info(
                 "meta_manager.intake_throttled active=%s max=%s — incident dropped",
                 self._concurrent_count(), self._max_concurrent,
             )
-            pkg = ChangePackage(incident=dict(incident))
+            pkg = ChangePackage(incident=incident_dict)
             pkg.stage = ChangeStage.ABORTED
             pkg.touch("throttled_by_max_concurrent")
             self._persist(pkg)
             self._append_ledger(pkg, "throttled")
             return pkg
 
-        pkg = ChangePackage(incident=dict(incident))
+        pkg = ChangePackage(incident=incident_dict)
         pkg.touch("intake")
         pkg.stage = ChangeStage.DIAGNOSING
         self._persist(pkg)
@@ -173,6 +214,39 @@ class MetaManager:
         pkg.touch("diagnosis_complete")
         self._persist(pkg)
         return pkg
+
+    def _is_duplicate_in_flight(self, dedup_hash: str) -> bool:
+        """Scan changes_dir for an active package matching this dedup_hash.
+
+        Skips terminal stages (closed/aborted/rejected). Failure-tolerant —
+        on any read error, returns False (fails open) and logs a warning so
+        we never reject a legitimate incident due to a corrupt JSON file in
+        the changes directory.
+
+        Both sides of the comparison hash from incident.proposed_config_delta
+        so candidates and persisted packages use the same data source — the
+        persisted package may still be at intake/diagnosing stage with no
+        proposal attached, but the incident-level delta is set immediately.
+        """
+        try:
+            for path in self._changes_dir.glob("*.json"):
+                blob = safe_json_read(path, default={})
+                if not isinstance(blob, dict):
+                    continue
+                stage = str(blob.get("stage", ""))
+                if stage in ("closed", "aborted", "rejected"):
+                    continue
+                other_incident = blob.get("incident", {}) or {}
+                other_delta = other_incident.get("proposed_config_delta") or {}
+                other_pkg = ChangePackage(
+                    incident=other_incident,
+                    proposal=Proposal(config_delta=dict(other_delta)) if other_delta else None,
+                )
+                if other_pkg.dedup_hash() == dedup_hash:
+                    return True
+        except Exception as e:
+            logger.warning("meta_manager.dedup_scan_failed err=%s", e)
+        return False
 
     # ---------- Stage 2: proposal ----------
 
