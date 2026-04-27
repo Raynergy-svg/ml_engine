@@ -306,3 +306,20 @@ def test_meta_manager_default_episodic_memory_is_none(tmp_layout):
         ledger_path=tmp_layout.ledger,
     )
     assert mm._episodic_memory is None
+
+
+def test_build_surgeon_prompt_contains_scannerconfig_field_whitelist():
+    """Surgeon prompt must enumerate valid ScannerConfig keys, not just
+    say 'match ScannerConfig field names'. The LLM hallucinates less when
+    given the explicit list (G6: orphan-key proposals slip through)."""
+    from src.scanner.automation.meta_manager import _build_surgeon_prompt
+    from src.scanner.automation.meta_types import ChangePackage
+    pkg = ChangePackage(incident={"kind": "tp_too_fast", "summary": "..."})
+    prompt = _build_surgeon_prompt(pkg)
+    # Anchor on three known ScannerConfig field names — if any were
+    # renamed or removed, this test should be updated alongside.
+    assert "atr_tp_multiplier" in prompt
+    assert "min_confidence" in prompt
+    assert "atr_sl_multiplier" in prompt
+    # Anchor on the structural marker so a surgeon LLM can find the list.
+    assert "VALID_CONFIG_KEYS" in prompt

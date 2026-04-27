@@ -593,11 +593,24 @@ def _build_surgeon_prompt(pkg: ChangePackage) -> str:
     Constraint surfaced in the prompt: keys must match ScannerConfig field
     names. Surgeon should return small, reversible deltas; Constitution will
     block widening of risk parameters or freshness-floor reductions.
+
+    The prompt enumerates VALID_CONFIG_KEYS so the surgeon LLM is grounded
+    in the actual config surface — reduces orphan-key hallucinations
+    upstream of `_validate_config_delta` (which still drops them at parse
+    time as a safety net).
     """
     diag_text = pkg.diagnosis.root_cause_hypothesis if pkg.diagnosis else ""
     sev = pkg.diagnosis.severity.value if pkg.diagnosis else "low"
     affected = pkg.diagnosis.affected_modules if pkg.diagnosis else []
     incident_signal = json.dumps(pkg.incident.get("signal", {}), default=str)[:1200] if pkg.incident else "{}"
+    valid_keys_list = sorted(_valid_config_keys())
+    if valid_keys_list:
+        valid_keys_block = "\n  ".join(valid_keys_list)
+    else:
+        valid_keys_block = (
+            "(unable to introspect ScannerConfig — surgeon may emit any "
+            "plausible field; orphan keys will be dropped at parse time)"
+        )
     return (
         "ROLE: code_surgeon (proposes a minimal, reversible config delta to "
         "address the diagnosed root cause)\n"
@@ -613,6 +626,8 @@ def _build_surgeon_prompt(pkg: ChangePackage) -> str:
         "the Constitution will block risk-widening changes.\n"
         "  - If no clear config-only fix exists, return an empty config_delta "
         "with rationale stating why a code/model intervention is needed.\n"
+        "VALID_CONFIG_KEYS (use ONLY keys from this list):\n"
+        f"  {valid_keys_block}\n"
         "Reply with EXACTLY one ```yaml fenced block containing two keys:\n"
         "  config_delta: <flat mapping of field → new value>\n"
         "  rationale: <one-line explanation>\n"
