@@ -165,6 +165,13 @@ class DeploymentRecord:
 
     stage: DeployStage
     deployed_at: str = field(default_factory=_utcnow_iso)
+    # Anchor cycle so drain() can enforce shadow_cycles/canary_trades soak
+    # windows. 0 is a sentinel meaning "unknown" — drain treats unknown as
+    # "soak window already elapsed" to preserve backward compat with packages
+    # serialized before this field existed.
+    deployed_at_cycle: int = 0
+    closed_trade_count_at_deploy: int = 0
+    regime_at_deploy: Optional[str] = None
     rolled_back_at: Optional[str] = None
     rollback_reason: Optional[str] = None
 
@@ -226,6 +233,7 @@ class ChangePackage:
                 {
                     "stage": dep.stage.value,
                     "deployed_at": dep.deployed_at,
+                    "deployed_at_cycle": dep.deployed_at_cycle,
                     "rolled_back_at": dep.rolled_back_at,
                     "rollback_reason": dep.rollback_reason,
                 }
@@ -252,6 +260,24 @@ class ChangePackage:
             d["diagnosis"]["severity"] = self.diagnosis.severity.value
             d["diagnosis"]["proposed_intervention_kind"] = self.diagnosis.proposed_intervention_kind.value
         return d
+
+    def dedup_hash(self) -> str:
+        """Stable identity hash for duplicate-proposal suppression.
+
+        Collides when (incident.kind, sorted(config_delta items)) is identical.
+        Excludes timestamps, summaries, and incident metadata so two genuinely
+        identical proposals from different incidents collapse to one package.
+        """
+        import hashlib
+        kind = str((self.incident or {}).get("kind", ""))
+        delta = (self.proposal.config_delta if self.proposal else {}) or {}
+        canonical = repr(sorted(
+            (k, repr(v)) for k, v in delta.items()
+        ))
+        material = f"{kind}::{canonical}".encode("utf-8")
+        # SHA-256 used for non-cryptographic dedup keying (not a signature);
+        # truncated to 16 hex chars (64 bits) — ample for proposal-set dedup.
+        return hashlib.sha256(material).hexdigest()[:16]
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "ChangePackage":
@@ -294,6 +320,7 @@ class ChangePackage:
             DeploymentRecord(
                 stage=DeployStage(d["stage"]),
                 deployed_at=d.get("deployed_at", _utcnow_iso()),
+                deployed_at_cycle=int(d.get("deployed_at_cycle", 0) or 0),
                 rolled_back_at=d.get("rolled_back_at"),
                 rollback_reason=d.get("rollback_reason"),
             )

@@ -315,3 +315,47 @@ def test_critic_appends_ledger_jsonl(tmp_path):
     record = json.loads(ledger.read_text().strip().splitlines()[-1])
     assert record["change_id"] == pkg.change_id
     assert record["stage"] == "shadow"
+
+
+import hashlib
+from src.scanner.automation.meta_types import (
+    ChangePackage, DeploymentRecord, DeployStage, Proposal,
+)
+
+
+def test_deployment_record_has_regime_and_trade_count_fields():
+    rec = DeploymentRecord(stage=DeployStage.SHADOW)
+    assert rec.regime_at_deploy is None
+    assert rec.closed_trade_count_at_deploy == 0
+    rec.regime_at_deploy = "LOW"
+    rec.closed_trade_count_at_deploy = 1234
+    from dataclasses import asdict
+    blob = asdict(rec)
+    assert blob["regime_at_deploy"] == "LOW"
+    assert blob["closed_trade_count_at_deploy"] == 1234
+
+
+def test_change_package_dedup_hash_stable_and_collision_correct():
+    delta = {"atr_tp_multiplier": {"new": 1.6, "old": 1.5}}
+    pkg_a = ChangePackage(
+        incident={"kind": "tp_too_fast", "summary": "..."},
+        proposal=Proposal(config_delta=delta),
+    )
+    pkg_b = ChangePackage(
+        incident={"kind": "tp_too_fast", "summary": "different summary, same delta"},
+        proposal=Proposal(config_delta=delta),
+    )
+    pkg_c = ChangePackage(
+        incident={"kind": "sl_too_wide", "summary": "..."},
+        proposal=Proposal(config_delta=delta),
+    )
+    assert pkg_a.dedup_hash() == pkg_b.dedup_hash()
+    assert pkg_a.dedup_hash() != pkg_c.dedup_hash()
+    assert pkg_a.dedup_hash() == pkg_a.dedup_hash()
+    assert len(pkg_a.dedup_hash()) >= 16
+
+
+def test_change_package_dedup_hash_handles_missing_proposal():
+    pkg = ChangePackage(incident={"kind": "any"}, proposal=None)
+    h = pkg.dedup_hash()
+    assert isinstance(h, str) and len(h) >= 16
