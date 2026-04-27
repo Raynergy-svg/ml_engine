@@ -257,3 +257,39 @@ def test_historical_loss_rate_clause_abstains_on_insufficient_history(tmp_path):
     matching = [r for r in attestation.clauses if r.clause_id == "hist_loss_rate_test"]
     assert matching and matching[0].passed is True
     assert "insufficient_history" in (matching[0].detail or "")
+
+
+def test_historical_loss_rate_clause_handles_malformed_history(tmp_path):
+    """Hardening: when historical_outcomes is the wrong type (list) or has
+    non-numeric values, the clause abstains with a 'malformed_history' detail
+    instead of raising. Defensive against intake-side schema corruption."""
+    rules_path = tmp_path / "constitution.json"
+    rules_path.write_text(json.dumps({
+        "version": 1,
+        "clauses": [{
+            "id": "hist_loss_rate_test",
+            "kind": "historical_loss_rate",
+            "name": "Historical loss rate veto",
+            "rule": "block proposals matching past loss patterns",
+            "threshold": 0.7,
+            "n_min": 5,
+        }],
+    }))
+    c = Constitution(path=rules_path)
+
+    # Case 1: historical_outcomes is a list, not a dict.
+    pkg_list = ChangePackage(incident={"kind": "any", "historical_outcomes": ["broken"]})
+    att1 = c.check(pkg_list)
+    matching = [r for r in att1.clauses if r.clause_id == "hist_loss_rate_test"]
+    assert matching and matching[0].passed is True
+    assert "malformed_history" in (matching[0].detail or "")
+
+    # Case 2: numeric coercion fails on non-numeric strings.
+    pkg_str = ChangePackage(incident={
+        "kind": "any",
+        "historical_outcomes": {"matched_episodes": "not_a_number", "loss_rate": 0.9},
+    })
+    att2 = c.check(pkg_str)
+    matching = [r for r in att2.clauses if r.clause_id == "hist_loss_rate_test"]
+    assert matching and matching[0].passed is True
+    assert "malformed_history" in (matching[0].detail or "")

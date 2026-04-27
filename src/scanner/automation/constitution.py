@@ -251,8 +251,22 @@ class Constitution:
         threshold = float(clause.get("threshold", 0.7))
         n_min = int(clause.get("n_min", 5))
         outcomes = (pkg.incident or {}).get("historical_outcomes") or {}
-        matched = int(outcomes.get("matched_episodes", 0) or 0)
-        loss_rate = float(outcomes.get("loss_rate", 0.0) or 0.0)
+        if not isinstance(outcomes, dict):
+            # Malformed history (e.g., a list got attached): abstain rather than
+            # crash. improvement.md mandates JSON-structure validation after
+            # parsing — defensive layer below the intake-side gatekeeper.
+            return ClauseResult(
+                cid, name, True,
+                f"malformed_history (type={type(outcomes).__name__})",
+            )
+        try:
+            matched = int(outcomes.get("matched_episodes", 0) or 0)
+            loss_rate = float(outcomes.get("loss_rate", 0.0) or 0.0)
+        except (TypeError, ValueError) as e:
+            return ClauseResult(
+                cid, name, True,
+                f"malformed_history (numeric_coercion_failed: {e})",
+            )
         if matched < n_min:
             return ClauseResult(
                 cid,
