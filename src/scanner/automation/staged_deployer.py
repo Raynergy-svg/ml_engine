@@ -36,6 +36,15 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
+# G1 soak-gate constants — replace cycle-based promotion with closed-trade
+# count + R-multiple floor. R_baseline is the mean R-multiple of the
+# R_BASELINE_LOOKBACK trades immediately preceding deploy (cold-start: 0.0).
+SHADOW_MIN_TRADES = 15
+CANARY_MIN_TRADES = 30
+R_FLOOR_DELTA = 0.5  # R_mean must be >= R_baseline - R_FLOOR_DELTA
+R_BASELINE_LOOKBACK = 50
+
+
 class StagedDeployer:
     """Promotes a `ChangePackage` through shadow / canary / live in order.
 
@@ -133,6 +142,88 @@ class StagedDeployer:
             package.change_id, reason,
         )
         return package
+
+    def _read_trade_journal_count(self) -> int:
+        """Count closed trades in trade_journal_rl.json. 0 on any error."""
+        try:
+            from src.scanner.automation.safe_json import safe_json_read
+            from pathlib import Path
+            path = Path(__file__).resolve().parents[3] / "trained_data" / "trade_journal_rl.json"
+            entries = safe_json_read(path, default=[])
+            return len(entries) if isinstance(entries, list) else 0
+        except Exception:
+            return 0
+
+    def _active_record(
+        self, package: ChangePackage, stage: DeployStage
+    ) -> Optional[DeploymentRecord]:
+        """Most recent non-rolled-back DeploymentRecord at the given stage, else None."""
+        return next(
+            (d for d in package.deployments if d.stage == stage and d.rolled_back_at is None),
+            None,
+        )
+
+    def _compute_window_r_stats(
+        self, record: DeploymentRecord, window_size: int
+    ) -> Dict[str, float]:
+        """Compute R_mean over the next `window_size` closed trades after deploy
+        AND R_baseline over the R_BASELINE_LOOKBACK trades immediately preceding
+        deploy. Both default to 0.0 on journal read errors or insufficient
+        history."""
+        try:
+            from src.scanner.automation.safe_json import safe_json_read
+            from pathlib import Path
+            path = Path(__file__).resolve().parents[3] / "trained_data" / "trade_journal_rl.json"
+            entries = safe_json_read(path, default=[])
+            if not isinstance(entries, list):
+                return {"R_mean": 0.0, "R_baseline": 0.0}
+            deploy_idx = record.closed_trade_count_at_deploy
+            window = entries[deploy_idx : deploy_idx + window_size]
+            baseline = entries[max(0, deploy_idx - R_BASELINE_LOOKBACK) : deploy_idx]
+
+            def r_of(e: Any) -> float:
+                o = (e.get("outcome") or {}) if isinstance(e, dict) else {}
+                try:
+                    return float(o.get("r_multiple", 0.0))
+                except (TypeError, ValueError):
+                    return 0.0
+
+            r_mean = sum(r_of(e) for e in window) / len(window) if window else 0.0
+            r_base = sum(r_of(e) for e in baseline) / len(baseline) if baseline else 0.0
+            return {"R_mean": r_mean, "R_baseline": r_base}
+        except Exception as e:
+            logger.warning("staged_deployer.r_stats_failed err=%s", e)
+            return {"R_mean": 0.0, "R_baseline": 0.0}
+
+    def should_promote_shadow_to_canary(
+        self, package: ChangePackage, current_trade_count: Optional[int] = None
+    ) -> bool:
+        """G1: shadow→canary gate uses real closed-trade count + R-floor."""
+        rec = self._active_record(package, DeployStage.SHADOW)
+        if rec is None:
+            return False
+        if current_trade_count is None:
+            current_trade_count = self._read_trade_journal_count()
+        closed_since_deploy = current_trade_count - rec.closed_trade_count_at_deploy
+        if closed_since_deploy < SHADOW_MIN_TRADES:
+            return False
+        stats = self._compute_window_r_stats(rec, SHADOW_MIN_TRADES)
+        return stats["R_mean"] >= stats["R_baseline"] - R_FLOOR_DELTA
+
+    def should_promote_canary_to_live(
+        self, package: ChangePackage, current_trade_count: Optional[int] = None
+    ) -> bool:
+        """G1: canary→live gate uses real closed-trade count + R-floor."""
+        rec = self._active_record(package, DeployStage.CANARY)
+        if rec is None:
+            return False
+        if current_trade_count is None:
+            current_trade_count = self._read_trade_journal_count()
+        closed_since_deploy = current_trade_count - rec.closed_trade_count_at_deploy
+        if closed_since_deploy < CANARY_MIN_TRADES:
+            return False
+        stats = self._compute_window_r_stats(rec, CANARY_MIN_TRADES)
+        return stats["R_mean"] >= stats["R_baseline"] - R_FLOOR_DELTA
 
     def _apply_shadow(self, package: ChangePackage) -> None:
         delta = (package.proposal.config_delta if package.proposal else {}) or {}

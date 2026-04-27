@@ -372,3 +372,74 @@ def test_change_package_dedup_hash_canonicalizes_nested_dict_order():
         }),
     )
     assert pkg_a.dedup_hash() == pkg_b.dedup_hash()
+
+
+def test_staged_deployer_shadow_promote_requires_real_trades(monkeypatch):
+    """Shadow → canary requires >= SHADOW_MIN_TRADES (15) closed trades
+    since deploy AND R_mean >= R_baseline - R_FLOOR_DELTA (0.5)."""
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    from src.scanner.automation.meta_types import (
+        ChangePackage, DeploymentRecord, DeployStage, Proposal,
+    )
+    sd = StagedDeployer(config=None)
+    pkg = ChangePackage(proposal=Proposal(config_delta={"atr_tp_multiplier": {"new": 1.6, "old": 1.5}}))
+    rec = DeploymentRecord(
+        stage=DeployStage.SHADOW,
+        deployed_at_cycle=0,
+        closed_trade_count_at_deploy=0,
+    )
+    pkg.deployments.append(rec)
+    # 0 trades → not enough.
+    assert sd.should_promote_shadow_to_canary(pkg, current_trade_count=0) is False
+    # 14 trades (< 15) → not enough.
+    assert sd.should_promote_shadow_to_canary(pkg, current_trade_count=14) is False
+    # 15+ trades AND R_mean >= R_baseline - 0.5 → promote.
+    monkeypatch.setattr(
+        StagedDeployer, "_compute_window_r_stats",
+        lambda self, rec, n: {"R_mean": 0.6, "R_baseline": 0.0},
+    )
+    assert sd.should_promote_shadow_to_canary(pkg, current_trade_count=15) is True
+    # 15+ trades but R below floor → no.
+    monkeypatch.setattr(
+        StagedDeployer, "_compute_window_r_stats",
+        lambda self, rec, n: {"R_mean": -0.6, "R_baseline": 0.0},
+    )
+    assert sd.should_promote_shadow_to_canary(pkg, current_trade_count=15) is False
+
+
+def test_staged_deployer_canary_to_live_requires_30_trades(monkeypatch):
+    """Canary → live requires >= CANARY_MIN_TRADES (30) closed trades
+    since canary deploy AND R_mean >= R_baseline - R_FLOOR_DELTA."""
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    from src.scanner.automation.meta_types import (
+        ChangePackage, DeploymentRecord, DeployStage, Proposal,
+    )
+    sd = StagedDeployer(config=None)
+    pkg = ChangePackage(proposal=Proposal(config_delta={}))
+    rec = DeploymentRecord(
+        stage=DeployStage.CANARY,
+        deployed_at_cycle=0,
+        closed_trade_count_at_deploy=100,
+    )
+    pkg.deployments.append(rec)
+    monkeypatch.setattr(
+        StagedDeployer, "_compute_window_r_stats",
+        lambda self, rec, n: {"R_mean": 0.5, "R_baseline": 0.0},
+    )
+    # 100 + 29 = 129 — 1 short of 30.
+    assert sd.should_promote_canary_to_live(pkg, current_trade_count=129) is False
+    # 100 + 30 = 130 — exactly enough.
+    assert sd.should_promote_canary_to_live(pkg, current_trade_count=130) is True
+
+
+def test_staged_deployer_should_promote_returns_false_without_active_record(monkeypatch):
+    """If there's no active record at the relevant stage (e.g., already
+    rolled back), promotion is False — guards against operating on a
+    non-existent deploy record."""
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    from src.scanner.automation.meta_types import ChangePackage, Proposal
+    sd = StagedDeployer(config=None)
+    pkg = ChangePackage(proposal=Proposal(config_delta={}))
+    # No deployments at all.
+    assert sd.should_promote_shadow_to_canary(pkg, current_trade_count=999) is False
+    assert sd.should_promote_canary_to_live(pkg, current_trade_count=999) is False
