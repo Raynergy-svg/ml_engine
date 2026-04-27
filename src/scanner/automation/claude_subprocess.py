@@ -155,6 +155,11 @@ class ReflectionResult:
     cost_usd: float = 0.0
     error: Optional[str] = None
     returncode: int = -1
+    # Raw stdout retained so meta-pipeline specialists (which return fenced
+    # ```yaml/```json blocks rather than <reflection-result> XML) can extract
+    # their own structured output. _parse_result_block only handles the legacy
+    # XML format — keeping the string lets new consumers parse independently.
+    stdout: str = ""
 
 
 class ReflectionBudget:
@@ -636,6 +641,7 @@ def invoke_claude_reflection(
         result.returncode = proc.returncode
         stdout = proc.stdout or ""
         result.stdout_len = len(stdout)
+        result.stdout = stdout
 
         # Parse structured output
         result.promise_found = bool(PROMISE_RE.search(stdout))

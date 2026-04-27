@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -51,12 +52,45 @@ _LEDGER_PATH = _PROJECT_ROOT / ".claude" / "meta" / "changes.jsonl"
 SpecialistInvoker = Callable[[str, str], str]
 
 
+_FENCED_BLOCK_RE = re.compile(
+    r"```(?:yaml|yml|json)?\s*\n(.*?)\n```",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _extract_specialist_output(stdout: str) -> str:
+    """Pull the structured specialist response out of raw Claude CLI stdout.
+
+    Meta specialists return fenced ```yaml/```json blocks per their persona
+    instructions. The reflection harness's `_parse_result_block` only
+    recognizes <reflection-result> XML tags — wrong format for this layer.
+    We extract the FIRST fenced block; if none found, return stdout verbatim
+    so the downstream parsers (_parse_diagnosis, _parse_auditor_agreement)
+    can still do best-effort YAML parsing.
+    """
+    if not stdout:
+        return ""
+    m = _FENCED_BLOCK_RE.search(stdout)
+    if m:
+        return m.group(1).strip()
+    return stdout.strip()
+
+
 def _default_specialist_invoker(mode: str, prompt: str) -> str:
     """Default: call the existing reflection harness; tolerate failure silently.
 
-    Returns the stdout (or empty string on failure). The MetaManager never
-    blocks on specialist output — they enrich, they don't gate (the
-    Constitution gates).
+    Returns the structured specialist output (fenced block contents) or empty
+    string on failure. The MetaManager never blocks on specialist output —
+    they enrich, they don't gate (the Constitution gates).
+
+    Performance note (2026-04-26): timeout 360s. The headless `claude --print`
+    subprocess loads 4 MCP servers on every invocation; cold-start alone is
+    ~70s. With actual specialist thinking, ~150s typical.
+
+    Format note (2026-04-26): we read `result.stdout` directly and extract
+    the fenced ```yaml/```json block. The reflection harness's built-in
+    `result.result_block` only recognizes <reflection-result> XML tags
+    (a different format from what meta specialists emit).
     """
     try:
         from src.scanner.automation.claude_subprocess import invoke_claude_reflection
@@ -64,9 +98,10 @@ def _default_specialist_invoker(mode: str, prompt: str) -> str:
             prompt=prompt,
             trade_id=mode,
             mode=mode,
-            timeout_seconds=120,
+            timeout_seconds=360,
         )
-        return getattr(result, "result_block", "") or ""
+        stdout = getattr(result, "stdout", "") or ""
+        return _extract_specialist_output(stdout)
     except Exception as e:
         logger.warning("meta_manager.specialist_invoke_failed mode=%s err=%s", mode, e)
         return ""
@@ -283,6 +318,32 @@ class MetaManager:
                 self._persist(pkg)
                 self._append_ledger(pkg, "live_closed")
                 continue
+
+            # Enforce soak-time gate before advancing to the next stage.
+            # Shadow stage waits `shadow_cycles` cycles; canary stage waits
+            # `canary_trades` cycles (cycle-as-proxy until drain receives a
+            # real trade counter — TODO: thread trade_count through drain).
+            # `deployed_at_cycle == 0` means an old package serialized before
+            # the field existed — treated as "soak elapsed" for back-compat.
+            current_dep = next(
+                (d for d in reversed(pkg.deployments)
+                 if d.stage == pkg.deploy_target and d.rolled_back_at is None),
+                None,
+            )
+            if current_dep is not None and current_dep.deployed_at_cycle > 0:
+                elapsed = current_cycle - current_dep.deployed_at_cycle
+                required = (
+                    self._deploy.shadow_cycles if pkg.deploy_target == DeployStage.SHADOW
+                    else self._deploy.canary_trades
+                )
+                if elapsed < required:
+                    logger.info(
+                        "meta_manager.soak_window_active change_id=%s stage=%s "
+                        "elapsed=%d required=%d — promotion deferred",
+                        pkg.change_id, pkg.deploy_target.value, elapsed, required,
+                    )
+                    continue
+
             self._deploy.promote_next(pkg, current_cycle=current_cycle)
             counters["promotions"] += 1
             self._persist(pkg)
@@ -346,16 +407,91 @@ class MetaManager:
     def _default_proposer(self, pkg: ChangePackage) -> Proposal:
         """Build a Proposal from the diagnosis when no explicit proposer is given.
 
-        For `kind=config`, the diagnosis must include a `proposed_config_delta`
-        field in the incident payload (set by the upstream caller) — otherwise
-        we return an empty proposal and let evaluation skip.
+        Resolution order:
+          1. If incident already carries `proposed_config_delta` (precomputed
+             upstream by self_heal etc.), validate keys and use it.
+          2. For `kind=config` with no precomputed delta, spawn the Code
+             Surgeon LLM specialist with the diagnosis as input — returns
+             a YAML block of {config_delta, rationale}.
+          3. For other kinds (model/code/disable), return an empty proposal
+             (those proposers are TODO; constitution will pass-through).
+
+        All deltas are validated against ScannerConfig dataclass field names
+        before being returned. Orphan keys are logged and dropped to prevent
+        the silent dead-write failure mode promoted to a rule on 2026-04-16.
         """
-        delta = (pkg.incident.get("proposed_config_delta") or {}) if pkg.incident else {}
-        return Proposal(
-            diff=json.dumps(delta, indent=2, sort_keys=True),
-            changed_files=list(pkg.incident.get("changed_files", [])) if pkg.incident else [],
-            config_delta=delta,
-        )
+        incident_delta = (pkg.incident.get("proposed_config_delta") or {}) if pkg.incident else {}
+        rationale: Optional[str] = None
+
+        if incident_delta:
+            valid, dropped = _validate_config_delta(incident_delta)
+            if dropped:
+                logger.warning(
+                    "meta_manager.proposer.dropped_orphan_keys change_id=%s dropped=%s",
+                    pkg.change_id, dropped,
+                )
+            return Proposal(
+                diff=json.dumps(valid, indent=2, sort_keys=True),
+                changed_files=list(pkg.incident.get("changed_files", [])) if pkg.incident else [],
+                config_delta=valid,
+            )
+
+        if pkg.kind == ChangeKind.CONFIG:
+            surgeon_raw = self._invoke("code_surgeon", _build_surgeon_prompt(pkg))
+            parsed = _yaml_to_dict(surgeon_raw) if surgeon_raw else {}
+            raw_delta = parsed.get("config_delta", {}) if isinstance(parsed, dict) else {}
+            if not isinstance(raw_delta, dict):
+                raw_delta = {}
+            valid, dropped = _validate_config_delta(raw_delta)
+            if dropped:
+                logger.warning(
+                    "meta_manager.surgeon.dropped_orphan_keys change_id=%s dropped=%s",
+                    pkg.change_id, dropped,
+                )
+            rationale = parsed.get("rationale") if isinstance(parsed, dict) else None
+            logger.info(
+                "meta_manager.surgeon_proposed change_id=%s keys=%s rationale=%s",
+                pkg.change_id, list(valid.keys()), (rationale or "")[:120],
+            )
+            return Proposal(
+                diff=json.dumps(valid, indent=2, sort_keys=True),
+                changed_files=[],
+                config_delta=valid,
+            )
+
+        # Other intervention kinds — proposers not yet implemented.
+        return Proposal(diff="{}", changed_files=[], config_delta={})
+
+    # ---------- top-level: drive an incident through Stages 1-5 ----------
+
+    def process(self, incident: Dict[str, Any]) -> ChangePackage:
+        """Drive a single incident from intake to awaiting_approval (or terminal).
+
+        Runs Stage 1 (intake+diagnosis) → Stage 2 (propose) → Stage 3 (evaluate)
+        → Stage 4 (constitution+auditor) → Stage 5 (enqueue for approval).
+
+        Returns the package at whichever terminal stage it reached:
+          - AWAITING_APPROVAL: package is in the human approval queue
+          - REJECTED: constitution or auditor blocked it
+          - ABORTED: an exception killed the pipeline (errors logged)
+
+        Used by `route_incident` and the smoke driver. Individual stage
+        methods remain available for tests and partial replays.
+        """
+        pkg = self.intake(incident)
+        if pkg.stage in (ChangeStage.ABORTED, ChangeStage.REJECTED):
+            return pkg
+        pkg = self.propose(pkg)
+        if pkg.stage in (ChangeStage.ABORTED, ChangeStage.REJECTED):
+            return pkg
+        pkg = self.evaluate(pkg)
+        if pkg.stage in (ChangeStage.ABORTED, ChangeStage.REJECTED):
+            return pkg
+        pkg = self.check_constitution(pkg)
+        if pkg.stage == ChangeStage.REJECTED:
+            return pkg
+        pkg = self.request_approval(pkg)
+        return pkg
 
 
 # ---------- public routing helper used by upstream triggers ----------
@@ -382,19 +518,105 @@ def is_enabled() -> bool:
 def route_incident(incident: Dict[str, Any]) -> bool:
     """Route an incident through the meta-pipeline if enabled.
 
-    Returns True when the meta manager swallowed the signal (the caller
-    should NOT also spawn Ralph / reflection / direct config writes).
-    Returns False when the legacy path should run.
+    Drives the full Stage 1-5 pipeline: intake → propose → evaluate →
+    constitution → enqueue for approval. Returns True when the meta manager
+    swallowed the signal (caller should NOT also spawn Ralph / reflection /
+    direct config writes). Returns False when the legacy path should run.
+
+    Note: this blocks for the duration of all LLM calls (3 specialists ×
+    ~150s ≈ 7-8 min worst case). Callers must not be in the trade hot
+    path. Today both call sites (cycle_autonomy, performance_prd_generator)
+    run from the orchestrator's meta-cycle dispatcher, satisfying the
+    "Claude-free runtime hot path" rule from CLAUDE.md.
     """
     if not is_enabled():
         return False
     try:
         mgr = MetaManager()
-        mgr.intake(incident)
+        mgr.process(incident)
         return True
     except Exception as e:
         logger.warning("meta_manager.route_incident_failed err=%s — falling back to legacy", e)
         return False
+
+
+# ---------- Code Surgeon prompt + config-key validation ----------
+
+_VALID_CONFIG_KEYS_CACHE: Optional[set] = None
+
+
+def _valid_config_keys() -> set:
+    """Return the set of legal ScannerConfig dataclass field names.
+
+    Cached after first computation. Used to filter Code Surgeon-proposed
+    deltas before they reach the constitution gate — enforces the
+    "validate keys against ScannerConfig BEFORE writing" rule promoted
+    from cycle 3 self-heal dead-letter analysis (2026-04-16).
+    """
+    global _VALID_CONFIG_KEYS_CACHE
+    if _VALID_CONFIG_KEYS_CACHE is not None:
+        return _VALID_CONFIG_KEYS_CACHE
+    try:
+        import dataclasses
+        from src.scanner.config import ScannerConfig
+        _VALID_CONFIG_KEYS_CACHE = {f.name for f in dataclasses.fields(ScannerConfig)}
+    except Exception as e:
+        logger.warning("meta_manager.config_keys_load_failed err=%s", e)
+        _VALID_CONFIG_KEYS_CACHE = set()
+    return _VALID_CONFIG_KEYS_CACHE
+
+
+def _validate_config_delta(delta: Dict[str, Any]) -> tuple:
+    """Filter a delta to keys that exist on ScannerConfig.
+
+    Returns (valid_delta, dropped_keys). The empty-set case happens when
+    ScannerConfig couldn't be imported — we conservatively pass everything
+    through (rather than block all changes) and let the constitution gate
+    catch real violations.
+    """
+    valid_keys = _valid_config_keys()
+    if not valid_keys:
+        return dict(delta or {}), []
+    valid: Dict[str, Any] = {}
+    dropped: List[str] = []
+    for k, v in (delta or {}).items():
+        if k in valid_keys:
+            valid[k] = v
+        else:
+            dropped.append(k)
+    return valid, dropped
+
+
+def _build_surgeon_prompt(pkg: ChangePackage) -> str:
+    """Build the Code Surgeon prompt — proposes a config_delta from diagnosis.
+
+    Constraint surfaced in the prompt: keys must match ScannerConfig field
+    names. Surgeon should return small, reversible deltas; Constitution will
+    block widening of risk parameters or freshness-floor reductions.
+    """
+    diag_text = pkg.diagnosis.root_cause_hypothesis if pkg.diagnosis else ""
+    sev = pkg.diagnosis.severity.value if pkg.diagnosis else "low"
+    affected = pkg.diagnosis.affected_modules if pkg.diagnosis else []
+    incident_signal = json.dumps(pkg.incident.get("signal", {}), default=str)[:1200] if pkg.incident else "{}"
+    return (
+        "ROLE: code_surgeon (proposes a minimal, reversible config delta to "
+        "address the diagnosed root cause)\n"
+        f"CHANGE_ID: {pkg.change_id}\n"
+        f"DIAGNOSIS: {diag_text[:1500]}\n"
+        f"SEVERITY: {sev}\n"
+        f"AFFECTED_MODULES: {affected}\n"
+        f"INCIDENT_SIGNAL: {incident_signal}\n"
+        "Constraints:\n"
+        "  - Keys MUST match ScannerConfig dataclass field names exactly "
+        "(orphan keys are dropped before constitution check).\n"
+        "  - Prefer small, reversible deltas. Avoid widening risk parameters; "
+        "the Constitution will block risk-widening changes.\n"
+        "  - If no clear config-only fix exists, return an empty config_delta "
+        "with rationale stating why a code/model intervention is needed.\n"
+        "Reply with EXACTLY one ```yaml fenced block containing two keys:\n"
+        "  config_delta: <flat mapping of field → new value>\n"
+        "  rationale: <one-line explanation>\n"
+    )
 
 
 # ---------- prompt builders (kept short — full text lives in the .md personality files) ----------
@@ -490,11 +712,23 @@ def _default_rollback_plan(pkg: ChangePackage) -> str:
 
 
 def _yaml_to_dict(text: str) -> Dict[str, Any]:
-    """Tiny inline YAML parser — only handles the flat 'key: value' subset we expect.
+    """Parse YAML/JSON specialist output into a flat dict.
 
-    The reflection harness asks specialists to return YAML inside a result block;
-    full PyYAML is overkill (and not always installed in CI). We tolerate JSON too.
+    Prefers pyyaml (handles block scalars `|`/`>`, lists, nested mappings)
+    so multi-line `root_cause_hypothesis: |` reaches us as full text rather
+    than the literal `|`. Falls back to a tiny hand-rolled key:value parser
+    when pyyaml is unavailable or chokes on something pathological.
     """
+    text = (text or "").strip()
+    if not text:
+        return {}
+    try:
+        import yaml  # type: ignore
+        loaded = yaml.safe_load(text)
+        if isinstance(loaded, dict):
+            return loaded
+    except Exception:
+        pass
     out: Dict[str, Any] = {}
     for line in text.splitlines():
         if ":" not in line:

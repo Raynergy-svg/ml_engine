@@ -94,8 +94,10 @@ class StagedDeployer:
             self._apply_live(package, current_cycle)
             package.stage = ChangeStage.DEPLOYED_LIVE
 
-        package.deployments.append(DeploymentRecord(stage=target))
-        package.touch(f"deployed stage={target.value}")
+        package.deployments.append(
+            DeploymentRecord(stage=target, deployed_at_cycle=current_cycle)
+        )
+        package.touch(f"deployed stage={target.value} cycle={current_cycle}")
         logger.info(
             "staged_deployer.advance change_id=%s stage=%s",
             package.change_id, target.value,
