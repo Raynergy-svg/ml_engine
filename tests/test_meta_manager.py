@@ -162,9 +162,16 @@ def test_full_pipeline_to_approval_queue(tmp_layout, fake_specialist_invoker):
 
 def test_constitution_violation_short_circuits(tmp_layout, fake_specialist_invoker):
     mgr = _build_manager(tmp_layout, fake_specialist_invoker)
+    # max_drawdown_pct is a real ScannerConfig field that matches C1's
+    # `max_drawdown_*` glob. Widening from 0.10 → 0.20 trips C1
+    # (no_widen_max_risk: monotonic_non_increasing) → REJECTED. Previously
+    # this test used `max_portfolio_risk` which is not a real field; the
+    # orphan-key validator in `_default_proposer` now drops fake keys before
+    # constitution sees them (per the 2026-04-16 promoted rule about silent
+    # dead-writes from orphan config keys).
     pkg = mgr.intake({
         "kind": "self_heal",
-        "proposed_config_delta": {"max_portfolio_risk": {"old": 0.15, "new": 0.30}},
+        "proposed_config_delta": {"max_drawdown_pct": {"old": 0.10, "new": 0.20}},
     })
     mgr.propose(pkg)
     mgr.evaluate(pkg)
@@ -277,3 +284,25 @@ def test_persisted_package_round_trips(tmp_layout, fake_specialist_invoker):
     assert refreshed.change_id == pkg.change_id
     assert refreshed.proposal is not None
     assert refreshed.proposal.config_delta == {"min_confidence": {"old": 0.5, "new": 0.55}}
+
+
+def test_meta_manager_accepts_episodic_memory_dependency(tmp_layout):
+    from src.scanner.automation.meta_manager import MetaManager
+    sentinel = object()
+    mm = MetaManager(
+        config=None,
+        changes_dir=tmp_layout.changes_dir,
+        ledger_path=tmp_layout.ledger,
+        episodic_memory=sentinel,
+    )
+    assert mm._episodic_memory is sentinel
+
+
+def test_meta_manager_default_episodic_memory_is_none(tmp_layout):
+    from src.scanner.automation.meta_manager import MetaManager
+    mm = MetaManager(
+        config=None,
+        changes_dir=tmp_layout.changes_dir,
+        ledger_path=tmp_layout.ledger,
+    )
+    assert mm._episodic_memory is None

@@ -88,6 +88,7 @@ class MetaManager:
         changes_dir: Optional[Path] = None,
         ledger_path: Optional[Path] = None,
         max_concurrent: int = 1,
+        episodic_memory: Optional[Any] = None,
     ):
         self._config = config
         self._eval = eval_harness
@@ -99,6 +100,7 @@ class MetaManager:
         self._changes_dir = Path(changes_dir or _CHANGES_DIR)
         self._ledger = Path(ledger_path or _LEDGER_PATH)
         self._max_concurrent = max(1, int(max_concurrent))
+        self._episodic_memory = episodic_memory
         self._changes_dir.mkdir(parents=True, exist_ok=True)
         logger.info(
             "meta_manager.initialized changes_dir=%s ledger=%s",
