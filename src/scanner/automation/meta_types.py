@@ -11,6 +11,8 @@ Persistence layout:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -267,13 +269,22 @@ class ChangePackage:
         Collides when (incident.kind, sorted(config_delta items)) is identical.
         Excludes timestamps, summaries, and incident metadata so two genuinely
         identical proposals from different incidents collapse to one package.
+
+        Nested dict values are serialized with json.dumps(sort_keys=True) so
+        that semantically equal deltas constructed in different key insertion
+        order hash equal — preserving the G8 anti-dup intent. ``default=str``
+        keeps non-JSON-native values (Decimal, Enum, datetime) hashable.
         """
-        import hashlib
         kind = str((self.incident or {}).get("kind", ""))
         delta = (self.proposal.config_delta if self.proposal else {}) or {}
-        canonical = repr(sorted(
-            (k, repr(v)) for k, v in delta.items()
-        ))
+        canonical = json.dumps(
+            sorted(
+                (k, json.dumps(v, sort_keys=True, default=str))
+                for k, v in delta.items()
+            ),
+            sort_keys=True,
+            default=str,
+        )
         material = f"{kind}::{canonical}".encode("utf-8")
         # SHA-256 used for non-cryptographic dedup keying (not a signature);
         # truncated to 16 hex chars (64 bits) — ample for proposal-set dedup.

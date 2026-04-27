@@ -16,6 +16,7 @@ from src.scanner.automation.meta_types import (
     ChangeKind,
     ChangePackage,
     ChangeStage,
+    DeploymentRecord,
     DeployStage,
     Proposal,
     Scorecard,
@@ -317,12 +318,6 @@ def test_critic_appends_ledger_jsonl(tmp_path):
     assert record["stage"] == "shadow"
 
 
-import hashlib
-from src.scanner.automation.meta_types import (
-    ChangePackage, DeploymentRecord, DeployStage, Proposal,
-)
-
-
 def test_deployment_record_has_regime_and_trade_count_fields():
     rec = DeploymentRecord(stage=DeployStage.SHADOW)
     assert rec.regime_at_deploy is None
@@ -352,10 +347,28 @@ def test_change_package_dedup_hash_stable_and_collision_correct():
     assert pkg_a.dedup_hash() == pkg_b.dedup_hash()
     assert pkg_a.dedup_hash() != pkg_c.dedup_hash()
     assert pkg_a.dedup_hash() == pkg_a.dedup_hash()
-    assert len(pkg_a.dedup_hash()) >= 16
+    assert len(pkg_a.dedup_hash()) == 16
 
 
 def test_change_package_dedup_hash_handles_missing_proposal():
     pkg = ChangePackage(incident={"kind": "any"}, proposal=None)
     h = pkg.dedup_hash()
-    assert isinstance(h, str) and len(h) >= 16
+    assert isinstance(h, str) and len(h) == 16
+
+
+def test_change_package_dedup_hash_canonicalizes_nested_dict_order():
+    """Two deltas with the same nested dict but different key insertion
+    order must produce the SAME hash (G8 anti-dup intent)."""
+    pkg_a = ChangePackage(
+        incident={"kind": "tp_too_fast"},
+        proposal=Proposal(config_delta={
+            "atr_tp_multiplier": {"new": 1.6, "old": 1.5},
+        }),
+    )
+    pkg_b = ChangePackage(
+        incident={"kind": "tp_too_fast"},
+        proposal=Proposal(config_delta={
+            "atr_tp_multiplier": {"old": 1.5, "new": 1.6},  # reversed key order
+        }),
+    )
+    assert pkg_a.dedup_hash() == pkg_b.dedup_hash()
