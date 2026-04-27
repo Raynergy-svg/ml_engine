@@ -100,6 +100,8 @@ class Constitution:
             return self._check_diff(cid, name, clause, pkg)
         if kind == "package":
             return self._check_package(cid, name, clause, pkg)
+        if kind == "historical_loss_rate":
+            return self._eval_historical_loss_rate(cid, name, clause, pkg)
         return ClauseResult(cid, name, False, f"unknown clause kind: {kind}")
 
     def _check_config_delta(
@@ -236,6 +238,44 @@ class Constitution:
                 return ClauseResult(cid, name, False, f"{target_field} is empty")
             return ClauseResult(cid, name, True, f"{target_field} present")
         return ClauseResult(cid, name, False, f"unknown package rule: {rule}")
+
+    def _eval_historical_loss_rate(
+        self, cid: str, name: str, clause: Dict[str, Any], pkg: ChangePackage
+    ) -> ClauseResult:
+        """G7: veto if historical pattern shows loss_rate > threshold over n_min episodes.
+
+        Reads pkg.incident["historical_outcomes"] (attached by intake's G3 gate
+        when episodic_memory is injected). Cold-start safe: when no history is
+        attached or matched_episodes < n_min, the clause abstains (passes=True).
+        """
+        threshold = float(clause.get("threshold", 0.7))
+        n_min = int(clause.get("n_min", 5))
+        outcomes = (pkg.incident or {}).get("historical_outcomes") or {}
+        matched = int(outcomes.get("matched_episodes", 0) or 0)
+        loss_rate = float(outcomes.get("loss_rate", 0.0) or 0.0)
+        if matched < n_min:
+            return ClauseResult(
+                cid,
+                name,
+                True,
+                f"insufficient_history (matched={matched} < n_min={n_min})",
+            )
+        if loss_rate > threshold:
+            return ClauseResult(
+                cid,
+                name,
+                False,
+                (
+                    f"historical_pattern_loss_rate_exceeds_threshold "
+                    f"(loss_rate={loss_rate:.2f} > {threshold} over {matched} episodes)"
+                ),
+            )
+        return ClauseResult(
+            cid,
+            name,
+            True,
+            f"loss_rate_within_tolerance ({loss_rate:.2f} <= {threshold})",
+        )
 
 
 def _extract_old_new(change: Any) -> tuple:

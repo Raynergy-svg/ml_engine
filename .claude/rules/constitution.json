@@ -1,28 +1,31 @@
 {
-  "version": 1,
-  "description": "Machine-checkable invariants enforced against every ChangePackage before approval. Pure-Python evaluation, no LLM. The Policy Auditor specialist provides a qualitative second opinion.",
+  "version": 3,
+  "description": "Machine-checkable invariants enforced against every ChangePackage before approval. Pure-Python evaluation, no LLM. The Policy Auditor specialist provides a qualitative second opinion. v2 (2026-04-27): repaired orphan field references — every clause now binds to a real ScannerConfig field name. v3 (2026-04-27): added G7 historical_loss_rate clause that closes the episodic-memory feedback edge.",
   "clauses": [
     {
       "id": "C1",
       "name": "no_widen_max_risk",
       "kind": "config_delta",
-      "field_pattern": "max_*_risk|max_drawdown_*",
-      "rule": "monotonic_non_increasing"
+      "field_pattern": "max_*_risk*|max_drawdown_*",
+      "rule": "monotonic_non_increasing",
+      "_audit_2026_04_27": "Pattern broadened from `max_*_risk` to `max_*_risk*` so it matches real fields like `max_open_risk_pct` (trailing `_pct` was missed by the original glob). Now matches max_drawdown_pct and max_open_risk_pct."
     },
     {
       "id": "C2",
-      "name": "no_disable_supervision",
+      "name": "no_disable_meta_manager",
       "kind": "config_delta",
-      "field": "enable_supervision_mode",
-      "rule": "no_true_to_false"
+      "field": "enable_meta_manager",
+      "rule": "no_true_to_false",
+      "_audit_2026_04_27": "Replaced `enable_supervision_mode` (orphan — not a ScannerConfig field) with `enable_meta_manager`. Prevents a meta-pipeline change from disabling the meta pipeline itself; the cybernetic loop must protect its own existence."
     },
     {
       "id": "C3",
       "name": "freshness_floor",
       "kind": "config_delta",
-      "field": "max_component_age_days",
+      "field": "staleness_age_threshold_days",
       "rule": "le_constant",
-      "constant": 7
+      "constant": 14,
+      "_audit_2026_04_27": "Replaced `max_component_age_days` (orphan) with `staleness_age_threshold_days` (real). Constant raised from 7 → 14 to match the actual operating threshold cited in incidents (e.g. cycle #298 RL staleness signal)."
     },
     {
       "id": "C4",
@@ -48,9 +51,19 @@
       "id": "C7",
       "name": "rr_floor_holds",
       "kind": "config_delta",
-      "field": "min_rr_ratio",
+      "field": "min_risk_reward_ratio",
       "rule": "ge_constant",
-      "constant": 1.2
+      "constant": 1.2,
+      "_audit_2026_04_27": "Replaced `min_rr_ratio` (orphan) with `min_risk_reward_ratio` (real). Enforces the CLAUDE.md hard-gate floor: 'Never execute a trade with R:R ratio below 1.2:1.'"
+    },
+    {
+      "id": "C8",
+      "name": "historical_loss_rate_veto",
+      "kind": "historical_loss_rate",
+      "rule": "If incident.historical_outcomes shows >=n_min matching past episodes with loss_rate > threshold, block the proposal.",
+      "threshold": 0.7,
+      "n_min": 5,
+      "_added_2026_04_27": "G7 closure: reads incident.historical_outcomes attached by intake's episodic_memory query (Task 4). Cold-start safe: abstains when no history attached or matched_episodes < n_min. Tunable in-place without code changes."
     }
   ]
 }
