@@ -62,6 +62,7 @@ class StagedDeployer:
         adjustment_approver: Any = None,
         shadow_cycles: int = 20,
         canary_trades: int = 10,
+        regime_detector: Any = None,
     ):
         self._config = config
         self._adjuster = config_adjuster
@@ -74,6 +75,10 @@ class StagedDeployer:
         self._approver = adjustment_approver
         self._shadow_cycles = int(shadow_cycles)
         self._canary_trades = int(canary_trades)
+        # Optional regime detector for snapshotting regime_at_deploy on
+        # promotion. Best-effort (None or throwing detector → None capture,
+        # logged but non-blocking — regime tagging is observability, not gating).
+        self._regime_detector = regime_detector
 
     @property
     def shadow_cycles(self) -> int:
@@ -103,9 +108,7 @@ class StagedDeployer:
             self._apply_live(package, current_cycle)
             package.stage = ChangeStage.DEPLOYED_LIVE
 
-        package.deployments.append(
-            DeploymentRecord(stage=target, deployed_at_cycle=current_cycle)
-        )
+        package.deployments.append(self._build_deploy_record(target, current_cycle))
         package.touch(f"deployed stage={target.value} cycle={current_cycle}")
         logger.info(
             "staged_deployer.advance change_id=%s stage=%s",
@@ -142,6 +145,30 @@ class StagedDeployer:
             package.change_id, reason,
         )
         return package
+
+    def _build_deploy_record(
+        self, target: DeployStage, current_cycle: int
+    ) -> DeploymentRecord:
+        """Construct a DeploymentRecord enriched with regime + trade-count snapshots.
+
+        Both snapshots are best-effort: regime_detector.current() exceptions are
+        logged and fall back to None; _read_trade_journal_count() returns 0 on
+        journal read failure (already logged inside the helper). Reusing the
+        same trade-count read path as the R-floor soak gate keeps the index
+        arithmetic consistent across deploy and promotion-eval.
+        """
+        regime: Optional[str] = None
+        if self._regime_detector is not None:
+            try:
+                regime = self._regime_detector.current()
+            except Exception as e:
+                logger.warning("staged_deployer.regime_capture_failed err=%s", e)
+        return DeploymentRecord(
+            stage=target,
+            deployed_at_cycle=current_cycle,
+            closed_trade_count_at_deploy=self._read_trade_journal_count(),
+            regime_at_deploy=regime,
+        )
 
     def _read_trade_journal_count(self) -> int:
         """Count closed trades in trade_journal_rl.json. 0 on any error.

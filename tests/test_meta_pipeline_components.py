@@ -445,6 +445,78 @@ def test_staged_deployer_should_promote_returns_false_without_active_record(monk
     assert sd.should_promote_canary_to_live(pkg, current_trade_count=999) is False
 
 
+def test_apply_shadow_captures_regime(monkeypatch):
+    """At promotion-to-shadow, DeploymentRecord.regime_at_deploy is
+    snapshotted from regime_detector.current() and
+    closed_trade_count_at_deploy from the trade journal."""
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    from src.scanner.automation.meta_types import (
+        ChangePackage, DeployStage, Proposal,
+    )
+
+    class FakeConfig:
+        pass
+
+    class FakeDetector:
+        def current(self):
+            return "LOW"
+
+    sd = StagedDeployer(config=FakeConfig(), regime_detector=FakeDetector())
+    # Stub the trade-count read so the captured count is deterministic.
+    monkeypatch.setattr(StagedDeployer, "_read_trade_journal_count", lambda self: 1234)
+    pkg = ChangePackage(proposal=Proposal(config_delta={"atr_tp_multiplier": {"new": 1.6, "old": 1.5}}))
+    pkg.deploy_target = DeployStage.SHADOW
+    sd.advance(pkg, current_cycle=42)
+    rec = pkg.deployments[-1]
+    assert rec.regime_at_deploy == "LOW"
+    assert rec.closed_trade_count_at_deploy == 1234
+    assert rec.deployed_at_cycle == 42  # existing field still populated
+
+
+def test_apply_shadow_handles_none_regime_detector(monkeypatch):
+    """Without an injected regime_detector, regime_at_deploy stays None
+    (no crash). closed_trade_count_at_deploy is still captured."""
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    from src.scanner.automation.meta_types import (
+        ChangePackage, DeployStage, Proposal,
+    )
+
+    sd = StagedDeployer(config=None)  # no regime_detector
+    monkeypatch.setattr(StagedDeployer, "_read_trade_journal_count", lambda self: 0)
+    pkg = ChangePackage(proposal=Proposal(config_delta={}))
+    pkg.deploy_target = DeployStage.SHADOW
+    sd.advance(pkg, current_cycle=0)
+    rec = pkg.deployments[-1]
+    assert rec.regime_at_deploy is None
+    assert rec.closed_trade_count_at_deploy == 0
+
+
+def test_apply_shadow_handles_regime_detector_exception(monkeypatch, caplog):
+    """If regime_detector.current() raises, capture falls back to None and
+    a warning is logged. Promotion proceeds (regime tagging is observability,
+    not gating)."""
+    import logging
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    from src.scanner.automation.meta_types import (
+        ChangePackage, DeployStage, Proposal,
+    )
+
+    class CrashyDetector:
+        def current(self):
+            raise RuntimeError("regime detector down")
+
+    sd = StagedDeployer(config=None, regime_detector=CrashyDetector())
+    monkeypatch.setattr(StagedDeployer, "_read_trade_journal_count", lambda self: 50)
+    pkg = ChangePackage(proposal=Proposal(config_delta={}))
+    pkg.deploy_target = DeployStage.SHADOW
+    with caplog.at_level(logging.WARNING):
+        sd.advance(pkg, current_cycle=10)
+    rec = pkg.deployments[-1]
+    assert rec.regime_at_deploy is None
+    assert rec.closed_trade_count_at_deploy == 50
+    assert any("regime_capture_failed" in r.message for r in caplog.records)
+
+
 def test_compute_window_r_stats_returns_zeros_on_stale_deploy_index(monkeypatch, tmp_path):
     """Hardening: if the trade journal was trimmed/rotated since deploy,
     deploy_idx may exceed the journal length. The helper must return
