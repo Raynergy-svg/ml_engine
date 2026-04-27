@@ -443,3 +443,38 @@ def test_staged_deployer_should_promote_returns_false_without_active_record(monk
     # No deployments at all.
     assert sd.should_promote_shadow_to_canary(pkg, current_trade_count=999) is False
     assert sd.should_promote_canary_to_live(pkg, current_trade_count=999) is False
+
+
+def test_compute_window_r_stats_returns_zeros_on_stale_deploy_index(monkeypatch, tmp_path):
+    """Hardening: if the trade journal was trimmed/rotated since deploy,
+    deploy_idx may exceed the journal length. The helper must return
+    zeros (and log a warning) rather than producing empty/garbage windows."""
+    import json
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    from src.scanner.automation.meta_types import DeploymentRecord, DeployStage
+    # Synthesize a tiny journal at the canonical path.
+    journal_path = tmp_path / "trained_data" / "trade_journal_rl.json"
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+    journal_path.write_text(json.dumps([
+        {"outcome": {"r_multiple": 0.5}},
+        {"outcome": {"r_multiple": -0.3}},
+    ]))
+    # Re-point the helper's path resolution.
+    from src.scanner.automation import staged_deployer as sd_mod
+    monkeypatch.setattr(
+        sd_mod, "Path", lambda *a, **k: type("FakePath", (), {
+            "resolve": lambda self: type("Resolved", (), {
+                "parents": [None, None, None, tmp_path],
+            })(),
+        })(),
+        raising=False,
+    )
+    sd = StagedDeployer(config=None)
+    # Record claims deploy_idx=100, but journal only has 2 entries.
+    rec = DeploymentRecord(
+        stage=DeployStage.SHADOW,
+        closed_trade_count_at_deploy=100,
+    )
+    stats = sd._compute_window_r_stats(rec, 15)
+    # Must not produce garbage; must return zeros on the stale-index path.
+    assert stats == {"R_mean": 0.0, "R_baseline": 0.0}

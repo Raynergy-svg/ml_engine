@@ -144,14 +144,20 @@ class StagedDeployer:
         return package
 
     def _read_trade_journal_count(self) -> int:
-        """Count closed trades in trade_journal_rl.json. 0 on any error."""
+        """Count closed trades in trade_journal_rl.json. 0 on any error.
+
+        On read failure the gate sees 0 closed trades since deploy → never
+        promotes (fail-safe). Caller should be aware that a return of 0 may
+        mean an empty journal OR a read error.
+        """
         try:
             from src.scanner.automation.safe_json import safe_json_read
             from pathlib import Path
             path = Path(__file__).resolve().parents[3] / "trained_data" / "trade_journal_rl.json"
             entries = safe_json_read(path, default=[])
             return len(entries) if isinstance(entries, list) else 0
-        except Exception:
+        except Exception as e:
+            logger.warning("staged_deployer.journal_count_failed err=%s", e)
             return 0
 
     def _active_record(
@@ -178,6 +184,17 @@ class StagedDeployer:
             if not isinstance(entries, list):
                 return {"R_mean": 0.0, "R_baseline": 0.0}
             deploy_idx = record.closed_trade_count_at_deploy
+            # Sanity check: deploy_idx is a positional index into the journal.
+            # If the journal has been trimmed/rotated since deploy, deploy_idx
+            # becomes stale and would produce empty/garbage windows. Detect
+            # that explicitly and return zeros (fails the floor in any case
+            # where R_baseline >= -0.5R, which is most production scenarios).
+            if deploy_idx > len(entries):
+                logger.warning(
+                    "staged_deployer.r_stats_stale_index deploy_idx=%s journal_len=%s",
+                    deploy_idx, len(entries),
+                )
+                return {"R_mean": 0.0, "R_baseline": 0.0}
             window = entries[deploy_idx : deploy_idx + window_size]
             baseline = entries[max(0, deploy_idx - R_BASELINE_LOOKBACK) : deploy_idx]
 
@@ -198,7 +215,16 @@ class StagedDeployer:
     def should_promote_shadow_to_canary(
         self, package: ChangePackage, current_trade_count: Optional[int] = None
     ) -> bool:
-        """G1: shadow→canary gate uses real closed-trade count + R-floor."""
+        """G1: shadow→canary gate uses real closed-trade count + R-floor.
+
+        Cold-start note: when fewer than R_BASELINE_LOOKBACK (50) trades
+        precede the deploy, R_baseline=0.0 (see _compute_window_r_stats).
+        That makes the floor effectively `R_mean >= -0.5R` for cold-start
+        deploys — quite permissive. The deeper SHADOW_MIN_TRADES count gate
+        (15 trades) is what protects new deploys from premature promotion.
+        Once the journal accumulates 50+ trades the R-floor tightens to a
+        meaningful comparison against historical performance.
+        """
         rec = self._active_record(package, DeployStage.SHADOW)
         if rec is None:
             return False
@@ -213,7 +239,14 @@ class StagedDeployer:
     def should_promote_canary_to_live(
         self, package: ChangePackage, current_trade_count: Optional[int] = None
     ) -> bool:
-        """G1: canary→live gate uses real closed-trade count + R-floor."""
+        """G1: canary→live gate uses real closed-trade count + R-floor.
+
+        Cold-start has the same caveat as shadow→canary: when journal has
+        <50 trades preceding deploy, R_baseline falls back to 0.0. By the
+        time canary stage is reached the journal is typically populated
+        enough that the R-floor is meaningful. See should_promote_shadow_to_canary
+        for the full semantics.
+        """
         rec = self._active_record(package, DeployStage.CANARY)
         if rec is None:
             return False
