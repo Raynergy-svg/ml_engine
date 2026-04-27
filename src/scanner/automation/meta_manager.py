@@ -145,7 +145,20 @@ class MetaManager:
     # ---------- Stage 0-1: intake ----------
 
     def intake(self, incident: Dict[str, Any]) -> ChangePackage:
-        """Open a new package, run Incident Analyst, persist."""
+        """Open a new package, run Incident Analyst, persist.
+
+        Pre-processing gate order (in execution sequence):
+          1. G8 dedup — drop incidents whose (kind, proposed_config_delta)
+             hash matches an in-flight package
+          2. G3 episodic memory — when injected, query_similar(setup_features)
+             attaches historical_outcomes for downstream constitution check
+          3. concurrency throttle — drop if max_concurrent active packages
+          4. analyst invocation — proceed with diagnosis
+
+        Each pre-stage gate is fail-open: errors log warnings and let the
+        package proceed (rejecting on a corrupt state file would be worse
+        than admitting a duplicate or running without history).
+        """
         # G8: dedup check before any expensive processing.
         incident_dict = dict(incident or {})
         incident_delta = incident_dict.get("proposed_config_delta") or {}

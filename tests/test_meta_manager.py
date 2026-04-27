@@ -342,8 +342,9 @@ def test_intake_drops_duplicate_proposal(tmp_layout, fake_specialist_invoker):
     pkg_b = mm.intake(incident_b)
     assert pkg_b.stage == ChangeStage.ABORTED
     assert pkg_b.rejection_reason == "duplicate_proposal"
-    # First package should NOT be aborted by this dedup check.
-    assert pkg_a.stage != ChangeStage.ABORTED or pkg_a.rejection_reason != "duplicate_proposal"
+    # First package should reach DIAGNOSING (positive specification — catches a
+    # regression where pkg_a accidentally also gets aborted by dedup).
+    assert pkg_a.stage == ChangeStage.DIAGNOSING
 
 
 def test_intake_attaches_historical_outcomes_when_episodic_memory_present(tmp_layout, fake_specialist_invoker):
@@ -384,4 +385,52 @@ def test_intake_no_episodic_query_when_episodic_memory_none(tmp_layout, fake_spe
     # mm._episodic_memory should be None by default
     assert mm._episodic_memory is None
     pkg = mm.intake({"kind": "any", "summary": "..."})
-    assert "historical_outcomes" not in pkg.incident or pkg.incident.get("historical_outcomes") is None
+    # Strict: nothing should write the key when memory is absent. (A None
+    # value would hide a regression where the gate accidentally writes None.)
+    assert "historical_outcomes" not in pkg.incident
+
+
+def test_is_duplicate_in_flight_empty_dir_returns_false(tmp_layout, fake_specialist_invoker):
+    """Helper: empty changes_dir → False (no false positives)."""
+    mm = _build_manager(tmp_layout, fake_specialist_invoker)
+    # Fresh layout has no persisted packages.
+    assert mm._is_duplicate_in_flight("any_hash_value") is False
+
+
+def test_is_duplicate_in_flight_skips_terminal_stages(tmp_layout, fake_specialist_invoker):
+    """Helper: persisted packages in terminal stages (closed/aborted/rejected)
+    must NOT match — terminal packages are not 'in-flight'."""
+    import json
+    mm = _build_manager(tmp_layout, fake_specialist_invoker)
+    # Persist a synthetic ABORTED package whose dedup_hash will match anything
+    # we look up — if the helper doesn't skip terminal stages, this would
+    # cause a false positive.
+    incident = {
+        "kind": "tp_too_fast",
+        "proposed_config_delta": {"atr_tp_multiplier": {"new": 1.6, "old": 1.5}},
+    }
+    blob = {
+        "stage": "aborted",
+        "incident": incident,
+        "proposal": None,
+    }
+    (tmp_layout.changes_dir / "terminal_pkg.json").write_text(json.dumps(blob))
+    # Compute the same hash a candidate would produce for this incident.
+    from src.scanner.automation.meta_types import ChangePackage, Proposal
+    candidate = ChangePackage(
+        incident=incident,
+        proposal=Proposal(config_delta=incident["proposed_config_delta"]),
+    )
+    target_hash = candidate.dedup_hash()
+    # Terminal stage must be skipped — should return False even though the
+    # incident.proposed_config_delta matches.
+    assert mm._is_duplicate_in_flight(target_hash) is False
+
+
+def test_is_duplicate_in_flight_handles_corrupt_json(tmp_layout, fake_specialist_invoker):
+    """Helper: malformed JSON in changes_dir must not raise; helper logs and
+    returns False (fail-open)."""
+    mm = _build_manager(tmp_layout, fake_specialist_invoker)
+    (tmp_layout.changes_dir / "broken.json").write_text("{not valid json}")
+    # Should not raise; should return False.
+    assert mm._is_duplicate_in_flight("any_hash") is False
