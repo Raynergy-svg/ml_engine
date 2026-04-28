@@ -80,6 +80,15 @@ class PostTradeDiagnostics:
         # rl_model_staleness (seconds)
         "rl_warning_age_s": 48 * 3600,      # 48 hours
         "rl_critical_age_s": 168 * 3600,    # 1 week
+        # quiet_streak (audit 2026-04-28: gate-overtightening trap detector).
+        # A "quiet streak" = zero closed trades for >quiet_warning_hours, AND
+        # config_adjustments.json shows accumulated tightening (>= total_adj_floor).
+        # Both conditions must hold — a healthy bot may have quiet hours when
+        # markets are closed; only the combination signals the death spiral
+        # where progressive tightening blocked all execution.
+        "quiet_warning_hours": 24,          # 1 day of zero trades
+        "quiet_critical_hours": 72,         # 3 days = unequivocal trap
+        "quiet_total_adj_floor": 30,        # >=30 cumulative adjustments to be "overtightened"
     }
 
     # Names of the three gate pass-fields expected on journal entries.
@@ -193,6 +202,16 @@ class PostTradeDiagnostics:
             self._safe_check(
                 "model_training_freshness", self._check_model_training_freshness,
                 None, issues, actions,
+            )
+            # Quiet-streak detector — recommends widening when no trades have
+            # closed in N hours AND config_adjustments has accumulated tightening.
+            # The asymmetry-fix for the gate-overtightening trap discovered
+            # 2026-04-28: existing checks tighten on losses but never widen on
+            # silence, producing the "intelligently fucking itself" pattern
+            # documented in .claude/learnings.md self_heal_no_debounce_C1..C6.
+            self._safe_check(
+                "quiet_streak", self._check_quiet_streak,
+                journal, issues, actions,
             )
 
             status = self._aggregate_status(issues)
@@ -655,6 +674,244 @@ class PostTradeDiagnostics:
             actions.append("retrain_rl_position_sizer")
             return True
         return False
+
+    # ------------------------------------------------------------------ #
+    # Quiet-streak detector (asymmetry fix for the overtightening trap)  #
+    # ------------------------------------------------------------------ #
+    CONFIG_ADJUSTMENTS_PATH: Path = Path(".claude/config_adjustments.json")
+
+    # Gates whose tightening signature most often leads to the trap. Sorted by
+    # the order to UNTIGHTEN them when recovering — least-impactful gate gets
+    # reset first so we don't unleash all blockers simultaneously.
+    _QUIET_STREAK_RECOVERY_ORDER: Tuple[str, ...] = (
+        "min_confidence",
+        "weighted_vote_threshold",
+        "max_model_disagreement",
+        "max_uncertainty_score",
+        "atr_sl_multiplier",
+        "min_momentum",
+        "min_risk_reward_ratio",
+    )
+
+    def _check_quiet_streak(
+        self,
+        journal: List[Dict[str, Any]],
+        issues: List[Dict[str, Any]],
+        actions: List[str],
+    ) -> bool:
+        """Detect zero-trade streak combined with overtightened config.
+
+        Two conditions must hold to flag:
+          1. No closed trade timestamp within `quiet_warning_hours` (or
+             `quiet_critical_hours` for CRITICAL severity)
+          2. config_adjustments.json shows >= `quiet_total_adj_floor`
+             accumulated adjustments (signal that the bot has been
+             progressively tightening its own gates)
+
+        Both conditions together are the unique signature of the
+        gate-overtightening trap — a quiet bot whose own config history
+        proves it tightened itself into silence. A healthy bot may be quiet
+        because markets are calm (condition 1 alone) or may have many
+        adjustments without being overtightened (condition 2 alone — many
+        could be widening). Only the combination is conclusive.
+
+        Recommended action on flag: reset the most recently tightened gate
+        in `_QUIET_STREAK_RECOVERY_ORDER` back to its YAML default. This
+        widens *one* gate at a time so we don't unleash all blockers
+        simultaneously — the next cycle either trades again (recovery
+        complete) or remains quiet (recommend the next gate down the list).
+        """
+        warn_h = float(self._thresholds["quiet_warning_hours"])
+        crit_h = float(self._thresholds["quiet_critical_hours"])
+        adj_floor = int(self._thresholds["quiet_total_adj_floor"])
+
+        # 1. Compute hours since last closed trade. The journal schema:
+        #    `outcome` is a string ("win"|"loss"|None) — NOT a dict.
+        #    `close_time` lives at the top level (ISO with optional 'Z' or offset).
+        #    A trade is "closed" when outcome is one of the known strings.
+        last_close_age_s: Optional[float] = None
+        from datetime import datetime, timezone
+        # Strip extra-precise fractional seconds (Python's fromisoformat caps at 6
+        # digits; OANDA returns 9). Also tolerate trailing 'Z' as +00:00.
+        def _parse_ts(raw: Any) -> Optional[datetime]:
+            if not raw:
+                return None
+            s = str(raw).strip().replace("Z", "+00:00")
+            # Truncate fractional seconds to 6 digits if present.
+            if "." in s:
+                head, _, rest = s.partition(".")
+                # rest may include offset like "+00:00" — split on the first non-digit.
+                frac = ""
+                tail = ""
+                for i, ch in enumerate(rest):
+                    if ch.isdigit():
+                        frac += ch
+                    else:
+                        tail = rest[i:]
+                        break
+                s = "{0}.{1}{2}".format(head, frac[:6], tail)
+            try:
+                dt = datetime.fromisoformat(s)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except (ValueError, TypeError):
+                return None
+
+        for entry in reversed(journal or []):
+            if not isinstance(entry, dict):
+                continue
+            outcome = entry.get("outcome")
+            # Closed trades have outcome=str (win/loss/manual_close/etc).
+            if not isinstance(outcome, str) or not outcome:
+                continue
+            ts = entry.get("close_time") or entry.get("timestamp")
+            last_dt = _parse_ts(ts)
+            if last_dt is None:
+                continue
+            last_close_age_s = (
+                datetime.now(timezone.utc) - last_dt
+            ).total_seconds()
+            break
+
+        if last_close_age_s is None:
+            issues.append({
+                "check": "quiet_streak",
+                "severity": "skipped",
+                "detail": "no parseable close timestamp on any journal entry",
+                "value": None,
+                "threshold": None,
+            })
+            return False
+
+        last_close_age_h = last_close_age_s / 3600.0
+
+        # Short-circuit: if quiet streak doesn't exceed warning threshold,
+        # nothing to flag — markets are simply not delivering setups.
+        if last_close_age_h < warn_h:
+            return False
+
+        # 2. Read config_adjustments to test the "tightened itself" hypothesis.
+        total_adjustments = 0
+        recently_tightened: Optional[str] = None
+        try:
+            import json
+            if self.CONFIG_ADJUSTMENTS_PATH.exists():
+                blob = json.loads(self.CONFIG_ADJUSTMENTS_PATH.read_text(encoding="utf-8"))
+                if isinstance(blob, dict):
+                    total_adjustments = int(blob.get("total_adjustments", 0) or 0)
+                    history = blob.get("history") or []
+                    if isinstance(history, list):
+                        for h in reversed(history):
+                            if not isinstance(h, dict):
+                                continue
+                            key = str(h.get("key", ""))
+                            if key in self._QUIET_STREAK_RECOVERY_ORDER:
+                                recently_tightened = key
+                                break
+                    if recently_tightened is None:
+                        proposed = blob.get("proposed_adjustments") or []
+                        if isinstance(proposed, list):
+                            for p in reversed(proposed):
+                                if not isinstance(p, dict):
+                                    continue
+                                key = str(p.get("key", ""))
+                                if key in self._QUIET_STREAK_RECOVERY_ORDER:
+                                    recently_tightened = key
+                                    break
+        except (OSError, ValueError) as e:
+            logger.warning("quiet_streak: config_adjustments read failed err=%r", e)
+
+        # If we've been quiet but the config hasn't been tightened, this isn't
+        # the overtightening trap — leave a warning but don't recommend reset.
+        if total_adjustments < adj_floor:
+            issues.append({
+                "check": "quiet_streak",
+                "severity": "warning",
+                "detail": (
+                    "no closed trades for {0:.1f}h but only {1} config adjustments "
+                    "(<{2} floor) — likely market quiet, not overtightening"
+                ).format(last_close_age_h, total_adjustments, adj_floor),
+                "value": round(last_close_age_h, 1),
+                "threshold": warn_h,
+            })
+            return True
+
+        # Both conditions hold. Pick a gate to reset, but skip any gate whose
+        # corresponding reset action is in active SelfHeal debounce — that
+        # means we tried it last cycle and the streak persists, so move on
+        # to the next candidate. Without this rotation the system would
+        # waste 6h on a single gate before trying the next.
+        debounced_gates: set = set()
+        try:
+            import json as _json
+            from datetime import datetime, timezone
+            debounce_path = Path(".claude/self_heal_debounce.json")
+            if debounce_path.exists():
+                blob = _json.loads(debounce_path.read_text(encoding="utf-8"))
+                if isinstance(blob, dict):
+                    now = datetime.now(timezone.utc)
+                    # Mirror SelfHeal.DEBOUNCE_WINDOW_S — kept hardcoded here
+                    # to avoid an import dependency on the consumer module.
+                    debounce_window_s = 6.0 * 3600.0
+                    for action_str, ts in blob.items():
+                        if not isinstance(action_str, str):
+                            continue
+                        if not action_str.startswith("reset_gate_threshold_to_default:"):
+                            continue
+                        try:
+                            last_dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                            if last_dt.tzinfo is None:
+                                last_dt = last_dt.replace(tzinfo=timezone.utc)
+                            if (now - last_dt).total_seconds() < debounce_window_s:
+                                debounced_gates.add(action_str.split(":", 1)[1])
+                        except (ValueError, TypeError):
+                            continue
+        except (OSError, ValueError) as e:
+            logger.debug("quiet_streak: debounce-state read failed err=%r", e)
+
+        # Choose the next gate to try: prefer the most-recently-tightened
+        # gate if not already debounced, else walk the recovery order.
+        candidates: List[str] = []
+        if recently_tightened and recently_tightened not in debounced_gates:
+            candidates.append(recently_tightened)
+        for g in self._QUIET_STREAK_RECOVERY_ORDER:
+            if g in debounced_gates or g in candidates:
+                continue
+            candidates.append(g)
+        target_gate = candidates[0] if candidates else None
+
+        if target_gate is None:
+            # All recovery gates tried recently — escalate to operator and
+            # don't fire another reset (would just stack into debounce).
+            issues.append({
+                "check": "quiet_streak",
+                "severity": "critical",
+                "detail": (
+                    "OVERTIGHTENING TRAP UNRESOLVED: {0:.1f}h quiet, {1} adjustments, "
+                    "all {2} recovery-order gates already reset and still no trades — "
+                    "operator intervention required (review .claude/config_adjustments.json "
+                    "and consider a one-shot full reset)"
+                ).format(last_close_age_h, total_adjustments, len(self._QUIET_STREAK_RECOVERY_ORDER)),
+                "value": round(last_close_age_h, 1),
+                "threshold": crit_h,
+            })
+            return True
+
+        severity = "critical" if last_close_age_h >= crit_h else "warning"
+        issues.append({
+            "check": "quiet_streak",
+            "severity": severity,
+            "detail": (
+                "OVERTIGHTENING TRAP: no closed trades for {0:.1f}h, "
+                "{1} cumulative config adjustments, latest tightened gate '{2}' — "
+                "widening to break the spiral"
+            ).format(last_close_age_h, total_adjustments, target_gate),
+            "value": round(last_close_age_h, 1),
+            "threshold": crit_h if severity == "critical" else warn_h,
+        })
+        actions.append("reset_gate_threshold_to_default:{0}".format(target_gate))
+        return True
 
     # ------------------------------------------------------------------ #
     # Helpers                                                            #

@@ -190,10 +190,15 @@ class CycleAutonomyTriggers:
         if len(closed) < self._losing_streak_threshold:
             return False
 
-        # Sort by close_time / timestamp descending so we get the latest N
+        # Sort by close_time / timestamp descending so we get the latest N.
+        # Note: trade_journal_rl.json schema has `outcome` as a STRING
+        # ("win"/"loss") — NOT a dict. close_time lives at top level.
+        # The earlier `entry.get("outcome", {}).get("close_time")` call
+        # crashed on every closed-trade entry (real-world journal had
+        # 16/17 string outcomes).
         def _ts(entry: Dict[str, Any]) -> str:
             return str(
-                entry.get("outcome", {}).get("close_time")
+                entry.get("close_time")
                 or entry.get("timestamp")
                 or ""
             )
@@ -201,12 +206,22 @@ class CycleAutonomyTriggers:
         recent = closed[: self._losing_streak_threshold]
 
         def _is_loss(entry: Dict[str, Any]) -> bool:
-            outcome = entry.get("outcome", {}) or {}
-            # trade_won is the canonical field; fallback to pnl_pips < 0
-            if "trade_won" in outcome:
-                return not bool(outcome.get("trade_won"))
+            # Schema-aware: outcome may be a STRING ('win'/'loss'/'manual_close')
+            # or a dict (legacy format with trade_won). Fall back to pnl_pips
+            # at the top level (also legacy / external pipeline fixtures).
+            outcome = entry.get("outcome")
+            if isinstance(outcome, str):
+                return outcome.strip().lower() == "loss"
+            if isinstance(outcome, dict):
+                if "trade_won" in outcome:
+                    return not bool(outcome.get("trade_won"))
+                try:
+                    return float(outcome.get("pnl_pips", 0)) < 0
+                except (TypeError, ValueError):
+                    return False
+            # Final fallback: pnl_pips at top level (test fixtures use this).
             try:
-                return float(outcome.get("pnl_pips", 0)) < 0
+                return float(entry.get("pnl_pips", 0)) < 0
             except (TypeError, ValueError):
                 return False
 
@@ -537,16 +552,24 @@ def _build_losing_streak_prompt(
     except Exception:
         freshness_block = "MODEL_FRESHNESS: (lookup failed)"
 
-    # Compact one-line summary per losing trade
+    # Compact one-line summary per losing trade. Schema-aware: outcome may
+    # be a string in the production journal or a dict in test fixtures.
     loss_lines = []
     for t in recent_losses:
-        outcome = t.get("outcome", {}) or {}
+        outcome = t.get("outcome")
+        if isinstance(outcome, dict):
+            pnl = outcome.get("pnl_pips", t.get("pnl_pips", "?"))
+            exit_r = outcome.get("exit_reason", t.get("close_reason", "?"))
+        else:
+            # outcome is a string ('win'/'loss'/...) — pull from top-level fields
+            pnl = t.get("pnl_pips", "?")
+            exit_r = t.get("close_reason", outcome if isinstance(outcome, str) else "?")
+        regime_obj = t.get("regime")
+        regime_v = (regime_obj.get("volatility_regime", "?") if isinstance(regime_obj, dict) else (regime_obj or "?"))
         loss_lines.append(
             f"  - {t.get('trade_id', '?')} {t.get('pair', '?')} "
             f"{t.get('direction', '?')} conf={t.get('confidence', '?')} "
-            f"pnl_pips={outcome.get('pnl_pips', '?')} "
-            f"exit={outcome.get('exit_reason', '?')} "
-            f"regime={t.get('regime', {}).get('volatility_regime', '?')}"
+            f"pnl_pips={pnl} exit={exit_r} regime={regime_v}"
         )
 
     return f"""You are Buddy's emergency reflection agent. The last {len(recent_losses)} \

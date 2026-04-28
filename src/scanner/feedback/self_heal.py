@@ -72,6 +72,11 @@ class SelfHeal:
     DEGRADED_FLAG_PATH: Path = Path("trained_data/self_heal_degraded.flag")
     RETRAIN_REQUESTS_DIR: Path = Path("trained_data/retrain_requests")
     CONFIG_PATH: Path = Path("config/config_improved_H1.yaml")
+    # Debounce state — see _is_debounced(). Persists last-fire iso-timestamp
+    # per action string so identical alerts on unresolved conditions don't
+    # spam every cycle (the C5→C6 10-min treadmill on rl_model_staleness in
+    # learnings.md was the canonical case before this was added).
+    DEBOUNCE_STATE_PATH: Path = Path(".claude/self_heal_debounce.json")
 
     # Baseline agent weight to restore on soft reset.
     AGENT_WEIGHT_BASELINE: float = 1.0
@@ -84,6 +89,14 @@ class SelfHeal:
 
     # Clamp for probability-shaped thresholds (0, 1).
     PROBABILITY_CLAMP: float = 1.0
+
+    # Debounce window per the C4 ask in .claude/learnings.md
+    # (self_heal_no_debounce_C1): once an action fires for a given
+    # (verb,arg) pair, suppress identical follow-ups for this many seconds
+    # unless the underlying file mtime delta proves the condition resolved.
+    # 6 hours is the operator-requested floor; this keeps the alert
+    # informational without converting it to a per-cycle treadmill.
+    DEBOUNCE_WINDOW_S: float = 6.0 * 3600.0
 
     # ------------------------------------------------------------------ #
     # Init                                                               #
@@ -168,6 +181,17 @@ class SelfHeal:
                     continue
                 seen.add(key)
                 ordered.append(key)
+
+            # Debounce: drop action strings that fired within DEBOUNCE_WINDOW_S
+            # ago. Records the suppression in actions_taken so the operator
+            # still sees the condition was diagnosed — just not re-acted on.
+            ordered, suppressed = self._filter_debounced(ordered)
+            for sup in suppressed:
+                actions_taken.append({
+                    "action": sup,
+                    "success": False,
+                    "detail": "debounced (fired within {0:.0f}s window)".format(self.DEBOUNCE_WINDOW_S),
+                })
 
             for action_str in ordered:
                 verb, arg = self._split_action(action_str)
@@ -276,6 +300,70 @@ class SelfHeal:
             verb, _, arg = action.partition(":")
             return verb.strip(), arg.strip()
         return action.strip(), ""
+
+    def _filter_debounced(self, ordered: List[str]) -> Tuple[List[str], List[str]]:
+        """Split an action list into (still_active, suppressed) by debounce state.
+
+        Reads `.claude/self_heal_debounce.json` — `{action_str: iso_ts}`. An
+        action is "suppressed" if its last-fire timestamp is within
+        DEBOUNCE_WINDOW_S of now. After the split, updates the state file
+        with NEW timestamps for the still_active actions (so the next call
+        sees the fresh fire-time).
+
+        Failures (corrupt JSON, write errors) fail-open: log + return the
+        original list unchanged. We never want debounce-state issues to
+        break self-heal recovery.
+        """
+        from datetime import datetime, timezone
+        if not ordered:
+            return [], []
+
+        try:
+            state: Dict[str, str] = {}
+            if self.DEBOUNCE_STATE_PATH.exists():
+                import json as _json
+                try:
+                    blob = _json.loads(self.DEBOUNCE_STATE_PATH.read_text(encoding="utf-8"))
+                    if isinstance(blob, dict):
+                        state = {str(k): str(v) for k, v in blob.items()}
+                except (ValueError, OSError) as e:
+                    logger.warning("self_heal: debounce state read failed err=%r — failing open", e)
+                    return list(ordered), []
+
+            now = datetime.now(timezone.utc)
+            still_active: List[str] = []
+            suppressed: List[str] = []
+            for action_str in ordered:
+                last_iso = state.get(action_str)
+                if last_iso:
+                    try:
+                        last_dt = datetime.fromisoformat(str(last_iso).replace("Z", "+00:00"))
+                        if last_dt.tzinfo is None:
+                            last_dt = last_dt.replace(tzinfo=timezone.utc)
+                        age_s = (now - last_dt).total_seconds()
+                        if age_s < self.DEBOUNCE_WINDOW_S:
+                            suppressed.append(action_str)
+                            continue
+                    except (ValueError, TypeError):
+                        # corrupt timestamp → treat as not-recently-fired
+                        pass
+                still_active.append(action_str)
+
+            # Update the state for the still_active actions only — suppressed
+            # entries keep their existing fire-time so the window keeps closing.
+            for a in still_active:
+                state[a] = now.isoformat()
+
+            try:
+                self.DEBOUNCE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                self._atomic_write_json(self.DEBOUNCE_STATE_PATH, state)
+            except Exception as e:  # noqa: BLE001 — write failure is non-fatal
+                logger.warning("self_heal: debounce state write failed err=%r", e)
+
+            return still_active, suppressed
+        except Exception as e:  # noqa: BLE001 — outer safety net
+            logger.warning("self_heal: debounce filter raised err=%r — failing open", e)
+            return list(ordered), []
 
     @staticmethod
     def _has_critical(issues: List[Any]) -> bool:
