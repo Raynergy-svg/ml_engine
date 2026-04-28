@@ -667,6 +667,7 @@ def _build_production_manager() -> "MetaManager":
 
     # Build the StagedDeployer with the regime probe wired.
     staged_deployer: Optional[Any] = None
+    cfg: Optional[Any] = None
     try:
         from src.scanner.automation.staged_deployer import StagedDeployer
         from src.scanner.automation.adjustment_approver import AdjustmentApprover
@@ -685,9 +686,26 @@ def _build_production_manager() -> "MetaManager":
             "regime_at_deploy will not be captured", e,
         )
 
+    # The Meta pipeline is the automation that REPLACES LLM specialists in
+    # the middle — Constitution + Scorecard + revert_by_id gate
+    # deterministically. LLM specialists are an optional enrichment, not
+    # the actual decision path. Default to the no-op invoker so the
+    # production loop runs Claude-free (per CLAUDE.md trading invariant
+    # "Buddy's runtime is Claude-free; LLM is for planning, post-mortems,
+    # and brainstorming only"). Operators can flip meta_manager_use_llm=True
+    # in the smart profile when they want specialists to enrich the dossier
+    # for human review (post-hoc, not in the gate path).
+    use_llm = False
+    if cfg is not None:
+        use_llm = bool(getattr(cfg, "meta_manager_use_llm", False))
+    invoker: Optional[SpecialistInvoker] = None  # None → _default_specialist_invoker (Claude CLI)
+    if not use_llm:
+        invoker = lambda mode, prompt: ""  # noqa: E731
+
     return MetaManager(
         episodic_memory=episodic_memory,
         staged_deployer=staged_deployer,
+        specialist_invoker=invoker,
     )
 
 
@@ -748,9 +766,19 @@ def route_incident(incident: Dict[str, Any]) -> bool:
     try:
         if _PRODUCTION_MGR is None:
             _PRODUCTION_MGR = _build_production_manager()
+            # Determine the cognition mode from the actual invoker we wired.
+            # The no-op lambda returns "" — this is the deterministic-automation
+            # mode (default per CLAUDE.md). The Claude-CLI default invoker is
+            # opt-in via meta_manager_use_llm=True for dossier enrichment only.
+            _probe_invoker = _PRODUCTION_MGR._invoke
+            try:
+                _is_noop = _probe_invoker("__probe__", "") == ""
+            except Exception:
+                _is_noop = False
             logger.info(
                 "meta_manager.production_singleton_initialized "
-                "episodic_memory=%s regime_probe=%s deployer=%s",
+                "mode=%s episodic_memory=%s regime_probe=%s deployer=%s",
+                "AUTOMATION" if _is_noop else "LLM_ENRICHED",
                 "wired" if _PRODUCTION_MGR._episodic_memory is not None else "DISABLED",
                 "wired" if _PRODUCTION_REGIME_PROBE is not None else "DISABLED",
                 "wired" if _PRODUCTION_MGR._deploy is not None else "DISABLED",
