@@ -24,6 +24,35 @@ from src.observability import init_weave, op as weave_op, thread as weave_thread
 logger = logging.getLogger(__name__)
 
 
+class _LastKnownRegimeProbe:
+    """Thin adapter so StagedDeployer can snapshot the regime at deploy time.
+
+    The orchestrator updates `_regime` from the dominant per-scan regime
+    every cycle (see `_macro_stress_update_dispatch`). StagedDeployer's
+    Phase-1 Task-7 contract calls `regime_detector.current()` once at
+    promotion-to-shadow and stores the result on `DeploymentRecord.regime_at_deploy`.
+    Decoupled from `MarketRegimeDetector` to avoid forcing a fresh detection
+    inside the deploy critical section — we use whatever regime the most
+    recent scan settled on.
+    """
+
+    __slots__ = ("_regime",)
+
+    def __init__(self) -> None:
+        self._regime: Optional[str] = None
+
+    def update(self, regime: Optional[str]) -> None:
+        if regime is None:
+            return
+        # Normalise to upper-case to match the LOW/MED/HIGH/NORMAL convention
+        # used by the agent team's volatility_regime field and the trading
+        # rules in .claude/rules/trading.md.
+        self._regime = str(regime).upper() or None
+
+    def current(self) -> Optional[str]:
+        return self._regime
+
+
 @dataclass
 class DispatchStep:
     """A single registered step in the orchestration dispatch table."""
@@ -368,12 +397,18 @@ class Orchestrator:
                 # for proposals it generated; this does NOT auto-approve
                 # proposals from any other source.
                 meta_approver = AdjustmentApprover()
+                # Phase-1 Task-7 wiring: regime probe is updated once per scan
+                # in _macro_stress_update_dispatch (the dominant regime is already
+                # computed there). StagedDeployer.current() reads the last value
+                # at promote-to-shadow time and stores it on DeploymentRecord.
+                self._regime_probe = _LastKnownRegimeProbe()
                 deployer = StagedDeployer(
                     config=_cfg,
                     config_adjuster=self._config_adjuster,
                     adjustment_approver=meta_approver,
                     shadow_cycles=getattr(_cfg, "staged_deploy_shadow_cycles", 20),
                     canary_trades=getattr(_cfg, "staged_deploy_canary_trades", 10),
+                    regime_detector=self._regime_probe,
                 )
                 # Honor the project rule that Buddy's runtime is Claude-free.
                 # When meta_manager_use_llm=False (default), inject a no-op
@@ -390,14 +425,36 @@ class Orchestrator:
                         "specialists return empty enrichment; constitution + "
                         "scorecard still gate."
                     )
+                # Phase-1 Task-2/Task-4 wiring: episodic memory feeds the G3
+                # intake-side query and the G7 historical_loss_rate constitution
+                # clause. The agent team writes outcomes to the same backing
+                # file (trained_data/episodic_memory.json) so this instance
+                # naturally observes real trade history. Default constructor
+                # reuses the canonical persistence path; concurrent writes
+                # are safe under the GIL for the bounded per-trade rate.
+                _meta_episodic = None
+                try:
+                    from src.scanner.automation.episodic_memory import EpisodicMemory
+                    _meta_episodic = EpisodicMemory()
+                except Exception as ep_err:
+                    logger.warning(
+                        "MetaManager: episodic_memory init failed: %s — "
+                        "G3 intake query and G7 historical_loss_rate veto "
+                        "will be no-ops in this session", ep_err,
+                    )
                 self._meta_manager = MetaManager(
                     config=_cfg,
                     eval_harness=eval_harness,
                     staged_deployer=deployer,
                     specialist_invoker=_invoker,
                     max_concurrent=getattr(_cfg, "meta_manager_max_concurrent", 1),
+                    episodic_memory=_meta_episodic,
                 )
-                logger.info("MetaManager initialized in orchestrator")
+                logger.info(
+                    "MetaManager initialized in orchestrator "
+                    "(episodic_memory=%s, regime_probe=wired)",
+                    "wired" if _meta_episodic is not None else "DISABLED",
+                )
         except Exception as e:
             logger.warning("MetaManager init failed: %s", e)
             self._meta_manager = None
@@ -871,6 +928,13 @@ class Orchestrator:
                     for a in (scan_result.analyses or [])
                 ]
                 dominant_regime = _Counter(regimes).most_common(1)[0][0] if regimes else "NORMAL"
+                # Phase-1 Task-7: feed the regime probe so StagedDeployer's
+                # promote-to-shadow capture has a real value to snapshot.
+                # Falls through silently when the probe wasn't created (meta
+                # disabled).
+                _probe = getattr(self, "_regime_probe", None)
+                if _probe is not None:
+                    _probe.update(dominant_regime)
                 spread_ratios = [
                     getattr(a, "spread_pips", 0) / 2.0
                     for a in (scan_result.analyses or [])
