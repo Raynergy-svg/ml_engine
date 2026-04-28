@@ -195,6 +195,24 @@ class MetaManager:
                         news_risk_score=float(features.get("news_risk_score", 0.0)),
                         uncertainty_score=float(features.get("uncertainty_score", 0.0)),
                     )
+                    # Schema bridge: EpisodicMemory.query_similar returns
+                    # `similar_count`, but Constitution._eval_historical_loss_rate
+                    # (G7) reads `matched_episodes`. Without this normalisation
+                    # the historical_loss_rate veto would *always* hit the
+                    # `insufficient_history` abstain branch in production —
+                    # the two halves never met before Phase 1 wired them
+                    # end-to-end (Task 11 smoke surfaced the drift). Mirror
+                    # additively so any other reader expecting `similar_count`
+                    # keeps working.
+                    if (
+                        isinstance(outcomes, dict)
+                        and "similar_count" in outcomes
+                        and "matched_episodes" not in outcomes
+                    ):
+                        outcomes = {
+                            **outcomes,
+                            "matched_episodes": outcomes["similar_count"],
+                        }
                     incident_dict["historical_outcomes"] = outcomes
             except Exception as e:
                 logger.warning("meta_manager.intake_episodic_query_failed err=%s", e)

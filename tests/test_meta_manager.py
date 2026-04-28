@@ -377,6 +377,42 @@ def test_intake_attaches_historical_outcomes_when_episodic_memory_present(tmp_la
     assert len(fake.queries) == 1
 
 
+def test_intake_normalizes_episodic_memory_field_names(tmp_layout, fake_specialist_invoker):
+    """Regression: production EpisodicMemory.query_similar returns the dict
+    key 'similar_count', but Constitution._eval_historical_loss_rate (G7)
+    reads 'matched_episodes'. Without normalisation in intake() the veto
+    clause would always hit the 'insufficient_history' abstain branch in
+    production — the two halves never met before Phase 1's smoke wired them
+    end-to-end. intake() must mirror the count under the constitution's
+    expected key while preserving the original (additive, non-destructive)."""
+    from src.scanner.automation.meta_manager import MetaManager
+
+    class FakeEpisodicMemory:
+        """Mimics the real EpisodicMemory.query_similar output schema."""
+        def query_similar(self, **kwargs):
+            return {"similar_count": 8, "loss_rate": 0.85}
+
+    mm = _build_manager(tmp_layout, fake_specialist_invoker)
+    mm._episodic_memory = FakeEpisodicMemory()
+    incident = {
+        "kind": "tp_too_fast",
+        "summary": "...",
+        "setup_features": {
+            "pair": "EUR_USD", "direction": "long", "regime": "LOW",
+            "session": "LON", "news_risk_score": 0.1, "uncertainty_score": 0.3,
+        },
+    }
+    pkg = mm.intake(incident)
+    historical = pkg.incident.get("historical_outcomes") or {}
+    # Normalisation: matched_episodes must be present (mirrored from
+    # similar_count). This is the constitution's read key.
+    assert historical.get("matched_episodes") == 8
+    # Additive — original key preserved for any other reader.
+    assert historical.get("similar_count") == 8
+    # Untouched fields pass through unchanged.
+    assert historical.get("loss_rate") == 0.85
+
+
 def test_intake_no_episodic_query_when_episodic_memory_none(tmp_layout, fake_specialist_invoker):
     """When MetaManager has no episodic_memory injection, intake doesn't
     invent historical_outcomes."""
