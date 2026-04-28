@@ -645,3 +645,103 @@ def test_metrics_slicer_no_regime_slices_when_record_lacks_regime(tmp_path, monk
     assert "regime_slices" not in out
     # But r_mean should still be present (that part is unconditional).
     assert "r_mean" in out
+
+
+def test_critic_writes_calibration_feedback_on_overshoot(tmp_path, monkeypatch):
+    """G4: when actual win_rate or r_mean diverges from scorecard.predicted
+    beyond WIN_RATE_TOLERANCE / PNL_DELTA_TOLERANCE_R, an append-only
+    calibration entry is written to model_bandit.json keyed by change_id."""
+    from src.scanner.automation import post_deploy_critic as pdc_mod
+
+    bandit_path = tmp_path / "trained_data" / "model_bandit.json"
+    bandit_path.parent.mkdir(parents=True, exist_ok=True)
+    bandit_path.write_text("{}")
+    monkeypatch.setattr(pdc_mod, "_PROJECT_ROOT", tmp_path)
+
+    # Inject a synthetic slicer so we don't depend on the trade journal.
+    def slicer(pkg, stage):
+        return {
+            "sample_size": 30,
+            "win_rate": 0.4,         # actual far below predicted 0.6
+            "pnl_total_pips": -50.0,
+            "r_mean": -0.5,           # actual far below predicted 0.5
+        }
+
+    critic = PostDeployCritic(
+        metrics_slicer=slicer,
+        ledger_path=tmp_path / "changes.jsonl",
+    )
+    pkg = ChangePackage(change_id="testchange01")
+    pkg.scorecard = Scorecard(
+        trading_quality=SubScore(
+            name="trading_quality",
+            passed=True,
+            score=0.5,
+            details={"win_rate": 0.6, "pnl_delta_r": 0.5, "sharpe": 0.4, "r_mean": 0.5},
+        )
+    )
+    pkg.deployments.append(DeploymentRecord(
+        stage=DeployStage.LIVE,
+        deployed_at="2026-04-26T00:00:00",
+        regime_at_deploy="LOW",
+    ))
+
+    critic.review(pkg, DeployStage.LIVE)
+
+    # Assert calibration_feedback was written.
+    blob = json.loads(bandit_path.read_text())
+    assert "calibration_feedback" in blob
+    entry = blob["calibration_feedback"]["testchange01"]
+    assert entry["predicted_win_rate"] == 0.6
+    assert entry["actual_win_rate"] == 0.4
+    assert entry["win_rate_overshoot"] == pytest.approx(-0.2, abs=1e-9)
+    assert entry["predicted_r_mean"] == 0.5
+    assert entry["actual_r_mean"] == -0.5
+    assert entry["r_overshoot"] == pytest.approx(-1.0, abs=1e-9)
+    assert entry["regime_at_deploy"] == "LOW"
+    assert entry["n_trades"] == 30
+    assert "ts" in entry  # ISO timestamp present
+
+
+def test_critic_does_not_write_calibration_when_within_tolerance(tmp_path, monkeypatch):
+    """When actuals are within WIN_RATE_TOLERANCE and PNL_DELTA_TOLERANCE_R
+    of predicted, no calibration entry is written. Avoids noise in
+    model_bandit.json."""
+    from src.scanner.automation import post_deploy_critic as pdc_mod
+
+    bandit_path = tmp_path / "trained_data" / "model_bandit.json"
+    bandit_path.parent.mkdir(parents=True, exist_ok=True)
+    bandit_path.write_text("{}")
+    monkeypatch.setattr(pdc_mod, "_PROJECT_ROOT", tmp_path)
+
+    def slicer(pkg, stage):
+        return {
+            "sample_size": 30,
+            "win_rate": 0.55,  # 0.05 below predicted 0.6 — within 0.10 tolerance
+            "pnl_total_pips": 5.0,
+            "r_mean": 0.6,      # 0.1 above predicted 0.5 — within 1.5 R tolerance
+        }
+
+    critic = PostDeployCritic(
+        metrics_slicer=slicer,
+        ledger_path=tmp_path / "changes.jsonl",
+    )
+    pkg = ChangePackage(change_id="testchange02")
+    pkg.scorecard = Scorecard(
+        trading_quality=SubScore(
+            name="trading_quality",
+            passed=True,
+            score=0.5,
+            details={"win_rate": 0.6, "pnl_delta_r": 0.5, "sharpe": 0.4, "r_mean": 0.5},
+        )
+    )
+    pkg.deployments.append(DeploymentRecord(
+        stage=DeployStage.LIVE,
+        deployed_at="2026-04-26T00:00:00",
+    ))
+
+    critic.review(pkg, DeployStage.LIVE)
+
+    blob = json.loads(bandit_path.read_text())
+    # Either no calibration_feedback key, or the testchange02 entry is absent.
+    assert "testchange02" not in blob.get("calibration_feedback", {})
