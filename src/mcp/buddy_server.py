@@ -27,6 +27,59 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+
+# ------------------------------------------------------------------ #
+# Self-load .env.local so OANDA_API_TOKEN / OANDA_ACCOUNT_ID / etc are
+# available regardless of how the server is launched.
+#
+# Audit 2026-04-28: mcp.json had `"OANDA_API_URL": "${OANDA_API_URL}"`
+# which Claude Code's MCP config doesn't expand — the LITERAL string
+# `${OANDA_API_URL}` was being passed as the env value, producing
+# "Invalid URL '${OANDA_API_URL}/v3/...'" errors when the server
+# tried to talk to OANDA. We now read .env.local directly so spawn-
+# time env injection isn't required.
+# ------------------------------------------------------------------ #
+def _load_env_local() -> None:
+    """Best-effort .env.local loader; falls back silently on any failure."""
+    project_root = Path(__file__).resolve().parents[2]
+    env_path = project_root / ".env.local"
+    if not env_path.exists():
+        return
+    try:
+        for raw in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            # Strip optional `export ` prefix.
+            if line.startswith("export "):
+                line = line[len("export "):]
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            # Don't clobber values already present in the process env —
+            # operator-set values take precedence over .env.local.
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception as e:  # noqa: BLE001 — non-fatal, log + continue
+        logger.warning("buddy_mcp: .env.local load failed: %r", e)
+
+
+_load_env_local()
+
+
+# Sanitize known-broken values: if mcp.json injected a literal
+# "${VAR}" placeholder (because Claude Code's MCP config doesn't
+# expand placeholders), treat it as unset so getenv() falls through
+# to the .env.local-loaded value or hardcoded default.
+for _key in ("OANDA_API_TOKEN", "OANDA_ACCOUNT_ID", "OANDA_API_URL"):
+    _val = os.environ.get(_key)
+    if isinstance(_val, str) and _val.startswith("${") and _val.endswith("}"):
+        logger.warning(
+            "buddy_mcp: env %s contains literal placeholder %r — clearing so "
+            ".env.local / defaults can apply", _key, _val,
+        )
+        os.environ.pop(_key, None)
+
 # ------------------------------------------------------------------ #
 # Pydantic return models (structured tool outputs per 2025-06-18 spec)
 # ------------------------------------------------------------------ #
@@ -139,6 +192,71 @@ def _oanda_base_url() -> str:
 
 def _oanda_account_id() -> str:
     return os.getenv("OANDA_ACCOUNT_ID", "")
+
+
+# ------------------------------------------------------------------ #
+# Auth-header URL allowlist (CWE-522 defense — audit 2026-04-28).
+#
+# Semgrep "Authentication Credential Pass-Through" rule correctly
+# observed that requests.get(url, headers=auth_headers) is unsafe when
+# `url` is influenced by user-controlled input. In our case `url` comes
+# from OANDA_API_URL env which the operator *should* control, but the
+# `${OANDA_API_URL}` literal-placeholder bug we just found in mcp.json
+# proves env-var assumptions can fail. If the env ever points at an
+# attacker domain (config tampering, MCP-config injection, env-var
+# clobber by another tool), the Bearer token leaks to that domain.
+#
+# Defense: refuse to attach auth headers unless the resolved URL hostname
+# is on this hardcoded allowlist. Failure mode is a clean error response,
+# not credential leakage.
+# ------------------------------------------------------------------ #
+_TRUSTED_OANDA_HOSTS: frozenset = frozenset({
+    "api-fxpractice.oanda.com",
+    "api-fxtrade.oanda.com",
+    "stream-fxpractice.oanda.com",
+    "stream-fxtrade.oanda.com",
+})
+
+
+def _assert_trusted_oanda_url(url: str) -> Optional[Dict[str, Any]]:
+    """Guard for any HTTP call that will carry OANDA auth headers.
+
+    Returns None when `url` parses to a trusted OANDA host (caller may
+    proceed). Returns a structured error dict otherwise — caller should
+    return that dict directly without ever sending the request.
+
+    Refuses anything except https + a known OANDA host. Also rejects
+    URLs containing the literal `${...}` placeholder pattern (defense
+    against the exact mcp.json bug that prompted this guard).
+    """
+    if not isinstance(url, str) or not url:
+        return {"error": "blocked_url", "detail": "empty url"}
+    if "${" in url:
+        return {
+            "error": "blocked_url",
+            "detail": "url contains literal env placeholder — env var injection failed",
+            "url": url,
+        }
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+    except Exception as e:  # noqa: BLE001
+        return {"error": "blocked_url", "detail": "url parse failed: {0}".format(e)}
+    if parsed.scheme != "https":
+        return {
+            "error": "blocked_url",
+            "detail": "scheme must be https; got {0!r}".format(parsed.scheme),
+        }
+    host = (parsed.hostname or "").lower()
+    if host not in _TRUSTED_OANDA_HOSTS:
+        return {
+            "error": "blocked_url",
+            "detail": (
+                "host {0!r} is not an allowlisted OANDA host — refusing to "
+                "send auth headers. Allowlist: {1}"
+            ).format(host, sorted(_TRUSTED_OANDA_HOSTS)),
+        }
+    return None
 
 
 # ------------------------------------------------------------------ #
@@ -446,6 +564,9 @@ def get_open_positions() -> Dict[str, Any]:
         return {"error": "credentials_missing", "detail": "OANDA_ACCOUNT_ID not set"}
 
     url = "{0}/v3/accounts/{1}/openTrades".format(_oanda_base_url(), acct)
+    blocked = _assert_trusted_oanda_url(url)
+    if blocked is not None:
+        return blocked
     try:
         resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code == 200:
@@ -482,6 +603,9 @@ def get_closed_trades(count: int = 50) -> Dict[str, Any]:
     url = "{0}/v3/accounts/{1}/trades?state=CLOSED&count={2}".format(
         _oanda_base_url(), acct, count,
     )
+    blocked = _assert_trusted_oanda_url(url)
+    if blocked is not None:
+        return blocked
     try:
         resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code == 200:

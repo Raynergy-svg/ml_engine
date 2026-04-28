@@ -6,6 +6,7 @@ This script runs in a separate process to avoid TensorFlow/PyTorch conflicts.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import pickle
@@ -209,6 +210,31 @@ def train_in_subprocess(data_path: str, output_path: str, config_dict: dict) -> 
         "model_path": str(model_path),
         "scaler_path": str(scaler_path),
     }
+
+    # Write the .meta.json sidecar so downstream age checks
+    # (model_freshness, post-trade diagnostics, self-heal RL staleness)
+    # see the trained_at timestamp of THIS retrain, not whatever the
+    # legacy CLI (train_rl_standalone.py) last wrote. Without this the
+    # production retrain path silently produces a 14-day age divergence
+    # between rl_position_sizer.zip mtime and meta.trained_at — see
+    # the rl_staleness_C5_zip_vs_meta_divergence learning in
+    # .claude/learnings.md (audit 2026-04-28).
+    try:
+        from datetime import datetime, timezone
+        meta_path = Path(output_path) / "rl_position_sizer.meta.json"
+        meta = {
+            "trained_at": datetime.now(timezone.utc).isoformat(),
+            "timesteps": total_timesteps,
+            "training_samples": getattr(env, "n_samples", None) or len(getattr(env, "trade_history", [])),
+            "stats": stats,
+            "source": "subprocess_trainer",
+        }
+        meta_path.write_text(json.dumps(meta, indent=2, default=str))
+        print(f"  [subprocess] ✓ Meta written to {meta_path}", flush=True)
+    except Exception as e:
+        # Non-fatal: training succeeded. Just warn so the operator
+        # notices the meta file is stale and can re-run if needed.
+        print(f"  [subprocess] ⚠ Meta write failed: {e}", flush=True)
 
     return stats
 
