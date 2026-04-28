@@ -113,7 +113,12 @@ def save_pair_normalization_stats(
     base_path: str = "trained_data/models",
 ) -> Path:
     """
-    Save per-pair normalization statistics to disk.
+    Save per-pair normalization statistics to disk as JSON.
+
+    Stats are pure numeric values (mean/std/min/max/percentiles), so JSON is
+    a strict upgrade over the legacy binary serialization: human-readable,
+    diff-friendly, and removes a CWE-502 deserialization risk class entirely.
+    The loader still accepts legacy `.pkl` files for already-trained pairs.
 
     Args:
         stats: Normalization stats from get_pair_normalization_stats()
@@ -121,18 +126,19 @@ def save_pair_normalization_stats(
         base_path: Base directory for model artifacts
 
     Returns:
-        Path to saved file
+        Path to saved file (.json going forward)
     """
+    import json
     save_dir = Path(base_path) / instrument
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    save_path = save_dir / "normalization_stats.pkl"
+    save_path = save_dir / "normalization_stats.json"
 
-    with open(save_path, 'wb') as f:
-        pickle.dump({
+    with open(save_path, 'w', encoding='utf-8') as f:
+        json.dump({
             'instrument': instrument,
             'stats': stats,
-        }, f)
+        }, f, indent=2, sort_keys=True)
 
     logger.info(f"Saved normalization stats to {save_path}")
     return save_path
@@ -145,6 +151,11 @@ def load_pair_normalization_stats(
     """
     Load per-pair normalization statistics from disk.
 
+    Prefers the new JSON-format file. Falls back to the legacy binary
+    artifact for pairs trained before the JSON migration; that path
+    relies on the same local-filesystem-trust assumption already
+    documented on `_load_pickle_quietly` in gates.py.
+
     Args:
         instrument: Pair name
         base_path: Base directory for model artifacts
@@ -152,17 +163,30 @@ def load_pair_normalization_stats(
     Returns:
         Normalization stats dict or None if not found
     """
-    load_path = Path(base_path) / instrument / "normalization_stats.pkl"
+    import json
+    pair_dir = Path(base_path) / instrument
+    json_path = pair_dir / "normalization_stats.json"
+    legacy_path = pair_dir / "normalization_stats.pkl"
 
-    if not load_path.exists():
-        logger.warning(f"No normalization stats found at {load_path}")
-        return None
+    # Prefer the JSON-format file when present.
+    if json_path.exists():
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        logger.info(f"Loaded normalization stats (json) for {data.get('instrument', instrument)}")
+        return data.get('stats', data)
 
-    with open(load_path, 'rb') as f:
-        data = pickle.load(f)
+    # Backward-compat: read legacy artifact written before the JSON migration.
+    if legacy_path.exists():
+        with open(legacy_path, 'rb') as f:
+            data = pickle.load(f)
+        logger.info(
+            f"Loaded normalization stats (legacy binary) for "
+            f"{data.get('instrument', instrument)} — re-saved as json on next train"
+        )
+        return data.get('stats', data)
 
-    logger.info(f"Loaded normalization stats for {data.get('instrument', instrument)}")
-    return data.get('stats', data)
+    logger.warning(f"No normalization stats found at {json_path} or {legacy_path}")
+    return None
 
 
 def apply_pair_normalization(
