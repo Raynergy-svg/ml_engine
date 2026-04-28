@@ -272,3 +272,4 @@ def _delta(predicted: Dict[str, Any], actual: Dict[str, Any]) -> Dict[str, Any]:
         except (TypeError, ValueError):
             out[key] = None
     return out
+
