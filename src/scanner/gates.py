@@ -125,7 +125,19 @@ def _suppress_native_stderr():
 
 
 def _load_pickle_quietly(handle: Any) -> Any:
-    """Load pickles while suppressing noisy compatibility warnings."""
+    """Load sklearn artifacts while suppressing noisy compatibility warnings.
+
+    Security note (CWE-502): only invoked against artifacts written by this
+    project's own training pipeline to a fixed local path
+    (trained_data/models/joint/). Threat model assumes local filesystem is
+    trusted — an attacker with write access there already owns the Python
+    process. Not called on network-sourced or user-supplied content.
+
+    TODO(security): defense-in-depth — write HMAC sidecar signatures at
+    training time and verify before deserialization. Tracked separately;
+    cross-cutting change touching every load+write site, not blocking
+    given the current threat model.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         with _suppress_native_stderr():
@@ -205,6 +217,13 @@ class GateEvaluator:
         self._transformer = None
         self._meta_labeler = None
         self._tcn_volatility = None  # TCN Volatility Regime model (REQUIRED)
+
+        # Dedup flag for the "no momentum model available" warning. Without this,
+        # holdout-validation loops fire the same WARNING ~30 times per call (one
+        # per row) — multiplied across timeframes and pairs that's hundreds of
+        # identical lines per retrain cycle. We log it once per evaluator instance
+        # so the operator still sees the missing-model signal.
+        self._warned_no_momentum_model: bool = False
 
         # Ridge scaler for proper ADX scaling
         self._ridge_scaler = None
@@ -1220,11 +1239,21 @@ class GateEvaluator:
                 except Exception as e2:
                     logger.debug(f"Generic momentum prediction also failed: {e2}")
 
-        # No model available - return neutral value
-        logger.warning(
-            "No momentum model available (CatBoost and XGBoost both missing or failed), "
-            "returning neutral value"
-        )
+        # No model available - return neutral value. Log the warning ONCE per
+        # evaluator instance to keep the missing-model signal visible without
+        # spamming logs during holdout-validation loops (which call this hot
+        # path dozens of times per pair per timeframe).
+        if not self._warned_no_momentum_model:
+            logger.warning(
+                "No momentum model available (CatBoost and XGBoost both missing "
+                "or failed), returning neutral value (suppressing further "
+                "duplicate warnings for this evaluator instance)"
+            )
+            self._warned_no_momentum_model = True
+        else:
+            logger.debug(
+                "No momentum model available (suppressed duplicate warning)"
+            )
         return self.NEUTRAL_MOMENTUM_SCORE, False
 
     def evaluate_confidence(
