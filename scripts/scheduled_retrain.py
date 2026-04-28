@@ -114,57 +114,83 @@ def run_train_joint(
     candles: int = 7500,
     force_per_pair: bool = False,
 ) -> tuple[bool, str, Optional[dict]]:
-    """Run joint training for specified pairs.
+    """Run training for the specified pairs.
+
+    Default path (audit 2026-04-28): correlation-transfer training. The
+    CorrelationTransferOrchestrator trains W&B-tuned master pairs and
+    transfer-learns correlated pairs from them. This replaces the legacy
+    joint multi-pair path which was producing 44.8% H1 accuracy across all
+    7 pairs (well below the 52% promotion floor) while operator observation
+    showed single-pair training above 60%.
+
+    Override path: set BUDDY_USE_JOINT_TRAINING=1 in the environment to
+    fall back to the legacy joint multi-pair trainer. Useful for A/B
+    comparisons against the new default during the post-swap soak window.
 
     Args:
         pairs: List of currency pairs
         granularity: Timeframe
         candles: Number of candles to fetch
         force_per_pair: If True, fine-tune EVERY pair regardless of perf
-            threshold. Needed when per-pair models are stale relative to
-            the joint ensemble — the default `should_fine_tune()` gate
-            skips pairs whose joint perf is "good enough", leaving their
-            per-pair transformer/histgb artifacts untouched for weeks.
+            threshold. Currently ignored by the correlation-transfer path
+            (which always trains master pairs end-to-end and always runs
+            transfer for correlated pairs); preserved on the signature for
+            the legacy-joint fallback's `should_fine_tune` gate.
 
     Returns:
         Tuple of (success, message, result_dict)
     """
-    logger.info(f"Starting joint training for {len(pairs)} pairs...")
+    use_joint_legacy = os.environ.get("BUDDY_USE_JOINT_TRAINING", "0").lower() in ("1", "true", "yes")
+    training_kind = "joint multi-pair (legacy)" if use_joint_legacy else "per-pair correlation transfer"
+    logger.info(f"Starting {training_kind} training for {len(pairs)} pairs...")
     logger.info(f"Pairs: {', '.join(pairs)}")
     logger.info(f"Granularity: {granularity}, Candles: {candles}, force_per_pair={force_per_pair}")
 
     try:
-        from src.training.buddy_training_helpers import train_joint_multi_pair_ensemble
         from rich.console import Console
-
         console = Console(file=sys.stdout, force_terminal=True)
 
-        result = train_joint_multi_pair_ensemble(
-            instruments=pairs,
-            granularity=granularity,
-            candles=candles,
-            fine_tune=True,
-            fine_tune_threshold=0.05,
-            console=console,
-        )
-        
+        if use_joint_legacy:
+            from src.training.buddy_training_helpers import train_joint_multi_pair_ensemble
+            result = train_joint_multi_pair_ensemble(
+                instruments=pairs,
+                granularity=granularity,
+                candles=candles,
+                fine_tune=True,
+                fine_tune_threshold=0.05,
+                console=console,
+            )
+        else:
+            from src.training.buddy_training_helpers import train_per_pair_correlation_ensemble
+            result = train_per_pair_correlation_ensemble(
+                instruments=pairs,
+                granularity=granularity,
+                candles=candles,
+                console=console,
+            )
+
         if result.get("status") == "success":
             msg = (
-                f"Joint training completed successfully\n"
+                f"{training_kind} training completed successfully\n"
                 f"Instruments: {result.get('n_instruments', 0)}\n"
                 f"Save directory: {result.get('joint_save_dir', 'N/A')}"
             )
+            if not use_joint_legacy:
+                msg += (
+                    f"\nMaster pairs: {result.get('n_master_pairs', 0)}"
+                    f"\nTransfer-learned pairs: {result.get('n_transfer_pairs', 0)}"
+                )
             logger.info(msg)
             return True, msg, result
         else:
             error = result.get("error", "Unknown error")
-            msg = f"Joint training failed: {error}"
+            msg = f"{training_kind} training failed: {error}"
             logger.error(msg)
             return False, msg, result
-            
+
     except Exception as e:
         error_trace = traceback.format_exc()
-        msg = f"Joint training exception: {e}\n\n{error_trace}"
+        msg = f"{training_kind} training exception: {e}\n\n{error_trace}"
         logger.error(msg)
         return False, msg, None
 

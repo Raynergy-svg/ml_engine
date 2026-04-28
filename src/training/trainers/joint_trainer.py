@@ -551,14 +551,34 @@ class JointMultiPairTrainer:
                             f"{instrument}: Added instrument features, shape {x_val_2d.shape}"
                         )
                     elif expected_n_features is not None and x_val_2d.shape[-1] != expected_n_features:
-                        # Feature count still doesn't match - try alignment or truncation
+                        # Feature count still doesn't match - try alignment or truncation.
+                        #
+                        # KNOWN ISSUE (audit 2026-04-28): under the current data
+                        # pipeline, all 7 pairs hit this branch with data=64 /
+                        # expected=50, dropping 14 features per pair on every
+                        # retrain. The truncation assumes the first N columns
+                        # are the right ones to keep — if column ordering ever
+                        # diverges between train and inference this silently
+                        # produces wrong predictions. Holdout accuracy currently
+                        # sits at 44.8% (H1) which is below random; truncation
+                        # may be eating useful signal. Operator decision needed:
+                        #   (a) retrain models with the full 64-feature input layer, OR
+                        #   (b) explicitly select which 50 features to keep at the
+                        #       data-loader level (named, not positional)
+                        # See logs/retrain_*.log "Feature mismatch" for the
+                        # systemic frequency.
+                        feature_names = dir_result.get("feature_names") if isinstance(dir_result, dict) else None
                         if x_val_2d.shape[-1] > expected_n_features:
                             # Too many features - truncate
+                            dropped_names: Optional[List[str]] = None
+                            if feature_names and len(feature_names) >= x_val_2d.shape[-1]:
+                                dropped_names = list(feature_names[expected_n_features:x_val_2d.shape[-1]])
                             logger.warning(
                                 f"{instrument}: Feature mismatch - "
                                 f"data has {x_val_2d.shape[-1]}, "
                                 f"model expects {expected_n_features}. "
-                                f"Using first {expected_n_features} features."
+                                f"Using first {expected_n_features} features. "
+                                f"Dropped: {dropped_names if dropped_names else '(names unavailable)'}"
                             )
                             x_val_2d = x_val_2d[:, :expected_n_features]
                         else:
@@ -568,7 +588,8 @@ class JointMultiPairTrainer:
                                 f"{instrument}: Feature mismatch - "
                                 f"data has {x_val_2d.shape[-1]}, "
                                 f"model expects {expected_n_features}. "
-                                f"Padding with {n_pad} zero columns."
+                                f"Padding with {n_pad} zero columns. "
+                                f"Existing features: {list(feature_names) if feature_names else '(names unavailable)'}"
                             )
                             padding = np.zeros((x_val_2d.shape[0], n_pad), dtype=np.float32)
                             x_val_2d = np.hstack([x_val_2d, padding])

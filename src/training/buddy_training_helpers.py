@@ -1882,4 +1882,187 @@ def train_with_walkforward_validation(
         return fold_trainers[-1], fold_metrics[-1]
 
 
+# ---------------------------------------------------------------------------
+# Correlation-transfer training path (the right architecture)
+# ---------------------------------------------------------------------------
+#
+# Audit 2026-04-28: live retrain logs showed joint multi-pair training
+# producing 44.8% H1 accuracy across 7 pairs (below random) while operator
+# observation puts single-pair training above 60%. The diagnosis: joint
+# training averages signal across pairs that have different micro-structure;
+# single-pair (or master-pair-with-transfer) preserves the per-pair regime
+# specificity that the gates need.
+#
+# This path uses the existing CorrelationTransferOrchestrator (already built
+# in src/training/orchestrators/correlation_transfer.py with W&B-tuned
+# hyperparameters in correlation_group_config.py for each master pair).
+# Same data fetch as the joint path; different trainer.
+
+def train_per_pair_correlation_ensemble(
+    instruments: list[str],
+    granularity: str = "H1",
+    candles: int = 25000,
+    model_dir: str = "trained_data/models",
+    console: _ConsoleLike | None = None,
+    oanda_client: Any | None = None,
+    skip_master_training: bool = False,
+) -> dict[str, Any]:
+    """Train per-pair models via the correlation-transfer orchestrator.
+
+    The orchestrator:
+      1. Computes correlation groups from returns data
+      2. Trains master pairs (typically 5-6) with W&B-tuned params
+      3. Transfer-learns correlated pairs from their master with EWC
+
+    This replaces the joint-multi-pair path for production retrains. The
+    joint path remains available for ad-hoc experiments via
+    `train_joint_multi_pair_ensemble`.
+
+    Args:
+        instruments: List of currency pairs to train (will be auto-grouped).
+        granularity: OANDA candle granularity (e.g., "H1").
+        candles: Number of candles to fetch per pair.
+        model_dir: Output directory root.
+        console: Rich console for progress reporting.
+        oanda_client: Optional OANDA client (auto-built from env if None).
+        skip_master_training: When True, reuse existing master models if
+            present on disk — useful for re-running transfer when only the
+            target pairs have new data.
+
+    Returns:
+        Dict matching the joint-trainer return shape:
+            status: "success" | "error"
+            n_instruments: int
+            n_master_pairs: int
+            n_transfer_pairs: int
+            joint_save_dir: model directory path
+            per_pair_metrics: dict[pair, metrics]
+            error: str (only when status=error)
+    """
+    from pathlib import Path
+    from src.training.orchestrators.correlation_transfer import (
+        CorrelationTransferOrchestrator,
+        CorrelationTransferConfig,
+    )
+
+    modules = _import_joint_training_modules()
+    if modules is None:
+        if console:
+            console.print("[red]Failed to import required modules[/red]")
+        return {"status": "error", "error": _ERR_IMPORT_FAILED}
+    _joint_trainer_cls, trainer_config_cls, oanda_client_cls = modules
+
+    if console:
+        console.print(
+            f"\n[bold cyan]Per-pair correlation-transfer training: "
+            f"{len(instruments)} pairs, {granularity}, {candles} candles[/bold cyan]"
+        )
+
+    # 1. Fetch data via the same path the joint trainer uses.
+    if oanda_client is None:
+        oanda_client = oanda_client_cls.from_env()
+    dfs = _fetch_all_instrument_data(instruments, granularity, candles, oanda_client, console)
+    if not dfs:
+        if console:
+            console.print("[red]No data loaded for any instrument[/red]")
+        return {"status": "error", "error": "No data loaded"}
+
+    # 2. Compute returns from feature DataFrames for correlation analysis.
+    #    The orchestrator's CorrelationAnalyzer expects pair -> Series of returns.
+    returns_data: dict[str, Any] = {}
+    for pair, df in dfs.items():
+        if df is None or df.empty:
+            continue
+        # Try common close-price column names; fall back to first numeric col.
+        close_col = None
+        for cand in ("close", "Close", "close_price", "c"):
+            if cand in df.columns:
+                close_col = cand
+                break
+        if close_col is None:
+            numeric_cols = [c for c in df.columns if df[c].dtype.kind in "fc"]
+            if numeric_cols:
+                close_col = numeric_cols[0]
+        if close_col is None:
+            logger.warning("No close-price column found for %s — excluding from correlation", pair)
+            continue
+        returns_data[pair] = df[close_col].pct_change().dropna()
+
+    if len(returns_data) < 2:
+        if console:
+            console.print(
+                "[yellow]Fewer than 2 pairs have usable returns data — "
+                "correlation transfer requires at least 2 pairs. "
+                "Falling back to joint trainer is the operator's call.[/yellow]"
+            )
+        return {
+            "status": "error",
+            "error": "insufficient_pairs_for_correlation",
+            "n_pairs_with_returns": len(returns_data),
+        }
+
+    # 3. Run the orchestrator — master training + transfer learning.
+    trainer_cfg = trainer_config_cls()
+    transfer_cfg = CorrelationTransferConfig(
+        save_dir=str(Path(model_dir)),
+    )
+    orchestrator = CorrelationTransferOrchestrator(
+        config=transfer_cfg,
+        trainer_config=trainer_cfg,
+    )
+
+    try:
+        results = orchestrator.run_full_pipeline(
+            returns_data=returns_data,
+            dfs=dfs,
+            skip_master_training=skip_master_training,
+        )
+    except Exception as e:
+        msg = f"Correlation-transfer pipeline raised: {e}"
+        logger.error(msg, exc_info=True)
+        return {"status": "error", "error": msg}
+
+    transfer_results = results.get("transfer_results", []) or []
+    correlation_groups = results.get("correlation_groups", []) or []
+    n_master = len({g.master_pair for g in correlation_groups if hasattr(g, "master_pair")})
+
+    # 4. Update the modular_ensemble meta-file so promotion/staleness checks
+    #    see fresh timestamps for this training type.
+    try:
+        _meta_path = Path(model_dir) / "modular_ensemble.meta.json"
+        _existing_meta = {}
+        if _meta_path.exists():
+            with open(_meta_path, "r") as _mf:
+                _existing_meta = json.load(_mf)
+        _existing_meta.update({
+            "training_type": "per_pair_correlation_transfer",
+            "trained_at": datetime.now(timezone.utc).isoformat(),
+            "trained_pairs": instruments,
+            "n_instruments": len(instruments),
+            "n_master_pairs": n_master,
+            "n_transfer_pairs": len(transfer_results),
+            "granularity": granularity,
+            "candles": candles,
+        })
+        with open(_meta_path, "w") as _mf:
+            json.dump(_existing_meta, _mf, indent=2, sort_keys=True, default=str)
+        logger.info(
+            "Updated modular_ensemble.meta.json (training_type=per_pair_correlation_transfer, "
+            "trained_at=%s)", _existing_meta["trained_at"],
+        )
+    except Exception as _meta_err:
+        logger.warning("Failed to update modular_ensemble.meta.json: %s", _meta_err)
+
+    return {
+        "status": "success",
+        "n_instruments": len(instruments),
+        "n_master_pairs": n_master,
+        "n_transfer_pairs": len(transfer_results),
+        "joint_save_dir": str(Path(transfer_cfg.save_dir)),
+        "per_pair_metrics": {
+            r.target_pair: r.to_dict() for r in transfer_results
+        } if transfer_results else {},
+    }
+
+
 # — Raynergy-svg —
