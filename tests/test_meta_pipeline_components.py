@@ -550,3 +550,98 @@ def test_compute_window_r_stats_returns_zeros_on_stale_deploy_index(monkeypatch,
     stats = sd._compute_window_r_stats(rec, 15)
     # Must not produce garbage; must return zeros on the stale-index path.
     assert stats == {"R_mean": 0.0, "R_baseline": 0.0}
+
+
+def test_metrics_slicer_includes_r_mean(tmp_path, monkeypatch):
+    """Slicer adds r_mean alongside win_rate and pnl_total_pips. Closes G9
+    (post-deploy critic now reports R-multiple — the metric Phase 1 actually
+    cares about for SL/TP-modifying deltas)."""
+    import json
+    from src.scanner.automation import post_deploy_critic as pdc_mod
+    from src.scanner.automation.post_deploy_critic import _default_metrics_slicer
+    from src.scanner.automation.meta_types import (
+        ChangePackage, DeploymentRecord, DeployStage,
+    )
+    target = tmp_path / "trained_data" / "trade_journal_rl.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps([
+        {"pair": "EUR_USD", "direction": "long", "timestamp": "2026-04-26T10:00:00", "outcome": {"trade_won": True, "pnl_pips": 10, "r_multiple": 1.0}},
+        {"pair": "EUR_USD", "direction": "long", "timestamp": "2026-04-27T10:00:00", "outcome": {"trade_won": True, "pnl_pips": 15, "r_multiple": 1.5}},
+        {"pair": "EUR_USD", "direction": "short", "timestamp": "2026-04-28T10:00:00", "outcome": {"trade_won": False, "pnl_pips": -5, "r_multiple": -0.5}},
+    ]))
+    monkeypatch.setattr(pdc_mod, "_PROJECT_ROOT", tmp_path)
+
+    pkg = ChangePackage()
+    pkg.deployments.append(DeploymentRecord(
+        stage=DeployStage.SHADOW,
+        deployed_at="2026-04-26T00:00:00",
+    ))
+    out = _default_metrics_slicer(pkg, DeployStage.SHADOW)
+    assert out["sample_size"] == 3
+    assert out["win_rate"] == pytest.approx(2/3)
+    # NEW: r_mean must be present and correctly averaged.
+    assert out["r_mean"] == pytest.approx((1.0 + 1.5 + -0.5) / 3)
+
+
+def test_metrics_slicer_slices_by_regime_when_present(tmp_path, monkeypatch):
+    """When DeploymentRecord.regime_at_deploy is set, slicer adds a
+    'regime_slices' breakdown keyed by the regime found in each trade's
+    outcome dict. The breakdown enables the 14-day deferred-G2 review
+    (per-regime distribution comparison)."""
+    import json
+    from src.scanner.automation import post_deploy_critic as pdc_mod
+    from src.scanner.automation.post_deploy_critic import _default_metrics_slicer
+    from src.scanner.automation.meta_types import (
+        ChangePackage, DeploymentRecord, DeployStage,
+    )
+    target = tmp_path / "trained_data" / "trade_journal_rl.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps([
+        {"pair": "EUR_USD", "direction": "long", "timestamp": "2026-04-26T10:00:00", "outcome": {"trade_won": True, "pnl_pips": 10, "r_multiple": 1.0, "regime": "LOW"}},
+        {"pair": "EUR_USD", "direction": "short", "timestamp": "2026-04-27T10:00:00", "outcome": {"trade_won": False, "pnl_pips": -5, "r_multiple": -0.5, "regime": "HIGH"}},
+    ]))
+    monkeypatch.setattr(pdc_mod, "_PROJECT_ROOT", tmp_path)
+
+    pkg = ChangePackage()
+    pkg.deployments.append(DeploymentRecord(
+        stage=DeployStage.SHADOW,
+        deployed_at="2026-04-26T00:00:00",
+        regime_at_deploy="LOW",
+    ))
+    out = _default_metrics_slicer(pkg, DeployStage.SHADOW)
+    assert "regime_slices" in out
+    assert "LOW" in out["regime_slices"]
+    assert out["regime_slices"]["LOW"]["sample_size"] == 1
+    assert out["regime_slices"]["LOW"]["win_rate"] == 1.0
+    assert out["regime_slices"]["LOW"]["r_mean"] == pytest.approx(1.0)
+    assert "HIGH" in out["regime_slices"]
+    assert out["regime_slices"]["HIGH"]["sample_size"] == 1
+    assert out["regime_slices"]["HIGH"]["r_mean"] == pytest.approx(-0.5)
+
+
+def test_metrics_slicer_no_regime_slices_when_record_lacks_regime(tmp_path, monkeypatch):
+    """When regime_at_deploy is None on the DeploymentRecord, no
+    regime_slices key is added. Backward-compat for pre-Task-7 records."""
+    import json
+    from src.scanner.automation import post_deploy_critic as pdc_mod
+    from src.scanner.automation.post_deploy_critic import _default_metrics_slicer
+    from src.scanner.automation.meta_types import (
+        ChangePackage, DeploymentRecord, DeployStage,
+    )
+    target = tmp_path / "trained_data" / "trade_journal_rl.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps([
+        {"pair": "EUR_USD", "direction": "long", "timestamp": "2026-04-27T10:00:00", "outcome": {"trade_won": True, "pnl_pips": 10, "r_multiple": 1.0, "regime": "LOW"}},
+    ]))
+    monkeypatch.setattr(pdc_mod, "_PROJECT_ROOT", tmp_path)
+
+    pkg = ChangePackage()
+    pkg.deployments.append(DeploymentRecord(
+        stage=DeployStage.SHADOW,
+        deployed_at="2026-04-26T00:00:00",
+        regime_at_deploy=None,  # explicit
+    ))
+    out = _default_metrics_slicer(pkg, DeployStage.SHADOW)
+    assert "regime_slices" not in out
+    # But r_mean should still be present (that part is unconditional).
+    assert "r_mean" in out

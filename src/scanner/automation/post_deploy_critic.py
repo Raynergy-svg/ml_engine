@@ -39,7 +39,14 @@ MetricsSlicer = Callable[[ChangePackage, DeployStage], Dict[str, Any]]
 
 
 def _default_metrics_slicer(package: ChangePackage, stage: DeployStage) -> Dict[str, Any]:
-    """Best-effort default that pulls live metrics from the trade journal."""
+    """Best-effort default that pulls live metrics from the trade journal.
+
+    Reports sample_size / win_rate / pnl_total_pips / r_mean over the
+    post-deploy slice. When DeploymentRecord.regime_at_deploy is present,
+    additionally emits a `regime_slices` breakdown keyed by the regime
+    found in each trade's outcome dict — input for the 14-day deferred-G2
+    review's per-regime distribution comparison.
+    """
     try:
         from src.scanner.automation.safe_json import safe_json_read
         journal_path = _PROJECT_ROOT / "trained_data" / "trade_journal_rl.json"
@@ -56,13 +63,53 @@ def _default_metrics_slicer(package: ChangePackage, stage: DeployStage) -> Dict[
         slice_ = [e for e in entries if str(e.get("timestamp", "")) >= cutoff]
         if not slice_:
             return {"sample_size": 0}
+
+        def r_of(e):
+            o = (e.get("outcome") or {}) if isinstance(e, dict) else {}
+            try:
+                return float(o.get("r_multiple", 0.0))
+            except (TypeError, ValueError):
+                return 0.0
+
         wins = sum(1 for e in slice_ if (e.get("outcome", {}) or {}).get("trade_won"))
         pnl_total = sum(float((e.get("outcome", {}) or {}).get("pnl_pips", 0)) for e in slice_)
-        return {
+        r_mean = sum(r_of(e) for e in slice_) / len(slice_)
+        out: Dict[str, Any] = {
             "sample_size": len(slice_),
             "win_rate": wins / len(slice_),
             "pnl_total_pips": pnl_total,
+            "r_mean": r_mean,
         }
+
+        # Regime slicing — only when the deploy record was tagged with a regime.
+        if deploy_record.regime_at_deploy:
+            slices: Dict[str, Dict[str, Any]] = {}
+            seen_regimes = {
+                (e.get("outcome", {}) or {}).get("regime")
+                for e in slice_
+                if isinstance(e, dict)
+            }
+            for regime in seen_regimes:
+                if not regime:
+                    continue
+                bucket = [
+                    e for e in slice_
+                    if (e.get("outcome", {}) or {}).get("regime") == regime
+                ]
+                if not bucket:
+                    continue
+                b_wins = sum(
+                    1 for e in bucket
+                    if (e.get("outcome", {}) or {}).get("trade_won")
+                )
+                b_r = sum(r_of(e) for e in bucket) / len(bucket)
+                slices[regime] = {
+                    "sample_size": len(bucket),
+                    "win_rate": b_wins / len(bucket),
+                    "r_mean": b_r,
+                }
+            out["regime_slices"] = slices
+        return out
     except Exception as e:
         logger.debug("post_deploy_critic.default_slicer_failed err=%s", e)
         return {}
