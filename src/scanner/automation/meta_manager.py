@@ -620,6 +620,109 @@ def is_enabled() -> bool:
     return False
 
 
+# ---------- Production singleton (Phase 1 wiring) ----------
+
+_PRODUCTION_MGR: Optional["MetaManager"] = None
+_PRODUCTION_REGIME_PROBE: Optional[Any] = None
+
+
+def _build_production_manager() -> "MetaManager":
+    """Lazy-construct the live MetaManager with Phase 1 dependencies wired.
+
+    Phase 1 closed the cybernetic feedback edges (G3 episodic-memory query
+    on intake, G7 historical_loss_rate constitution clause, regime tagging
+    on DeploymentRecord). All three require dependencies that must be
+    injected at construction time:
+
+    - episodic_memory: real EpisodicMemory pointed at the canonical
+      trained_data/episodic_memory.json. The agent team writes outcomes
+      to the same file, so the meta pipeline naturally sees real history.
+    - regime_detector: a thin _LiveRegimeProbe whose .current() reads
+      the most recent regime persisted to disk by the agent team. (No
+      orchestrator-side wiring path exists in production — `cycle_autonomy`
+      → `route_incident` is the only hot path, so the probe must
+      self-fetch rather than be pushed updates.)
+
+    Construction is gated on is_enabled() so importing this module is free
+    when meta is disabled. Built lazily on first use and cached.
+    """
+    global _PRODUCTION_REGIME_PROBE
+
+    # Episodic memory: shared backing file with the agent team
+    episodic_memory: Optional[Any] = None
+    try:
+        from src.scanner.automation.episodic_memory import EpisodicMemory
+        episodic_memory = EpisodicMemory()
+    except Exception as e:
+        logger.warning(
+            "meta_manager.production_episodic_init_failed err=%s — "
+            "G3 intake query and G7 historical_loss_rate veto will be no-ops",
+            e,
+        )
+
+    # Regime probe: self-fetching from the dominant per-scan regime that
+    # the agent team writes to a state file. Decoupled from any push path.
+    if _PRODUCTION_REGIME_PROBE is None:
+        _PRODUCTION_REGIME_PROBE = _LiveRegimeProbe()
+
+    # Build the StagedDeployer with the regime probe wired.
+    staged_deployer: Optional[Any] = None
+    try:
+        from src.scanner.automation.staged_deployer import StagedDeployer
+        from src.scanner.automation.adjustment_approver import AdjustmentApprover
+        from src.scanner.config import ScannerConfig
+        cfg = ScannerConfig()
+        staged_deployer = StagedDeployer(
+            config=cfg,
+            adjustment_approver=AdjustmentApprover(),
+            shadow_cycles=getattr(cfg, "staged_deploy_shadow_cycles", 20),
+            canary_trades=getattr(cfg, "staged_deploy_canary_trades", 10),
+            regime_detector=_PRODUCTION_REGIME_PROBE,
+        )
+    except Exception as e:
+        logger.warning(
+            "meta_manager.production_deployer_init_failed err=%s — "
+            "regime_at_deploy will not be captured", e,
+        )
+
+    return MetaManager(
+        episodic_memory=episodic_memory,
+        staged_deployer=staged_deployer,
+    )
+
+
+class _LiveRegimeProbe:
+    """Self-fetching regime probe for the production MetaManager singleton.
+
+    The orchestrator-side wiring (in orchestrator.py) pushes regime updates
+    on every scan; that path doesn't apply here because the production live
+    loop (cycle_autonomy → route_incident) bypasses the orchestrator. This
+    probe instead pulls from a regime state file that other Buddy components
+    already maintain. Falls through to None when no source is available —
+    Phase-1 Task-7 contract is best-effort (regime tagging is observability,
+    not gating).
+    """
+
+    def current(self) -> Optional[str]:
+        # Order of preference:
+        #   1. trained_data/microstructure_regime.json (`regime` key if present)
+        #   2. trained_data/ewma_correlation_state.json (`regime`)
+        #   3. None — caller falls back gracefully
+        try:
+            from pathlib import Path
+            from src.scanner.automation.safe_json import safe_json_read
+            root = Path(__file__).resolve().parents[3] / "trained_data"
+            for fname in ("microstructure_regime.json", "ewma_correlation_state.json"):
+                blob = safe_json_read(root / fname, default={})
+                if isinstance(blob, dict):
+                    val = blob.get("regime") or blob.get("dominant_regime") or blob.get("current_regime")
+                    if val:
+                        return str(val).upper()
+        except Exception:
+            pass
+        return None
+
+
 def route_incident(incident: Dict[str, Any]) -> bool:
     """Route an incident through the meta-pipeline if enabled.
 
@@ -628,17 +731,31 @@ def route_incident(incident: Dict[str, Any]) -> bool:
     swallowed the signal (caller should NOT also spawn Ralph / reflection /
     direct config writes). Returns False when the legacy path should run.
 
+    Phase-1 wiring: the MetaManager singleton is lazy-built with full
+    dependencies (episodic_memory, regime_detector via _build_production_manager)
+    so the G3/G7 closed-loop edges actually circulate live data, not just
+    the synthetic fixtures the unit tests use.
+
     Note: this blocks for the duration of all LLM calls (3 specialists ×
     ~150s ≈ 7-8 min worst case). Callers must not be in the trade hot
     path. Today both call sites (cycle_autonomy, performance_prd_generator)
     run from the orchestrator's meta-cycle dispatcher, satisfying the
     "Claude-free runtime hot path" rule from CLAUDE.md.
     """
+    global _PRODUCTION_MGR
     if not is_enabled():
         return False
     try:
-        mgr = MetaManager()
-        mgr.process(incident)
+        if _PRODUCTION_MGR is None:
+            _PRODUCTION_MGR = _build_production_manager()
+            logger.info(
+                "meta_manager.production_singleton_initialized "
+                "episodic_memory=%s regime_probe=%s deployer=%s",
+                "wired" if _PRODUCTION_MGR._episodic_memory is not None else "DISABLED",
+                "wired" if _PRODUCTION_REGIME_PROBE is not None else "DISABLED",
+                "wired" if _PRODUCTION_MGR._deploy is not None else "DISABLED",
+            )
+        _PRODUCTION_MGR.process(incident)
         return True
     except Exception as e:
         logger.warning("meta_manager.route_incident_failed err=%s — falling back to legacy", e)
