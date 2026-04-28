@@ -1421,12 +1421,28 @@ def temporal_split(
     return train_idx, val_idx, test_idx
 
 
+# Module-level dedup cache for the "Missing features" warning. Without this,
+# every call site (one per holdout sample, per timeframe, per pair) fires an
+# identical WARNING — observed 7+ identical lines in 1ms in the live retrain
+# log. We log once per unique missing-feature-set per process.
+_MISSING_FEATURES_WARNED: set = set()
+
+
 def _ensure_features_exist(df: pd.DataFrame, features: List[str]) -> List[str]:
     """Filter features to only those that exist in the dataframe."""
     available = [f for f in features if f in df.columns]
     missing = [f for f in features if f not in df.columns]
     if missing:
-        logger.warning(f"Missing features: {missing}")
+        # Dedup on the sorted tuple so different feature sets each warn once.
+        key = tuple(sorted(missing))
+        if key not in _MISSING_FEATURES_WARNED:
+            logger.warning(
+                "Missing features: %s (suppressing further duplicate "
+                "warnings for this exact set)", missing,
+            )
+            _MISSING_FEATURES_WARNED.add(key)
+        else:
+            logger.debug("Missing features (duplicate suppressed): %s", missing)
     return available
 
 
