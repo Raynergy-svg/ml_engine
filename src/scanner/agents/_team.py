@@ -1246,18 +1246,21 @@ class ScannerAgentTeam:
 
         # Episodic Market Memory: Query pattern suppression signal
         if self._episodic_memory is not None and getattr(self.config, "enable_episodic_memory", True):
+            # Hoisted out of the try block so the WARNING handler can
+            # reference them safely without locals()-style lookups (which
+            # semgrep flags as CWE-96 dynamic-code-injection risk).
+            _ep_pair = getattr(analysis, "pair", "UNKNOWN")
+            _ep_direction = getattr(analysis, "direction", "HOLD")
+            _ep_regime = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper()
             try:
-                pair = getattr(analysis, "pair", "UNKNOWN")
-                direction = getattr(analysis, "direction", "HOLD")
-                regime = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper()
                 session = "london"  # TODO: derive session from UTC hour if available
                 news_risk = getattr(analysis, "news_risk_score", 0.0)
                 uncertainty = getattr(analysis, "uncertainty_score", 0.0)
 
                 suppression = self._episodic_memory.get_suppression_signal(
-                    pair=pair,
-                    direction=direction,
-                    regime=regime,
+                    pair=_ep_pair,
+                    direction=_ep_direction,
+                    regime=_ep_regime,
                     session=session,
                     news_risk_score=float(news_risk),
                     uncertainty_score=float(uncertainty),
@@ -1267,11 +1270,28 @@ class ScannerAgentTeam:
                 if suppression:
                     logger.info(
                         "Episodic suppression ACTIVE for %s %s (pattern loss rate >= 70%%)",
-                        pair, direction,
+                        _ep_pair, _ep_direction,
                     )
             except Exception as e:
-                logger.debug(f"Episodic memory query failed: {e}")
+                # Mythos audit 2026-04-28 — promoted-rule veto neighborhood:
+                # episodic memory's get_suppression_signal returning True is
+                # a hard veto on high-loss-rate patterns. A silent debug log
+                # here was the same anti-pattern that hid the 04-15 MR-veto
+                # signal under WVS arithmetic. Bump to WARNING with stack so
+                # operator sees memory degradation, AND mark gate_details
+                # with 'episodic_memory_degraded' so downstream consumers
+                # can choose conservative behavior. We still default
+                # suppression=False to avoid a memory hiccup blocking ALL
+                # trades — degraded flag lets specific gates fail-closed.
+                logger.warning(
+                    "Episodic memory query failed pair=%s direction=%s "
+                    "regime=%s — defaulting suppression=False with "
+                    "degraded=True flag. Reason: %r",
+                    _ep_pair, _ep_direction, _ep_regime,
+                    e, exc_info=True,
+                )
                 ctx.gate_details["episodic_suppression"] = False
+                ctx.gate_details["episodic_memory_degraded"] = True
 
         verdicts: List[AgentVerdict] = []
 
@@ -2119,8 +2139,29 @@ class ScannerAgentTeam:
                             f"{_staleness_thresh:.2f} with models {_oldest:.1f}d stale "
                             f"(> {_staleness_age:.1f}d threshold)"
                         )
-        except Exception:
-            pass
+        except Exception as _stale_err:
+            # Mythos audit 2026-04-28 — observability fix only. The bare
+            # `except Exception: pass` previously here silently swallowed
+            # every freshness probe failure (CWE-754); operators had no
+            # signal that the staleness hard-block was bypassed. Now we
+            # WARN + log stack trace so probe failures surface in logs.
+            #
+            # Behavior preserved: fail-OPEN (do NOT escalate
+            # stale_hard_block on probe failure). This honors the US-503
+            # AC-3 contract pinned by tests/test_phase91_staleness_block.py
+            # ("falls back to max_uncertainty_score=0.40, no crash").
+            #
+            # The audit recommended fail-CLOSED here, citing the 10-trade
+            # -$2,637 streak. That is a deliberate operator-level
+            # decision because it can block all trades on a transient
+            # probe wedge. Track-and-decide: see Mythos handoff
+            # 2026-04-28.
+            logger.warning(
+                "Model-freshness probe failed — staleness hard-block "
+                "defaulted OFF per US-503 AC-3 (uncertainty=%.3f). "
+                "Reason: %r",
+                uncertainty_score, _stale_err, exc_info=True,
+            )
         soft_blocking = bool(getattr(ctx.config, "soft_uncertainty_blocking", False))
         ensemble_conflict_enabled = bool(getattr(ctx.config, "ensemble_conflict_enabled", False))
 
