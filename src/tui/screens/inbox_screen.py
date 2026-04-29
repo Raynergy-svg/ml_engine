@@ -48,8 +48,25 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _PENDING_PATH = _PROJECT_ROOT / ".claude" / "pending_adjustments.json"
 _APPROVED_PATH = _PROJECT_ROOT / ".claude" / "config_adjustments.json"
 
+# Mythos audit 2026-04-29 — Meta-pipeline ChangePackages live here.
+# The orchestrator routes per-cycle diagnostics to MetaManager when
+# enable_meta_manager=True (commit f070d39); each routed incident
+# produces a JSON file in this directory. Surfacing them in the inbox
+# is step B of the Tier 7 visibility plan.
+_META_CHANGES_DIR = _PROJECT_ROOT / ".claude" / "meta" / "changes"
+
 # Proposals in terminal states are not shown (approved already moved out, rejected is done)
 _ACTIVE_STATUSES = ("pending", "snoozed", "invalid")
+
+# ChangePackage stages that count as "in the operator's queue" — terminal
+# stages (closed/aborted/rejected) are filtered out so the inbox doesn't
+# pile up forever.
+_META_ACTIVE_STAGES = (
+    "intake", "diagnosing", "proposing", "evaluating",
+    "policy_check", "awaiting_approval", "approved",
+    "deployed_shadow", "deployed_canary", "deployed_live",
+    "post_deploy_review",
+)
 
 
 # ── Unified row adapter ──────────────────────────────────────────────
@@ -90,6 +107,59 @@ def _homework_to_row(e: HomeworkEntry) -> UnifiedInboxRow:
         detail_summary=f"{e.close_reason}  {e.realized_pl:+.2f}",
         pl=e.realized_pl,
         raw_entry=e,
+    )
+
+
+def _meta_package_to_row(blob: dict) -> Optional[UnifiedInboxRow]:
+    """Convert a meta-pipeline ChangePackage JSON blob to an inbox row.
+
+    Returns None for malformed packages. Subject = change_id + kind.
+    Detail summary = stage + delta-key count + constitution status.
+    """
+    try:
+        change_id = str(blob.get("change_id", ""))
+        kind = str(blob.get("kind", "?"))
+        stage = str(blob.get("stage", "?"))
+    except Exception:
+        return None
+    if not change_id:
+        return None
+
+    proposal = blob.get("proposal") or {}
+    delta = (proposal.get("config_delta") or {}) if isinstance(proposal, dict) else {}
+    delta_keys = list(delta.keys()) if isinstance(delta, dict) else []
+
+    attestation = blob.get("constitution_attestation") or {}
+    if isinstance(attestation, dict):
+        const_passed = attestation.get("passed")
+    else:
+        const_passed = None
+    const_str = (
+        "✓" if const_passed is True
+        else ("✗" if const_passed is False else "?")
+    )
+
+    history = blob.get("history") or []
+    last_ts = ""
+    if isinstance(history, list) and history:
+        last = history[-1]
+        if isinstance(last, dict):
+            last_ts = str(last.get("ts", ""))[:19]
+    if not last_ts:
+        last_ts = str(blob.get("created_at", ""))[:19]
+
+    detail = f"{stage}  Δkeys={len(delta_keys)}  const={const_str}"
+    if delta_keys:
+        # Show first key + count rather than dumping all keys
+        detail = f"{stage}  {delta_keys[0]}{'…' if len(delta_keys) > 1 else ''}  const={const_str}"
+
+    return UnifiedInboxRow(
+        entry_type="meta",
+        timestamp=last_ts,
+        subject=f"⟪{change_id[:8]}⟫ {kind}",
+        detail_summary=detail,
+        pl=None,
+        raw_entry=blob,
     )
 
 
@@ -542,11 +612,13 @@ class InboxScreen(Container):
         # Active filter: "all" | "homework" | "adjustments"
         self._current_filter: str = "all"
         # Filter pill IDs in cycle order (for Tab key)
-        self._filter_cycle = ["all", "homework", "adjustments"]
+        self._filter_cycle = ["all", "homework", "adjustments", "meta"]
         # mtime-keyed read caches — fine <100 entries today, prevents pathological
         # re-parse at 10k+. Key: stat result tuple. Value: parsed payload.
         self._proposals_cache: tuple[int, list[dict[str, Any]]] | None = None
         self._homework_cache: tuple[tuple[int, int], list[Any]] | None = None
+        # Cache for _read_meta_packages: (dir_mtime_ns, rows)
+        self._meta_cache: tuple[int, list[UnifiedInboxRow]] | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -564,6 +636,7 @@ class InboxScreen(Container):
             yield Button("All", id="filter-all", classes="filter-pill active")
             yield Button("📚 Homework", id="filter-homework", classes="filter-pill")
             yield Button("🔧 Adjustments", id="filter-adjustments", classes="filter-pill")
+            yield Button("🧠 Meta", id="filter-meta", classes="filter-pill")
 
         with Horizontal(id="two-pane-row"):
             yield DataTable(id="inbox-queue", cursor_type="row")
@@ -666,13 +739,61 @@ class InboxScreen(Container):
         for p in self._proposals:
             rows.append(_adjustment_to_row(p))
 
+        # Meta-pipeline ChangePackages — Mythos 2026-04-29 step B.
+        # Each non-terminal package in .claude/meta/changes/ surfaces
+        # as an inbox row so the operator can SEE what the cybernetic
+        # loop produced this scan, not just what the legacy adjuster
+        # queued.
+        try:
+            for meta_row in self._read_meta_packages():
+                rows.append(meta_row)
+        except (OSError, ValueError) as ex:
+            logger.debug("InboxScreen meta read error: %s", ex)
+
         # Apply current filter
         if self._current_filter == "homework":
             rows = [r for r in rows if r.entry_type == "homework"]
         elif self._current_filter == "adjustments":
             rows = [r for r in rows if r.entry_type == "adjustment"]
+        elif self._current_filter == "meta":
+            rows = [r for r in rows if r.entry_type == "meta"]
 
         rows.sort(key=lambda r: r.timestamp, reverse=True)
+        return rows
+
+    def _read_meta_packages(self) -> list[UnifiedInboxRow]:
+        """Scan .claude/meta/changes/*.json and emit non-terminal rows.
+
+        Cached on the directory's mtime so we don't re-parse every
+        5-second interval when nothing changed.
+        """
+        if not _META_CHANGES_DIR.exists():
+            self._meta_cache = None
+            return []
+        try:
+            dir_mtime = _META_CHANGES_DIR.stat().st_mtime_ns
+        except OSError:
+            return []
+        if self._meta_cache is not None and self._meta_cache[0] == dir_mtime:
+            return list(self._meta_cache[1])
+
+        rows: list[UnifiedInboxRow] = []
+        for path in _META_CHANGES_DIR.glob("*.json"):
+            if path.name.endswith(".lock"):
+                continue
+            try:
+                blob = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(blob, dict):
+                continue
+            stage = str(blob.get("stage", ""))
+            if stage not in _META_ACTIVE_STAGES:
+                continue
+            row = _meta_package_to_row(blob)
+            if row is not None:
+                rows.append(row)
+        self._meta_cache = (dir_mtime, rows)
         return rows
 
     @staticmethod
@@ -692,7 +813,8 @@ class InboxScreen(Container):
         """Tab badge count = pending adjustments + visible homework entries."""
         adj_pending = len([p for p in proposals if p.get("status") == "pending"])
         hw_visible = len([r for r in rows if r.entry_type == "homework"])
-        return adj_pending + hw_visible
+        meta_visible = len([r for r in rows if r.entry_type == "meta"])
+        return adj_pending + hw_visible + meta_visible
 
     def _rebuild_table(self, rows: list[UnifiedInboxRow]) -> None:
         """Repopulate the DataTable from the unified row list."""
@@ -712,7 +834,12 @@ class InboxScreen(Container):
             return
 
         for idx, r in enumerate(rows):
-            type_glyph = "📚 HW" if r.entry_type == "homework" else "🔧 ADJ"
+            if r.entry_type == "homework":
+                type_glyph = "📚 HW"
+            elif r.entry_type == "meta":
+                type_glyph = "🧠 META"
+            else:
+                type_glyph = "🔧 ADJ"
             ts = r.timestamp.replace("T", " ")[:16]
             subj = r.subject[:36]
             detail = r.detail_summary[:40]
@@ -770,6 +897,8 @@ class InboxScreen(Container):
             entry: HomeworkEntry = row.raw_entry
             md = entry.analysis_markdown or self._fallback_homework_md(entry)
             pane.update(md)
+        elif row.entry_type == "meta":
+            pane.update(self._meta_detail_md(row.raw_entry))
         else:
             p = row.raw_entry
             val = (p.get("validation") or {})
@@ -788,6 +917,62 @@ class InboxScreen(Container):
                 "**Hotkeys:** `A` approve · `R` reject · `S` snooze · `V` detail modal\n"
             )
             pane.update(md)
+
+    @staticmethod
+    def _meta_detail_md(blob: dict) -> str:
+        """Render a ChangePackage blob as readable Markdown for the detail pane."""
+        change_id = str(blob.get("change_id", "?"))
+        kind = str(blob.get("kind", "?"))
+        stage = str(blob.get("stage", "?"))
+        source = str(blob.get("source", "?"))
+        created = str(blob.get("created_at", ""))[:19].replace("T", " ")
+
+        proposal = blob.get("proposal") or {}
+        delta = (proposal.get("config_delta") or {}) if isinstance(proposal, dict) else {}
+        rationale = (proposal.get("rationale") or "") if isinstance(proposal, dict) else ""
+
+        attestation = blob.get("constitution_attestation") or {}
+        if isinstance(attestation, dict):
+            const_passed = attestation.get("passed")
+            const_notes = str(attestation.get("notes", ""))[:120]
+        else:
+            const_passed = None
+            const_notes = ""
+        const_str = "✓ passed" if const_passed is True else ("✗ failed" if const_passed is False else "? unknown")
+
+        history = blob.get("history") or []
+        history_lines = []
+        if isinstance(history, list):
+            for h in history[-5:]:
+                if isinstance(h, dict):
+                    ts = str(h.get("ts", ""))[:19].replace("T", " ")
+                    ev = str(h.get("event", ""))
+                    history_lines.append(f"  `{ts}` {ev}")
+
+        delta_lines = []
+        if isinstance(delta, dict):
+            for k, v in list(delta.items())[:8]:
+                delta_lines.append(f"  `{k}` = `{v}`")
+
+        md = (
+            f"## 🧠 Meta ChangePackage\n\n"
+            f"**ID:** `{change_id[:16]}…`  \n"
+            f"**Kind:** {kind}  \n"
+            f"**Stage:** `{stage}`  \n"
+            f"**Source:** {source}  \n"
+            f"**Created:** {created}  \n"
+            f"**Constitution:** {const_str}  \n"
+        )
+        if const_notes:
+            md += f"**Notes:** {const_notes}  \n"
+        if delta_lines:
+            md += "\n### Config Delta\n\n" + "\n".join(delta_lines) + "\n"
+        if rationale:
+            md += f"\n### Rationale\n\n{rationale[:400]}\n"
+        if history_lines:
+            md += "\n### Recent History\n\n" + "\n".join(history_lines) + "\n"
+        md += "\n---\n\n_Meta entries are read-only in the inbox — manage via MetaManager._\n"
+        return md
 
     @staticmethod
     def _fallback_homework_md(entry: HomeworkEntry) -> str:
@@ -1058,7 +1243,7 @@ class InboxScreen(Container):
             self.action_approve_all()
         elif bid == "reject-all-btn":
             self.action_reject_all()
-        elif bid in ("filter-all", "filter-homework", "filter-adjustments"):
+        elif bid in ("filter-all", "filter-homework", "filter-adjustments", "filter-meta"):
             self._set_filter(bid.replace("filter-", ""))
 
     def action_approve_all(self) -> None:
