@@ -124,6 +124,8 @@ class MetaManager:
         ledger_path: Optional[Path] = None,
         max_concurrent: int = 1,
         episodic_memory: Optional[Any] = None,
+        use_llm: bool = True,
+        deterministic_surgeon: Optional[Any] = None,
     ):
         self._config = config
         self._eval = eval_harness
@@ -136,10 +138,36 @@ class MetaManager:
         self._ledger = Path(ledger_path or _LEDGER_PATH)
         self._max_concurrent = max(1, int(max_concurrent))
         self._episodic_memory = episodic_memory
+        # Mythos audit 2026-04-28 — Deterministic Surgeon (Phase 1).
+        # When use_llm=False the LLM specialists return "" so Code
+        # Surgeon proposals stay empty. The deterministic surgeon
+        # translates incident["diag"]["recommended_actions"] into a
+        # real config_delta so the meta-pipeline produces actionable
+        # proposals instead of black-hole packages. use_llm=True
+        # preserves the legacy LLM-only behavior unchanged for tests
+        # that don't pass this flag.
+        self._use_llm = bool(use_llm)
+        self._det_surgeon = deterministic_surgeon
+        if not self._use_llm and self._det_surgeon is None:
+            try:
+                from src.scanner.automation.deterministic_surgeon import (
+                    DeterministicSurgeon,
+                )
+                self._det_surgeon = DeterministicSurgeon()
+            except Exception as e:
+                logger.warning(
+                    "meta_manager.det_surgeon_init_failed err=%s — "
+                    "use_llm=False packages will fall through to empty proposals",
+                    e,
+                )
         self._changes_dir.mkdir(parents=True, exist_ok=True)
         logger.info(
-            "meta_manager.initialized changes_dir=%s ledger=%s",
-            self._changes_dir, self._ledger,
+            "meta_manager.initialized changes_dir=%s ledger=%s use_llm=%s "
+            "surgeon=%s",
+            self._changes_dir, self._ledger, self._use_llm,
+            "llm" if self._use_llm else (
+                "deterministic" if self._det_surgeon is not None else "none"
+            ),
         )
 
     # ---------- Stage 0-1: intake ----------
@@ -542,6 +570,47 @@ class MetaManager:
             )
 
         if pkg.kind == ChangeKind.CONFIG:
+            # Deterministic surgeon path (Phase 1) — activates only when
+            # use_llm=False AND a surgeon is wired AND the incident
+            # carries diagnostic recommended_actions. Falls through to
+            # the LLM Surgeon path otherwise so default behavior is
+            # unchanged for existing tests.
+            if (
+                not self._use_llm
+                and self._det_surgeon is not None
+                and isinstance(pkg.incident, dict)
+                and isinstance(pkg.incident.get("diag"), dict)
+            ):
+                det_delta, det_dropped = self._det_surgeon.translate(pkg.incident)
+                if det_dropped:
+                    logger.warning(
+                        "meta_manager.det_surgeon.dropped change_id=%s actions=%s",
+                        pkg.change_id, det_dropped,
+                    )
+                # Re-validate against ScannerConfig as defense-in-depth —
+                # the surgeon already filters orphans but a corrupt
+                # incident.diag could in principle slip through.
+                valid, validator_dropped = _validate_config_delta(det_delta)
+                if validator_dropped:
+                    logger.warning(
+                        "meta_manager.det_surgeon.validator_dropped "
+                        "change_id=%s dropped=%s",
+                        pkg.change_id, validator_dropped,
+                    )
+                if valid:
+                    logger.info(
+                        "meta_manager.det_surgeon_proposed change_id=%s keys=%s",
+                        pkg.change_id, list(valid.keys()),
+                    )
+                    return Proposal(
+                        diff=json.dumps(valid, indent=2, sort_keys=True),
+                        changed_files=[],
+                        config_delta=valid,
+                    )
+                # No deterministic delta produced (all actions deferred
+                # or dropped) — fall through to the LLM path so an
+                # operator-supplied invoker can still try.
+
             surgeon_raw = self._invoke("code_surgeon", _build_surgeon_prompt(pkg))
             parsed = _yaml_to_dict(surgeon_raw) if surgeon_raw else {}
             raw_delta = parsed.get("config_delta", {}) if isinstance(parsed, dict) else {}
@@ -706,6 +775,7 @@ def _build_production_manager() -> "MetaManager":
         episodic_memory=episodic_memory,
         staged_deployer=staged_deployer,
         specialist_invoker=invoker,
+        use_llm=use_llm,
     )
 
 
