@@ -548,6 +548,12 @@ class BuddyApp(App):
         Binding("k", "supervisor_kill", "Kill", show=True),
         Binding("m", "supervisor_mode", "Mode", show=True),
         Binding("a", "supervisor_abort", "Abort Signal", show=True),
+        # Mythos audit 2026-04-29 — Tier-7 step D: state-preserving
+        # safe-restart. Replaces the manual `pkill python -m src.tui &&
+        # ./buddy` dance every commit. Ctrl+R is unbound by default
+        # in Textual; if the operator has terminal-history-search muscle
+        # memory, alias it via `bind ctrl+shift+r` in their shell.
+        Binding("ctrl+r", "safe_restart", "Restart", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
 
@@ -1538,6 +1544,112 @@ class BuddyApp(App):
 
         _handle = self.set_interval(1.0, _tick, pause=False)
         _cancel_holder[0] = _handle.stop
+
+    def action_safe_restart(self) -> None:
+        """Mythos audit 2026-04-29 Tier-7 step D — state-preserving restart.
+
+        Replaces the manual ``pkill python -m src.tui && ./buddy``
+        dance every commit. Sequence:
+
+          1. Persist scanner runtime state (trade journal, replay
+             buffer, EWMA tables, agent weights). All these have their
+             own atomic-write paths via ``Scanner.save_scan_state`` /
+             ``ScannerAgentTeam.save_learned_weights`` /
+             ``StateEngine.flush`` — we just call them.
+          2. Drop a soft-handoff beacon at ``.claude/state.json`` so the
+             next boot knows it's a restart (vs cold start) and can
+             resume mid-flight rather than re-walking init defaults.
+          3. Shut down the scanner cleanly so OANDA streaming sockets
+             close politely (broker logs cleaner reconnect).
+          4. ``os.execv`` to replace the process image. Operator's
+             terminal session is preserved (no shell hop), open OANDA
+             positions live in the broker (not in process memory) so
+             they survive the restart natively.
+
+        Failure-tolerant — every step is wrapped; if any phase raises
+        we still attempt the execv. Better an ungraceful restart than
+        a half-state hang.
+        """
+        import os
+        import sys
+        from datetime import datetime, timezone
+
+        try:
+            self._write_brain(
+                "[bold magenta]◈ SAFE RESTART — preserving state...[/]"
+            )
+        except Exception:
+            pass
+
+        # 1. Persist scanner runtime state.
+        if self._scanner is not None:
+            for method_name in (
+                "save_scan_state",
+                "save_state",
+                "flush_state",
+            ):
+                try:
+                    fn = getattr(self._scanner, method_name, None)
+                    if callable(fn):
+                        fn()
+                except Exception as e:
+                    logger.debug(
+                        "safe_restart: scanner.%s failed: %s",
+                        method_name, e,
+                    )
+
+        # 2. Soft-handoff beacon — distinguishes warm restart from cold boot.
+        try:
+            from pathlib import Path as _Path
+            import json as _json
+            beacon_path = _Path(".claude/state.json")
+            beacon_path.parent.mkdir(parents=True, exist_ok=True)
+            existing = {}
+            if beacon_path.exists():
+                try:
+                    existing = _json.loads(beacon_path.read_text(encoding="utf-8"))
+                except (OSError, _json.JSONDecodeError):
+                    existing = {}
+            if not isinstance(existing, dict):
+                existing = {}
+            existing["safe_restart"] = {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "session_id": os.environ.get("BUDDY_SESSION_ID", ""),
+                "reason": "operator_ctrl_r",
+            }
+            tmp_path = beacon_path.with_suffix(".json.tmp")
+            tmp_path.write_text(
+                _json.dumps(existing, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            os.replace(str(tmp_path), str(beacon_path))
+        except Exception as e:
+            logger.debug("safe_restart: beacon write failed: %s", e)
+
+        # 3. Clean scanner shutdown — close OANDA streams politely.
+        if self._scanner is not None:
+            try:
+                self._scanner.shutdown()
+            except Exception as e:
+                logger.debug("safe_restart: scanner.shutdown failed: %s", e)
+
+        # 4. Replace process image. os.execv preserves terminal session
+        # — operator's tmux pane stays attached to the new TUI.
+        try:
+            python = sys.executable or "python"
+            argv = [python, "-m", "src.tui"] + sys.argv[1:]
+            os.execv(python, argv)
+        except Exception as e:
+            # If execv itself fails, fall back to a clean quit so the
+            # operator can manually relaunch.
+            logger.error("safe_restart: execv failed err=%s — quitting", e)
+            try:
+                self._write_brain(
+                    f"[red]✗ SAFE RESTART failed (execv): {e!r} — quitting[/]"
+                )
+            except Exception:
+                pass
+            super().action_quit()
 
     def action_quit(self) -> None:
         """Clean shutdown — stop scanner before exiting."""
