@@ -1028,23 +1028,108 @@ class Orchestrator:
         return closed_trades
 
     def _post_trade_diagnostics_dispatch(self) -> dict:
-        """Run post-trade diagnostics and self-heal if needed."""
+        """Run post-trade diagnostics, apply SelfHeal, and route to meta.
+
+        Three layers run per cycle when meta is enabled:
+
+          1. PostTradeDiagnostics.run() — emit recommended_actions + status.
+
+          2. SelfHeal.apply(diag) — DIRECT actuation: the orchestrator's
+             low-latency emergency response. The 04-28 trap-recovery
+             commit (802c6ca) made this path actually reset gates instead
+             of silent dead-writing.
+
+          3. NEW (Mythos audit 2026-04-29): when enable_meta_manager=True
+             AND a non-HEALTHY diagnostic surfaces, route the same
+             incident through MetaManager.route_incident. The orchestrator
+             already actuated via SelfHeal; the meta-pipeline produces an
+             auditable ChangePackage with change_id + Constitution
+             attestation + scorecard so the operator's F2 inbox can see
+             every cybernetic event. Packages sit in AWAITING_APPROVAL
+             (no auto-deploy from process()) — operator reviews via
+             inbox; revert_by_id targets the change_id if needed.
+
+             Dedup signature throttles routing: only call route_incident
+             when (status, sorted recommended_actions) changed from the
+             last cycle. Without this, every scan cycle would create a
+             new package even when the diagnostic is reporting the same
+             unresolved condition. The meta-pipeline's own G8 dedup
+             provides a second safety net (in-flight package hash match
+             aborts intake silently).
+        """
         try:
             from src.scanner.feedback.diagnostics import PostTradeDiagnostics
             diag = PostTradeDiagnostics().run()
+            heal_result: Optional[Dict[str, Any]] = None
             if isinstance(diag, dict) and diag.get("status") not in ("HEALTHY", None):
                 try:
                     from src.scanner.feedback.self_heal import SelfHeal
-                    heal = SelfHeal().apply(diag)
-                    logger.info("Post-trade diagnostics: %s, heal: %s",
-                                diag.get("status"), heal.get("status"))
-                    return {"diagnostics": diag, "heal": heal}
+                    heal_result = SelfHeal().apply(diag)
+                    logger.info(
+                        "Post-trade diagnostics: %s, heal: %s",
+                        diag.get("status"), heal_result.get("status"),
+                    )
                 except Exception as heal_err:
                     logger.debug("Self-heal skipped: %s", heal_err)
-            return {"diagnostics": diag, "heal": None}
+
+                self._maybe_route_to_meta(diag, heal_result)
+            return {"diagnostics": diag, "heal": heal_result}
         except Exception as e:
             logger.debug("Post-trade diagnostics skipped: %s", e)
             return {}
+
+    def _maybe_route_to_meta(
+        self,
+        diag: Dict[str, Any],
+        heal_result: Optional[Dict[str, Any]],
+    ) -> None:
+        """Route a non-HEALTHY diagnostic through the meta-pipeline once
+        per (status, recommended_actions) signature change.
+
+        Fail-tolerant — every error path returns silently after a debug
+        log. Never aborts the parent dispatch, even when the meta
+        module is missing entirely.
+        """
+        try:
+            from src.scanner.automation.meta_manager import (
+                is_enabled as _meta_enabled,
+                route_incident,
+            )
+        except ImportError:
+            return
+        if not _meta_enabled():
+            return
+
+        actions = diag.get("recommended_actions") or []
+        if not isinstance(actions, list) or not actions:
+            return
+        try:
+            sig = (
+                str(diag.get("status", "")),
+                tuple(sorted(str(a) for a in actions if isinstance(a, str))),
+            )
+        except Exception:
+            return
+
+        last_sig = getattr(self, "_last_meta_route_sig", None)
+        if sig == last_sig:
+            return  # signature unchanged — meta-pipeline G8 would dedup anyway,
+                    # but skipping the call entirely avoids changes_dir scan.
+        self._last_meta_route_sig = sig
+
+        try:
+            routed = route_incident({
+                "kind": "self_heal",
+                "source": "orchestrator_post_trade_diagnostics",
+                "diag": diag,
+                "heal": heal_result,
+            })
+            logger.info(
+                "orchestrator.meta_route status=%s actions=%d routed=%s",
+                diag.get("status"), len(actions), routed,
+            )
+        except Exception as e:
+            logger.debug("orchestrator.meta_route_failed err=%s", e)
 
     def _agent_health_attribution_dispatch(self) -> None:
         """Record outcomes for agent health tracking."""
