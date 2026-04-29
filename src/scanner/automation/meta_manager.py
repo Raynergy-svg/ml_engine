@@ -525,9 +525,54 @@ class MetaManager:
         except Exception as e:
             logger.warning("meta_manager.ledger_append_failed err=%s", e)
 
+    # Mythos audit 2026-04-29 — packages stuck in non-terminal stages
+    # past this age are treated as orphaned (the producer crashed or
+    # the pipeline lost track of them). Without this timeout, a single
+    # stale package blocks ALL new incidents from routing through the
+    # meta-pipeline because _concurrent_count >= max_concurrent.
+    # Production case: be14953921fb stuck at policy_check for 22h
+    # blocked every per-cycle diagnostic the orchestrator tried to
+    # route. 2 hours is conservative — a real package fully
+    # transitions in seconds without the LLM, minutes with one.
+    _STALE_PACKAGE_AGE_S: float = 2.0 * 3600.0
+
     def _concurrent_count(self) -> int:
+        """Count packages currently in flight (non-terminal stage AND not orphaned).
+
+        Orphan filter: a package with updated_at older than
+        ``_STALE_PACKAGE_AGE_S`` is treated as not in-flight regardless
+        of stage. The stale package itself is NOT modified — operator
+        can still inspect it via the F2 inbox or via revert_by_id —
+        but it stops blocking the throttle.
+        """
         terminal = {ChangeStage.CLOSED, ChangeStage.REJECTED, ChangeStage.ABORTED}
-        return sum(1 for pkg in self.list_packages() if pkg.stage not in terminal)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        count = 0
+        for pkg in self.list_packages():
+            if pkg.stage in terminal:
+                continue
+            try:
+                ts = (
+                    datetime.fromisoformat(str(pkg.updated_at).replace("Z", "+00:00"))
+                    if pkg.updated_at else None
+                )
+            except (ValueError, TypeError):
+                ts = None
+            if ts is not None:
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age_s = (now - ts).total_seconds()
+                if age_s > self._STALE_PACKAGE_AGE_S:
+                    logger.info(
+                        "meta_manager.stale_package_skipped change_id=%s "
+                        "stage=%s age_h=%.1f — not counted toward throttle",
+                        pkg.change_id, pkg.stage.value if hasattr(pkg.stage, 'value') else pkg.stage,
+                        age_s / 3600.0,
+                    )
+                    continue
+            count += 1
+        return count
 
     def _iter_in_flight(self) -> List[ChangePackage]:
         deploy_stages = {

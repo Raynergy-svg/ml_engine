@@ -313,9 +313,25 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "blocked_pairs": [],
         "enable_execution": True,
         # ── Entry Quality Gates (high selectivity > high volume) ─────
-        # Old: 42.0 — let everything through. Source: 10-loss streak 2026-04-15,
-        # all trades had confidence 0.55–0.70 from 28-day-stale models.
-        "min_confidence": 62.0,
+        # Mythos audit 2026-04-29 — relaxed from 62.0 → 35.0. Context:
+        # the 04-15 tightening to 62.0 came from the 10-loss streak when
+        # 28-day-stale models still produced confidence 0.55–0.70 and
+        # those high-confidence signals were just noise. Today's models
+        # are different-stale: per-pair retrain cadence reduced absolute
+        # confidence output to 0.10–0.25 range. With threshold 62.0,
+        # 100% of scans gate-out (12 days no closed trades, 200+
+        # cumulative tightenings). Lowering to 35.0:
+        #   * still well above the 0.10–0.25 noise floor
+        #   * lets exceptional scans (>0.35) through for execution
+        #   * other anti-stale-model gates remain intact (momentum 0.12,
+        #     uncertainty 0.38 hard-block, disagreement 0.28, trend
+        #     hard-veto, MR composite veto) — those are what actually
+        #     prevented the bad trades, not the headline confidence
+        #     threshold.
+        # Revert toward 50–62 once a healthy retrain cycle restores
+        # confidence output to the 0.4–0.7 range the original 62.0
+        # was calibrated against.
+        "min_confidence": 35.0,
         "min_momentum": 0.12,  # Old: 0.05. Require real directional momentum.
         "min_tcn_probability": 0.62,  # Old: 0.58. Ensemble must agree.
         "max_drawdown_pct": 0.025,  # Old: 0.030. Tighter drawdown leash.
