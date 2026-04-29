@@ -109,6 +109,48 @@ def _fake_brain_line() -> str:
 # ── Widgets ─────────────────────────────────────────────────────────
 
 
+def format_meta_brain_line(blob: dict) -> str:
+    """Format a single meta-pipeline ledger entry into a brain-log line.
+
+    Mythos audit 2026-04-29 Tier-7 step C — extracted as a free function
+    so the tail-watcher's formatting logic is unit-testable without
+    spinning up a Textual App. Returns Rich markup ready for
+    ``RichLog.write(Text.from_markup(...))``.
+
+    Stage → color/icon map:
+      rejected/aborted          → red ✗
+      approved/deployed_live    → green ✓
+      deployed_shadow/canary    → magenta ◆
+      everything else (intake,
+      proposing, evaluating,
+      awaiting_approval, ...)   → cyan ▸
+    """
+    change_id = str(blob.get("change_id", "?"))[:8]
+    stage = str(blob.get("stage", "?"))
+    event = blob.get("event")
+    kind = blob.get("kind")
+
+    if stage in ("rejected", "aborted"):
+        color = "red"
+        icon = "✗"
+    elif stage in ("approved", "deployed_live"):
+        color = "green"
+        icon = "✓"
+    elif stage in ("deployed_shadow", "deployed_canary"):
+        color = "magenta"
+        icon = "◆"
+    else:
+        color = "cyan"
+        icon = "▸"
+
+    parts = [f"⟪{change_id}⟫", stage]
+    if event:
+        parts.append(f"event={event}")
+    if kind:
+        parts.append(f"kind={kind}")
+    return f"[{color}]  {icon} meta {' '.join(parts)}[/]"
+
+
 class HeaderBar(Static):
     """Persistent header: NAV, P/L, connection status."""
 
@@ -521,6 +563,9 @@ class BuddyApp(App):
         self._reflection_stop = threading.Event()  # Signals ReflectionLogReader to exit
         self._asset_class = "fx"  # current asset class mode
         self._kill_in_progress = False  # True while flatten_all is running (disables hotkeys)
+        # Plan C (2026-04-29) — file position into .claude/meta/changes.jsonl;
+        # _tick_brain reads forward from here on each 0.8s tick.
+        self._brain_ledger_pos: int = 0
 
     def compose(self) -> ComposeResult:
         yield HeaderBar(id="header-bar")
@@ -638,11 +683,78 @@ class BuddyApp(App):
         self._last_error_ts: str | None = None
         self._write_heartbeat_tick()
         self.set_interval(10.0, self._write_heartbeat_tick)
+        # Mythos audit 2026-04-29 — Tier 7 step C: meta-pipeline events
+        # to brain log. Tail .claude/meta/changes.jsonl since last seen
+        # offset and emit one brain line per event so the operator sees
+        # the cybernetic loop fire in real time. Cheap — file is
+        # append-only, we track byte offset, no JSON re-parse for old
+        # entries.
+        self._meta_ledger_offset: int = self._initial_meta_ledger_offset()
+        self.set_interval(1.0, self._tick_meta_events)
 
     def on_unmount(self) -> None:
         """Signal background readers to exit cleanly."""
         try:
             self._reflection_stop.set()
+        except Exception:
+            pass
+
+    def _initial_meta_ledger_offset(self) -> int:
+        """Start tailing from the END of the existing ledger so we don't
+        flood the brain log with hundreds of historical events on TUI
+        boot. Future events get streamed live."""
+        try:
+            from pathlib import Path as _Path
+            ledger = _Path(".claude/meta/changes.jsonl")
+            if ledger.exists():
+                return ledger.stat().st_size
+        except Exception:
+            pass
+        return 0
+
+    def _tick_meta_events(self) -> None:
+        """Tail .claude/meta/changes.jsonl, emit one brain line per new
+        event. Mythos Tier-7 step C — makes the cybernetic loop visible.
+        """
+        try:
+            from pathlib import Path as _Path
+            import json as _json
+            ledger = _Path(".claude/meta/changes.jsonl")
+            if not ledger.exists():
+                return
+            try:
+                size = ledger.stat().st_size
+            except OSError:
+                return
+            if size <= self._meta_ledger_offset:
+                # File rotated or shrunk — restart from current end.
+                if size < self._meta_ledger_offset:
+                    self._meta_ledger_offset = size
+                return
+            with ledger.open("r", encoding="utf-8", errors="replace") as fh:
+                fh.seek(self._meta_ledger_offset)
+                new_text = fh.read()
+                self._meta_ledger_offset = fh.tell()
+            for line in new_text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    blob = _json.loads(line)
+                except _json.JSONDecodeError:
+                    continue
+                if not isinstance(blob, dict):
+                    continue
+                self._emit_meta_brain_line(blob)
+        except Exception as e:
+            # Brain-log surfacing is observability — never crash the TUI on it
+            logger.debug("_tick_meta_events: %s", e)
+
+    def _emit_meta_brain_line(self, blob: dict) -> None:
+        """Format a meta ledger entry into a single colored brain line."""
+        msg = format_meta_brain_line(blob)
+        try:
+            self._write_brain(msg)
         except Exception:
             pass
 
@@ -987,14 +1099,56 @@ class BuddyApp(App):
         spark.data = current
 
     def _tick_brain(self) -> None:
-        """Add a line to the brain stream."""
+        """Add a line to the brain stream.
+
+        Plan C (2026-04-29): prefer real meta-pipeline events from the
+        changes.jsonl ledger.  Each new JSONL line emits one brain-log line:
+            🧠 HH:MM [{change_id[:8]}] {kind} → {stage}
+        Falls back to _fake_brain_line() when the ledger has no new entries
+        so the display never goes dead between orchestrator cycles.
+        """
         try:
             log = self.query_one("#brain-log", RichLog)
         except Exception:
             return
-        now = datetime.now(timezone.utc).strftime("%H:%M:%S")
-        line = _fake_brain_line()
-        log.write(Text.from_markup(f"[dim]{now}[/] {line}"))
+
+        _LEDGER = (
+            Path(__file__).resolve().parent.parent.parent
+            / ".claude" / "meta" / "changes.jsonl"
+        )
+        emitted = False
+        if _LEDGER.exists():
+            try:
+                with _LEDGER.open("r", encoding="utf-8") as fh:
+                    fh.seek(self._brain_ledger_pos)
+                    for raw in fh:
+                        raw = raw.strip()
+                        if not raw:
+                            continue
+                        try:
+                            entry = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+                        cid = str(entry.get("change_id", "?"))[:8]
+                        kind = str(entry.get("kind", "?"))
+                        stage = str(entry.get("stage", "?"))
+                        ts = (
+                            str(entry.get("ts") or entry.get("created_at") or "")
+                            [:16].replace("T", " ")
+                        )
+                        markup = (
+                            f"[bold cyan]🧠[/] [dim]{ts}[/] "
+                            f"[[yellow]{cid}[/]] {kind} → [green]{stage}[/]"
+                        )
+                        log.write(Text.from_markup(markup))
+                        emitted = True
+                    self._brain_ledger_pos = fh.tell()
+            except OSError:
+                pass
+
+        if not emitted:
+            now = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            log.write(Text.from_markup(f"[dim]{now}[/] {_fake_brain_line()}"))
 
     def action_switch_tab(self, tab_id: str) -> None:
         if self._kill_in_progress:
