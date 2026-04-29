@@ -476,19 +476,29 @@ class SelfHeal:
     # Handler: reset_gate_threshold_to_default                           #
     # ------------------------------------------------------------------ #
     def _handle_reset_gate_threshold(self, gate: str) -> HandlerResult:
+        """Reset a ScannerConfig gate to its dataclass default.
+
+        Writes a properly-shaped entry into config_adjustments.json["history"]
+        so ConfigAdjuster.apply_adjustments() picks it up on the next cycle
+        and runs setattr(config, gate, default). The legacy implementation
+        wrote to data["self_heal"][gate_threshold_X] — a namespace
+        ConfigAdjuster never reads — making every trap-recovery action a
+        silent no-op (audit 2026-04-28).
+        """
         if not gate:
             return (False, "missing_gate_arg", [])
         default = self._find_gate_default(gate)
         if default is None:
-            return (False, "no_default_in_yaml", [])
+            return (False, "no_default_for_gate", [])
 
-        key = "gate_threshold_{0}".format(gate)
-        entry = {
-            key: float(default),
-            "_ts": datetime.now(timezone.utc).isoformat(),
-            "_reason": "self_heal_reset",
-        }
-        ok, detail = self._merge_adjustment(key, entry)
+        # Strict guard: only write keys that are real ScannerConfig fields.
+        # ConfigAdjuster.apply_adjustments() will setattr blindly, so
+        # orphan keys would silently mutate the config object with attributes
+        # nothing reads — exactly the 2026-04-16 $3,527 bug pattern.
+        if self._scanner_config_default(gate) is None:
+            return (False, "not_a_scanner_config_field", [])
+
+        ok, detail = self._append_history_reset(gate, float(default))
         if not ok:
             return (False, detail, [])
         return (
@@ -496,6 +506,63 @@ class SelfHeal:
             "reset:{0}={1:.4f}".format(gate, float(default)),
             [str(self.CONFIG_ADJUSTMENTS_PATH)],
         )
+
+    def _append_history_reset(
+        self,
+        gate: str,
+        new_value: float,
+    ) -> Tuple[bool, str]:
+        """Append a self-heal reset entry to config_adjustments.json["history"]
+        in the same schema threshold_optimizer uses, so the existing
+        ConfigAdjuster.apply_adjustments() pipeline consumes it on the next
+        cycle without any new wiring.
+        """
+        import uuid
+
+        data = self._load_adjustments()
+        if not isinstance(data, dict):
+            data = {}
+
+        history = data.get("history")
+        if not isinstance(history, list):
+            history = []
+
+        ts = datetime.now(timezone.utc).isoformat()
+        proposal_id = str(uuid.uuid4())
+        entry: Dict[str, Any] = {
+            "approved_at": ts,
+            "key": gate,
+            "new_value": new_value,
+            "old_value": None,
+            "proposal_id": proposal_id,
+            "reason": "self_heal_reset_gate_threshold_to_default",
+            "source": "self_heal",
+            "timestamp": ts,
+        }
+        history.append(entry)
+        data["history"] = history
+
+        # Maintain the running counter that diagnostics._check_quiet_streak
+        # uses to detect over-tightening. Without this, the trap thinks
+        # nothing was just attempted — re-fires every cycle for the same gate
+        # and the debounce filter is the only thing protecting us from spam.
+        try:
+            data["total_adjustments"] = int(data.get("total_adjustments", 0) or 0) + 1
+        except (TypeError, ValueError):
+            data["total_adjustments"] = len(history)
+
+        data["last_updated"] = ts
+
+        try:
+            self.CONFIG_ADJUSTMENTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as err:
+            logger.warning("self_heal: adjustments mkdir failed error=%r", err)
+            return (False, "mkdir_failed: {0}".format(repr(err)))
+
+        ok, detail = self._atomic_write_json(self.CONFIG_ADJUSTMENTS_PATH, data)
+        if not ok:
+            return (False, detail)
+        return (True, "history_appended:{0}".format(proposal_id[:8]))
 
     # ------------------------------------------------------------------ #
     # Handler: tighten_gate_threshold                                    #
@@ -676,13 +743,33 @@ class SelfHeal:
         return self._yaml_cache
 
     def _find_gate_default(self, gate: str) -> Optional[float]:
-        """Map a journal gate name to its yaml default. None if unknown."""
+        """Resolve the canonical default for a gate name.
+
+        Resolution order:
+          1. ScannerConfig dataclass field default (PRIMARY — covers every
+             field name emitted by PostTradeDiagnostics._QUIET_STREAK_RECOVERY_ORDER:
+             min_confidence, weighted_vote_threshold, max_model_disagreement,
+             max_uncertainty_score, atr_sl_multiplier, min_momentum,
+             min_risk_reward_ratio).
+          2. yaml-config aliases (legacy — keeps confidence_passed /
+             momentum_passed / risk_passed working in case diagnostics ever
+             reverts to those tag names).
+
+        Returns None when neither source can produce a numeric default.
+        Without ScannerConfig priority, the trap-recovery handler silently
+        no-op'd on 5/7 of the recovery-order gates because YAML aliases only
+        knew the truncated names. See commit 0772581 + audit 2026-04-28.
+        """
+        scanner_default = self._scanner_config_default(gate)
+        if scanner_default is not None:
+            return scanner_default
+
         cfg = self._load_yaml()
         if not cfg:
             return None
 
-        # Mapping each gate to the yaml path(s) most likely to define its
-        # default. We try the list in order; first numeric hit wins.
+        # Legacy yaml-paths kept for backward compatibility with diagnostic
+        # tag-style names. ScannerConfig field names take precedence above.
         paths_by_gate: Dict[str, List[Tuple[str, ...]]] = {
             "confidence_passed": [
                 ("scan", "min_confidence"),
@@ -697,18 +784,6 @@ class SelfHeal:
                 ("fx", "risk", "risk_per_trade_pct"),
                 ("buddy", "risk_per_trade_pct"),
                 ("scan", "risk_per_trade_pct"),
-            ],
-            # Aliases in case diagnostics ever emits the bare name.
-            "confidence": [
-                ("scan", "min_confidence"),
-                ("inference", "min_meta_confidence"),
-            ],
-            "momentum": [
-                ("inference", "min_momentum"),
-            ],
-            "risk": [
-                ("fx", "risk", "risk_per_trade_pct"),
-                ("buddy", "risk_per_trade_pct"),
             ],
         }
 
@@ -731,6 +806,26 @@ class SelfHeal:
                 except (TypeError, ValueError):
                     continue
         return None
+
+    @staticmethod
+    def _scanner_config_default(gate: str) -> Optional[float]:
+        """Return the ScannerConfig dataclass default for ``gate``, or None.
+
+        Imports lazily — keeps SelfHeal importable in environments where
+        ScannerConfig has heavyweight optional deps.
+        """
+        try:
+            from src.scanner.config import ScannerConfig  # noqa: WPS433
+            cfg = ScannerConfig()
+        except Exception as err:  # pragma: no cover — config import wraps a lot
+            logger.debug("self_heal: ScannerConfig import failed err=%r", err)
+            return None
+        if not hasattr(cfg, gate):
+            return None
+        try:
+            return float(getattr(cfg, gate))
+        except (TypeError, ValueError):
+            return None
 
     # ------------------------------------------------------------------ #
     # config_adjustments.json: load / merge / write                      #
