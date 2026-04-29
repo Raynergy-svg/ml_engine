@@ -166,6 +166,38 @@ def get_model_freshness(models_dir: Path = MODELS_DIR) -> Dict[str, Any]:
         source="meta_json" if weights_dt else "missing",
     ))
 
+    # ── RL position sizer ──────────────────────────────────────────────
+    # Mythos audit 2026-04-28 — pre-fix this group was absent from the
+    # header manifest, so the trigger header reported FRESH/oldest=0.0
+    # while the diagnostic flagged CRITICAL on rl_position_sizer (see
+    # learnings.md self_heal_rl_staleness_C6_cadence_collapse). We now
+    # include it AND pick the OLDER of {.zip mtime, .meta.json trained_at}
+    # so neither write path can hide staleness — the C5 finding showed
+    # these timestamps can diverge by ~14 days.
+    rl_zip_path = models_dir / "rl_position_sizer.zip"
+    if rl_zip_path.exists():
+        rl_meta_path = models_dir / "rl_position_sizer.meta.json"
+        candidates: List[datetime] = []
+        meta_dt = _read_meta_trained_at(rl_meta_path, "trained_at")
+        if meta_dt is not None:
+            candidates.append(meta_dt)
+        zip_dt = _file_mtime(rl_zip_path)
+        if zip_dt is not None:
+            candidates.append(zip_dt)
+        # Older timestamp wins (more conservative — never under-report stale).
+        rl_dt = min(candidates, default=None)
+        rl_source = (
+            "meta_json+zip_mtime" if len(candidates) == 2
+            else ("meta_json" if meta_dt else ("zip_mtime" if zip_dt else "missing"))
+        )
+        groups.append(ModelGroup(
+            name="rl_position_sizer",
+            path=rl_zip_path,
+            trained_at=rl_dt,
+            age_days=_age_days(rl_dt) if rl_dt else None,
+            source=rl_source,
+        ))
+
     # ── Per-pair models (just the oldest, they should be co-trained) ───
     pair_dirs = [d for d in models_dir.iterdir() if d.is_dir() and d.name not in ("joint", "shadow")]
     if pair_dirs:
