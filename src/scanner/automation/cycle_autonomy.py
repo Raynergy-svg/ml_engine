@@ -274,17 +274,59 @@ class CycleAutonomyTriggers:
 
     # ── Spawn helpers ──────────────────────────────────────────────────
 
+    @staticmethod
+    def _claude_reflection_allowed() -> bool:
+        """Return True only when the operator's policy permits direct Claude
+        invocation from the post-trade autonomy plane.
+
+        The cybernetic architecture lets the operator opt out of LLM
+        reflection entirely by setting meta_manager_use_llm=False. When that
+        flag is False, the policy is "deterministic actuation only" — the
+        orchestrator's SelfHeal path handles remediation; cycle_autonomy
+        should triage and skip rather than spend Claude budget on a path
+        that the operator has explicitly disabled.
+
+        Resolution order: BUDDY_META_USE_LLM env var (operator-overridable
+        without restart) → ScannerConfig.meta_manager_use_llm dataclass
+        default. We do NOT instantiate the heavy ScannerConfig singleton on
+        the autonomy hot path — the dataclass default is read directly.
+        """
+        import os
+        env_val = os.environ.get("BUDDY_META_USE_LLM", "").strip().lower()
+        if env_val in ("1", "true", "yes", "on"):
+            return True
+        if env_val in ("0", "false", "no", "off"):
+            return False
+        try:
+            from src.scanner.config import ScannerConfig  # noqa: WPS433
+            return bool(ScannerConfig().meta_manager_use_llm)
+        except Exception as err:
+            logger.debug("cycle_autonomy.policy_resolve_failed err=%s", err)
+            return False
+
     def _invoke(self, prompt: str, trade_id: str, mode: str, timeout: int) -> None:
-        """Spawn Claude via the shared invoke_claude_reflection path.
+        """Dispatch the autonomy trigger.
 
-        All constraints (single-flight lock, daily budget, logging) are
-        enforced by invoke_claude_reflection itself. We just construct the
-        prompt and call it.
+        Routing priority:
+          1. If meta-pipeline is enabled, route the incident into
+             MetaManager.intake (the cybernetic post-trade cognition layer).
+             route_incident returns True when meta accepts the signal.
+          2. If meta is disabled OR routing failed, fall back to direct
+             Claude reflection — UNLESS the operator has explicitly
+             disabled LLM in the post-trade plane via the
+             meta_manager_use_llm=False policy. In that case the bot has
+             "removed the LLM and committed to the meta-layers" — the
+             orchestrator's deterministic SelfHeal path
+             (orchestrator._post_trade_diagnostics_dispatch, every cycle)
+             is the actuator and any cycle_autonomy reflection here would
+             be (a) duplicate work and (b) a policy violation. Log the
+             skip so the operator can see autonomy still triaged the
+             condition.
 
-        When the meta-cybernetic change pipeline is active, the autonomy
-        trigger is rerouted into MetaManager.intake so the Claude spawn
-        happens inside the Incident Analyst stage (with the rest of the
-        9-stage pipeline downstream of it) rather than as a one-shot.
+        The 2026-04-28 reflection_log shows SELFHEAL-C1 at 23:30 hit
+        Claude API, got 529'd, ran up the budget, and produced no
+        artifacts — exactly the dead-air the no-LLM policy is meant to
+        prevent.
         """
         try:
             from src.scanner.automation.meta_manager import is_enabled as _meta_enabled, route_incident
@@ -300,6 +342,20 @@ class CycleAutonomyTriggers:
                     return
         except Exception as _e:
             logger.debug("cycle_autonomy.meta_route_failed err=%s", _e)
+
+        # No-LLM policy guard — operator opted out of any post-trade
+        # Claude invocation. Honor it before importing claude_subprocess.
+        if not self._claude_reflection_allowed():
+            self._brain(
+                f"[dim]  autonomy trigger skipped — no-LLM policy "
+                f"(meta_manager_use_llm=False) {trade_id}[/]"
+            )
+            logger.info(
+                "cycle_autonomy.reflection_skipped reason=no_llm_policy "
+                "trade_id=%s mode=%s",
+                trade_id, mode,
+            )
+            return
 
         try:
             from src.scanner.automation.claude_subprocess import (
