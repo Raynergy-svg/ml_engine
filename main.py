@@ -25,33 +25,13 @@ from __future__ import annotations
 import os
 import platform
 
-# Set these BEFORE any other imports
-if platform.system() == "Darwin":  # macOS
-    # Allow multiple OpenMP libraries (prevents "libiomp5.dylib already initialized")
-    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-    # Use GNU OpenMP threading layer (compatible with conda's libomp)
-    os.environ.setdefault("MKL_THREADING_LAYER", "GNU")
-    # Disable MKL affinity (prevents conflicts with macOS scheduler)
-    os.environ.setdefault("KMP_AFFINITY", "disabled")
-    # Reduced from 4 → 2: fewer threads = less memory pressure per scan
-    os.environ.setdefault("OMP_NUM_THREADS", "2")
-    os.environ.setdefault("MKL_NUM_THREADS", "2")
-    os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "2")
+# Defer to the canonical env-bootstrap (single source of truth shared
+# with scripts/init.sh and src/tui/__main__.py). Idempotent — safe to
+# call from any entry point. See src/bootstrap/env.py for the full
+# default table including BUDDY_* behavior toggles.
+from src.bootstrap.env import ensure_runtime_env  # noqa: E402
 
-    # ── TensorFlow Metal memory guard (CRITICAL for 8GB M1) ─────────────────
-    # TF Metal uses UNIFIED memory — same pool as CPU, OS, WindowServer.
-    # Without limits, TF grows until macOS compressor hits 100%, causing
-    # kernel panic (userspace watchdog timeout, WindowServer crash).
-    #
-    # Strategy: disable Metal GPU for INFERENCE entirely.
-    # Scan inference models (Transformer, TCN) are small; CPU is fast enough
-    # for a 5-minute cycle. Eliminates all Metal/unified-memory contention.
-    #
-    # Training (--train) still re-enables Metal via configure_metal_runtime().
-    os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
-    # Disable Metal device for inference processes (scan/watch/execute)
-    # Training explicitly overrides this before model construction.
-    os.environ.setdefault("ML_ENGINE_DISABLE_METAL", "1")
+ensure_runtime_env()
 
 # ── GC tuning for long-running scan loop ───────────────────────────────────
 # Default (700, 10, 10) is too aggressive; 50000 was too lazy (OOM on 8GB M1).
@@ -78,8 +58,8 @@ except Exception:
 import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
 
-# ── TensorFlow noise suppression (must precede any TF import) ──────────────
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+# TF noise suppression now lives in src/bootstrap/env.py
+# (TF_CPP_MIN_LOG_LEVEL=3 set there before any TF import).
 
 import logging
 import sys
