@@ -152,6 +152,26 @@ Caught lying once (2026-04-30 commit f070d39 incident). This cannot happen again
 - Distinguish "shipped to disk" from "running in process". Always state which.
 - Skipped verifications must be named explicitly and queued as next actions.
 
+### Improvement protocol — work the gap, don't queue it
+
+When investigating or fixing one thing, adjacent gaps WILL surface (grep results, integration mismatches, dead code paths, lying counters, silent bare-excepts). Default behavior:
+
+1. **Fix in the same commit** if cheap + scoped + non-destructive. Examples that fit: fixing `n_master_pairs: 0` liar while landing the staleness honesty fix; fixing the "No momentum model available" holdout warning while shipping Tier 7 per-pair routing; fixing the alert log format `getattr(_alert, "type")` typo while wiring auto-halt.
+2. **Surface as one-line scope-question** if expanding scope: "noticed: X is broken adjacent to this — fix as part of this?" Operator answers, proceed once known.
+3. **Never sit on a finding**. If a grep result reveals a real bug adjacent to current work, don't note it for "later" — that's how `f070d39` happened (the integration gap was visible in a single grep but went un-run).
+
+Scope guardrails (what NOT to do autonomously):
+- Don't refactor unrelated code "while I'm here"
+- Don't change profile values, trading thresholds, or gate logic without explicit operator decision
+- Don't rewrite working code for style — only fix what's broken
+- Don't spawn massive multi-commit chains without checking in
+
+Examples of the protocol working tonight (2026-04-30):
+- While fixing Inbox approve-all (Bug A: meta handler), found Bug B (no drainer in TUI runtime) → fixed both in same commit `5ae61d7`
+- While verifying `f070d39`, found integration grep would have caught the lie → added the verification protocol rule in `88ecb52`
+- While diagnosing config_adjustments state-loss, found `_load_approved` had bare-except + no shrink guard → fixed both in `7da0470`
+- While shipping Tier 7 per-pair routing, surfaced that the same fix closes the holdout "No momentum model available" warning
+
 ### What we never do
 - Execute on `main` without operator consent (worktrees on request)
 - Truncate code mid-function or stub with TODO
