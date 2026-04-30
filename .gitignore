@@ -44,6 +44,10 @@ logs/ALERT_*.txt
 # rotates at 5MB to feed.jsonl.1, never source-controlled)
 .claude/brain/feed.jsonl
 .claude/brain/feed.jsonl.1
+# Mythos 2026-04-30 — unified Python debug log (every logger.* call,
+# rotated at 50MB / 3 backups, runtime observability only)
+logs/buddy_debug.log
+logs/buddy_debug.log.*
 trained_data/.autonomous_retrain_state.json
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag

@@ -134,6 +134,17 @@ Caught lying once (2026-04-30 commit f070d39 incident). This cannot happen again
 4. **Code-on-disk vs code-running**. The running process has whatever code was on disk when the process started. After a commit, state which generation is in the running process. "Fixed in commit X" ≠ "fix is live" if the process predates the commit.
 5. **No "should work"**. Verify, or say "unverified" and stop the chain until you can.
 
+**Unified verification surfaces (always check these, in order)**:
+- `logs/buddy_debug.log` — every `logger.*` call from any module in the live process. Plain text, grep-friendly, rotated at 50MB. **First place to look** for any "did X happen?" question.
+- `.claude/brain/feed.jsonl` — exact mirror of what the operator sees in the F1 brain feed (TUI rendering events, Rich markup stripped). One line per `_write_brain` call.
+- `.claude/heartbeat.json` — TUI alive marker, ticks every 10s, includes `pid`, `cycle_count`, `scanner_alive`, `ts_iso`. `ts_iso` within 15s of "now" = TUI alive.
+- `.claude/state.json` — runtime state (`halted`, `mode`, `scan_cycle_count`, `safe_restart` beacon).
+- `.claude/meta/changes.jsonl` — meta-pipeline event ledger (one line per stage transition).
+- `.claude/meta/changes/*.json` — full ChangePackage state (per-package source-of-truth for `revert_by_id`).
+- `.claude/alert_state.json` — AlertManager state (consecutive_losses, drawdown, win_rate_drop, weight_instability).
+- `trained_data/virtual_trades.jsonl` — per-pair gate-rejected setups (one line per scan per pair, includes raw_confidence + gate_failures).
+- `trained_data/trade_journal_rl.json` — closed trade outcomes.
+
 **Honesty rule (every status report, every checklist response)**:
 - Each claim names its verification source: file path / grep query / mem observation ID. No source named = claim not made.
 - No cheerful summary language ("loop is closed", "fully verified", "everything's wired") unless every component has a named source above.

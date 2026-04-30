@@ -154,6 +154,71 @@ def ensure_runtime_env(
             "%Y%m%dT%H%M%SZ"
         )
 
+    # Mythos audit 2026-04-30 — unified debug log. Bridges the gap
+    # between what the operator sees on the TUI screen and what
+    # verification can read on disk. Every logger.info/warning/error/
+    # debug call from any module in this process lands in
+    # logs/buddy_debug.log — plain-text, grep-friendly, rotated at
+    # size. No more "Python's logger output goes where exactly?"
+    # ambiguity that broke earlier verification work (the
+    # logs/buddy_tui.stderr.log path was full of Textual ANSI escape
+    # codes — useless for grep).
+    _configure_unified_debug_log(root)
+
+
+def _configure_unified_debug_log(project_root: Path) -> None:
+    """Attach a RotatingFileHandler to the root logger that captures
+    every log line from any module in this process.
+
+    Idempotent — subsequent calls are no-ops (detected via a marker
+    attribute on the handler). This matters because os.execv-based
+    safe-restart re-runs ensure_runtime_env, and we don't want to stack
+    duplicate handlers on every restart.
+    """
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    log_path = project_root / "logs" / "buddy_debug.log"
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        if getattr(handler, "_buddy_unified_marker", False):
+            return  # already configured
+
+    try:
+        handler = RotatingFileHandler(
+            str(log_path),
+            maxBytes=50 * 1024 * 1024,  # 50MB per file
+            backupCount=3,              # 200MB ceiling total
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+
+    handler._buddy_unified_marker = True
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s [%(levelname)5s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S%z",
+        )
+    )
+    root_logger.addHandler(handler)
+    if root_logger.level > logging.DEBUG or root_logger.level == logging.NOTSET:
+        root_logger.setLevel(logging.DEBUG)
+
+    # Fire one line through so the operator can `tail -f` immediately
+    # and see the log is alive.
+    logging.getLogger("src.bootstrap.env").info(
+        "unified_debug_log.initialized path=%s level=DEBUG rotation=50MB/3 "
+        "session=%s",
+        log_path, os.environ.get("BUDDY_SESSION_ID", "?"),
+    )
+
 
 def dump_shell_exports(stream=sys.stdout) -> None:
     """Print ``export KEY=value`` lines for every default this module
