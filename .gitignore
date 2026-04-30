@@ -32,6 +32,14 @@ logs/ALERT_*.txt
 .claude/proposed_weights_archive/
 .claude/pending_adjustments.json
 .claude/audit_archive/
+# Mythos audit 2026-04-30 — config_adjustments.json is RUNTIME STATE
+# (the running config tuner's history of approved adjustments), not
+# source. Tracking it in git meant any checkout/reset could silently
+# wipe the working state — exactly what happened on 04-29 when 200
+# entries went to 5 (HEAD's old version). Untracked + atomic-rotated
+# (.bak) is enough; recovery is via .bak, not git.
+.claude/config_adjustments.json
+.claude/config_adjustments.json.bak
 trained_data/.autonomous_retrain_state.json
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag

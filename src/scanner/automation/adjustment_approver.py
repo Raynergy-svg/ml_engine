@@ -274,11 +274,75 @@ class AdjustmentApprover:
                     "last_applied": {},
                 }
             return raw
-        except Exception:
+        except (OSError, json.JSONDecodeError) as e:
+            # Mythos audit 2026-04-30 — replaced bare `except: return empty`.
+            # The silent-empty fallback was the path that wiped 200 entries
+            # → 5 on 2026-04-29: a transient parse failure → empty load →
+            # next save truncates against a fresh empty list. Now we log
+            # loudly; the _save_approved write-side tripwire is the actual
+            # safety net that refuses to clobber a longer on-disk history.
+            logger.warning(
+                "AdjustmentApprover._load_approved: corrupt/unreadable "
+                "approved_path=%s err=%r — returning empty (write-side "
+                "tripwire will refuse to shrink on-disk history)",
+                self.approved_path, e,
+            )
             return {"version": 1, "history": [], "pending": {}, "last_applied": {}}
 
     def _save_approved(self, data: dict[str, Any]) -> None:
+        """Persist approved-state with a history-shrinkage tripwire.
+
+        Pre-fix the writer was append-only-with-truncation: read existing,
+        append new entry, truncate to last 200, write back. If the read
+        ever returned `{history: []}` (from _load_approved's silent
+        bare-except fallback) we'd overwrite hundreds of legitimate
+        entries with a single-entry blob.
+
+        Defense-in-depth: re-read disk RIGHT BEFORE the rename and
+        compare the proposed history length against on-disk. If the new
+        write would shrink history, abort and dump the proposed payload
+        to a `.recovered` shadow file so the operator can reconcile
+        manually rather than silently losing data.
+        """
         self.approved_path.parent.mkdir(parents=True, exist_ok=True)
+
+        proposed_history = data.get("history") or []
+        proposed_n = len(proposed_history) if isinstance(proposed_history, list) else 0
+
+        # Re-read disk just before write — closes the load→save race
+        # window. If anything was appended in between (another writer,
+        # a manual edit), we'll see it and refuse the shrinking write.
+        disk_n = 0
+        if self.approved_path.exists():
+            try:
+                disk_blob = json.loads(self.approved_path.read_text())
+                if isinstance(disk_blob, dict):
+                    disk_history = disk_blob.get("history") or []
+                    if isinstance(disk_history, list):
+                        disk_n = len(disk_history)
+                elif isinstance(disk_blob, list):
+                    disk_n = len(disk_blob)
+            except (OSError, json.JSONDecodeError):
+                disk_n = 0
+
+        if proposed_n < disk_n:
+            recovered = self.approved_path.with_suffix(".json.recovered")
+            try:
+                recovered.write_text(json.dumps(data, indent=2, sort_keys=True))
+            except OSError as rec_err:
+                logger.error(
+                    "AdjustmentApprover._save_approved: shadow-write also "
+                    "failed path=%s err=%r", recovered, rec_err,
+                )
+            logger.critical(
+                "AdjustmentApprover._save_approved: REFUSED to shrink "
+                "on-disk history disk=%d → proposed=%d. Operator: "
+                "the proposed payload was written to %s for inspection. "
+                "Disk file LEFT UNTOUCHED.",
+                disk_n, proposed_n, recovered,
+            )
+            return
+
         tmp = self.approved_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
         tmp.rename(self.approved_path)
