@@ -360,6 +360,30 @@ class EmbeddedScanner:
         if not self._running or self._scanner is None:
             return None
 
+        # Mythos audit 2026-04-30 — halt-aware scan skip. The auto-halt
+        # in commit eacb617 sets StateEngine.halted=True when consecutive
+        # losses ≥ threshold, but neither EmbeddedScanner nor Scanner
+        # itself was checking that flag — only continuous.py:_run_smart_loop
+        # (CLI path) did. Operator caught it: bot kept scanning at 14:33
+        # despite halt set at 14:30. Closes the loop: when halted, skip
+        # the cycle entirely, emit ONE brain message, and let the heartbeat
+        # tick keep updating so the TUI stays alive for operator un-halt.
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            if StateEngine().get_halted():
+                if not getattr(self, "_halt_message_emitted", False):
+                    self._brain(
+                        "[bold red]◈ SCANNER HALTED — auto-halt active. "
+                        "Toggle halted=false in state.json or via TUI 'k' "
+                        "key to resume.[/]"
+                    )
+                    self._halt_message_emitted = True
+                return None
+            # Reset the latch so a re-halt fires a fresh brain message.
+            self._halt_message_emitted = False
+        except Exception as _halt_err:
+            logger.debug("Halted check error (non-blocking): %s", _halt_err)
+
         self._scan_count += 1
         cycle_start = time.monotonic()
 
