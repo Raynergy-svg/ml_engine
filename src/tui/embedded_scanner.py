@@ -420,6 +420,21 @@ class EmbeddedScanner:
                 except Exception as _aut_err:
                     logger.debug("cycle_autonomy trigger error: %s", _aut_err)
 
+            # ── Per-cycle meta-pipeline routing ────────────────────
+            # Mythos audit 2026-04-30 — methodology fix for commit
+            # f070d39. That commit added the same routing to
+            # Orchestrator._post_trade_diagnostics_dispatch, which is
+            # NEVER called by the TUI (EmbeddedScanner has its own
+            # scan loop and doesn't instantiate Orchestrator). The
+            # routing we shipped was dead code in the live path.
+            #
+            # Re-wired here so the meta-pipeline gets the per-cycle
+            # diagnostic signal it was supposed to get. Throttled via
+            # signature dedup so identical (status, recommended_actions)
+            # tuples on consecutive cycles don't create duplicate
+            # ChangePackages.
+            self._maybe_route_to_meta_per_cycle()
+
             # ── Build enrichment ───────────────────────────────────
             enrichment = self._build_enrichment(result, scan_ms)
 
@@ -457,6 +472,78 @@ class EmbeddedScanner:
             self._brain(f"[dim]  ─ {pair} {direction} conf={conf:.2f} — blocked: {reason}[/]")
         else:
             self._brain(f"[dim]  ─ {pair} HOLD[/]")
+
+    def _maybe_route_to_meta_per_cycle(self) -> None:
+        """Run PostTradeDiagnostics every cycle and route non-HEALTHY
+        results into the meta-pipeline.
+
+        Mythos audit 2026-04-30. The orchestrator's
+        _post_trade_diagnostics_dispatch implements this same flow but
+        is NEVER reached from the TUI path (EmbeddedScanner does NOT
+        instantiate Orchestrator). This is the live equivalent.
+
+        Throttling layers (defense in depth):
+          1. is_enabled() flag check — no routing when meta is opt-out
+          2. status==HEALTHY filter — no routing on a clean cycle
+          3. empty actions filter — no routing when there's nothing
+             actionable
+          4. signature dedup on (status, sorted recommended_actions) —
+             identical cycles don't create fresh packages
+          5. meta-pipeline G8 dedup at intake — defense in depth, drops
+             in-flight hash matches even if signature dedup has a bug
+        """
+        try:
+            from src.scanner.feedback.diagnostics import PostTradeDiagnostics
+        except ImportError:
+            return
+        try:
+            from src.scanner.automation.meta_manager import (
+                is_enabled as _meta_enabled,
+                route_incident,
+            )
+        except ImportError:
+            return
+        if not _meta_enabled():
+            return
+
+        try:
+            diag = PostTradeDiagnostics().run()
+        except Exception as e:
+            logger.debug("EmbeddedScanner: PostTradeDiagnostics failed err=%r", e)
+            return
+        if not isinstance(diag, dict):
+            return
+        status = str(diag.get("status", "")).upper()
+        if status in ("HEALTHY", ""):
+            return
+        actions = diag.get("recommended_actions") or []
+        if not isinstance(actions, list) or not actions:
+            return
+
+        try:
+            sig = (
+                status,
+                tuple(sorted(str(a) for a in actions if isinstance(a, str))),
+            )
+        except Exception:
+            return
+        last_sig = getattr(self, "_last_meta_route_sig", None)
+        if sig == last_sig:
+            return
+        self._last_meta_route_sig = sig
+
+        try:
+            routed = route_incident({
+                "kind": "self_heal",
+                "source": "tui_embedded_scanner_per_cycle",
+                "diag": diag,
+            })
+            logger.info(
+                "embedded_scanner.meta_route status=%s actions=%d routed=%s",
+                status, len(actions), routed,
+            )
+        except Exception as e:
+            logger.debug("embedded_scanner.meta_route_failed err=%r", e)
 
     def _filter_correlated_exposure(self, tradeable: list) -> list:
         """Filter out trades that would double exposure on correlated pairs."""
