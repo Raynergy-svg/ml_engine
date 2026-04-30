@@ -800,6 +800,49 @@ def main():
             success = False
             logger.error("Retrain REJECTED: no timeframe passed hold-out validation")
 
+    # Mythos audit 2026-04-30 — staleness telemetry honesty fix.
+    # buddy_training_helpers writes candidate_trained_at + holdout_pending
+    # at the end of training. This block PROMOTES candidate → trained_at
+    # only after holdout passes. On rejection, the previous trained_at is
+    # preserved + last_holdout_failure_at gets stamped so freshness
+    # checks can see "we tried, holdout said no" rather than silently
+    # carrying the misleading bumped trained_at from the failed attempt.
+    try:
+        _meta_path = PROJECT_ROOT / "trained_data" / "models" / "modular_ensemble.meta.json"
+        if _meta_path.exists():
+            with open(_meta_path, "r") as _mf:
+                _meta_blob = json.load(_mf)
+            if isinstance(_meta_blob, dict) and _meta_blob.get("holdout_pending"):
+                _candidate_ts = _meta_blob.get("candidate_trained_at")
+                _now_iso = datetime.now(timezone.utc).isoformat()
+                if success:
+                    # Promotion: candidate_trained_at → trained_at
+                    if _candidate_ts:
+                        _meta_blob["trained_at"] = _candidate_ts
+                    _meta_blob["holdout_pending"] = False
+                    _meta_blob["last_holdout_passed_at"] = _now_iso
+                    _meta_blob.pop("last_holdout_failure_at", None)
+                    logger.info(
+                        "Promoted candidate_trained_at → trained_at: %s "
+                        "(holdout passed)", _candidate_ts,
+                    )
+                else:
+                    # Rejection: leave trained_at untouched (preserves
+                    # last validated freshness state). Stamp the failure.
+                    _meta_blob["holdout_pending"] = False
+                    _meta_blob["last_holdout_failure_at"] = _now_iso
+                    logger.info(
+                        "Holdout REJECTED — trained_at left at previous "
+                        "validated value (was %s); candidate %s discarded; "
+                        "last_holdout_failure_at=%s",
+                        _meta_blob.get("trained_at"),
+                        _candidate_ts, _now_iso,
+                    )
+                with open(_meta_path, "w") as _mf:
+                    json.dump(_meta_blob, _mf, indent=2, sort_keys=True, default=str)
+    except Exception as _meta_err:
+        logger.warning("Failed to update modular_ensemble.meta.json post-holdout: %s", _meta_err)
+
     # Ensemble completeness — feeds Gates 7 (freshness) and 8 (partial retrain).
     # Always runs; never blocks success at this layer (policy handles rejection).
     if success:

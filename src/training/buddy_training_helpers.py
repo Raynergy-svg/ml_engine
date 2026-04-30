@@ -2024,19 +2024,50 @@ def train_per_pair_correlation_ensemble(
 
     transfer_results = results.get("transfer_results", []) or []
     correlation_groups = results.get("correlation_groups", []) or []
-    n_master = len({g.master_pair for g in correlation_groups if hasattr(g, "master_pair")})
 
-    # 4. Update the modular_ensemble meta-file so promotion/staleness checks
-    #    see fresh timestamps for this training type.
+    # Mythos audit 2026-04-30 — fix n_master_pairs liar. The previous
+    # `g.master_pair` attribute access was reading dataclass instances,
+    # but run_full_pipeline at correlation_transfer.py:552 returns
+    # correlation_groups as DICTS shaped {"group_id", "master", "pairs"}.
+    # `hasattr(dict, "master_pair")` is always False → set is empty →
+    # n_master always 0. Production case: 04-30T02:07 retrain trained
+    # EUR_USD as master + 3 transfers but meta reported n_master_pairs=0.
+    # Tolerate either shape so future producer changes don't re-break.
+    def _master_of(g):
+        if isinstance(g, dict):
+            return g.get("master") or g.get("master_pair") or ""
+        return getattr(g, "master_pair", "") or getattr(g, "master", "")
+
+    n_master = len({m for g in correlation_groups if (m := _master_of(g))})
+
+    # 4. Update the modular_ensemble meta-file with CANDIDATE fields.
+    #
+    # Mythos audit 2026-04-30 — staleness telemetry honesty fix.
+    # Pre-fix this stamped `trained_at` UNCONDITIONALLY at the end of
+    # the training pipeline. Holdout validation runs AFTER this in
+    # scripts/scheduled_retrain.py, and on rejection (e.g. 04-30T02:07
+    # where 0/3 timeframes passed) the meta was already bumped — every
+    # downstream freshness check (model_freshness.get_model_freshness,
+    # PostTradeDiagnostics._check_model_training_freshness, the
+    # staleness hard-block in agents/_team.py) was lying.
+    #
+    # Now we write candidate_* fields + holdout_pending flag.
+    # scheduled_retrain.py promotes candidate_trained_at → trained_at
+    # only after holdout passes. On rejection, the previous trained_at
+    # is preserved (the bot stays on its last validated freshness state).
     try:
         _meta_path = Path(model_dir) / "modular_ensemble.meta.json"
         _existing_meta = {}
         if _meta_path.exists():
             with open(_meta_path, "r") as _mf:
                 _existing_meta = json.load(_mf)
+        _candidate_ts = datetime.now(timezone.utc).isoformat()
         _existing_meta.update({
             "training_type": "per_pair_correlation_transfer",
-            "trained_at": datetime.now(timezone.utc).isoformat(),
+            # candidate_trained_at: written here; promoted to trained_at
+            # by scheduled_retrain.py only on holdout pass.
+            "candidate_trained_at": _candidate_ts,
+            "holdout_pending": True,
             "trained_pairs": instruments,
             "n_instruments": len(instruments),
             "n_master_pairs": n_master,
@@ -2048,7 +2079,8 @@ def train_per_pair_correlation_ensemble(
             json.dump(_existing_meta, _mf, indent=2, sort_keys=True, default=str)
         logger.info(
             "Updated modular_ensemble.meta.json (training_type=per_pair_correlation_transfer, "
-            "trained_at=%s)", _existing_meta["trained_at"],
+            "candidate_trained_at=%s, holdout_pending=True, n_master=%d, n_transfer=%d)",
+            _candidate_ts, n_master, len(transfer_results),
         )
     except Exception as _meta_err:
         logger.warning("Failed to update modular_ensemble.meta.json: %s", _meta_err)
