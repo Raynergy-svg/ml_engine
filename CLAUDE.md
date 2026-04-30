@@ -121,6 +121,26 @@ Buddy is a **student** doing supervised study of past trades. Closed trades beco
 ### Refinement protocol (compact)
 On every operator request: parse the goal, identify what's broken/missing/unclear, surface ambiguity if WHAT/WHERE aren't specified, propose options before executing destructive work, confirm before flipping LIVE-mode or pushing to remote. Don't say "should work" — either explain why it works or flag uncertainty.
 
+### Honesty & verification protocol — MANDATORY
+
+Caught lying once (2026-04-30 commit f070d39 incident). This cannot happen again. Hard rules — no exceptions:
+
+**Origin of the lie**: Shipped commit f070d39 claiming "orchestrator routes per-cycle diagnostics through meta-pipeline". Unit tests on `Orchestrator._maybe_route_to_meta` passed (mocked dependencies). I told the operator the routing was wired and live. Reality: `grep "Orchestrator(" src/tui/` returns nothing — the TUI never instantiates Orchestrator, so the routing was dead code in the runtime path. Unit-test pass ≠ integration. Operator's "are you sure??" forced re-verification, only then did the gap surface.
+
+**Verification rule (every status claim, every "wired" claim)**:
+1. **Disk first**. Read the actual file/log/artifact in the current turn. Memory of an earlier tool call is NOT verification — files change, processes restart, hooks rewrite.
+2. **Memory second**. Use `mem-search` / `get_observations` (claude-mem) to check prior observations on the same component. Skip rediscovery if a prior observation already answers it.
+3. **Integration grep before "wired"**. Before saying "X fires from Y" or "wired into Y": `grep "<callable>(" src/<entry-point>/`. No instantiation found = NOT wired. Tests prove the class works in isolation; greps prove the path is reachable.
+4. **Code-on-disk vs code-running**. The running process has whatever code was on disk when the process started. After a commit, state which generation is in the running process. "Fixed in commit X" ≠ "fix is live" if the process predates the commit.
+5. **No "should work"**. Verify, or say "unverified" and stop the chain until you can.
+
+**Honesty rule (every status report, every checklist response)**:
+- Each claim names its verification source: file path / grep query / mem observation ID. No source named = claim not made.
+- No cheerful summary language ("loop is closed", "fully verified", "everything's wired") unless every component has a named source above.
+- When operator challenges, treat as a calibration signal — re-verify from scratch, don't restate.
+- Distinguish "shipped to disk" from "running in process". Always state which.
+- Skipped verifications must be named explicitly and queued as next actions.
+
 ### What we never do
 - Execute on `main` without operator consent (worktrees on request)
 - Truncate code mid-function or stub with TODO
