@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 import time
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Dict, Protocol
 
 import numpy as np
 import pandas as pd
@@ -2053,15 +2053,38 @@ def train_per_pair_correlation_ensemble(
     except Exception as _meta_err:
         logger.warning("Failed to update modular_ensemble.meta.json: %s", _meta_err)
 
+    # Mythos audit 2026-04-29 — contract bug fix. run_full_pipeline()
+    # already converts TransferResult dataclasses to dicts at
+    # correlation_transfer.py:552 (`[r.to_dict() for r in all_results]`),
+    # so by the time we read `transfer_results` here at line 2025, the
+    # items are dicts — not dataclass instances. The previous attribute
+    # access (`r.target_pair: r.to_dict()`) raised AttributeError on
+    # every retrain run, killing the autonomous retrain pipeline (see
+    # logs/retrain_20260429_123014.log: 352s into the cycle, all 7
+    # transfers had completed, then this dict-comp blew up). Use dict
+    # access; tolerate either shape so a future change at the producer
+    # side won't re-break this consumer.
+    def _per_pair_metric_entry(r):
+        if isinstance(r, dict):
+            return r.get("target_pair", ""), r
+        # Defensive: a future caller might still pass dataclasses
+        return getattr(r, "target_pair", ""), (
+            r.to_dict() if hasattr(r, "to_dict") else r
+        )
+
+    per_pair_metrics: Dict[str, Any] = {}
+    for r in transfer_results or []:
+        key, value = _per_pair_metric_entry(r)
+        if key:
+            per_pair_metrics[key] = value
+
     return {
         "status": "success",
         "n_instruments": len(instruments),
         "n_master_pairs": n_master,
         "n_transfer_pairs": len(transfer_results),
         "joint_save_dir": str(Path(transfer_cfg.save_dir)),
-        "per_pair_metrics": {
-            r.target_pair: r.to_dict() for r in transfer_results
-        } if transfer_results else {},
+        "per_pair_metrics": per_pair_metrics,
     }
 
 
