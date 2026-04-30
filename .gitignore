@@ -40,6 +40,10 @@ logs/ALERT_*.txt
 # (.bak) is enough; recovery is via .bak, not git.
 .claude/config_adjustments.json
 .claude/config_adjustments.json.bak
+# Mythos 2026-04-30 — brain feed disk tee (runtime observability,
+# rotates at 5MB to feed.jsonl.1, never source-controlled)
+.claude/brain/feed.jsonl
+.claude/brain/feed.jsonl.1
 trained_data/.autonomous_retrain_state.json
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag

@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import random
+import re
 import sys
 import threading
 from datetime import datetime, timezone
@@ -107,6 +108,70 @@ def _fake_brain_line() -> str:
 
 
 # ── Widgets ─────────────────────────────────────────────────────────
+
+
+_BRAIN_FEED_PATH = Path(".claude/brain/feed.jsonl")
+_BRAIN_FEED_MAX_BYTES = 5 * 1024 * 1024  # 5 MB rotation ceiling
+_BRAIN_MARKUP_RE = re.compile(r"\[/?[a-zA-Z0-9 _#,\.\-]*\]")
+
+
+def _strip_rich_markup(markup: str) -> str:
+    """Strip Rich/Textual ``[tag]...[/]`` markup so the disk-tee is
+    plain text. Keeps the message content; drops only the formatting
+    brackets. Conservative regex matches simple tag names + style
+    attributes — anything fancier passes through unchanged."""
+    return _BRAIN_MARKUP_RE.sub("", markup).strip()
+
+
+def _tee_brain_to_disk(markup: str) -> None:
+    """Append a brain-feed line to .claude/brain/feed.jsonl.
+
+    Mythos audit 2026-04-30 — closes the verification gap operator
+    flagged. Pre-fix the brain feed (F1 panel) was in-memory only;
+    confirming "this commit fires" required scraping unrelated disk
+    artifacts. Now every _write_brain call appends a JSONL line so:
+        tail -f .claude/brain/feed.jsonl | grep "meta"
+    works as the operator's verification surface.
+
+    Schema: ``{"ts": iso, "msg": stripped_text, "raw": markup}``.
+    Both stripped + raw included so grep-on-plain-text works AND
+    the original Rich markup is recoverable for forensic playback.
+
+    Rotation: when the file exceeds 5 MB, atomically rotate to
+    feed.jsonl.1 and start fresh. Operator can `cat feed.jsonl.1
+    feed.jsonl` for full history. Caller wraps this in try/except —
+    any error here MUST NOT break TUI rendering.
+    """
+    try:
+        _BRAIN_FEED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+
+    # Cheap rotation check (no fsync, no lock — best-effort).
+    try:
+        if _BRAIN_FEED_PATH.exists() and _BRAIN_FEED_PATH.stat().st_size > _BRAIN_FEED_MAX_BYTES:
+            rotated = _BRAIN_FEED_PATH.with_suffix(".jsonl.1")
+            try:
+                rotated.unlink()
+            except FileNotFoundError:
+                pass
+            _BRAIN_FEED_PATH.rename(rotated)
+    except OSError:
+        pass
+
+    line = json.dumps(
+        {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "msg": _strip_rich_markup(markup),
+            "raw": markup,
+        },
+        ensure_ascii=False,
+    )
+    try:
+        with _BRAIN_FEED_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        return
 
 
 def format_meta_brain_line(blob: dict) -> str:
@@ -814,8 +879,24 @@ class BuddyApp(App):
             log.write(Text.from_markup(m))
 
     def _write_brain(self, markup: str) -> None:
-        """Safely write to brain log (must be called on main thread)."""
+        """Safely write to brain log (must be called on main thread).
+
+        Mythos audit 2026-04-30 — also tees to .claude/brain/feed.jsonl
+        as plain-text JSONL so verification can read what the operator
+        sees in the F1 brain feed. Pre-fix the brain feed was in-memory
+        only — auditing whether the cybernetic loop was firing required
+        disk-artifact archaeology (state.json, meta package files,
+        reflection_log.jsonl) instead of just `tail -f` on the actual
+        feed. Now both surfaces show the same content.
+
+        Disk write is best-effort — failures are swallowed so a degraded
+        filesystem can never break the live TUI rendering.
+        """
         self.query_one("#brain-log", RichLog).write(Text.from_markup(markup))
+        try:
+            _tee_brain_to_disk(markup)
+        except Exception:  # noqa: BLE001 — observability is never load-bearing
+            pass
 
     @work(thread=True)
     def _connect_live(self) -> None:
