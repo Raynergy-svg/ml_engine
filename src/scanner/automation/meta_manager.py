@@ -537,20 +537,44 @@ class MetaManager:
     _STALE_PACKAGE_AGE_S: float = 2.0 * 3600.0
 
     def _concurrent_count(self) -> int:
-        """Count packages currently in flight (non-terminal stage AND not orphaned).
+        """Count packages currently ACTIVELY executing in the pipeline.
 
-        Orphan filter: a package with updated_at older than
-        ``_STALE_PACKAGE_AGE_S`` is treated as not in-flight regardless
-        of stage. The stale package itself is NOT modified — operator
-        can still inspect it via the F2 inbox or via revert_by_id —
-        but it stops blocking the throttle.
+        Mythos audit 2026-04-30 — narrowed semantics. Pre-fix, this
+        counted every non-terminal stage as in-flight. With
+        max_concurrent=1, this meant any package sitting in
+        AWAITING_APPROVAL (waiting for human review) blocked all new
+        incidents indefinitely. Production case: 4 awaiting_approval
+        packages stacked up over 13 hours, each one blocking the
+        orchestrator's per-cycle routing → 5 throttled-aborts, zero
+        pipeline progress.
+
+        The fix narrows the "in-flight" definition to stages where the
+        pipeline is doing CPU/IO work (intake/propose/evaluate/policy).
+        Quiescent stages (awaiting_approval, deployed_*,
+        post_deploy_review) are not in-flight — they're either waiting
+        for human action or soaking deployed config; new incidents
+        should NOT throttle on them.
+
+        Orphan filter (carried forward from 1d158b6): a package with
+        updated_at older than ``_STALE_PACKAGE_AGE_S`` is treated as
+        not in-flight even if it's in an active stage — the producer
+        likely crashed mid-pipeline.
         """
-        terminal = {ChangeStage.CLOSED, ChangeStage.REJECTED, ChangeStage.ABORTED}
+        # Stages where the pipeline is actively doing work right now —
+        # the only stages that should consume the max_concurrent slot.
+        active_pipeline_stages = {
+            ChangeStage.INTAKE,
+            ChangeStage.DIAGNOSING,
+            ChangeStage.PROPOSING,
+            ChangeStage.EVALUATING,
+            ChangeStage.POLICY_CHECK,
+            ChangeStage.APPROVED,  # transitional: about to start deploy
+        }
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
         count = 0
         for pkg in self.list_packages():
-            if pkg.stage in terminal:
+            if pkg.stage not in active_pipeline_stages:
                 continue
             try:
                 ts = (

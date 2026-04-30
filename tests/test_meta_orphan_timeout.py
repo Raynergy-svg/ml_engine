@@ -65,6 +65,56 @@ def test_terminal_stages_not_counted(tmp_path):
         assert mgr._concurrent_count() == 0
 
 
+def test_awaiting_approval_does_not_block_throttle(tmp_path):
+    """Mythos audit 2026-04-30 — awaiting_approval is HUMAN-WAITING,
+    not pipeline-in-flight. Must not consume the max_concurrent slot.
+    Production case: 4 awaiting_approval packages stacked up over 13h
+    with max_concurrent=1, blocking every new orchestrator routing →
+    5 throttled-aborts."""
+    mgr = _mgr(tmp_path)
+    pkgs = [
+        _make_pkg(ChangeStage.AWAITING_APPROVAL, 0.5, "queued1"),
+        _make_pkg(ChangeStage.AWAITING_APPROVAL, 1.0, "queued2"),
+        _make_pkg(ChangeStage.AWAITING_APPROVAL, 0.1, "queued3"),
+    ]
+    with patch.object(mgr, "list_packages", return_value=pkgs):
+        assert mgr._concurrent_count() == 0
+
+
+def test_deployed_stages_do_not_block_throttle(tmp_path):
+    """Deployed packages are SOAKING (shadow/canary observation
+    period), not actively running pipeline work. New incidents must
+    not throttle on them."""
+    mgr = _mgr(tmp_path)
+    pkgs = [
+        _make_pkg(ChangeStage.DEPLOYED_SHADOW, 0.5, "shadow1"),
+        _make_pkg(ChangeStage.DEPLOYED_CANARY, 0.5, "canary1"),
+        _make_pkg(ChangeStage.DEPLOYED_LIVE, 0.5, "live1"),
+        _make_pkg(ChangeStage.POST_DEPLOY_REVIEW, 0.5, "review1"),
+    ]
+    with patch.object(mgr, "list_packages", return_value=pkgs):
+        assert mgr._concurrent_count() == 0
+
+
+def test_active_pipeline_stages_count(tmp_path):
+    """Stages where the pipeline is actively executing CPU/IO work
+    DO count — that's the legitimate purpose of the throttle."""
+    mgr = _mgr(tmp_path)
+    for stage in (
+        ChangeStage.INTAKE,
+        ChangeStage.DIAGNOSING,
+        ChangeStage.PROPOSING,
+        ChangeStage.EVALUATING,
+        ChangeStage.POLICY_CHECK,
+        ChangeStage.APPROVED,
+    ):
+        pkgs = [_make_pkg(stage, 0.01, f"active_{stage.value}")]
+        with patch.object(mgr, "list_packages", return_value=pkgs):
+            assert mgr._concurrent_count() == 1, (
+                f"stage={stage.value} should count toward throttle"
+            )
+
+
 def test_recent_active_packages_counted(tmp_path):
     """Recent non-terminal packages still count — concurrency
     throttle continues to function for legitimate in-flight work."""
