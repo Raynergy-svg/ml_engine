@@ -189,17 +189,28 @@ class GateEvaluator:
         model_dir: Path,
         use_joint_only: bool = True,
         min_volatility_regime: int = DEFAULT_MIN_VOLATILITY_REGIME,
+        use_per_pair_routing: bool = False,
     ):
         """Initialize gate evaluator.
 
         Args:
             model_dir: Base path to model directory (e.g., trained_data/models)
-            use_joint_only: If True, load ONLY from joint/ subdirectory (default for scanner)
+            use_joint_only: If True, parent evaluator's fallback model_dir
+                is base/joint/. If False, fallback is base/ (legacy flat).
+                Independent of per-pair routing.
             min_volatility_regime: Minimum volatility regime allowed for trades
                 (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
+            use_per_pair_routing: Mythos audit 2026-04-30 — Tier 7 toggle.
+                When True, evaluate_all_gates(instrument=X) lazy-builds a
+                sub-evaluator that loads X's correlation-transferred models
+                from base/{X}/. Falls back to self (parent) when no per-pair
+                dir exists for X. Joint stays the fallback layer, never
+                deprecated. Default False keeps legacy behavior — existing
+                callers (test_gate_evaluator_core) see no change.
         """
         self.base_model_dir = Path(model_dir)
         self.use_joint_only = use_joint_only
+        self.use_per_pair_routing = use_per_pair_routing
 
         # Set actual model directory based on joint-only mode
         if use_joint_only:
@@ -251,10 +262,104 @@ class GateEvaluator:
         # Track if models are loaded
         self._models_loaded = False
 
+        # Mythos audit 2026-04-30 — Tier 7 per-pair gate routing.
+        # Pre-fix the GateEvaluator was locked to one model_dir at
+        # construction (joint/), so every pair scanned used the same
+        # gate models. The retrain pipeline writes per-pair correlation-
+        # transferred models to trained_data/models/{INSTRUMENT}/, but
+        # the gate layer never consumed them — only the inference layer
+        # did (modular_inference._get_model_path:1423-1451). Result:
+        # scanner ran on stale-joint gates while inference ran on
+        # fresh-per-pair models. Two generations judging the same trade.
+        #
+        # Fix: lazy-built per-pair sub-evaluators cached here. Each
+        # sub-evaluator points at trained_data/models/{INSTRUMENT}/ and
+        # loads ITS pair's gates. TCN volatility regime is universal —
+        # shared from this parent into each sub. Falls back to self
+        # (joint/global) when no per-pair dir exists.
+        self._pair_evaluators: Dict[str, "GateEvaluator"] = {}
+
     @property
     def tcn_volatility_available(self) -> bool:
         """Check if TCN volatility regime model is loaded."""
         return self._tcn_volatility is not None
+
+    def _get_pair_evaluator(self, instrument: Optional[str]) -> "GateEvaluator":
+        """Return a sub-evaluator with per-pair gates loaded, or self.
+
+        Mythos audit 2026-04-30 — Tier 7 routing. The pattern mirrors
+        modular_inference._get_model_path's lookup chain (per-pair →
+        joint → generic) but at the gate-evaluator level: each scan of
+        instrument X gets its own correlation-transferred gate models.
+
+        Returns self if:
+          * instrument is None (legacy callers — no routing needed)
+          * use_joint_only=True (legacy mode — pin to joint, ignore per-pair)
+          * No per-pair directory exists for this instrument (fall through
+            to self/joint, which is the legitimate behavior for pairs not
+            in the correlation-transfer training set, e.g. USD_JPY today
+            when EUR_USD is the master)
+
+        Returns a cached sub-evaluator otherwise. Sub-evaluators share
+        the TCN volatility regime model with self (regime detection is
+        universal — single-source-of-truth). Each sub loads its OWN
+        momentum / confidence / risk / transformer gates from its
+        per-pair directory.
+
+        Construction failures fall back to self (logged at WARNING).
+        Sub-evaluators have ``_pair_evaluators = {}`` to disable
+        recursive routing.
+        """
+        if not instrument:
+            return self
+        if not getattr(self, "use_per_pair_routing", False):
+            # Legacy mode — routing not enabled. Caller didn't opt in.
+            return self
+        if instrument in self._pair_evaluators:
+            return self._pair_evaluators[instrument]
+        pair_dir = self.base_model_dir / instrument
+        if not pair_dir.exists():
+            # Per-pair training didn't produce models for this instrument.
+            # Cache the no-op so we don't hit the filesystem on every scan.
+            self._pair_evaluators[instrument] = self
+            return self
+
+        try:
+            sub = GateEvaluator(
+                model_dir=str(self.base_model_dir),
+                use_joint_only=False,
+                min_volatility_regime=self.min_volatility_regime,
+            )
+            # Override model_dir to the pair-specific subdir BEFORE loading.
+            sub.model_dir = pair_dir
+            # Disable recursion — sub-evaluator must never re-route.
+            sub._pair_evaluators = {}
+            # Load pair-specific gates (skip TCN — shared from parent).
+            sub._load_catboost_momentum() or sub._load_xgboost_momentum() or sub._load_lgbm_momentum()
+            sub._load_ridge_confidence()
+            sub._load_rf_risk() or sub._load_lgbm_risk()
+            sub._load_transformer()
+            sub._load_meta_labeler()
+            # Share TCN with parent — regime detection is universal.
+            sub._tcn_volatility = self._tcn_volatility
+            sub._tcn_scaler = self._tcn_scaler
+            sub._tcn_feature_names = self._tcn_feature_names
+            sub._models_loaded = True
+            self._pair_evaluators[instrument] = sub
+            logger.info(
+                "GateEvaluator: per-pair sub-evaluator built for %s "
+                "(pair_dir=%s, momentum=%s)",
+                instrument, pair_dir, sub._momentum_model_type,
+            )
+            return sub
+        except Exception as e:
+            logger.warning(
+                "GateEvaluator: per-pair sub-evaluator init failed "
+                "instrument=%s err=%r — falling back to joint/global",
+                instrument, e,
+            )
+            self._pair_evaluators[instrument] = self
+            return self
 
     def load_models(self, require_tcn: bool = True) -> Dict[str, bool]:
         """Load all gate models from joint model directory.
@@ -1583,6 +1688,29 @@ class GateEvaluator:
             - Regime info if applicable
             - Combined pass status
         """
+        # Mythos audit 2026-04-30 — Tier 7 per-pair gate routing.
+        # If we have per-pair correlation-transferred models for this
+        # instrument, delegate the entire gate evaluation to the
+        # sub-evaluator so ITS pair-specific momentum/confidence/risk/
+        # transformer models drive the verdict. Sub-evaluators share
+        # this parent's TCN volatility regime (universal regime view).
+        # Pass instrument=None to the delegate to prevent recursive
+        # re-routing inside the sub.
+        if instrument and getattr(self, "use_per_pair_routing", False):
+            sub = self._get_pair_evaluator(instrument)
+            if sub is not self:
+                return sub.evaluate_all_gates(
+                    features,
+                    min_confidence=min_confidence,
+                    min_momentum=min_momentum,
+                    max_drawdown_pct=max_drawdown_pct,
+                    min_transformer_prob=min_transformer_prob,
+                    min_meta_confidence=min_meta_confidence,
+                    instrument=None,
+                    regime_name=regime_name,
+                    regime_conditional_gates_enabled=regime_conditional_gates_enabled,
+                )
+
         # Apply regime-conditional gates if enabled and regime available
         adjusted_thresholds = {
             "confidence_threshold": min_confidence,

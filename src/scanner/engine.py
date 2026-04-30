@@ -1598,10 +1598,37 @@ class Scanner:
             )
             require_tcn = False
 
+        # Mythos audit 2026-04-30 — Tier 7 per-pair gate routing.
+        # When per-pair correlation-transferred models exist (any pair
+        # subdir holds a transformer / lgbm / ridge file), opt into the
+        # per-pair routing flag. Joint stays as the parent's fallback
+        # for pairs without per-pair training (e.g. low-correlation
+        # pairs the master training drops). Disabling: set
+        # ScannerConfig.disable_per_pair_gate_routing=True.
+        per_pair_dirs = [
+            d for d in model_dir.iterdir()
+            if d.is_dir() and d.name not in ("joint", "shadow")
+        ] if model_dir.exists() else []
+        has_per_pair_training = any(
+            (d / "lgbm_momentum.pkl").exists() or (d / "transformer_direction.keras").exists()
+            for d in per_pair_dirs
+        )
+        per_pair_disabled = bool(getattr(
+            self.config, "disable_per_pair_gate_routing", False,
+        ))
+        use_per_pair_routing = has_per_pair_training and not per_pair_disabled
+        if use_per_pair_routing:
+            logger.info(
+                "GateEvaluator: per-pair routing ENABLED (Tier 7) — "
+                "found per-pair training in %d subdir(s)",
+                len(per_pair_dirs),
+            )
+
         self._gate_evaluator = GateEvaluator(
             model_dir,
             use_joint_only=use_joint_only,
             min_volatility_regime=self.config.min_volatility_regime,
+            use_per_pair_routing=use_per_pair_routing,
         )
 
         try:
