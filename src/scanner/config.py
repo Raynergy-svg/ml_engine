@@ -483,6 +483,16 @@ class ScannerConfig:
     min_momentum: float = 0.06    # XGBoost percentile (0-1 scale) — Phase 81: was 0.20, avg momentum=0.086
     max_drawdown_pct: float = 0.025  # 2.5% max expected drawdown
 
+    # Mythos audit 2026-04-30 — auto-halt-on-loss-streak. Operator-
+    # observed gap: scanner kept scanning + losing for 14 trades
+    # straight (04-15 streak) with no automatic stop. AlertManager
+    # raises consecutive_losses alerts but they were observability-
+    # only (logged, never acted on). When consecutive losses ≥ this
+    # threshold, the engine sets StateEngine.halted=True and emits
+    # an incident to the meta-pipeline. Operator must manually
+    # un-halt (TUI 'k' or `state.json halted=false`). 0 disables.
+    auto_halt_consecutive_loss_threshold: int = 5
+
     # Meta-labeler threshold (configurable for 0.52-0.53 range)
     # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
     # achieving 70.8% accuracy. Lower threshold allows more high-quality signals

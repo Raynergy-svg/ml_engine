@@ -5071,10 +5071,19 @@ class Scanner:
                 for _alert in (_am_alerts or []):
                     logger.warning(
                         "Phase 83 (US-P83-001): ALERT [%s] severity=%s — %s",
-                        getattr(_alert, "type", "?"),
+                        getattr(_alert, "alert_type", getattr(_alert, "type", "?")),
                         getattr(_alert, "severity", "?"),
                         getattr(_alert, "message", ""),
                     )
+                # Mythos audit 2026-04-30 — auto-halt on consecutive losses.
+                # Operator-observed gap: scanner kept scanning through a
+                # 14-trade loss streak (04-15) with no automatic stop.
+                # When ≥ auto_halt_consecutive_loss_threshold consecutive
+                # losses are detected, halt the scanner and route an
+                # incident to the meta-pipeline so the reasoning layer
+                # can propose a remediation (gate reset, agent rollback,
+                # retrain trigger). Operator must manually un-halt.
+                self._maybe_auto_halt_on_loss_streak(_am_alerts or [])
             except Exception as _am_err:
                 logger.debug("Phase 83: AlertManager.check_all error: %s", _am_err)
 
@@ -5144,6 +5153,105 @@ class Scanner:
             model_type=model_type,
             granularity=self.config.granularity,
         )
+
+    # ── Auto-halt on consecutive-loss streak ─────────────────────────
+
+    def _maybe_auto_halt_on_loss_streak(self, alerts: list) -> None:
+        """Halt the scanner when consecutive losses breach the threshold.
+
+        Mythos audit 2026-04-30 — closes the long-standing gap where
+        the bot kept scanning through 14+ trade loss streaks (04-15
+        incident, 67 cumulative consecutive_losses alerts as of this
+        morning) with no automatic stop. Existing AlertManager raises
+        the alert; this hook converts the alert into a state change.
+
+        Idempotent: when already halted, this is a no-op (the halt
+        flag is already set; we don't re-route incidents to meta on
+        every cycle while halted).
+
+        Routes an incident to the meta-pipeline (when enabled) so the
+        deterministic surgeon can propose a remediation (reset gates,
+        soft_reset agent_weights, trigger retrain). The reasoning
+        layer the operator asked for runs HERE — at the moment the
+        bot pauses, not somewhere after the fact.
+        """
+        threshold = int(getattr(
+            self.config, "auto_halt_consecutive_loss_threshold", 5,
+        ))
+        if threshold <= 0:
+            return  # disabled
+
+        # Find the consecutive_losses alert (if any) and read its value
+        consecutive_alert = None
+        for a in alerts or []:
+            if getattr(a, "alert_type", None) == "consecutive_losses":
+                consecutive_alert = a
+                break
+        if consecutive_alert is None:
+            return
+
+        try:
+            consecutive = int(float(getattr(consecutive_alert, "value", 0)))
+        except (TypeError, ValueError):
+            return
+        if consecutive < threshold:
+            return  # alert fired but below auto-halt cutoff
+
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            _se = StateEngine()
+            if _se.get_halted():
+                return  # already halted; don't double-act
+            _se.set_halted(True)
+            logger.critical(
+                "AUTO-HALT: %d consecutive losses ≥ threshold=%d. "
+                "Scanner halted. Operator must manually un-halt via TUI 'k' "
+                "or state.json halted=false. Reason logged to alert_state.json.",
+                consecutive, threshold,
+            )
+        except Exception as e:
+            logger.warning(
+                "Auto-halt failed to set halted state err=%r — operator "
+                "should halt manually", e,
+            )
+            return
+
+        # Route an incident to the meta-pipeline so the reasoning layer
+        # can propose a remediation. Best-effort; failures don't unwind
+        # the halt (the halt is the safety action; meta is observability
+        # + future automated recovery).
+        try:
+            from src.scanner.automation.meta_manager import (
+                is_enabled as _meta_enabled,
+                route_incident,
+            )
+            if _meta_enabled():
+                route_incident({
+                    "kind": "auto_halt_loss_streak",
+                    "source": "scanner_engine_alert_handler",
+                    "signal": {
+                        "metric": "consecutive_losses",
+                        "current_value": consecutive,
+                        "threshold": threshold,
+                    },
+                    "diag": {
+                        "status": "CRITICAL",
+                        "issues": [{
+                            "check": "consecutive_losses",
+                            "severity": "CRITICAL",
+                        }],
+                        "recommended_actions": [
+                            "reset_gate_threshold_to_default:min_confidence",
+                            "reset_gate_threshold_to_default:weighted_vote_threshold",
+                            "soft_reset_agent_weight:trend",
+                            "retrain_rl_position_sizer",
+                        ],
+                    },
+                })
+        except Exception as e:
+            logger.debug(
+                "Auto-halt: meta-pipeline routing best-effort failure err=%r", e,
+            )
 
     # ── EWMA correlation: scan-loop feeder ──────────────────────────
 
