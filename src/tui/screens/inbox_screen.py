@@ -1287,13 +1287,112 @@ class InboxScreen(Container):
             logger.exception("InboxScreen.action_approve_all: adjustment approve failed")
             self.notify(f"Adjustment approve error: {e}", severity="error")
 
-        total_failed = hw_failed + adj_failed
+        # Mythos audit 2026-04-30 — meta-package approval handler.
+        # Pre-fix the [🧠 Meta] filter (commit 18a273f) showed packages
+        # but action_approve_all had no code path for entry_type="meta".
+        # Operator pressed approve-all on the meta filter → silent no-op.
+        # The fix: for each visible meta row, invoke ApprovalQueue.approve
+        # to move the pending file into approved/, then call
+        # MetaManager.drain() which loads the singleton (already
+        # initialized by per-cycle routing in commit bcd976f) and walks
+        # each approved package through StagedDeployer.advance →
+        # DEPLOYED_SHADOW, persisting the new stage to .claude/meta/changes/
+        # so the inbox auto-refreshes.
+        meta_approved, meta_failed = self._approve_meta_packages()
+
+        total_failed = hw_failed + adj_failed + meta_failed
         msg = (
-            f"Approved {hw_approved} homework + {adj_approved} adjustments; "
+            f"Approved {hw_approved} homework + {adj_approved} adjustments + "
+            f"{meta_approved} meta packages; "
             f"{total_failed} failed; {adj_skipped} invalid skipped."
         )
         self.notify(msg, severity="warning" if total_failed else "information")
         self._load_proposals()
+
+    def _approve_meta_packages(self) -> tuple[int, int]:
+        """Approve every visible meta row + drain so packages actuate.
+
+        Returns ``(approved, failed)`` — the count of packages that
+        successfully moved through ApprovalQueue.approve and the count
+        that errored. Drain runs inline so the operator sees immediate
+        DEPLOYED_SHADOW state in the inbox after pressing approve-all,
+        not "approved but not deployed for an hour" silence.
+        """
+        meta_rows = [r for r in self._current_rows if r.entry_type == "meta"]
+        if not meta_rows:
+            return (0, 0)
+
+        approved = 0
+        failed = 0
+
+        try:
+            from src.scanner.automation.approval_queue import ApprovalQueue
+            queue = ApprovalQueue()
+        except Exception as e:
+            logger.exception(
+                "InboxScreen._approve_meta_packages: ApprovalQueue init failed"
+            )
+            self.notify(f"Meta approve init error: {e}", severity="error")
+            return (0, len(meta_rows))
+
+        for row in meta_rows:
+            blob = row.raw_entry if isinstance(row.raw_entry, dict) else {}
+            change_id = str(blob.get("change_id", ""))
+            if not change_id:
+                failed += 1
+                continue
+            try:
+                pkg = queue.approve(change_id, reason="bulk approve from inbox")
+                if pkg is not None:
+                    approved += 1
+                else:
+                    # ApprovalQueue.approve returns None when pending file
+                    # is missing (already approved / orphan in changes_dir
+                    # without corresponding pending entry).
+                    failed += 1
+                    logger.info(
+                        "InboxScreen._approve_meta_packages: change_id=%s "
+                        "had no pending entry — likely already approved or "
+                        "orphan in changes_dir",
+                        change_id,
+                    )
+            except Exception:
+                failed += 1
+                logger.exception(
+                    "InboxScreen._approve_meta_packages: queue.approve raised "
+                    "change_id=%s", change_id,
+                )
+
+        # Drain inline so the deployment actually happens. Without this,
+        # approved packages would sit in .claude/approval_queue/approved/
+        # until the next caller of MetaManager.drain — which today is no
+        # one in TUI runtime (only scripts/cybernetic_promote.py calls
+        # drain). Operator would see "approved" notification but no
+        # DEPLOYED_SHADOW state appear in the inbox.
+        try:
+            from src.scanner.automation.meta_manager import (
+                is_enabled as _meta_enabled,
+                _build_production_manager,
+            )
+            if _meta_enabled():
+                # Reuse the already-built singleton so we don't reload
+                # episodic memory + StagedDeployer on every approve-all.
+                from src.scanner.automation import meta_manager as _mm
+                if _mm._PRODUCTION_MGR is None:
+                    _mm._PRODUCTION_MGR = _build_production_manager()
+                counters = _mm._PRODUCTION_MGR.drain(current_cycle=0)
+                logger.info(
+                    "InboxScreen._approve_meta_packages: drain counters=%s",
+                    counters,
+                )
+        except Exception:
+            logger.exception(
+                "InboxScreen._approve_meta_packages: drain failed — packages "
+                "approved but not yet deployed; next drain call will pick "
+                "them up"
+            )
+
+        return (approved, failed)
 
     def action_reject_all(self) -> None:
         """Reject every pending homework + every actionable adjustment in the queue."""
