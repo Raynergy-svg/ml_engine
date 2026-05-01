@@ -271,6 +271,28 @@ def main() -> int:
     trainer.save(str(RIDGE_PATH))
     logger.info("Saved %s", RIDGE_PATH)
 
+    # W&B logging — joint master training run.
+    try:
+        from src.training.wandb_confidence import log_confidence_training_run
+        wb_result = log_confidence_training_run(
+            run_name="confidence_joint",
+            metrics=metrics,
+            label_metadata=label_meta_agg,
+            model_path=str(RIDGE_PATH),
+            config={
+                "instruments": instruments,
+                "label_mode": args.label_mode,
+                "lookahead_bars": args.lookahead_bars,
+                "sl_atr_mult": args.sl_atr_mult,
+                "tp_atr_mult": args.tp_atr_mult,
+            },
+            tags=["joint", "leak_fix_2026_04_30"],
+        )
+        if wb_result:
+            logger.info("W&B run: %s", wb_result.get("run_url") or wb_result.get("name"))
+    except Exception as exc:
+        logger.warning("W&B joint logging failed (non-fatal): %s", exc)
+
     # Update joint_training_meta.json (preserve other heads)
     if META_PATH.exists():
         try:

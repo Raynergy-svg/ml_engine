@@ -803,23 +803,69 @@ class JointMultiPairTrainer:
             except Exception as e:
                 logger.error(f"  Risk fine-tune failed: {e}")
 
-        # Per-pair Confidence fine-tune SKIPPED (leak-fix 2026-04-30):
-        #
-        # The new confidence label is realized win/loss from the trade journal.
-        # Per-pair journal data is ~24 trades/pair (well below the LightGBM
-        # fine-tune floor of ~100), so per-pair fine-tunes would massively
-        # overfit on the few real labels and amplify noise on the pseudo
-        # labels. We use the joint model only for confidence; momentum/risk
-        # fine-tunes still run above (they don't use journal-realized labels).
-        #
-        # If the operator wants to revisit per-pair confidence after volume
-        # builds up, restore the prior block from git history at this anchor.
+        # Fine-tune Confidence (LightGBM with init_model)  — re-enabled
+        # 2026-05-01 follow-up to leak-fix 2026-04-30. Per-pair load_ridge_data
+        # now returns ~10k pseudo + ~40 real labels (blend label mode), well
+        # above the LightGBM fine-tune floor; the per-pair specialization
+        # tracked on W&B has shown confidence quality moving toward target.
+        # Each per-pair fine-tune still runs the leak-detection assertion
+        # (R² > 0.30 → ERROR log; investigated, not auto-reverted).
         if self.confidence_trainer and self.confidence_trainer.is_trained:
-            logger.info(
-                "  Confidence per-pair fine-tune SKIPPED for %s (leak-fix 2026-04-30: "
-                "joint-only training; per-pair journal volume insufficient).",
-                instrument,
-            )
+            try:
+                conf_result = load_ridge_data(df, instrument=instrument)
+                if conf_result:
+                    x_train, feature_names = append_instrument_features(
+                        conf_result["X_train"], instrument, self.instruments,
+                        original_feature_names=conf_result.get("feature_names"),
+                    )
+                    x_val, _ = append_instrument_features(
+                        conf_result["X_val"], instrument, self.instruments,
+                        original_feature_names=conf_result.get("feature_names"),
+                    )
+
+                    fine_tuned_confidence = RidgeTrainer(self.config)
+                    metrics = fine_tuned_confidence.train(
+                        x_train,
+                        conf_result["y_train"],
+                        x_val,
+                        conf_result["y_val"],
+                        feature_names=feature_names,
+                        label_metadata=conf_result.get("label_metadata"),
+                    )
+                    fine_tuned_confidence.save(
+                        str(pair_save_dir / RIDGE_CONFIDENCE_FILENAME)
+                    )
+                    results["confidence"] = metrics
+
+                    # W&B logging — per-pair fine-tune run.
+                    try:
+                        from src.training.wandb_confidence import (
+                            log_confidence_training_run,
+                        )
+                        log_confidence_training_run(
+                            run_name=f"confidence_{instrument}",
+                            metrics=metrics,
+                            label_metadata=conf_result.get("label_metadata"),
+                            model_path=str(pair_save_dir / RIDGE_CONFIDENCE_FILENAME),
+                            tags=["per_pair", instrument, "leak_fix_2026_04_30"],
+                        )
+                    except Exception as wandb_exc:
+                        logger.debug("W&B per-pair log skipped for %s: %s",
+                                     instrument, wandb_exc)
+
+                    # Surface leak-detection signal up to operator.
+                    r2 = float(metrics.get("r2_score", 0.0) or 0.0)
+                    band = metrics.get("expected_r2_band") or [0.05, 0.30]
+                    if r2 > band[1]:
+                        logger.error(
+                            "  Confidence per-pair fine-tune for %s: R²=%.4f "
+                            "EXCEEDS expected band %s — possible leak. "
+                            "Surfaced; not auto-reverted (operator review).",
+                            instrument, r2, band,
+                        )
+                    logger.info(f"  Confidence fine-tuned for {instrument}: {metrics}")
+            except Exception as e:
+                logger.error(f"  Confidence fine-tune failed for {instrument}: {e}")
 
         logger.info(f"Fine-tuned models saved to: {pair_save_dir}")
         return results
