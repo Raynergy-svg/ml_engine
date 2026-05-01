@@ -10,7 +10,7 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 ```
 
 ## Core Loop
-1. **Scan** — multi-pair analysis with TCN/Ridge/RF ensemble models
+1. **Scan** — multi-pair analysis through model ensemble (see ML stack below)
 2. **Agents** — 15-agent team (truth: `_BASE_WEIGHTS` in `src/scanner/agents/_team.py`)
    - Core 12: trend, mean_reversion, volatility, risk_sentinel, uncertainty, execution_quality, momentum, news_risk, multi_timeframe, pair_performance, session_timing, support_resistance
    - Extended 3: order_flow (0.95), trader_readiness (0.50), devil_advocate (1.30, runs LAST). All toggleable via `enable_*_agent` flags in `ScannerConfig`.
@@ -120,6 +120,23 @@ Buddy is a **student** doing supervised study of past trades. Closed trades beco
 - Bootstrap: `python buddy_scanner.py homework --generate-batch --last N`
 - Heuristic catalog: `src/scanner/automation/homework/heuristics.py` (~25 patterns / 6 categories: A Setup, B Risk, C Consensus, D Execution, E Context, F Meta)
 - Spec: `docs/superpowers/specs/2026-04-25-trade-homework-system-design.md`
+
+## ML Stack (truth — not "TCN/Ridge/RF")
+| Head | Model | File |
+|---|---|---|
+| Direction (primary) | Tiny Transformer `d_model=16, heads=2, layers=1` + EMA + EWC + replay | `src/training/trainers/transformer_trainer.py` |
+| Direction baseline | sklearn HistGradientBoosting (hybrid voter) | `src/training/trainers/histgb_trainer.py` |
+| Volatility regime (4-class) | TCN (dilated causal Conv1D) | `src/training/trainers/tcn_trainer.py` |
+| Trend/chop/MR regime (3-class) | TransformerRegime (same skeleton as direction) | `src/training/trainers/transformer_regime_trainer.py` |
+| Momentum / Risk / Confidence | LightGBM (was Ridge/RF — RF is fallback only) | `src/training/trainers/lightgbm_trainers.py`, `ridge_trainer.py` |
+| Meta-labeler | XGBoost on triple-barrier labels (López de Prado) | `src/training/meta_labeling.py` |
+| Position sizer | PPO (stable-baselines3, real RL) | `src/training/rl/position_sizer.py` |
+| Agent weights | EMA-damped multiplicative bandit (NOT RL despite the name) | `src/scanner/agents/_team.py:901-994` |
+| Validation | Walk-forward + purged k-fold + embargo | `src/training/walkforward_validation.py` |
+| Calibration | Platt + Isotonic ensemble, recalibrated from journal | `src/risk/confidence_calibration.py` |
+| Online retrain | Cooldown-protected, drift-triggered, replay buffer | `online_retrainer.py` |
+
+Latest deep audit + upgrade roadmap: `docs/ml_architecture_audit_2026-04-30.md`.
 
 ## Key Files
 - `main.py` — CLI entry point
