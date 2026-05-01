@@ -1,0 +1,120 @@
+{
+  "created_at": "2026-05-01T17:43:50.318111+00:00",
+  "files": [
+    {
+      "backup": "ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "f09a64f90139406e3dfc849a5a74f2ec11f580585ecbada27e50ab066b443bb4",
+      "sha256_source": "f09a64f90139406e3dfc849a5a74f2ec11f580585ecbada27e50ab066b443bb4",
+      "size_bytes": 309181,
+      "source": "trained_data/models/joint/ridge_confidence.pkl"
+    },
+    {
+      "backup": "joint_training_meta.json.pre_leak_fix",
+      "sha256_backup": "00eaa0b37b598728faa72e2f51b345184185e13c6cc32c512184e4dc7ffe155f",
+      "sha256_source": "00eaa0b37b598728faa72e2f51b345184185e13c6cc32c512184e4dc7ffe155f",
+      "size_bytes": 1501,
+      "source": "trained_data/models/joint/joint_training_meta.json"
+    },
+    {
+      "backup": "confidence_calibration.json.pre_leak_fix",
+      "sha256_backup": "ae6c4f75967d20e081f9f80e39c672395a87df786d654d5c213197dcfe383c1e",
+      "sha256_source": "ae6c4f75967d20e081f9f80e39c672395a87df786d654d5c213197dcfe383c1e",
+      "size_bytes": 2736,
+      "source": "trained_data/confidence_calibration.json"
+    },
+    {
+      "backup": "per_pair/AUD_NZD_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "143c16830b9653f8803a1a6b4bbe5229e61a82e9a2c912f3d46f4eb81f05d036",
+      "sha256_source": "143c16830b9653f8803a1a6b4bbe5229e61a82e9a2c912f3d46f4eb81f05d036",
+      "size_bytes": 292305,
+      "source": "trained_data/models/AUD_NZD/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/AUD_USD_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "c37bd4f88db8bbd8f8f440baa07da93520026aa918b9066f56436a37d34ffb02",
+      "sha256_source": "c37bd4f88db8bbd8f8f440baa07da93520026aa918b9066f56436a37d34ffb02",
+      "size_bytes": 295420,
+      "source": "trained_data/models/AUD_USD/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/EUR_AUD_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "6b2ee6672ecb75c44f6096a249cf03aed3ec9d24e47505ffcedff0e974d57557",
+      "sha256_source": "6b2ee6672ecb75c44f6096a249cf03aed3ec9d24e47505ffcedff0e974d57557",
+      "size_bytes": 289368,
+      "source": "trained_data/models/EUR_AUD/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/EUR_CHF_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "bdafc0650b4dc6717915ab66572271c59f514b298ed87931cc5583333e689ba5",
+      "sha256_source": "bdafc0650b4dc6717915ab66572271c59f514b298ed87931cc5583333e689ba5",
+      "size_bytes": 286724,
+      "source": "trained_data/models/EUR_CHF/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/EUR_GBP_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "31bccaa1fbc4e73844bb15fd88f3f9e5e7301a4aef95b0aa51c85a9172617446",
+      "sha256_source": "31bccaa1fbc4e73844bb15fd88f3f9e5e7301a4aef95b0aa51c85a9172617446",
+      "size_bytes": 282729,
+      "source": "trained_data/models/EUR_GBP/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/EUR_JPY_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "35a7c1c160b20f8afb262961d0480470c3158ef35f6e8ef75af7ca44249784bd",
+      "sha256_source": "35a7c1c160b20f8afb262961d0480470c3158ef35f6e8ef75af7ca44249784bd",
+      "size_bytes": 286539,
+      "source": "trained_data/models/EUR_JPY/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/EUR_USD_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "51b0f4eb1ff5a30c5749868cf4fb9499c50b04c6e499737f9dd94cfd06fb4f9f",
+      "sha256_source": "51b0f4eb1ff5a30c5749868cf4fb9499c50b04c6e499737f9dd94cfd06fb4f9f",
+      "size_bytes": 280722,
+      "source": "trained_data/models/EUR_USD/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/GBP_AUD_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "09db1a216afef4fb2a2d8efafd560f437c5ffe746265ce4db0dc318db6ab28aa",
+      "sha256_source": "09db1a216afef4fb2a2d8efafd560f437c5ffe746265ce4db0dc318db6ab28aa",
+      "size_bytes": 282094,
+      "source": "trained_data/models/GBP_AUD/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/GBP_CHF_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "c960fc83d4ef31c3fbe2eabd4568b07d4e95f1a96a2c71276e9d75029fddce12",
+      "sha256_source": "c960fc83d4ef31c3fbe2eabd4568b07d4e95f1a96a2c71276e9d75029fddce12",
+      "size_bytes": 286585,
+      "source": "trained_data/models/GBP_CHF/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/GBP_JPY_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "d9a2f1633d23e2cd8f8f6beeefc8773a20dbf6bf02033de40935891469049e26",
+      "sha256_source": "d9a2f1633d23e2cd8f8f6beeefc8773a20dbf6bf02033de40935891469049e26",
+      "size_bytes": 280558,
+      "source": "trained_data/models/GBP_JPY/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/GBP_USD_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "2b65e85e4c24391527db4f4ceafcec54bdd160be4177353590158614e30fe3ae",
+      "sha256_source": "2b65e85e4c24391527db4f4ceafcec54bdd160be4177353590158614e30fe3ae",
+      "size_bytes": 288093,
+      "source": "trained_data/models/GBP_USD/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/USD_CAD_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "bd49ad6d9c6878ce54be7f7e876b25f7e6dc770cfd093100409b484ef28d4e08",
+      "sha256_source": "bd49ad6d9c6878ce54be7f7e876b25f7e6dc770cfd093100409b484ef28d4e08",
+      "size_bytes": 281584,
+      "source": "trained_data/models/USD_CAD/ridge_confidence.pkl"
+    },
+    {
+      "backup": "per_pair/USD_JPY_ridge_confidence.pkl.pre_leak_fix",
+      "sha256_backup": "b10d4c4d26546f368381741b011ace0a519af19a3fd7e8ef57baf9597b84837b",
+      "sha256_source": "b10d4c4d26546f368381741b011ace0a519af19a3fd7e8ef57baf9597b84837b",
+      "size_bytes": 285460,
+      "source": "trained_data/models/USD_JPY/ridge_confidence.pkl"
+    }
+  ],
+  "purpose": "Pre-leak-fix backup of confidence model artifacts (2026-04-30)",
+  "rollback_doc": "docs/plans/2026-04-30-confidence-label-leak-fix-rollback-manifest.md",
+  "version": 1
+}

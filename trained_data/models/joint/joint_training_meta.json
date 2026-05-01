@@ -1,5 +1,69 @@
 {
-  "training_type": "joint_multi_pair",
+  "confidence_label_metadata": {
+    "label_mode": "blend",
+    "leak_fix_version": "2026-04-30",
+    "n_dropped_nan": 4935,
+    "n_pseudo": 61810,
+    "n_real": 240,
+    "n_unavailable": 4950,
+    "per_instrument": {
+      "AUD_USD": {
+        "class_balance_pseudo": 0.5730397906703961,
+        "class_balance_real": 0.375,
+        "n_pseudo": 11083,
+        "n_real": 40,
+        "n_train": 7781,
+        "n_val": 2223
+      },
+      "GBP_USD": {
+        "class_balance_pseudo": 0.568278355173972,
+        "class_balance_real": 0.375,
+        "n_pseudo": 11065,
+        "n_real": 40,
+        "n_train": 7766,
+        "n_val": 2219
+      },
+      "NZD_USD": {
+        "class_balance_pseudo": 0.5607769423558897,
+        "class_balance_real": 0.4,
+        "n_pseudo": 11172,
+        "n_real": 40,
+        "n_train": 7847,
+        "n_val": 2242
+      },
+      "USD_CAD": {
+        "class_balance_pseudo": 0.5630970794286234,
+        "class_balance_real": 0.375,
+        "n_pseudo": 10991,
+        "n_real": 40,
+        "n_train": 7714,
+        "n_val": 2204
+      },
+      "USD_CHF": {
+        "class_balance_pseudo": 0.5607782525684153,
+        "class_balance_real": 0.25,
+        "n_pseudo": 10999,
+        "n_real": 40,
+        "n_train": 7720,
+        "n_val": 2206
+      },
+      "USD_JPY": {
+        "class_balance_pseudo": 0.5764615384615385,
+        "class_balance_real": 0.4,
+        "n_pseudo": 6500,
+        "n_real": 40,
+        "n_train": 4573,
+        "n_val": 1306
+      }
+    },
+    "score_formula": "score = 20 + 75 * binary_label",
+    "score_range": [
+      20.0,
+      95.0
+    ]
+  },
+  "confidence_retrained_at": "2026-05-01T17:55:55.912492Z",
+  "fine_tune_decisions": {},
   "instruments": [
     "EUR_USD",
     "GBP_USD",
@@ -18,41 +82,57 @@
     "GBP_CHF"
   ],
   "metrics": {
+    "confidence": {
+      "class_balance": 0.5701481532683579,
+      "class_balance_pseudo": null,
+      "class_balance_real": null,
+      "confidence_mae": 36.814903878505994,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "label_mode": "blend",
+      "leak_fix_version": "2026-04-30",
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 20,
+      "n_pseudo_labels": 61810,
+      "n_real_labels": 240,
+      "n_total_features": 24,
+      "r2_score": -0.01015523981714006,
+      "score_formula": "score = 20 + 75 * binary_label",
+      "score_range": [
+        20.0,
+        95.0
+      ]
+    },
     "direction": {
-      "train_accuracy": 0.7604302763938904,
-      "val_accuracy": 0.5293612453032743,
-      "val_balanced_accuracy": 0.5474004862813034,
-      "val_up_accuracy": 0.5477996965098634,
-      "val_down_accuracy": 0.5470012760527435,
-      "val_direction_gap": 0.0007984204571198639,
+      "avg_weight_norm": 1.7995413706836412,
+      "drift_detected": false,
       "epochs_trained": 17,
       "n_train_samples": 28259,
       "n_val_samples": 9315,
       "total_weight_norm": 68.38257208597837,
-      "avg_weight_norm": 1.7995413706836412,
-      "drift_detected": false
+      "train_accuracy": 0.7604302763938904,
+      "val_accuracy": 0.5293612453032743,
+      "val_balanced_accuracy": 0.5474004862813034,
+      "val_direction_gap": 0.0007984204571198639,
+      "val_down_accuracy": 0.5470012760527435,
+      "val_up_accuracy": 0.5477996965098634
     },
     "momentum": {
-      "momentum_mae": 0.0342710754802122,
       "acceleration_accuracy": 0.8526245402875292,
-      "model_type": "lightgbm"
+      "model_type": "lightgbm",
+      "momentum_mae": 0.0342710754802122
     },
     "risk": {
-      "drawdown_mae_pct": 0.0015310837955774485,
       "drawdown_mae_bps": 15.310837955774485,
-      "streak_prob_mae": 0.0230849467897954,
-      "model_type": "lightgbm"
-    },
-    "confidence": {
-      "confidence_mae": 0.26876937090637726,
-      "r2_score": 0.9971026361463041,
+      "drawdown_mae_pct": 0.0015310837955774485,
       "model_type": "lightgbm",
-      "n_estimators": 100,
-      "n_important_features": 16,
-      "n_total_features": 29
+      "streak_prob_mae": 0.0230849467897954
     }
   },
   "per_instrument_metrics": {},
-  "fine_tune_decisions": {},
-  "saved_at": "2026-04-16T11:29:31.667401"
+  "saved_at": "2026-04-16T11:29:31.667401",
+  "training_type": "joint_multi_pair"
 }
