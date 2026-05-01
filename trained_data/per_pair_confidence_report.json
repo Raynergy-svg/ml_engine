@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-05-01T18:27:39.614849+00:00",
+  "joint_warm_start": true,
+  "n_pairs": 6,
+  "summaries": [
+    {
+      "confidence_mae": 36.67514462275845,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "instrument": "GBP_USD",
+      "leak_fired": false,
+      "n_pseudo": 11065,
+      "n_real": 40,
+      "n_train": 7766,
+      "n_val": 2219,
+      "r2_score": -0.054257082085473085,
+      "saved_at": 1777660034.0443525,
+      "saved_path": "trained_data/models/GBP_USD/ridge_confidence.pkl"
+    },
+    {
+      "confidence_mae": 36.41542365459811,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "instrument": "USD_JPY",
+      "leak_fired": false,
+      "n_pseudo": 6500,
+      "n_real": 40,
+      "n_train": 4573,
+      "n_val": 1306,
+      "r2_score": -0.10350538040485491,
+      "saved_at": 1777660037.3309398,
+      "saved_path": "trained_data/models/USD_JPY/ridge_confidence.pkl"
+    },
+    {
+      "confidence_mae": 36.505140450525104,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "instrument": "USD_CHF",
+      "leak_fired": false,
+      "n_pseudo": 10999,
+      "n_real": 40,
+      "n_train": 7720,
+      "n_val": 2206,
+      "r2_score": -0.0313202008111364,
+      "saved_at": 1777660043.01094,
+      "saved_path": "trained_data/models/USD_CHF/ridge_confidence.pkl"
+    },
+    {
+      "confidence_mae": 36.70610848329598,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "instrument": "AUD_USD",
+      "leak_fired": false,
+      "n_pseudo": 11083,
+      "n_real": 40,
+      "n_train": 7781,
+      "n_val": 2223,
+      "r2_score": -0.06073174202491938,
+      "saved_at": 1777660048.3389404,
+      "saved_path": "trained_data/models/AUD_USD/ridge_confidence.pkl"
+    },
+    {
+      "confidence_mae": 36.53177249212047,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "instrument": "USD_CAD",
+      "leak_fired": false,
+      "n_pseudo": 10991,
+      "n_real": 40,
+      "n_train": 7714,
+      "n_val": 2204,
+      "r2_score": -0.032791853338368204,
+      "saved_at": 1777660054.0109408,
+      "saved_path": "trained_data/models/USD_CAD/ridge_confidence.pkl"
+    },
+    {
+      "confidence_mae": 36.928328308806535,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "instrument": "NZD_USD",
+      "leak_fired": false,
+      "n_pseudo": 11172,
+      "n_real": 40,
+      "n_train": 7847,
+      "n_val": 2242,
+      "r2_score": -0.04899285014589916,
+      "saved_at": 1777660059.6083455,
+      "saved_path": "trained_data/models/NZD_USD/ridge_confidence.pkl"
+    }
+  ]
+}
