@@ -25,7 +25,7 @@ import logging
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -3310,28 +3310,61 @@ def load_ridge_data(
     instrument: Optional[str] = None,
     include_instrument_features: bool = False,
     gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
-) -> Dict[str, np.ndarray]:
+    journal_path: Optional[str] = None,
+    label_mode: Literal["real", "pseudo", "blend"] = "blend",
+    lookahead_bars: int = 24,
+    sl_atr_mult: float = 1.0,
+    tp_atr_mult: float = 2.5,
+) -> Dict[str, Any]:
     """
-    Load data for Ridge model: Confidence scoring from NORMALIZED variance and volume.
+    Load data for Ridge model: Confidence scoring from realized trade outcomes.
 
-    Features: NORMALIZED volatility, volume ratios, stability metrics (instrument-agnostic)
-    Target: Confidence score (0-100)
-        - High confidence: Low variance + smooth volume increase
-        - Low confidence: High variance + volume spikes/drops
+    Features: NORMALIZED volatility, volume ratios, stability metrics (instrument-agnostic).
+
+    Target (REPLACED 2026-04-30): rescaled win-probability label.
+        Binary realized outcome: 1 if (real journal trade won) OR (triple-barrier
+        forward-bar simulation hits TP first), 0 if it loses, NaN if neither
+        is determinable (NaN rows are filtered out before training).
+        Output is rescaled to [20, 95] via `score = 20 + 75 * label` to preserve
+        the existing gate API (`gates.py:1281` calls `.predict()` and expects
+        0-100). The mapping is: loss → 20, win → 95, with no values in between
+        unless a future label generator emits soft labels.
+
+    LEAK FIX 2026-04-30: prior implementation defined `y_confidence` as a
+    closed-form weighted sum of ADX/RSI/ATR%/BB-position/volume_ratio — those
+    same five columns were features in X. R²=0.9971 on val was the model
+    recovering the formula, not learning anything about market state. See
+    `docs/confidence_model_leak_investigation_2026-04-30.md`.
 
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
-        confidence_window: Window for stability calculation
+        confidence_window: window for early-rows drop (kept for backward compat)
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
         gap: Number of samples to skip between train/val and val/test to prevent
             temporal autocorrelation leakage (default 0)
+        journal_path: optional path override for the live trade journal. Default
+            uses live + archives via `load_all_journal_trades`.
+        label_mode: 'real' (journal-only), 'pseudo' (triple-barrier-only), or
+            'blend' (real overrides pseudo). Default 'blend'.
+        lookahead_bars: forward bars used by the triple-barrier pseudo-label
+            walk. Default 24 (~1 trading day on H1).
+        sl_atr_mult: SL distance in ATR units for pseudo-label simulation.
+            Default 1.0 (matches `ScannerConfig.atr_sl_multiplier` default).
+        tp_atr_mult: TP distance in ATR units for pseudo-label simulation.
+            Default 2.5 (matches `ScannerConfig.atr_tp_multiplier` default).
 
     Returns:
-        Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
+        Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names,
+        and `label_metadata` (dict with n_real, n_pseudo, n_unavailable,
+        class balances).
     """
-    logger.info(f"Loading Ridge data (confidence scoring, confidence_window={confidence_window}, gap={gap})...")
+    logger.info(
+        "Loading Ridge data (REALIZED confidence labels, label_mode=%s, "
+        "lookahead=%d, sl_mult=%.2f, tp_mult=%.2f, gap=%d)...",
+        label_mode, lookahead_bars, sl_atr_mult, tp_atr_mult, gap,
+    )
 
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
@@ -3372,101 +3405,106 @@ def load_ridge_data(
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
 
-    # Calculate confidence based on TREND CLARITY (learnable from ADX, RSI, volatility)
-    # High confidence = strong trend (high ADX) + RSI not extreme + low volatility
-    # This IS learnable because these are computed from the same features!
-    n = len(df)
+    # === REALIZED-OUTCOME LABELS (replaces closed-form formula) ===
+    # The label is generated from journal trade outcomes (real labels) plus
+    # triple-barrier forward simulation (pseudo labels). This is NOT a function
+    # of the row-i feature values, so the model cannot trivially fit a formula.
+    # See `src/training/labels/realized_confidence_label.py` for details.
+    from src.training.labels import (
+        compute_realized_confidence_labels,
+        load_all_journal_trades,
+    )
 
-    # Get indicators
-    adx = df['adx'].values if 'adx' in df.columns else np.ones(n) * 25
-    rsi = df['rsi'].values if 'rsi' in df.columns else np.ones(n) * 50
-    atr_pct = df['atr_pct_14'].values if 'atr_pct_14' in df.columns else np.ones(n) * 0.01
+    # Build journal — prefer caller-supplied path for tests, else pool live + archives.
+    journal: Optional[List[Dict[str, Any]]]
+    if journal_path is not None:
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+            raw = _json.loads(_Path(journal_path).read_text())
+            from src.training.labels.journal_loader import _normalize_record  # type: ignore
+            journal = []
+            for t in raw if isinstance(raw, list) else []:
+                norm = _normalize_record(t)
+                if norm is not None:
+                    journal.append(norm)
+        except (OSError, ValueError) as e:
+            logger.warning("Failed to load journal_path=%s: %s — falling back to pooled load", journal_path, e)
+            journal = load_all_journal_trades(include_archives=True)
+    else:
+        journal = load_all_journal_trades(include_archives=True)
 
-    # Additional indicators for richer confidence signal
-    bb_pos = df['bb_position_20'].values if 'bb_position_20' in df.columns else np.ones(n) * 0.5
-    volume_ratio = df['volume_ratio_20'].values if 'volume_ratio_20' in df.columns else np.ones(n) * 1.0
+    inst_for_labels = instrument or "UNKNOWN"
+    raw_labels, label_metadata = compute_realized_confidence_labels(
+        df,
+        instrument=inst_for_labels,
+        journal=journal,
+        lookahead_bars=lookahead_bars,
+        sl_atr_mult=sl_atr_mult,
+        tp_atr_mult=tp_atr_mult,
+        label_mode=label_mode,
+    )
 
-    # Drop initial rows without valid confidence BEFORE splitting
+    # Drop initial rows without valid features (kept for backward compat with
+    # the prior `confidence_window` semantics — this also pads NaN labels at
+    # the head from indicator warm-up).
     valid_start = confidence_window
     X = X[valid_start:]
-    adx_valid_range = adx[valid_start:]
-    rsi_valid_range = rsi[valid_start:]
-    atr_pct_valid_range = atr_pct[valid_start:]
-    bb_pos_valid_range = bb_pos[valid_start:]
-    volume_ratio_valid_range = volume_ratio[valid_start:]
-
-    # Verify arrays have same length for consistent indexing
-    assert len(X) == len(adx_valid_range) == len(rsi_valid_range), \
-        f"Array length mismatch: X={len(X)}, adx={len(adx_valid_range)}, rsi={len(rsi_valid_range)}"
+    raw_labels = raw_labels[valid_start:]
 
     # Handle NaN/Inf in features
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # Temporal split FIRST - before computing normalization factors
-    # This prevents data leakage from val/test into training normalization
-    train_idx, val_idx, test_idx = temporal_split(len(X), *split, gap=gap)
+    # Drop rows with NaN labels (no real outcome AND triple-barrier timed out).
+    # This is the FIRST place we filter — temporal split happens AFTER, so the
+    # split is computed on label-available rows only (preserves chronology).
+    label_available = ~np.isnan(raw_labels)
+    n_dropped = int((~label_available).sum())
+    if n_dropped > 0:
+        logger.info(
+            "Dropped %d/%d rows with NaN confidence label (no journal match + triple-barrier timeout)",
+            n_dropped, len(raw_labels),
+        )
+    X = X[label_available]
+    binary_labels = raw_labels[label_available].astype(np.float32)
 
-    # Compute ADX percentile thresholds from TRAINING DATA ONLY for better scaling
-    # This prevents data leakage - val/test distributions not seen during training
-    train_adx = adx_valid_range[train_idx]
-    train_adx_valid = train_adx[~np.isnan(train_adx)]
-    adx_p25 = np.percentile(train_adx_valid, 25) if len(train_adx_valid) > 0 else 15
-    adx_p75 = np.percentile(train_adx_valid, 75) if len(train_adx_valid) > 0 else 30
-    adx_range = max(adx_p75 - adx_p25, 5)  # Avoid division by zero
+    # Map binary {0,1} → [20, 95] to preserve the existing gate API
+    # (`gates.py:1281` calls `.predict()` and expects a 0-100 score).
+    # loss → 20, win → 95. Documented in metadata.
+    y = (20.0 + 75.0 * binary_labels).astype(np.float32)
 
-    logger.info(f"Ridge ADX (train-only): P25={adx_p25:.2f}, P75={adx_p75:.2f}, range={adx_range:.2f}")
-
-    # Calculate confidence scores using training-derived percentiles
-    # Apply same normalization to all data (train/val/test)
-    confidence = np.zeros(len(X), dtype=np.float32)
-
-    for i in range(len(X)):
-        # ===== ADX component: Strong trend = high confidence =====
-        # Use percentile-based scaling for the instrument's actual ADX range (train-derived)
-        # Maps ADX to [0, 1] where p25->0.25, p75->0.75, p90+->1.0
-        adx_normalized = (adx_valid_range[i] - adx_p25) / adx_range
-        adx_score = np.clip(adx_normalized * 0.5 + 0.25, 0.0, 1.0)
-
-        # ===== RSI component: Not extreme = high confidence =====
-        # RSI 40-60: high confidence (centered), 30-70: medium, outside: low
-        rsi_distance = abs(rsi_valid_range[i] - 50)
-        rsi_score = max(0, 1.0 - rsi_distance / 25)  # 50->1, 25/75->0
-
-        # ===== Volatility component: Low vol = high confidence =====
-        # Use instrument-relative scaling (ATR% typically 0.3%-1.5% for FX)
-        vol_score = np.clip(1.0 - atr_pct_valid_range[i] / 0.015, 0.0, 1.0)
-
-        # ===== Bollinger Band position: Middle = high confidence =====
-        # BB position 0.3-0.7: confident middle, extremes: overbought/oversold
-        bb_distance = abs(bb_pos_valid_range[i] - 0.5)
-        bb_score = max(0, 1.0 - bb_distance * 2.5)  # 0.5->1, 0.1/0.9->0
-
-        # ===== Volume confirmation: Above average = high confidence =====
-        # Volume ratio > 1.0: good conviction, < 0.7: low conviction
-        vol_conf_score = np.clip((volume_ratio_valid_range[i] - 0.7) / 0.6, 0.0, 1.0)
-
-        # ===== Combine with weights =====
-        # ADX: 35% (trend strength)
-        # RSI: 20% (not overbought/oversold)
-        # Volatility: 20% (predictable conditions)
-        # BB Position: 15% (price location)
-        # Volume: 10% (conviction)
-        raw_conf = (
-            adx_score * 0.35 +
-            rsi_score * 0.20 +
-            vol_score * 0.20 +
-            bb_score * 0.15 +
-            vol_conf_score * 0.10
+    if len(X) == 0:
+        logger.error(
+            "load_ridge_data: NO labeled rows after filtering (n_real=%s, n_pseudo=%s)",
+            label_metadata.get("n_real"), label_metadata.get("n_pseudo"),
+        )
+        # Surface as a hard failure — financial paths must not silently
+        # ship empty training sets.
+        raise ValueError(
+            f"No usable confidence labels for instrument={instrument}. "
+            f"label_metadata={label_metadata}"
         )
 
-        # Scale to 0-100 with slight boost for high-quality setups
-        # Base range 20-80, can reach 10-95 with extreme values
-        confidence[i] = 20 + raw_conf * 75  # Maps [0,1] -> [20,95]
+    label_metadata.update({
+        "n_dropped_nan": n_dropped,
+        "n_after_drop": int(len(X)),
+        "score_range": [20.0, 95.0],
+        "score_formula": "score = 20 + 75 * binary_label",
+        "leak_fix_version": "2026-04-30",
+    })
+    logger.info(
+        "Ridge labels: n_real=%d n_pseudo=%d n_dropped=%d total_used=%d "
+        "class_balance_real=%s class_balance_pseudo=%s",
+        label_metadata.get("n_real", 0),
+        label_metadata.get("n_pseudo", 0),
+        n_dropped,
+        len(X),
+        label_metadata.get("class_balance_real"),
+        label_metadata.get("class_balance_pseudo"),
+    )
 
-    y = confidence.astype(np.float32)
-
-    # Handle NaN/Inf in targets
-    y = np.nan_to_num(y, nan=50.0, posinf=100.0, neginf=0.0)
+    # Temporal split AFTER label filtering — split is on labeled rows only.
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split, gap=gap)
 
     # Optionally append instrument one-hot encoding for joint multi-pair training
     instrument_feature_names = []
@@ -3488,9 +3526,8 @@ def load_ridge_data(
         'X_test': X_test_aug,
         'y_test': y[test_idx],
         'feature_names': features + instrument_feature_names,
-        'adx_p25': float(adx_p25),  # Save for inference
-        'adx_p75': float(adx_p75),  # Save for inference
         'instrument': instrument,
+        'label_metadata': label_metadata,
     }
 
     logger.info(f"Ridge data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")

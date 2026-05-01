@@ -244,8 +244,9 @@ class JointMultiPairTrainer:
                     if combined_data["risk"]["feature_names"] is None:
                         combined_data["risk"]["feature_names"] = feature_names
 
-                # Confidence data (for Ridge/LightGBM)
-                conf_result = load_ridge_data(df)
+                # Confidence data (for Ridge/LightGBM) — pass instrument so
+                # journal-real labels can be joined per-pair.
+                conf_result = load_ridge_data(df, instrument=instrument)
                 if conf_result:
                     x_train, feature_names = append_instrument_features(
                         conf_result["X_train"],
@@ -267,6 +268,29 @@ class JointMultiPairTrainer:
                     combined_data["confidence"]["y_val"].append(conf_result["y_val"])
                     if combined_data["confidence"]["feature_names"] is None:
                         combined_data["confidence"]["feature_names"] = feature_names
+                    # Aggregate label metadata across instruments for visibility
+                    lm = conf_result.get("label_metadata") or {}
+                    if lm:
+                        agg = combined_data["confidence"].setdefault(
+                            "label_metadata", {
+                                "n_real": 0, "n_pseudo": 0, "n_unavailable": 0,
+                                "n_dropped_nan": 0, "per_instrument": {},
+                            }
+                        )
+                        agg["n_real"] += int(lm.get("n_real", 0) or 0)
+                        agg["n_pseudo"] += int(lm.get("n_pseudo", 0) or 0)
+                        agg["n_unavailable"] += int(lm.get("n_unavailable", 0) or 0)
+                        agg["n_dropped_nan"] += int(lm.get("n_dropped_nan", 0) or 0)
+                        agg["per_instrument"][instrument] = {
+                            "n_real": lm.get("n_real"),
+                            "n_pseudo": lm.get("n_pseudo"),
+                            "class_balance_real": lm.get("class_balance_real"),
+                            "class_balance_pseudo": lm.get("class_balance_pseudo"),
+                        }
+                        agg["label_mode"] = lm.get("label_mode")
+                        agg["score_range"] = lm.get("score_range")
+                        agg["score_formula"] = lm.get("score_formula")
+                        agg["leak_fix_version"] = lm.get("leak_fix_version")
 
             except Exception as e:
                 logger.error(f"Error loading data for {instrument}: {e}")
@@ -423,6 +447,7 @@ class JointMultiPairTrainer:
                 data["confidence"]["X_val"],
                 data["confidence"]["y_val"],
                 feature_names=data["confidence"]["feature_names"],
+                label_metadata=data["confidence"].get("label_metadata"),
             )
             self.confidence_trainer.save(str(save_path / RIDGE_CONFIDENCE_FILENAME))
             results["confidence"] = metrics
@@ -778,31 +803,23 @@ class JointMultiPairTrainer:
             except Exception as e:
                 logger.error(f"  Risk fine-tune failed: {e}")
 
-        # Fine-tune Confidence (Ridge/LightGBM)
+        # Per-pair Confidence fine-tune SKIPPED (leak-fix 2026-04-30):
+        #
+        # The new confidence label is realized win/loss from the trade journal.
+        # Per-pair journal data is ~24 trades/pair (well below the LightGBM
+        # fine-tune floor of ~100), so per-pair fine-tunes would massively
+        # overfit on the few real labels and amplify noise on the pseudo
+        # labels. We use the joint model only for confidence; momentum/risk
+        # fine-tunes still run above (they don't use journal-realized labels).
+        #
+        # If the operator wants to revisit per-pair confidence after volume
+        # builds up, restore the prior block from git history at this anchor.
         if self.confidence_trainer and self.confidence_trainer.is_trained:
-            try:
-                conf_result = load_ridge_data(df)
-                if conf_result:
-                    x_train, feature_names = append_instrument_features(
-                        conf_result["X_train"], instrument, self.instruments
-                    )
-                    x_val, _ = append_instrument_features(
-                        conf_result["X_val"], instrument, self.instruments
-                    )
-
-                    fine_tuned_conf = RidgeTrainer(self.config)
-                    metrics = fine_tuned_conf.train(
-                        x_train,
-                        conf_result["y_train"],
-                        x_val,
-                        conf_result["y_val"],
-                        feature_names=feature_names,
-                    )
-                    fine_tuned_conf.save(str(pair_save_dir / RIDGE_CONFIDENCE_FILENAME))
-                    results["confidence"] = metrics
-                    logger.info(f"  Confidence fine-tuned: {metrics}")
-            except Exception as e:
-                logger.error(f"  Confidence fine-tune failed: {e}")
+            logger.info(
+                "  Confidence per-pair fine-tune SKIPPED for %s (leak-fix 2026-04-30: "
+                "joint-only training; per-pair journal volume insufficient).",
+                instrument,
+            )
 
         logger.info(f"Fine-tuned models saved to: {pair_save_dir}")
         return results
@@ -813,7 +830,7 @@ class JointMultiPairTrainer:
         instruments: List[str],
         results: Dict[str, Dict],
     ) -> None:
-        """Save joint training metadata."""
+        """Save joint training metadata. Atomic write (tmp + rename)."""
         meta = {
             "training_type": "joint_multi_pair",
             "instruments": instruments,
@@ -823,9 +840,22 @@ class JointMultiPairTrainer:
             "saved_at": datetime.now().isoformat(),
         }
 
+        # Surface confidence-label metadata at the top level for easy operator
+        # visibility (also embedded in metrics["confidence"]).
+        try:
+            conf_data = getattr(self, "joint_data", {}).get("confidence", {})
+            label_meta = conf_data.get("label_metadata")
+            if label_meta:
+                meta["confidence_label_metadata"] = label_meta
+        except Exception:
+            pass
+
         meta_path = save_path / "joint_training_meta.json"
-        with open(meta_path, "w") as f:
-            json.dump(meta, f, indent=2, default=str)
+        # Atomic write: tmp + rename (per .claude/rules/improvement.md)
+        tmp_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
+        with open(tmp_path, "w") as f:
+            json.dump(meta, f, indent=2, sort_keys=True, default=str)
+        tmp_path.replace(meta_path)
 
         logger.info(f"Metadata saved to: {meta_path}")
 

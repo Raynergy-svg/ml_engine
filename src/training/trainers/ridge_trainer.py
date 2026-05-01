@@ -154,8 +154,16 @@ class RidgeTrainer(BaseTrainer):
         x_val: np.ndarray,
         y_val: np.ndarray,
         feature_names: Optional[list] = None,
+        label_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, float]:
-        """Train LightGBM for confidence scoring (falls back to ElasticNet if unavailable)."""
+        """Train LightGBM for confidence scoring (falls back to ElasticNet if unavailable).
+
+        Args:
+            label_metadata: optional dict from `compute_realized_confidence_labels`
+                with `n_real`, `n_pseudo`, `class_balance_*` etc. Stored in
+                `self.metrics` for downstream visibility and used for leak
+                detection (R² > expected band → ERROR log).
+        """
         from sklearn.model_selection import TimeSeriesSplit
         from sklearn.preprocessing import StandardScaler
         import pandas as pd
@@ -218,6 +226,24 @@ class RidgeTrainer(BaseTrainer):
             importances = self.model.feature_importances_
             n_important = int(np.sum(importances > 0.01))
 
+            # Realized-outcome label metrics (leak-fix 2026-04-30).
+            # Expected R² band on real outcome labels is [0.05, 0.30] for
+            # noisy financial regression — a higher value triggers the
+            # leak-detection ERROR below (logged, not raised, so legitimate
+            # edge cases can be investigated rather than crashing training).
+            expected_r2_band = [0.05, 0.30]
+            label_meta = dict(label_metadata or {})
+
+            # Class balance sanity (for binary-rescaled labels)
+            unique_y = np.unique(np.round(y_train, 2))
+            class_balance = None
+            try:
+                # If labels are binary {20, 95}, compute fraction at win-side
+                if len(unique_y) <= 2:
+                    class_balance = float(np.mean(y_train > 50.0))
+            except Exception:
+                pass
+
             self.metrics = {
                 "confidence_mae": mae,
                 "r2_score": float(r2),
@@ -225,11 +251,36 @@ class RidgeTrainer(BaseTrainer):
                 "n_estimators": self.model.n_estimators,
                 "n_important_features": n_important,
                 "n_total_features": self.n_features,
+                "label_mode": label_meta.get("label_mode"),
+                "n_real_labels": label_meta.get("n_real"),
+                "n_pseudo_labels": label_meta.get("n_pseudo"),
+                "class_balance_real": label_meta.get("class_balance_real"),
+                "class_balance_pseudo": label_meta.get("class_balance_pseudo"),
+                "class_balance": class_balance,
+                "expected_r2_band": expected_r2_band,
+                "score_range": label_meta.get("score_range"),
+                "score_formula": label_meta.get("score_formula"),
+                "leak_fix_version": label_meta.get("leak_fix_version"),
             }
+
+            # LEAK-DETECTION: log loud ERROR if R² blows past expected band.
+            # We log rather than raise so legitimate edge cases (e.g. tiny
+            # synthetic test set) don't crash training. The 2026-04-30 leak
+            # showed R²=0.997 — anything > 0.30 on this label is suspect.
+            if r2 > expected_r2_band[1]:
+                logger.error(
+                    "SUSPECTED LABEL LEAK: confidence R²=%.4f exceeds expected "
+                    "band %s for realized-outcome label. Investigate features "
+                    "and label generator for closed-form derivability. See "
+                    "docs/confidence_model_leak_investigation_2026-04-30.md.",
+                    r2, expected_r2_band,
+                )
 
             logger.info(
                 f"LightGBM trained: MAE={mae:.2f}, R²={r2:.4f}, "
-                f"important_features={n_important}/{self.n_features}"
+                f"important_features={n_important}/{self.n_features}, "
+                f"label_mode={label_meta.get('label_mode')}, "
+                f"n_real={label_meta.get('n_real')}, n_pseudo={label_meta.get('n_pseudo')}"
             )
             return self.metrics
 
@@ -270,6 +321,9 @@ class RidgeTrainer(BaseTrainer):
         mae = float(np.mean(np.abs(y_pred - y_val)))
         r2 = float(self.model.score(x_val_scaled, y_val))
 
+        # Same metadata pass-through as the LightGBM path (leak-fix 2026-04-30).
+        expected_r2_band = [0.05, 0.30]
+        label_meta = dict(label_metadata or {})
         self.metrics = {
             "confidence_mae": mae,
             "r2_score": r2,
@@ -281,7 +335,21 @@ class RidgeTrainer(BaseTrainer):
             "sparsity_ratio": 1.0 - (self.n_nonzero_coefs / self.n_features)
             if self.n_features > 0
             else 0.0,
+            "label_mode": label_meta.get("label_mode"),
+            "n_real_labels": label_meta.get("n_real"),
+            "n_pseudo_labels": label_meta.get("n_pseudo"),
+            "class_balance_real": label_meta.get("class_balance_real"),
+            "class_balance_pseudo": label_meta.get("class_balance_pseudo"),
+            "expected_r2_band": expected_r2_band,
+            "score_range": label_meta.get("score_range"),
+            "score_formula": label_meta.get("score_formula"),
+            "leak_fix_version": label_meta.get("leak_fix_version"),
         }
+        if r2 > expected_r2_band[1]:
+            logger.error(
+                "SUSPECTED LABEL LEAK (ElasticNet path): confidence R²=%.4f "
+                "exceeds expected band %s.", r2, expected_r2_band,
+            )
 
         logger.info(
             f"ElasticNet trained: MAE={mae:.2f}, R²={r2:.4f}, "
