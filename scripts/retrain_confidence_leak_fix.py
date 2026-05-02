@@ -256,9 +256,34 @@ def main() -> int:
         len(y_train), int(np.sum(y_train > 50.0)),
     )
 
+    # Pull W&B control-plane config for the confidence head and apply it.
+    cp_cfg: Dict = {}
+    try:
+        from src.training.wandb_control_plane import (
+            apply_config_to_trainer,
+            pull_config,
+            seed_default,
+        )
+        # Idempotent first-time setup — uploads defaults if no artifact yet.
+        seed_default("confidence")
+        cp_cfg = pull_config("confidence")
+    except Exception as exc:  # pragma: no cover — observability only
+        logger.warning("W&B control-plane pull failed: %s — using script defaults", exc)
+        cp_cfg = {}
+
     # Train
     config = TrainerConfig()
     trainer = RidgeTrainer(config)
+    if cp_cfg:
+        try:
+            apply_config_to_trainer(trainer, cp_cfg)
+            hps = cp_cfg.get("hyperparameters") or {}
+            logger.info(
+                "Applied W&B control-plane HPs: n_estimators=%s lr=%s max_depth=%s",
+                hps.get("n_estimators"), hps.get("learning_rate"), hps.get("max_depth"),
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning("apply_config_to_trainer failed: %s", exc)
     metrics = trainer.train(
         X_train, y_train, X_val, y_val,
         feature_names=feature_names,
@@ -271,7 +296,7 @@ def main() -> int:
     trainer.save(str(RIDGE_PATH))
     logger.info("Saved %s", RIDGE_PATH)
 
-    # W&B logging — joint master training run.
+    # W&B logging — confidence-specific run (legacy detailed payload).
     try:
         from src.training.wandb_confidence import log_confidence_training_run
         wb_result = log_confidence_training_run(
@@ -286,12 +311,34 @@ def main() -> int:
                 "sl_atr_mult": args.sl_atr_mult,
                 "tp_atr_mult": args.tp_atr_mult,
             },
-            tags=["joint", "leak_fix_2026_04_30"],
+            tags=["joint", "leak_fix_2026_04_30", "source=manual"],
         )
         if wb_result:
             logger.info("W&B run: %s", wb_result.get("run_url") or wb_result.get("name"))
     except Exception as exc:
         logger.warning("W&B joint logging failed (non-fatal): %s", exc)
+
+    # Control-plane run log — head=confidence, source=manual.
+    try:
+        from src.training.wandb_control_plane import log_run
+        cp_result = log_run(
+            head="confidence",
+            config=cp_cfg or {},
+            metrics={
+                "val_r2": metrics.get("r2_score"),
+                "val_mae": metrics.get("confidence_mae"),
+                "n_real": (label_meta_agg or {}).get("n_real"),
+                "n_pseudo": (label_meta_agg or {}).get("n_pseudo"),
+            },
+            artifacts=[Path(RIDGE_PATH)],
+            run_name=f"manual_confidence_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+            tags=["leak_fix_2026_04_30"],
+            extra_config={"source": "manual", "script": "retrain_confidence_leak_fix"},
+        )
+        if cp_result:
+            logger.info("Control-plane run: %s", cp_result.get("run_url") or cp_result.get("name"))
+    except Exception as exc:
+        logger.warning("Control-plane log_run failed (non-fatal): %s", exc)
 
     # Update joint_training_meta.json (preserve other heads)
     if META_PATH.exists():

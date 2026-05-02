@@ -67,6 +67,56 @@ MAX_ACCEPTABLE_GAP = 0.06  # 6% — hard gate
 CONFIG_PATH = str(PROJECT_ROOT / "config" / "config_m1_optimized.yaml")
 MODELS_DIR = PROJECT_ROOT / "trained_data" / "models"
 
+
+def _control_plane_apply(trainer: Any, head: str) -> Dict[str, Any]:
+    """Pull <head>_training_config from W&B and apply to ``trainer``.
+
+    Best-effort, never raises. Returns the config dict (possibly empty) so
+    callers can pass it to subsequent ``log_run`` calls. Used by
+    train_full_ensemble to route operator-tunable HPs through W&B.
+    """
+    try:
+        from src.training.wandb_control_plane import (
+            apply_config_to_trainer,
+            pull_config,
+            seed_default,
+        )
+        seed_default(head)
+        cfg = pull_config(head)
+        if cfg:
+            apply_config_to_trainer(trainer, cfg)
+        return dict(cfg or {})
+    except Exception as exc:  # pragma: no cover — observability only
+        logger.debug("control plane apply failed for %s: %s", head, exc)
+        return {}
+
+
+def _control_plane_log(
+    head: str,
+    cfg: Dict[str, Any],
+    metrics: Dict[str, Any],
+    artifact_path: Optional[Path] = None,
+    instrument: Optional[str] = None,
+) -> None:
+    """Log a manual training run for a head. Best-effort, never raises."""
+    try:
+        from src.training.wandb_control_plane import log_run
+        log_run(
+            head=head,
+            config=cfg or {},
+            metrics=metrics,
+            artifacts=[artifact_path] if artifact_path else None,
+            run_name=f"manual_{head}_{instrument or 'all'}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+            tags=[f"pair={instrument}"] if instrument else None,
+            extra_config={
+                "source": "manual",
+                "instrument": instrument,
+                "script": "train_full_ensemble",
+            },
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.debug("control plane log failed for %s: %s", head, exc)
+
 # Correlation groups: master → target pairs
 CORRELATION_GROUPS = {
     "yen_carry": {
@@ -275,6 +325,7 @@ def train_core_ensemble(instrument: str, df: pd.DataFrame, params: dict) -> List
         from src.training.trainers.transformer_trainer import TransformerDirectionTrainer
         if dir_data:
             trainer = TransformerDirectionTrainer(trainer_config)
+            cp_cfg_dir = _control_plane_apply(trainer, "direction")
             trainer.train(
                 dir_data["X_train"], dir_data["y_train"],
                 dir_data["X_val"], dir_data["y_val"],
@@ -282,6 +333,12 @@ def train_core_ensemble(instrument: str, df: pd.DataFrame, params: dict) -> List
             )
             trainer.save(str(save_dir / "transformer_direction.keras"))
             metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
+            _control_plane_log(
+                "direction", cp_cfg_dir,
+                {"train_accuracy": metrics.get("train_direction_accuracy") or metrics.get("train_accuracy"),
+                 "val_accuracy": metrics.get("val_direction_accuracy") or metrics.get("val_accuracy")},
+                save_dir / "transformer_direction.keras", instrument,
+            )
             train_acc = metrics.get("train_direction_accuracy", metrics.get("train_accuracy", 0))
             val_acc = metrics.get("val_direction_accuracy", metrics.get("val_accuracy", 0))
             gap = abs(train_acc - val_acc)
@@ -306,12 +363,19 @@ def train_core_ensemble(instrument: str, df: pd.DataFrame, params: dict) -> List
         tcn_data = load_tcn_data(df_feat)
         if tcn_data:
             tcn_trainer = TCNTrainer(trainer_config)
+            cp_cfg_vol = _control_plane_apply(tcn_trainer, "volatility_regime")
             tcn_trainer.train(
                 tcn_data["X_train"], tcn_data["y_train"],
                 tcn_data["X_val"], tcn_data["y_val"],
             )
             tcn_trainer.save(str(save_dir / "tcn_volatility.keras"))
             metrics = tcn_trainer.get_metrics() if hasattr(tcn_trainer, "get_metrics") else {}
+            _control_plane_log(
+                "volatility_regime", cp_cfg_vol,
+                {"train_accuracy": metrics.get("train_accuracy"),
+                 "val_accuracy": metrics.get("val_accuracy")},
+                save_dir / "tcn_volatility.keras", instrument,
+            )
             train_acc = metrics.get("train_accuracy", 0)
             val_acc = metrics.get("val_accuracy", 0)
             gap = abs(train_acc - val_acc)
@@ -335,12 +399,19 @@ def train_core_ensemble(instrument: str, df: pd.DataFrame, params: dict) -> List
         mom_data = load_xgboost_data(df_feat)
         if mom_data:
             lgbm_mom = LightGBMMomentumTrainer(trainer_config)
+            cp_cfg_mom = _control_plane_apply(lgbm_mom, "momentum")
             lgbm_mom.train(
                 mom_data["X_train"], mom_data["y_train"],
                 mom_data["X_val"], mom_data["y_val"],
             )
             lgbm_mom.save(str(save_dir / "lgbm_momentum.pkl"))
             metrics = lgbm_mom.get_metrics() if hasattr(lgbm_mom, "get_metrics") else {}
+            _control_plane_log(
+                "momentum", cp_cfg_mom,
+                {"train_accuracy": metrics.get("train_accuracy"),
+                 "val_accuracy": metrics.get("val_accuracy")},
+                save_dir / "lgbm_momentum.pkl", instrument,
+            )
             train_acc = metrics.get("train_accuracy", 0)
             val_acc = metrics.get("val_accuracy", 0)
             gap = abs(train_acc - val_acc)
@@ -362,12 +433,19 @@ def train_core_ensemble(instrument: str, df: pd.DataFrame, params: dict) -> List
         rf_data = load_rf_data(df_feat)
         if rf_data:
             lgbm_risk = LightGBMRiskTrainer(trainer_config)
+            cp_cfg_risk = _control_plane_apply(lgbm_risk, "risk")
             lgbm_risk.train(
                 rf_data["X_train"], rf_data["y_train"],
                 rf_data["X_val"], rf_data["y_val"],
             )
             lgbm_risk.save(str(save_dir / "lgbm_risk.pkl"))
             metrics = lgbm_risk.get_metrics() if hasattr(lgbm_risk, "get_metrics") else {}
+            _control_plane_log(
+                "risk", cp_cfg_risk,
+                {"train_accuracy": metrics.get("train_accuracy"),
+                 "val_accuracy": metrics.get("val_accuracy")},
+                save_dir / "lgbm_risk.pkl", instrument,
+            )
             train_acc = metrics.get("train_accuracy", 0)
             val_acc = metrics.get("val_accuracy", 0)
             gap = abs(train_acc - val_acc)
@@ -389,12 +467,19 @@ def train_core_ensemble(instrument: str, df: pd.DataFrame, params: dict) -> List
         ridge_data = load_ridge_data(df_feat)
         if ridge_data:
             ridge = RidgeTrainer(trainer_config)
+            cp_cfg_conf = _control_plane_apply(ridge, "confidence")
             ridge.train(
                 ridge_data["X_train"], ridge_data["y_train"],
                 ridge_data["X_val"], ridge_data["y_val"],
             )
             ridge.save(str(save_dir / "ridge_confidence.pkl"))
             metrics = ridge.get_metrics() if hasattr(ridge, "get_metrics") else {}
+            _control_plane_log(
+                "confidence", cp_cfg_conf,
+                {"val_r2": metrics.get("r2_score"),
+                 "val_mae": metrics.get("confidence_mae")},
+                save_dir / "ridge_confidence.pkl", instrument,
+            )
             train_acc = metrics.get("train_accuracy", 0)
             val_acc = metrics.get("val_accuracy", 0)
             gap = abs(train_acc - val_acc)

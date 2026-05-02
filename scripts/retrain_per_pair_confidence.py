@@ -116,8 +116,28 @@ def _train_per_pair(
         original_feature_names=result.get("feature_names"),
     )
 
+    # Pull W&B control-plane config for the confidence head (per-pair shares
+    # the same head config as joint).
+    cp_cfg: Dict[str, Any] = {}
+    try:
+        from src.training.wandb_control_plane import (
+            apply_config_to_trainer,
+            pull_config,
+            seed_default,
+        )
+        seed_default("confidence")
+        cp_cfg = pull_config("confidence")
+    except Exception as exc:  # pragma: no cover
+        logger.debug("Control-plane pull failed: %s", exc)
+        cp_cfg = {}
+
     config = TrainerConfig()
     trainer = RidgeTrainer(config)
+    if cp_cfg:
+        try:
+            apply_config_to_trainer(trainer, cp_cfg)
+        except Exception as exc:  # pragma: no cover
+            logger.debug("apply_config_to_trainer failed: %s", exc)
 
     # NOTE: RidgeTrainer.train doesn't currently expose init_model; warm-start
     # from joint booster is best-effort via direct param transfer. The joint
@@ -135,7 +155,7 @@ def _train_per_pair(
     trainer.save(str(pkl_path))
     logger.info("Saved per-pair model: %s", pkl_path)
 
-    # W&B logging
+    # W&B logging — confidence-specific detailed run.
     try:
         from src.training.wandb_confidence import log_confidence_training_run
         wb = log_confidence_training_run(
@@ -147,12 +167,34 @@ def _train_per_pair(
                 "instrument": instrument,
                 "joint_warm_start": init_booster is not None,
             },
-            tags=["per_pair", instrument, "leak_fix_2026_04_30"],
+            tags=["per_pair", instrument, "leak_fix_2026_04_30", "source=manual"],
         )
         if wb:
             logger.info("W&B run: %s", wb.get("run_url") or wb.get("name"))
     except Exception as wandb_exc:
         logger.debug("W&B per-pair log skipped: %s", wandb_exc)
+
+    # Control-plane run log — head=confidence, source=manual.
+    try:
+        from src.training.wandb_control_plane import log_run
+        log_run(
+            head="confidence",
+            config=cp_cfg or {},
+            metrics={
+                "val_r2": metrics.get("r2_score"),
+                "val_mae": metrics.get("confidence_mae"),
+            },
+            artifacts=[pkl_path],
+            run_name=f"manual_confidence_{instrument}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+            tags=[f"pair={instrument}", "per_pair"],
+            extra_config={
+                "source": "manual",
+                "instrument": instrument,
+                "script": "retrain_per_pair_confidence",
+            },
+        )
+    except Exception as exc:  # pragma: no cover
+        logger.debug("Control-plane log_run failed: %s", exc)
 
     # Leak-detection signal (logger.error inside RidgeTrainer; surface here too)
     r2 = float(metrics.get("r2_score") or 0.0)
