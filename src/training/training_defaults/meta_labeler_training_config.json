@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "head": "meta_labeler",
+  "model_class": "xgboost",
+  "description": "XGBoost meta-labeler on triple-barrier labels (Lopez de Prado). Determines WHEN to trust the primary signal. Architecture (depth, leaves) is shallow by design; reg_alpha/reg_lambda/subsample stay hardcoded. Operator tunes labels + top-3 HPs (n_estimators, max_depth, dropout).",
+  "label_generation": {
+    "lookahead_bars": 12,
+    "sl_atr_mult": 1.0,
+    "tp_atr_mult": 1.5,
+    "label_mode": "real",
+    "winsorize_bounds": [-0.02, 0.02]
+  },
+  "training_behavior": {
+    "enable_per_pair_finetune": false,
+    "enable_joint_training": true,
+    "min_real_labels_per_pair": 100,
+    "expected_r2_band": [0.0, 0.40],
+    "min_confidence_threshold": 0.52
+  },
+  "hyperparameters": {
+    "n_estimators": 100,
+    "max_depth": 2,
+    "dropout_rate": 0.35
+  },
+  "ranges": {
+    "lookahead_bars": [4, 48],
+    "sl_atr_mult": [0.5, 3.0],
+    "tp_atr_mult": [0.8, 4.0],
+    "label_mode": ["real", "pseudo", "blend"],
+    "n_estimators": [20, 1000],
+    "max_depth": [1, 8],
+    "dropout_rate": [0.0, 0.7],
+    "min_real_labels_per_pair": [20, 5000],
+    "min_confidence_threshold": [0.40, 0.80]
+  }
+}

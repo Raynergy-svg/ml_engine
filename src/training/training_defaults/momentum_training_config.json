@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "head": "momentum",
+  "model_class": "lightgbm",
+  "description": "LightGBM momentum head (was XGBoost). Trains two models: momentum_score regressor and acceleration classifier. Architecture stays hardcoded; operator tunes labels + top-3 HPs.",
+  "label_generation": {
+    "lookahead_bars": 12,
+    "sl_atr_mult": 1.0,
+    "tp_atr_mult": 1.5,
+    "label_mode": "real",
+    "winsorize_bounds": [-0.02, 0.02]
+  },
+  "training_behavior": {
+    "enable_per_pair_finetune": false,
+    "enable_joint_training": true,
+    "min_real_labels_per_pair": 100,
+    "expected_r2_band": [0.0, 0.40]
+  },
+  "hyperparameters": {
+    "n_estimators": 150,
+    "learning_rate": 0.05,
+    "max_depth": 6
+  },
+  "ranges": {
+    "lookahead_bars": [4, 48],
+    "sl_atr_mult": [0.5, 3.0],
+    "tp_atr_mult": [0.8, 4.0],
+    "label_mode": ["real", "pseudo", "blend"],
+    "n_estimators": [20, 1000],
+    "learning_rate": [0.01, 0.5],
+    "max_depth": [2, 12],
+    "min_real_labels_per_pair": [20, 5000]
+  }
+}
