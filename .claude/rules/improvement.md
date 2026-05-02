@@ -47,8 +47,17 @@ Meta-rules governing how Buddy learns and evolves.
 ## Test Coverage Gates (promoted 2026-03-23, from 8 observations)
 - ALWAYS write unit tests for new calculation/logic functions before merging
 - ALWAYS test edge cases: zero values, negative values, None inputs, empty collections
-- ALWAYS use mock-based testing for external API dependencies (OANDA, news feeds)
+- ~~ALWAYS use mock-based testing for external API dependencies~~ **SUPERSEDED 2026-05-01: NO MOCKS — see No-Mock Rule below**
 - NEVER ship a new subsystem without at least 5 unit tests covering core paths
+
+## No-Mock Rule (promoted 2026-05-01, from 1 catastrophic observation)
+- NEVER use `unittest.mock`, `MagicMock`, `patch`, or any test-double class. The 2026-05-01 audit found 38 passing `test_meta_manager.py` tests hid a production wiring gap (`StagedDeployer` constructed without `config_adjuster=ConfigAdjuster()` → 11 ChangePackages walked through shadow→canary→live with zero actual config mutation). Mocks make integration gaps invisible.
+- Tests must use real classes against real disk. Pattern: real `ScannerConfig()`, real `ConfigAdjuster(persistence_path=tmp_path / "adj.json")`, real `AdjustmentApprover()`, real `StagedDeployer(...)`, real `MetaManager.intake(...)`. Drive the pipeline; assert on real disk state and real config attribute mutation.
+- For external APIs (OANDA, news feeds): skip the test, mark `@pytest.mark.integration`, or use a sandbox. Don't mock.
+- For clocks: pass real timestamps or use real `datetime.now()`. Time-based tests use small thresholds, not frozen time.
+- If the code-under-test cannot be tested without mocks, the code is too coupled — refactor it. The existing mocked test suite stays as-is (don't rewrite retroactively); never add a new mock; migrate when touching a test file for other reasons.
+
+Source: 1 catastrophic observation (commit 41eec2e meta-pipeline shipped with `_adjuster=None` for two weeks; 11 packages auto-promoted with no actuation; only surfaced via end-to-end log audit because the test suite was mock-blind).
 
 ## Config Validation Gates (promoted 2026-03-23, from 6 observations)
 - ALWAYS validate config values at load time (range checks, type checks, required fields)

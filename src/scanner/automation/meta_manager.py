@@ -809,10 +809,23 @@ def _build_production_manager() -> "MetaManager":
     try:
         from src.scanner.automation.staged_deployer import StagedDeployer
         from src.scanner.automation.adjustment_approver import AdjustmentApprover
+        from src.scanner.automation.config_adjuster import ConfigAdjuster
         from src.scanner.config import ScannerConfig
         cfg = ScannerConfig()
+        # Mythos audit 2026-05-01 — config_adjuster was missing here, so
+        # _apply_canary / _apply_live always early-returned at the
+        # `if not self._adjuster:` guard with `live_no_adjuster` /
+        # `canary_no_adjuster` warnings. Result: every meta package walked
+        # through shadow → canary → live → closed cleanly but the
+        # config_delta NEVER reached the live ScannerConfig. 11 packages
+        # were promoted on 2026-04-30 with zero actual config mutation —
+        # the autonomous loop's last yard was open-circuit. With the
+        # adjuster wired, _apply_canary now collects/approves the proposal
+        # and apply_adjustments writes the new value to the running
+        # ScannerConfig instance.
         staged_deployer = StagedDeployer(
             config=cfg,
+            config_adjuster=ConfigAdjuster(),
             adjustment_approver=AdjustmentApprover(),
             shadow_cycles=getattr(cfg, "staged_deploy_shadow_cycles", 20),
             canary_trades=getattr(cfg, "staged_deploy_canary_trades", 10),

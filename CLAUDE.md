@@ -19,6 +19,75 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 5. **Monitor** — drawdown guardian, trailing SL, real-time P/L
 6. **Learn** — RL weight updates, trade journal, pattern extraction
 
+## Tier 7 Autonomous Architecture (current 2026-05-01)
+
+Closed control loop: **incident → propose → gate → soak → promote → close**. Runtime is deterministic; **Claude is NEVER in the hot path** (per-scan, per-trade). Claude is for planning, post-mortems, brainstorming only.
+
+### Runtime entry (single source of truth)
+- `src/bootstrap/env.py:ensure_runtime_env()` — called by `main.py:34` AND `src/tui/__main__.py:7`. Idempotent (re-init under `os.execv` Ctrl+R no-ops via marker attribute).
+- `scripts/init.sh` sources `.env.local` + `.env.local.toggles` (meta-pipeline flags live here).
+- `logs/buddy_debug.log` — every `logger.*` call, plain text, rotated 50MB×3. **First place to look** for any "did X fire?" question.
+
+### TUI runtime path (NOT Orchestrator)
+- `src/tui/embedded_scanner.py:EmbeddedScanner` is the live scanner driver. `Orchestrator` exists in `src/scanner/automation/orchestrator.py` but is **library code only — never instantiated in `src/tui/`** (`grep "Orchestrator(" src/tui/` = 0 matches; commit f070d39 documented this lie).
+- `EmbeddedScanner.run_one_cycle()` halt-checks via `StateEngine().get_halted()` early-return.
+- `_maybe_route_to_meta_per_cycle()` ships per-cycle diagnostics to MetaManager.
+- `_write_brain()` tees every brain-feed line to `.claude/brain/feed.jsonl`.
+- Ctrl+R via `os.execv` preserves state (state.json `safe_restart` beacon).
+
+### Tier 7 per-pair gate routing (commit 649bd3d)
+- `GateEvaluator(use_per_pair_routing=True)` — auto-enabled by Scanner when ANY per-pair training subdir exists in `trained_data/models/{PAIR}/`.
+- `_get_pair_evaluator(instrument)` builds lazy per-pair sub (cached). Each sub: own model_dir → own catboost/xgboost/lightgbm momentum, ridge confidence, RF/lightgbm risk, transformer, meta-labeler. Shares parent's TCN volatility regime (single source of truth).
+- Joint dir = fallback (correlation-threshold-dropped pairs: USD_JPY, EUR_GBP, EUR_JPY).
+- Disable via `ScannerConfig.disable_per_pair_gate_routing=True`.
+- Aligns gates with `modular_inference._get_model_path` (was already per-pair-first; gates was the holdout).
+
+### Auto-halt loop (production-fired 2026-04-30 15:54:30)
+- AlertManager surfaces `consecutive_losses` alert.
+- Engine `_maybe_auto_halt_on_loss_streak()` triggers when value ≥ `auto_halt_consecutive_loss_threshold` (default 5).
+- Calls `StateEngine.set_halted(True)` + routes `meta_manager.intake(kind="auto_halt_loss_streak")` → ChangePackage in inbox.
+- Live evidence: `logs/buddy_debug.log` 15:54:30 — `meta_manager.intake change_id=467c350af5f0 kind=auto_halt_loss_streak`.
+
+### Meta-pipeline (deterministic, no-LLM hot path)
+- `MetaManager.intake(change_id, kind, payload)` — entry point. Throttle via `_concurrent_count()` (narrows to actively-executing stages); 2h orphan TTL prevents deadlock.
+- `DeterministicSurgeon` (commit 3692463) — proposer, generates concrete config deltas WITHOUT LLM. Closes the `use_llm=False` black hole.
+- `cycle_autonomy.py` — honors no-LLM as **hard kill** on Claude fallback (commit 3124a5c).
+- `Constitution` (C1–C7 mapped to real `ScannerConfig` fields) — `policy_check` stage.
+- `StagedDeployer.advance` — `pending → policy_check → deployed_shadow → deployed_canary → deployed_live → closed`. Soak gates: `shadow_cycles`, `canary_trades`.
+- `MetaManager.drain()` — the actual stage-advancer. **Only call site in TUI runtime is `_approve_meta_packages` in inbox_screen.py.** No other drainer wired.
+
+### F2 Inbox (operator approval surface)
+- Filters: `[All] [📚 Homework] [🔧 Adjustments] [🧠 Meta]` (entry_type-keyed).
+- `action_approve_all` runs three loops (homework, adjustments, meta) + calls `_PRODUCTION_MGR.drain()` inline so packages advance immediately.
+- `_read_meta_packages()` reads `.claude/meta/changes/*.json` for live ChangePackage state.
+
+### Self-heal subsystem
+- `src/scanner/feedback/self_heal.py` — handlers keyed by action_type. 12h debounce per action (`.claude/self_heal_debounce.json`).
+- `_handle_reset_gate_threshold(gate)` writes properly-shaped history entries to `.claude/config_adjustments.json["history"]`.
+- `src/scanner/feedback/diagnostics.py` — gate-overtightening trap detection + schema mismatches.
+- `AdjustmentApprover._save_approved` has shrink-guard tripwire (refuses writes that would shrink history; logs the proposed payload).
+
+### Verification surfaces (canonical, priority order)
+1. `logs/buddy_debug.log` — every `logger.*` call.
+2. `.claude/brain/feed.jsonl` — F1 brain feed mirror (Rich markup stripped).
+3. `.claude/heartbeat.json` — TUI alive marker (pid, cycle_count, scanner_alive, ts_iso ≤ 15s = alive).
+4. `.claude/state.json` — halted, mode, scan_cycle_count, safe_restart beacon.
+5. `.claude/meta/changes.jsonl` + `.claude/meta/changes/*.json` — meta ledger + per-package source-of-truth.
+6. `.claude/alert_state.json` — AlertManager state.
+7. `trained_data/virtual_trades.jsonl` + `trained_data/trade_journal_rl.json` — gate-rejected scans + closed trade outcomes.
+
+### Tier 7 key files
+- `src/bootstrap/env.py` — runtime env init
+- `src/tui/embedded_scanner.py` — live scanner driver
+- `src/scanner/automation/meta_manager.py` — MetaManager + throttle
+- `src/scanner/automation/deterministic_surgeon.py` — no-LLM proposer
+- `src/scanner/automation/cycle_autonomy.py` — no-LLM policy enforcement
+- `src/scanner/automation/staged_deployer.py` — shadow → canary → live
+- `src/scanner/automation/constitution.py` — C1–C7 gates
+- `src/scanner/feedback/self_heal.py` + `diagnostics.py` — auto-correction
+- `src/scanner/gates.py` — `GateEvaluator` with Tier 7 per-pair routing
+- `scripts/cybernetic_smoke.py` + `cybernetic_promote.py` — operator validation tools
+
 ## Key Decisions
 - Soft uncertainty blocking (confidence penalty) over hard circuit breaker
 - ATR-based dynamic SL/TP, never hardcoded pips
@@ -117,6 +186,7 @@ Buddy is a **student** doing supervised study of past trades. Closed trades beco
 - TypeScript types must be explicit; Python type hints on public APIs
 - Auth checks server-side, never trust client-side
 - Environment variables, never hardcoded secrets
+- **NO MOCK CODE.** No `unittest.mock`, `MagicMock`, `patch`, or test-double classes. Tests must use real `ScannerConfig`, real `ConfigAdjuster(persistence_path=tmp_path / "x.json")`, real `MetaManager`, real disk via `tmp_path`. Reason: 38 mocked tests passed while production wired `StagedDeployer` without `config_adjuster` — 11 packages went shadow→canary→live with zero actual config mutation. Mocks hid the integration gap. Going-forward rule (don't rewrite existing mocked tests retroactively, but never add new mocks; migrate when touching for other reasons).
 
 ### Refinement protocol (compact)
 On every operator request: parse the goal, identify what's broken/missing/unclear, surface ambiguity if WHAT/WHERE aren't specified, propose options before executing destructive work, confirm before flipping LIVE-mode or pushing to remote. Don't say "should work" — either explain why it works or flag uncertainty.
