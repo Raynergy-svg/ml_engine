@@ -135,6 +135,7 @@ Buddy is a **student** doing supervised study of past trades. Closed trades beco
 | Validation | Walk-forward + purged k-fold + embargo | `src/training/walkforward_validation.py` |
 | Calibration | Platt + Isotonic ensemble, recalibrated from journal | `src/risk/confidence_calibration.py` |
 | Online retrain | Cooldown-protected, drift-triggered, replay buffer | `online_retrainer.py` |
+| Training control plane: W&B configs | 7 head configs as versioned W&B artifacts; ops tweak via UI/CLI; retrains pick up `:latest` automatically | `src/training/wandb_control_plane.py`, `docs/wandb_training_control_plane.md` |
 
 Latest deep audit + upgrade roadmap: `docs/ml_architecture_audit_2026-04-30.md`.
 

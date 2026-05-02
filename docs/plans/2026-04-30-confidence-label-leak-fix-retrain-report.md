@@ -389,3 +389,56 @@ The new live trades store 24-feature `ridge_features` automatically
 through `modular_inference.py:_extract_ridge_features` (which already
 honors the model's saved `feature_names`), so going forward there's no
 schema drift to manage.
+
+---
+
+## Follow-up: W&B control plane wired across all heads (2026-05-02)
+
+Yesterday's confidence-only W&B logger has been generalized into a full
+training control plane. All 7 heads (direction, confidence, momentum,
+risk, volatility_regime, trend_regime, meta_labeler) now pull their
+operator-tunable settings from a versioned W&B config artifact named
+`<head>_training_config:latest`, and log each run back with proper
+tagging (`source=manual` vs `source=auto_retrain`).
+
+**Key changes:**
+
+- New helper `src/training/wandb_control_plane.py` (single source of
+  truth: `pull_config`, `push_config`, `log_run`, `seed_default`,
+  `apply_config_to_trainer`).
+- 7 default JSONs under `src/training/training_defaults/` provide the
+  seed values + fallback when W&B is unreachable.
+- `online_retrainer.py:_retrain_xgboost/_retrain_rf/_retrain_ridge` now
+  pulls per-head config + logs each retrain to W&B with
+  `source=auto_retrain`. Cooldowns + drift triggers unchanged.
+- `scripts/retrain_confidence_leak_fix.py`,
+  `scripts/retrain_per_pair_confidence.py`,
+  `scripts/train_full_ensemble.py` route through the control plane and
+  tag manual runs.
+- LightGBM trainers (`lightgbm_trainers.py`, `ridge_trainer.py`) expose
+  `n_estimators / learning_rate / max_depth` as instance attributes
+  instead of hardcoded constants.
+- `apply_config_to_trainer` also routes Keras-style HPs onto
+  `trainer.config` (TrainerConfig) for Transformer / TCN — `dropout`
+  aliases to both `transformer_dropout` and `tcn_dropout`.
+- 40 unit tests for the helper + 6 integration tests covering the
+  online retrainer; offline smoke confirmed end-to-end (run dirs land
+  under `wandb/offline-run-*`).
+
+**Operator-facing doc:** `docs/wandb_training_control_plane.md`.
+
+**What stayed hidden in code:** model architectures (d_model, layers,
+kernel sizes), validation infrastructure (walk-forward window, embargo,
+k-folds), LightGBM internals (num_leaves, reg_alpha/lambda), loss /
+optimizer / EMA decay. Changing those still requires a code PR.
+
+**What auto-retrain picks up vs requires manual rerun:**
+- Auto-retrain (drift-triggered): pulls latest `confidence/momentum/risk`
+  configs each cycle.
+- Manual rerun required: direction, regimes, meta-labeler (heavy
+  retrains owned by `train_full_ensemble.py` / dedicated scripts).
+
+**Trading invariants untouched:** R:R 1.2 gate, correlation filter,
+ATR-based SL/TP, drawdown guardian, LOW regime sl_mult >= 1.2, trend
+agent veto, MR composite veto. The control plane only tunes training,
+not runtime.
