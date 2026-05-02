@@ -110,3 +110,9 @@ training_report_*.md
 .claude/homework_pending.jsonl
 .claude/homework_history.jsonl
 .claude/rejected_heuristics_log.jsonl
+
+# Coverage outputs
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

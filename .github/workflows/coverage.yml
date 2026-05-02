@@ -1,0 +1,191 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main, develop, "copilot/**", "claude/**"]
+  pull_request:
+    branches: [main, develop]
+
+# Cancel in-progress runs on the same ref to avoid wasted CI minutes.
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    name: Baseline coverage (curated suite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        # The baseline suite is pure-Python + numpy. Pandas/sklearn/etc. are
+        # NOT needed here — keep this job fast and isolated from the larger
+        # test job in code-quality.yml that requires the full ML stack.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov numpy
+
+      - name: Run baseline coverage
+        # Same command shape as scripts/coverage.sh so local + CI never drift.
+        # --cov=src instruments the entire src/ tree so untested modules are
+        # visible in the report (currently most of src/ shows as 0%).
+        run: |
+          pytest \
+            tests/test_dynamic_sl_tp.py \
+            tests/test_dynamic_drawdown.py \
+            tests/test_entropy_sizer.py \
+            tests/test_kelly_portfolio.py \
+            tests/test_model_bandit.py \
+            tests/test_model_calibration.py \
+            tests/test_agent_lifecycle.py \
+            tests/test_affinity_portfolio.py \
+            --cov=src \
+            --cov-report=term \
+            --cov-report=xml \
+            --cov-report=html
+
+      - name: Generate scoped report (modules under test only)
+        # Repeats coverage for just the 8 modules under test so reviewers can
+        # see >90% coverage on the surface that has tests, separately from
+        # the 1.7% repo-wide number that's dominated by untested files.
+        if: always()
+        run: |
+          pytest \
+            tests/test_dynamic_sl_tp.py \
+            tests/test_dynamic_drawdown.py \
+            tests/test_entropy_sizer.py \
+            tests/test_kelly_portfolio.py \
+            tests/test_model_bandit.py \
+            tests/test_model_calibration.py \
+            tests/test_agent_lifecycle.py \
+            tests/test_affinity_portfolio.py \
+            --cov=src.scanner.automation.dynamic_sl_tp \
+            --cov=src.scanner.automation.dynamic_drawdown \
+            --cov=src.scanner.automation.entropy_sizer \
+            --cov=src.scanner.automation.kelly_portfolio \
+            --cov=src.scanner.automation.model_bandit \
+            --cov=src.scanner.automation.model_calibration \
+            --cov=src.scanner.automation.agent_lifecycle \
+            --cov=src.scanner.automation.affinity_portfolio \
+            --cov-report=term \
+            > scoped_coverage.txt 2>&1 || true
+          cat scoped_coverage.txt
+
+      - name: Write coverage summary to PR
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+
+          def emit(line=""):
+              with summary_path.open("a") as fh:
+                  fh.write(line + "\n")
+
+          emit("# Coverage Report")
+          emit()
+
+          xml_path = Path("coverage.xml")
+          if not xml_path.exists():
+              emit(":warning: `coverage.xml` not found — pytest run failed before coverage was emitted.")
+              raise SystemExit(0)
+
+          root = ET.parse(xml_path).getroot()
+          line_rate = float(root.attrib["line-rate"]) * 100
+          branch_rate = float(root.attrib["branch-rate"]) * 100
+          lines_covered = root.attrib["lines-covered"]
+          lines_valid = root.attrib["lines-valid"]
+          branches_covered = root.attrib["branches-covered"]
+          branches_valid = root.attrib["branches-valid"]
+
+          emit("## Repo-wide (instrumented `src/`)")
+          emit()
+          emit("| Metric | Covered | Total | % |")
+          emit("|---|---:|---:|---:|")
+          emit(f"| Lines | {lines_covered} | {lines_valid} | {line_rate:.1f}% |")
+          emit(f"| Branches | {branches_covered} | {branches_valid} | {branch_rate:.1f}% |")
+          emit()
+          emit(
+              "Most of `src/` is untested by the curated baseline; this number "
+              "is the honest baseline against which future PRs measure delta."
+          )
+          emit()
+
+          # Per-module table for files that have any coverage at all
+          emit("## Modules with coverage (>= 1%)")
+          emit()
+          emit("| Module | Lines | Branches | Cover |")
+          emit("|---|---:|---:|---:|")
+
+          rows = []
+          for cls in root.iter("class"):
+              fname = cls.attrib.get("filename", "")
+              if not fname.endswith(".py"):
+                  continue
+              line_rate_cls = float(cls.attrib.get("line-rate", 0)) * 100
+              if line_rate_cls < 1.0:
+                  continue
+              branch_rate_cls = float(cls.attrib.get("branch-rate", 0)) * 100
+              # Count lines from <lines> children
+              lines_node = cls.find("lines")
+              total_lines = len(lines_node.findall("line")) if lines_node is not None else 0
+              hit_lines = sum(
+                  1 for ln in (lines_node.findall("line") if lines_node is not None else [])
+                  if int(ln.attrib.get("hits", 0)) > 0
+              )
+              # Filenames are relative to the coverage `source` root (src/);
+              # display them with src/ prefix so reviewers can click straight
+              # to the file.
+              display_name = f"src/{fname}"
+              rows.append((display_name, hit_lines, total_lines, branch_rate_cls, line_rate_cls))
+
+          rows.sort(key=lambda r: -r[4])
+          for fname, hit, total, br, lr in rows[:30]:
+              emit(f"| `{fname}` | {hit}/{total} | {br:.0f}% | {lr:.1f}% |")
+
+          if len(rows) > 30:
+              emit(f"| _… {len(rows) - 30} more files at <100%_ | | | |")
+
+          emit()
+          emit("Full HTML report uploaded as artifact `coverage-html`.")
+          PY
+
+      - name: Upload coverage XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload coverage HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: htmlcov/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload scoped report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scoped-coverage-text
+          path: scoped_coverage.txt
+          if-no-files-found: warn
+          retention-days: 14

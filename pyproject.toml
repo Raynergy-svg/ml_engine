@@ -55,3 +55,59 @@ ignore = [
 "demo_*.py" = ["T201", "F401", "E501"]
 "check_*.py" = ["T201", "F401", "E501"]
 "inspect_*.py" = ["T201", "F401", "E501"]
+
+# ── Coverage configuration ────────────────────────────────────────────────
+# Run with: pytest --cov=src --cov-report=term-missing --cov-report=html
+# Or use the convenience script: scripts/coverage.sh
+[tool.coverage.run]
+source = ["src"]
+branch = true
+parallel = false
+data_file = ".coverage"
+omit = [
+    # Tests
+    "tests/*",
+    # Top-level CLI/script entrypoints (covered by integration tests, not unit)
+    "buddy_scanner.py",
+    "buddy_intelligent_mode.py",
+    "buddy.py",
+    "main.py",
+    "cli_entry.py",
+    # Generated / quarantined code
+    "legacy_quarantine/*",
+    "*/migrations/*",
+    "*/__pycache__/*",
+    # Optional / heavy ML training paths excluded from baseline
+    "src/training/*",
+    "src/strategy_invention/*",
+    # TUI is interactive — covered by manual + e2e flows
+    "src/tui/*",
+    # Backup / orphan files
+    "*.orphan_backup",
+    "*_old*.py",
+    "*_backup*.py",
+]
+
+[tool.coverage.report]
+# Exclude pragmas, defensive defaults, and unreachable paths from line counts
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+    "def __repr__",
+    "class .*\\bProtocol\\):",
+]
+precision = 1
+show_missing = true
+skip_empty = true
+skip_covered = false
+sort = "Cover"
+
+[tool.coverage.html]
+directory = "htmlcov"
+title = "ML Engine Coverage Report"
+
+[tool.coverage.xml]
+output = "coverage.xml"
