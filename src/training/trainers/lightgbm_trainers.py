@@ -479,6 +479,12 @@ class LightGBMMomentumTrainer(BaseTrainer):
         self.feature_names = None
         self.n_features = None
         self.momentum_norm_factor = None
+        # Top-3 hyperparameters routable via W&B control plane
+        # (src/training/wandb_control_plane.py:apply_config_to_trainer).
+        # Architecture defaults (num_leaves, reg_*) stay hidden in code.
+        self.n_estimators: int = 150
+        self.learning_rate: float = 0.05
+        self.max_depth: int = 6
 
     def train(
         self,
@@ -534,11 +540,11 @@ class LightGBMMomentumTrainer(BaseTrainer):
         y_val_momentum = y_val[:, 0].copy()
         y_val_accel = y_val[:, 1].astype(int).copy()
 
-        # Train momentum regressor
+        # Train momentum regressor — HPs routable via W&B control plane.
         self.momentum_model = _create_lgbm_regressor(
-            n_estimators=150,
-            learning_rate=0.05,
-            max_depth=6,
+            n_estimators=int(self.n_estimators),
+            learning_rate=float(self.learning_rate),
+            max_depth=int(self.max_depth),
             num_leaves=31,
         )
 
@@ -553,11 +559,11 @@ class LightGBMMomentumTrainer(BaseTrainer):
             init_model=init_momentum_model,
         )
 
-        # Train acceleration classifier
+        # Train acceleration classifier — HPs routable via W&B control plane.
         self.accel_model = _create_lgbm_classifier(
-            n_estimators=150,
-            learning_rate=0.05,
-            max_depth=6,
+            n_estimators=int(self.n_estimators),
+            learning_rate=float(self.learning_rate),
+            max_depth=int(self.max_depth),
             num_leaves=31,
         )
 
@@ -705,6 +711,11 @@ class LightGBMRiskTrainer(BaseTrainer):
         self.scaler = None
         self.feature_names = None
         self.n_features = None
+        # Top-3 hyperparameters routable via W&B control plane
+        # (src/training/wandb_control_plane.py:apply_config_to_trainer).
+        self.n_estimators: int = 150
+        self.learning_rate: float = 0.05
+        self.max_depth: int = 6
 
     def train(
         self,
@@ -757,11 +768,11 @@ class LightGBMRiskTrainer(BaseTrainer):
         y_val_drawdown = y_val[:, 0].copy()
         y_val_streak = y_val[:, 1].copy()
 
-        # Train drawdown regressor
+        # Train drawdown regressor — HPs routable via W&B control plane.
         self.drawdown_model = _create_lgbm_regressor(
-            n_estimators=150,
-            learning_rate=0.05,
-            max_depth=6,
+            n_estimators=int(self.n_estimators),
+            learning_rate=float(self.learning_rate),
+            max_depth=int(self.max_depth),
             num_leaves=31,
         )
 
@@ -775,11 +786,11 @@ class LightGBMRiskTrainer(BaseTrainer):
             init_model=init_drawdown_model,
         )
 
-        # Train streak probability regressor
+        # Train streak probability regressor — HPs routable via W&B control plane.
         self.streak_model = _create_lgbm_regressor(
-            n_estimators=150,
-            learning_rate=0.05,
-            max_depth=6,
+            n_estimators=int(self.n_estimators),
+            learning_rate=float(self.learning_rate),
+            max_depth=int(self.max_depth),
             num_leaves=31,
         )
 

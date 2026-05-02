@@ -146,6 +146,11 @@ class RidgeTrainer(BaseTrainer):
         self.best_alpha = None
         self.best_l1_ratio = None
         self.n_nonzero_coefs = None
+        # Top-3 hyperparameters routable via W&B control plane
+        # (src/training/wandb_control_plane.py:apply_config_to_trainer).
+        self.n_estimators: int = 100
+        self.learning_rate: float = 0.1
+        self.max_depth: int = 6
 
     def train(
         self,
@@ -191,11 +196,11 @@ class RidgeTrainer(BaseTrainer):
             x_train_df = pd.DataFrame(x_train_scaled, columns=self.feature_names)
             x_val_df = pd.DataFrame(x_val_scaled, columns=self.feature_names)
 
-        # Try LightGBM first (GPU-accelerated)
+        # Try LightGBM first (GPU-accelerated) — HPs routable via W&B control plane.
         lgbm_model = _create_lgbm_regressor(
-            n_estimators=100,
-            learning_rate=0.1,
-            max_depth=6,
+            n_estimators=int(self.n_estimators),
+            learning_rate=float(self.learning_rate),
+            max_depth=int(self.max_depth),
             num_leaves=31,
         )
 

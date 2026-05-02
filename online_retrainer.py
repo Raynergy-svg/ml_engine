@@ -23,11 +23,72 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# --- W&B Training Control Plane -------------------------------------------
+# Imported lazily inside methods so that retrainer continues to work when
+# wandb is uninstalled or networkless. The control plane exposes a single
+# function ``pull_config`` per head + ``log_run`` that gracefully degrades
+# (offline mode → ./wandb/, no API key → offline, no install → no-op).
+# Mapping from the local model labels we retrain here to control-plane head
+# names. Note: incremental online retraining trains the GATE models
+# (xgboost/momentum, rf/risk fallback, ridge/confidence). Direction +
+# regimes + meta-labeler are heavy retrains owned by the manual scripts.
+_HEAD_BY_LOCAL_MODEL: Dict[str, str] = {
+    "xgboost": "momentum",
+    "rf": "risk",
+    "ridge": "confidence",
+}
+
+
+def _safe_pull_config(head: str) -> Dict[str, Any]:
+    """Pull the W&B control-plane config for ``head`` (offline-safe)."""
+    try:
+        from src.training.wandb_control_plane import pull_config
+        cfg = pull_config(head)
+        return dict(cfg or {})
+    except Exception as exc:
+        logger.warning(
+            "Control-plane pull failed for head=%s: %s — auto-tweaking won't apply this cycle",
+            head, exc,
+        )
+        return {}
+
+
+def _safe_log_run(
+    head: str,
+    config: Dict[str, Any],
+    metrics: Dict[str, Any],
+    artifacts: Optional[List[Path]] = None,
+    run_name: Optional[str] = None,
+    extra_config: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Log a retrain run via the control plane (offline-safe)."""
+    try:
+        from src.training.wandb_control_plane import log_run
+        return log_run(
+            head=head,
+            config=config,
+            metrics=metrics,
+            artifacts=artifacts,
+            run_name=run_name,
+            extra_config=extra_config,
+            tags=["auto_retrain"],
+        )
+    except Exception as exc:
+        logger.debug("Control-plane log_run failed for %s: %s", head, exc)
+        return None
+
+
+def _hp_from_cfg(cfg: Mapping[str, Any], key: str, default: Any) -> Any:
+    try:
+        return (cfg.get("hyperparameters") or {}).get(key, default)
+    except Exception:
+        return default
 
 
 @dataclass
@@ -434,11 +495,17 @@ class OnlineRetrainer:
             y_train_momentum = y_train[:, 0]
             y_val_momentum = y_val[:, 0]
         
-        # Train new model
+        # Pull W&B control-plane config for the momentum head.
+        cp_cfg = _safe_pull_config("momentum")
+        n_estimators = int(_hp_from_cfg(cp_cfg, "n_estimators", 50))
+        max_depth = int(_hp_from_cfg(cp_cfg, "max_depth", 4))
+        learning_rate = float(_hp_from_cfg(cp_cfg, "learning_rate", 0.1))
+
+        # Train new model — HPs sourced from control plane (with sane defaults).
         model = xgb.XGBRegressor(
-            n_estimators=50,  # Fewer trees for incremental
-            max_depth=4,
-            learning_rate=0.1,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
             verbosity=0,
             n_jobs=-1,
             random_state=42,
@@ -448,11 +515,11 @@ class OnlineRetrainer:
             eval_set=[(X_val_scaled, y_val_momentum)],
             verbose=False,
         )
-        
+
         # Evaluate
         pred = model.predict(X_val_scaled)
         mae = float(np.mean(np.abs(pred - y_val_momentum)))
-        
+
         # Save
         save_data = {
             'momentum_model': model,
@@ -461,10 +528,25 @@ class OnlineRetrainer:
             'retrained_at': datetime.utcnow().isoformat(),
             'method': 'incremental',
         }
-        
+
         with open(model_path, 'wb') as f:
             pickle.dump(save_data, f)
-        
+
+        # Log to W&B (auto-retrain source).
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        _safe_log_run(
+            head="momentum",
+            config=cp_cfg,
+            metrics={
+                "val_mae": mae,
+                "n_train": int(len(y_train_momentum)),
+                "n_val": int(len(y_val_momentum)),
+            },
+            artifacts=[model_path] if model_path.exists() else None,
+            run_name=f"auto_momentum_{ts}",
+            extra_config={"source": "auto_retrain", "method": "incremental"},
+        )
+
         return {'momentum_mae': mae}
     
     def _retrain_rf(
@@ -492,19 +574,24 @@ class OnlineRetrainer:
             y_train_risk = y_train[:, 0]
             y_val_risk = y_val[:, 0]
         
-        # Train new model
+        # Pull W&B control-plane config for the risk head.
+        cp_cfg = _safe_pull_config("risk")
+        n_estimators = int(_hp_from_cfg(cp_cfg, "n_estimators", 50))
+        max_depth = int(_hp_from_cfg(cp_cfg, "max_depth", 6))
+
+        # Train new model — HPs sourced from control plane.
         model = RandomForestRegressor(
-            n_estimators=50,  # Fewer trees for incremental
-            max_depth=6,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
             n_jobs=-1,
             random_state=42,
         )
         model.fit(X_train_scaled, y_train_risk)
-        
+
         # Evaluate
         pred = model.predict(X_val_scaled)
         mae = float(np.mean(np.abs(pred - y_val_risk)))
-        
+
         # Save
         model_path = self.model_dir / "rf_risk.pkl"
         save_data = {
@@ -514,10 +601,25 @@ class OnlineRetrainer:
             'retrained_at': datetime.utcnow().isoformat(),
             'method': 'incremental',
         }
-        
+
         with open(model_path, 'wb') as f:
             pickle.dump(save_data, f)
-        
+
+        # Log to W&B.
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        _safe_log_run(
+            head="risk",
+            config=cp_cfg,
+            metrics={
+                "val_mae": mae,
+                "n_train": int(len(y_train_risk)),
+                "n_val": int(len(y_val_risk)),
+            },
+            artifacts=[model_path],
+            run_name=f"auto_risk_{ts}",
+            extra_config={"source": "auto_retrain", "method": "incremental"},
+        )
+
         return {'risk_mae': mae}
     
     def _retrain_ridge(
@@ -544,14 +646,21 @@ class OnlineRetrainer:
             y_train_conf = y_train[:, 0] * 100
             y_val_conf = y_val[:, 0] * 100
         
-        # Train new model
+        # Pull W&B control-plane config for the confidence head.
+        # Ridge is the lightweight fallback for incremental retrain; the heavy
+        # LightGBM confidence retrain is handled by manual scripts.
+        cp_cfg = _safe_pull_config("confidence")
+
+        # Ridge alpha isn't on the strategic exposed list — keep at default.
+        # Logging the run still gives operators visibility into auto retrain
+        # cadence + drift outcomes.
         model = Ridge(alpha=1.0)
         model.fit(X_train_scaled, y_train_conf)
-        
+
         # Evaluate
         pred = model.predict(X_val_scaled)
         mae = float(np.mean(np.abs(pred - y_val_conf)))
-        
+
         # Save
         model_path = self.model_dir / "ridge_confidence.pkl"
         save_data = {
@@ -561,10 +670,25 @@ class OnlineRetrainer:
             'retrained_at': datetime.utcnow().isoformat(),
             'method': 'incremental',
         }
-        
+
         with open(model_path, 'wb') as f:
             pickle.dump(save_data, f)
-        
+
+        # Log to W&B.
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        _safe_log_run(
+            head="confidence",
+            config=cp_cfg,
+            metrics={
+                "val_mae": mae,
+                "n_train": int(len(y_train_conf)),
+                "n_val": int(len(y_val_conf)),
+            },
+            artifacts=[model_path],
+            run_name=f"auto_confidence_{ts}",
+            extra_config={"source": "auto_retrain", "method": "incremental_ridge_fallback"},
+        )
+
         return {'confidence_mae': mae}
     
     def get_status(self) -> Dict[str, Any]:
