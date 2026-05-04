@@ -1905,15 +1905,22 @@ class GateEvaluator:
         Used by the TUI's model-health panel so display reflects reality
         instead of a hardcoded count.
         """
+        # Mythos audit 2026-05-04 — _load_lgbm_momentum (line 902) stores
+        # into self._xgboost_momentum, not self._catboost_momentum. The
+        # previous comment claimed otherwise and the lightgbm flag check
+        # used the wrong attribute, so the brain feed reported
+        # "momentum: lightgbm" + "✗ momentum_lightgbm" simultaneously
+        # (operator-visible lying counter). Both checks now point at
+        # _xgboost_momentum, which is the actual storage slot for both
+        # the xgboost cascade fallback AND the lightgbm fallback.
+        is_xgb_or_lgb = self._xgboost_momentum is not None
         health: Dict[str, Any] = {
             "momentum_catboost": self._catboost_momentum is not None,
-            "momentum_xgboost": self._xgboost_momentum is not None,
-            # LightGBM momentum is loaded into self._catboost_momentum slot
-            # with _momentum_model_type == "lightgbm" (legacy compat), so
-            # expose it separately via the type tag:
+            "momentum_xgboost": (
+                is_xgb_or_lgb and self._momentum_model_type == "xgboost"
+            ),
             "momentum_lightgbm": (
-                self._momentum_model_type == "lightgbm"
-                and self._catboost_momentum is not None
+                is_xgb_or_lgb and self._momentum_model_type == "lightgbm"
             ),
             "confidence_ridge": self._ridge_confidence is not None,
             "risk_rf": self._rf_risk is not None,

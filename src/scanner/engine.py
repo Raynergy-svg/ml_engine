@@ -6835,8 +6835,29 @@ class Scanner:
         # ── Group 1: modular ensemble ──────────────────────────────
         mei = getattr(self, "_modular_ensemble", None)
         if mei is not None:
-            health["transformer_direction"] = getattr(mei, "transformer", None) is not None
-            health["tcn_volatility"] = getattr(mei, "tcn", None) is not None
+            # Mythos audit 2026-05-04 — fix label/attribute swap that
+            # surfaced in the brain feed health snapshot:
+            #   "✓ tcn_volatility" + "✗ transformer_direction"
+            # while the debug log proved the Transformer DID load
+            # (`✓ Transformer direction model loaded from .../joint/`).
+            #
+            # Attribute layout in ModularEnsembleInference (legacy names):
+            #   self.tcn                 → TransformerDirectionTrainer
+            #                              (the DIRECTION model — slot kept
+            #                              the old "tcn" name across the
+            #                              transformer migration)
+            #   self.tcn_volatility_model → TCN volatility regime classifier
+            #
+            # Pre-fix the health checks were:
+            #   transformer_direction ← getattr(mei, "transformer")  # always None
+            #   tcn_volatility        ← getattr(mei, "tcn")          # = direction model
+            # Result: direction reported False even when loaded; volatility
+            # reported True via the wrong attribute. Labels now match the
+            # real attribute storage.
+            health["transformer_direction"] = getattr(mei, "tcn", None) is not None
+            health["tcn_volatility"] = (
+                getattr(mei, "tcn_volatility_model", None) is not None
+            )
             # Only count optional models when they're expected/configured
             if getattr(getattr(mei, "config", None), "require_regime_model", False):
                 health["transformer_regime"] = getattr(mei, "regime_model", None) is not None
