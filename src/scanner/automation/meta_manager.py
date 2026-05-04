@@ -124,7 +124,7 @@ class MetaManager:
         ledger_path: Optional[Path] = None,
         max_concurrent: int = 1,
         episodic_memory: Optional[Any] = None,
-        use_llm: bool = True,
+        use_llm: bool = False,
         deterministic_surgeon: Optional[Any] = None,
     ):
         self._config = config
@@ -331,8 +331,11 @@ class MetaManager:
 
     def evaluate(self, pkg: ChangePackage) -> ChangePackage:
         if self._eval is None:
-            logger.info("meta_manager.evaluate_skipped no_harness change_id=%s", pkg.change_id)
-            pkg.stage = ChangeStage.POLICY_CHECK
+            logger.warning("meta_manager.evaluate_no_harness change_id=%s", pkg.change_id)
+            pkg.stage = ChangeStage.ABORTED
+            pkg.rejection_reason = "eval_harness_missing"
+            pkg.touch("eval_harness_missing")
+            self._append_ledger(pkg, "eval_harness_missing")
             self._persist(pkg)
             return pkg
         pkg.stage = ChangeStage.EVALUATING
@@ -346,6 +349,11 @@ class MetaManager:
             self._persist(pkg)
             return pkg
         pkg.touch(f"scorecard all_passed={pkg.scorecard.all_passed()}")
+        if not pkg.scorecard.all_passed():
+            pkg.stage = ChangeStage.REJECTED
+            pkg.rejection_reason = "scorecard_failed"
+            pkg.touch("scorecard_failed")
+            self._append_ledger(pkg, "scorecard_failed")
         self._persist(pkg)
         return pkg
 
@@ -440,6 +448,12 @@ class MetaManager:
             counters["post_deploy_reviews"] += 1
             self._persist(pkg)
             if not review.passed:
+                if review.notes == "insufficient_sample_deferred":
+                    logger.info(
+                        "meta_manager.post_deploy_deferred change_id=%s stage=%s",
+                        pkg.change_id, pkg.deploy_target.value,
+                    )
+                    continue
                 self._deploy.rollback(pkg, reason=f"post_deploy_miss_{pkg.deploy_target.value}")
                 counters["rollbacks"] += 1
                 self._persist(pkg)
@@ -452,28 +466,18 @@ class MetaManager:
                 self._append_ledger(pkg, "live_closed")
                 continue
 
-            # Enforce soak-time gate before advancing to the next stage.
-            # Shadow stage waits `shadow_cycles` cycles; canary stage waits
-            # `canary_trades` cycles (cycle-as-proxy until drain receives a
-            # real trade counter — TODO: thread trade_count through drain).
-            # `deployed_at_cycle == 0` means an old package serialized before
-            # the field existed — treated as "soak elapsed" for back-compat.
-            current_dep = next(
-                (d for d in reversed(pkg.deployments)
-                 if d.stage == pkg.deploy_target and d.rolled_back_at is None),
-                None,
-            )
-            if current_dep is not None and current_dep.deployed_at_cycle > 0:
-                elapsed = current_cycle - current_dep.deployed_at_cycle
-                required = (
-                    self._deploy.shadow_cycles if pkg.deploy_target == DeployStage.SHADOW
-                    else self._deploy.canary_trades
-                )
-                if elapsed < required:
+            if pkg.deploy_target == DeployStage.SHADOW:
+                if not self._deploy.should_promote_shadow_to_canary(pkg):
                     logger.info(
-                        "meta_manager.soak_window_active change_id=%s stage=%s "
-                        "elapsed=%d required=%d — promotion deferred",
-                        pkg.change_id, pkg.deploy_target.value, elapsed, required,
+                        "meta_manager.trade_soak_active change_id=%s stage=shadow",
+                        pkg.change_id,
+                    )
+                    continue
+            elif pkg.deploy_target == DeployStage.CANARY:
+                if not self._deploy.should_promote_canary_to_live(pkg):
+                    logger.info(
+                        "meta_manager.trade_soak_active change_id=%s stage=canary",
+                        pkg.change_id,
                     )
                     continue
 
@@ -803,15 +807,32 @@ def _build_production_manager() -> "MetaManager":
     if _PRODUCTION_REGIME_PROBE is None:
         _PRODUCTION_REGIME_PROBE = _LiveRegimeProbe()
 
-    # Build the StagedDeployer with the regime probe wired.
+    eval_harness: Optional[Any] = None
+
+    # Build the StagedDeployer and eval harness with live dependencies wired.
     staged_deployer: Optional[Any] = None
     cfg: Optional[Any] = None
     try:
         from src.scanner.automation.staged_deployer import StagedDeployer
         from src.scanner.automation.adjustment_approver import AdjustmentApprover
         from src.scanner.automation.config_adjuster import ConfigAdjuster
+        from src.scanner.automation.change_eval import ChangeEvalHarness
+        from src.scanner.automation.qa_pipeline import QAPipeline
+        from src.scanner.automation.replay_validator import ReplayValidator
         from src.scanner.config import ScannerConfig
         cfg = ScannerConfig()
+        try:
+            eval_harness = ChangeEvalHarness(
+                replay_validator=ReplayValidator(),
+                qa_pipeline=QAPipeline(),
+                baseline_config=dict(getattr(cfg, "__dict__", {}) or {}),
+            )
+        except Exception as eh_err:
+            logger.warning(
+                "meta_manager.production_eval_harness_init_failed err=%s — "
+                "route_incident will abort packages at eval stage",
+                eh_err,
+            )
         # Mythos audit 2026-05-01 — config_adjuster was missing here, so
         # _apply_canary / _apply_live always early-returned at the
         # `if not self._adjuster:` guard with `live_no_adjuster` /
@@ -854,6 +875,7 @@ def _build_production_manager() -> "MetaManager":
         invoker = lambda mode, prompt: ""  # noqa: E731
 
     return MetaManager(
+        eval_harness=eval_harness,
         episodic_memory=episodic_memory,
         staged_deployer=staged_deployer,
         specialist_invoker=invoker,

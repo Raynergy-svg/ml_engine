@@ -553,6 +553,34 @@ def _append_reflection_log(result: ReflectionResult, prompt_preview: str) -> Non
         logger.warning("reflection_log.append_failed", error=str(e))
 
 
+def _no_llm_policy_active() -> bool:
+    """Return True iff the no-LLM policy is in force.
+
+    Mythos audit 2026-05-04 — chokepoint enforcement. Three signal sources
+    in priority order; ANY of them being "off" means Claude must not fire:
+
+      1. Env var BUDDY_META_USE_LLM ("1" = LLM allowed, anything else = blocked).
+         EmbeddedScanner._sync_meta_env_from_config exports this on every
+         scanner init from the live ScannerConfig — so the env reflects the
+         running config without restart.
+      2. ScannerConfig().meta_manager_use_llm (best-effort fallback when
+         env not set; e.g., when invoked from a CLI helper outside the TUI
+         runtime).
+      3. Default: BLOCKED. Per CLAUDE.md "Buddy's runtime is Claude-free".
+
+    Hard-kill default: when in doubt, block. Operators flip use_llm=True
+    explicitly when they want enrichment text in the change ledger.
+    """
+    env_val = os.environ.get("BUDDY_META_USE_LLM")
+    if env_val is not None:
+        return env_val.strip() != "1"
+    try:
+        from src.scanner.config import ScannerConfig
+        return not bool(ScannerConfig().meta_manager_use_llm)
+    except Exception:
+        return True  # default: blocked
+
+
 def invoke_claude_reflection(
     prompt: str,
     trade_id: str,
@@ -572,7 +600,33 @@ def invoke_claude_reflection(
     Returns:
         ReflectionResult with success status, parsed output, duration.
         Never raises — all errors captured in result.error.
+
+    Policy gate (Mythos audit 2026-05-04): when the no-LLM policy is active
+    (CLAUDE.md "runtime is Claude-free"), this function is a HARD-KILL no-op.
+    Returns immediately with error="no_llm_policy", does NOT spawn Claude,
+    does NOT write to reflection_log.jsonl. The single warning log line
+    surfaces caller chains without producing per-call observability noise.
     """
+    if _no_llm_policy_active():
+        # Single de-duped warning so the reflection log doesn't accumulate
+        # one entry per caller per cycle. Callers that genuinely want
+        # observability should write to a different file, not piggyback
+        # on the LLM audit trail.
+        logger.warning(
+            "claude_reflection.blocked_by_no_llm_policy mode=%s trade_id=%s "
+            "(set BUDDY_META_USE_LLM=1 + ScannerConfig.meta_manager_use_llm=True "
+            "to allow)",
+            mode, trade_id,
+        )
+        return ReflectionResult(
+            success=False,
+            trade_id=trade_id,
+            mode=mode,
+            duration_seconds=0.0,
+            stdout_len=0,
+            error="no_llm_policy",
+        )
+
     start = time.time()
     result = ReflectionResult(
         success=False,

@@ -235,13 +235,21 @@ def test_I1_meta_manager_use_llm_false_produces_real_proposal(tmp_path):
     assert "risk_per_trade_pct" in pkg.proposal.config_delta
 
 
-def test_I5_meta_manager_default_use_llm_True_path_unchanged(tmp_path):
-    """Backward-compat regression gate. Existing tests pass MetaManager
-    without use_llm — default must remain True (LLM path unchanged)."""
+def test_I5_meta_manager_use_llm_True_explicit_opt_in_path_unchanged(tmp_path):
+    """Operator-explicit use_llm=True opt-in path: LLM specialist invoker
+    returns empty → empty delta (deterministic surgeon does NOT step in).
+
+    Mythos audit 2026-05-04 — the prior MetaManager default was use_llm=True
+    which let any direct construction silently fire Claude. Default flipped
+    to False (matches CLAUDE.md "runtime is Claude-free"). This test now
+    asserts the OPT-IN path: when an operator explicitly passes
+    use_llm=True, the LLM-only contract is preserved (empty invoker output
+    → empty config_delta — surgeon does NOT compensate).
+    """
     from src.scanner.automation.meta_manager import MetaManager
 
     mgr = MetaManager(
-        # Note: NOT passing use_llm — exercising the default
+        use_llm=True,  # Operator-explicit opt-in (no longer the default).
         specialist_invoker=lambda mode, prompt: "",
         changes_dir=tmp_path / "changes",
         ledger_path=tmp_path / "ledger.jsonl",
@@ -253,10 +261,10 @@ def test_I5_meta_manager_default_use_llm_True_path_unchanged(tmp_path):
     pkg = mgr.intake(incident)
     pkg = mgr.propose(pkg)
 
-    # Default path: LLM specialist invoker returns "" → empty delta.
+    # use_llm=True path: LLM specialist invoker returns "" → empty delta.
     # Deterministic surgeon must NOT activate when use_llm=True.
     assert pkg.proposal is not None
     assert pkg.proposal.config_delta == {}, (
-        "Deterministic surgeon activated under default use_llm=True — "
-        "this changes existing test behavior unexpectedly."
+        "Deterministic surgeon activated under explicit use_llm=True — "
+        "the LLM-only contract was broken."
     )
