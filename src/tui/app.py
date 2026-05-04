@@ -638,6 +638,7 @@ class BuddyApp(App):
         # memory, alias it via `bind ctrl+shift+r` in their shell.
         Binding("ctrl+r", "safe_restart", "Restart", show=True),
         Binding("u", "unhalt", "Unhalt", show=True),
+        Binding("c", "copy_snapshot", "Copy", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
 
@@ -1648,6 +1649,62 @@ class BuddyApp(App):
 
         _handle = self.set_interval(1.0, _tick, pause=False)
         _cancel_holder[0] = _handle.stop
+
+    def action_copy_snapshot(self) -> None:
+        """Capture every visible TUI surface to a markdown file + clipboard.
+
+        Mythos audit 2026-05-04 — operator request. Press 'c' to dump:
+            * Heartbeat + state.json + halt status
+            * Active alerts + no-LLM policy state
+            * Meta-pipeline ledger tail + in-flight package stages
+            * Config adjustments (pending / history / last_applied)
+            * Model health (joint dir contents, ensemble freshness)
+            * Per-regime agent weights + live regime probe
+            * Trade journal tail + virtual_trades.jsonl tail (gate rejections)
+            * Brain feed last 40 lines
+            * Reflection log tail (should be empty under no-LLM policy)
+            * buddy_debug.log last 50 lines
+
+        Output lands in .claude/snapshots/tui_<ts>.md AND is piped to
+        the system clipboard (pbcopy on macOS). Operator pastes the
+        markdown directly into chat — Claude has the entire diagnostic
+        context in one block instead of asking for grep evidence
+        round-by-round.
+        """
+        try:
+            from src.tui.snapshot import write_and_copy
+        except Exception as e:
+            try:
+                self._write_brain(
+                    f"[red]✗ snapshot import failed: {e}[/]"
+                )
+            except Exception:
+                pass
+            return
+
+        try:
+            path, tool = write_and_copy()
+        except Exception as e:
+            try:
+                self._write_brain(f"[red]✗ snapshot failed: {e}[/]")
+            except Exception:
+                pass
+            return
+
+        try:
+            rel = path.relative_to(Path.cwd()) if path.is_absolute() else path
+        except (ValueError, OSError):
+            rel = path
+
+        msg = f"[bold cyan]📋 Snapshot written: [/][green]{rel}[/]"
+        if tool:
+            msg += f" [dim](copied via {tool})[/]"
+        else:
+            msg += " [dim](no clipboard tool found — paste from file)[/]"
+        try:
+            self._write_brain(msg)
+        except Exception:
+            pass
 
     def action_unhalt(self) -> None:
         """Clear the halted flag so the scanner resumes the per-cycle loop.

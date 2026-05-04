@@ -40,6 +40,9 @@ logs/ALERT_*.txt
 # (.bak) is enough; recovery is via .bak, not git.
 .claude/config_adjustments.json
 .claude/config_adjustments.json.bak
+# Mythos audit 2026-05-04 — operator-triggered TUI snapshots ('c' hotkey).
+# Paste-back diagnostic artifacts containing live runtime state, never source.
+.claude/snapshots/
 # Mythos 2026-04-30 — brain feed disk tee (runtime observability,
 # rotates at 5MB to feed.jsonl.1, never source-controlled)
 .claude/brain/feed.jsonl
