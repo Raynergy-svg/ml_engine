@@ -15,7 +15,7 @@ import json
 import logging
 import random
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from rich.text import Text
 
@@ -606,27 +606,55 @@ class AgentsScreen(Container):
     # ------------------------------------------------------------------
 
     def _load_weights(self) -> None:
-        """Load agent weights from trained_data/models/agent_weights.json."""
+        """Load agent weights from trained_data/models/agent_weights.json.
+
+        Mythos audit 2026-05-04 — sync the displayed regime with the
+        backend's LIVE regime via _LiveRegimeProbe (the same probe
+        StagedDeployer uses for regime_at_deploy). Previous code
+        hardcoded "NORMAL" after first load and the regime detection
+        loop also included `_history` as if it were a regime, so the
+        screen could show stale weights for the wrong regime.
+        """
         weights_path = self._project_root / "trained_data" / "models" / "agent_weights.json"
         if not weights_path.exists():
             return
 
         try:
             data = json.loads(weights_path.read_text(encoding="utf-8"))
-            # Prefer current regime, fall back to _global
-            regime_data = data.get(self._regime, data.get("_global", {}))
-            if isinstance(regime_data, dict):
-                self._learned_weights = {
-                    k: float(v) for k, v in regime_data.items()
-                    if isinstance(v, (int, float))
-                }
-
-            # Detect regime from keys
-            regimes = [k for k in data.keys() if k not in ("_global", "_meta")]
-            if regimes and "NORMAL" in regimes:
-                self._regime = "NORMAL"
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug("Failed to load agent weights: %s", exc)
+            return
+
+        # Resolve the live regime via the same probe the meta-pipeline
+        # uses (microstructure_regime.json → ewma_correlation_state.json).
+        # Fall back to NORMAL when the probe returns None.
+        live_regime: Optional[str] = None
+        try:
+            from src.scanner.automation.meta_manager import _LiveRegimeProbe
+            live_regime = _LiveRegimeProbe().current()
+        except Exception as probe_err:
+            logger.debug("Live regime probe failed: %s", probe_err)
+
+        # Filter the underscore-prefixed bookkeeping keys that aren't regimes.
+        regime_keys = {
+            k for k in data.keys()
+            if isinstance(k, str) and not k.startswith("_")
+        }
+
+        if live_regime and live_regime in regime_keys:
+            chosen = live_regime
+        elif "NORMAL" in regime_keys:
+            chosen = "NORMAL"
+        else:
+            chosen = "_global"
+
+        self._regime = chosen if not chosen.startswith("_") else "GLOBAL"
+        regime_data = data.get(chosen, data.get("_global", {}))
+        if isinstance(regime_data, dict):
+            self._learned_weights = {
+                k: float(v) for k, v in regime_data.items()
+                if isinstance(v, (int, float))
+            }
 
     def _refresh_weight_table(self) -> None:
         """Rebuild the agent weight matrix DataTable."""

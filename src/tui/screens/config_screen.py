@@ -446,7 +446,17 @@ class ConfigScreen(Container):
     # ------------------------------------------------------------------
 
     def _load_config(self) -> None:
-        """Load current ScannerConfig values into the input fields."""
+        """Load current ScannerConfig values into the input fields.
+
+        Mythos audit 2026-05-04 — display must reflect what the LIVE
+        Scanner has, not a fresh ScannerConfig() with defaults.
+        Without applying on-disk adjustments, the screen could show
+        min_confidence=35.0 (smart profile default) while the running
+        Scanner had min_confidence=42.0 (after meta-pipeline promoted
+        a config_delta and EmbeddedScanner's ConfigAdjuster picked it
+        up via the disk bridge). Operator looked at one number, the
+        runtime acted on another.
+        """
         try:
             from src.scanner.config import ScannerConfig
             config = ScannerConfig()
@@ -457,6 +467,20 @@ class ConfigScreen(Container):
 
         if config is None:
             return
+
+        # Apply persisted adjustments so the display matches the running
+        # Scanner (whose own ConfigAdjuster reads the same disk file
+        # every cycle via embedded_scanner.py:738-749).
+        try:
+            from src.scanner.automation.config_adjuster import ConfigAdjuster
+            adjuster = ConfigAdjuster()
+            adjuster.apply_adjustments(config, current_cycle=0)
+        except Exception as adj_err:
+            logger.debug(
+                "ConfigScreen: applying on-disk adjustments for display "
+                "failed (showing profile defaults): %s",
+                adj_err,
+            )
 
         self._active_profile = getattr(config, "profile", "smart")
         values = self._extract_config_values(config)
