@@ -646,6 +646,11 @@ class BuddyApp(App):
         # in Textual; if the operator has terminal-history-search muscle
         # memory, alias it via `bind ctrl+shift+r` in their shell.
         Binding("ctrl+r", "safe_restart", "Restart", show=True),
+        # Mythos audit 2026-05-04 — operator-reported: ctrl+r was being
+        # intercepted by the shell (zsh reverse-history-search) before
+        # Textual saw it. F12 is a function key reserved by no shell —
+        # guaranteed to reach the TUI's binding handler.
+        Binding("f12", "safe_restart", "Restart(F12)", show=True),
         Binding("u", "unhalt", "Unhalt", show=True),
         Binding("c", "copy_snapshot", "Copy", show=True),
         Binding("q", "quit", "Quit", show=True),
@@ -1851,6 +1856,15 @@ class BuddyApp(App):
         import os
         import sys
         from datetime import datetime, timezone
+
+        # Mythos audit 2026-05-04 — log to buddy_debug.log at INFO so
+        # `grep safe_restart logs/buddy_debug.log` proves the action
+        # actually fired. Pre-fix the only signal was the brain feed
+        # (which scrolls); operators couldn't tell whether Ctrl+R was
+        # being intercepted by the shell vs. firing-but-failing.
+        logger.info(
+            "safe_restart: triggered pid=%s argv=%s", os.getpid(), sys.argv
+        )
 
         try:
             self._write_brain(
