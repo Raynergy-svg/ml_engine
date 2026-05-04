@@ -219,6 +219,7 @@ def format_meta_brain_line(blob: dict) -> str:
 class HeaderBar(Static):
     """Persistent header: NAV, P/L, connection status."""
 
+    can_focus = True  # Click-to-focus for the 'c' copy hotkey
     nav = reactive(0.0)
     pnl = reactive(0.0)
     open_count = reactive(0)
@@ -263,6 +264,8 @@ class HeaderBar(Static):
 
 class AgentPanel(Static):
     """15-agent panel with colored bar indicators (see ``ScannerAgentTeam._BASE_WEIGHTS``). Reads from snapshot or demo."""
+
+    can_focus = True  # Click-to-focus for the 'c' copy hotkey
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -411,6 +414,8 @@ class RiskPanel(Static):
     never shows literal "nan".
     """
 
+    can_focus = True  # Click-to-focus for the 'c' copy hotkey
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._risk = 0.0
@@ -467,6 +472,8 @@ class RiskPanel(Static):
 
 class MTFConfluencePanel(Static):
     """Multi-Timeframe Confluence visualization."""
+
+    can_focus = True  # Click-to-focus for the 'c' copy hotkey
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -538,6 +545,8 @@ class MTFConfluencePanel(Static):
 
 class SystemHealthBar(Static):
     """Bottom status bar with system health metrics."""
+
+    can_focus = True  # Click-to-focus for the 'c' copy hotkey
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -1651,28 +1660,25 @@ class BuddyApp(App):
         _cancel_holder[0] = _handle.stop
 
     def action_copy_snapshot(self) -> None:
-        """Capture every visible TUI surface to a markdown file + clipboard.
+        """Copy state to file + clipboard. Focused box → just that box.
 
-        Mythos audit 2026-05-04 — operator request. Press 'c' to dump:
-            * Heartbeat + state.json + halt status
-            * Active alerts + no-LLM policy state
-            * Meta-pipeline ledger tail + in-flight package stages
-            * Config adjustments (pending / history / last_applied)
-            * Model health (joint dir contents, ensemble freshness)
-            * Per-regime agent weights + live regime probe
-            * Trade journal tail + virtual_trades.jsonl tail (gate rejections)
-            * Brain feed last 40 lines
-            * Reflection log tail (should be empty under no-LLM policy)
-            * buddy_debug.log last 50 lines
+        Mythos audit 2026-05-04 — operator request:
+
+        * No widget focused → full snapshot (every canonical surface).
+        * A focusable box is in focus (click-to-focus, magenta border) →
+          dump JUST that box's content. Operator can target a single
+          panel without dragging the full 14KB into chat.
 
         Output lands in .claude/snapshots/tui_<ts>.md AND is piped to
-        the system clipboard (pbcopy on macOS). Operator pastes the
-        markdown directly into chat — Claude has the entire diagnostic
-        context in one block instead of asking for grep evidence
-        round-by-round.
+        the system clipboard (pbcopy on macOS / xclip / xsel / wl-copy
+        on Linux). Operator pastes the markdown directly into chat.
         """
         try:
-            from src.tui.snapshot import write_and_copy
+            from src.tui.snapshot import (
+                build_snapshot,
+                copy_to_clipboard,
+                write_and_copy,
+            )
         except Exception as e:
             try:
                 self._write_brain(
@@ -1682,8 +1688,24 @@ class BuddyApp(App):
                 pass
             return
 
+        focused = self.focused
+        focused_id = getattr(focused, "id", None) if focused is not None else None
+
         try:
-            path, tool = write_and_copy()
+            if focused_id:
+                content = self._dump_focused_widget(focused, focused_id)
+                from datetime import datetime, timezone as _tz
+                from pathlib import Path as _Path
+                snap_dir = _Path(".claude/snapshots")
+                snap_dir.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+                path = snap_dir / f"box_{focused_id}_{ts}.md"
+                path.write_text(content, encoding="utf-8")
+                tool = copy_to_clipboard(content)
+                source_label = f"box [{focused_id}]"
+            else:
+                path, tool = write_and_copy()
+                source_label = "full snapshot"
         except Exception as e:
             try:
                 self._write_brain(f"[red]✗ snapshot failed: {e}[/]")
@@ -1696,7 +1718,7 @@ class BuddyApp(App):
         except (ValueError, OSError):
             rel = path
 
-        msg = f"[bold cyan]📋 Snapshot written: [/][green]{rel}[/]"
+        msg = f"[bold cyan]📋 {source_label}: [/][green]{rel}[/]"
         if tool:
             msg += f" [dim](copied via {tool})[/]"
         else:
@@ -1705,6 +1727,56 @@ class BuddyApp(App):
             self._write_brain(msg)
         except Exception:
             pass
+
+    def _dump_focused_widget(self, widget: Any, widget_id: str) -> str:
+        """Render a focused widget's content as markdown.
+
+        For known widget IDs we map to dedicated snapshot sections (the
+        operator gets the same structured info they'd get from the full
+        snapshot, just for that one box). For unknown widgets we fall
+        back to whatever the widget's `render()` produces — converted
+        from Rich Text to plain string when possible.
+        """
+        from datetime import datetime, timezone as _tz
+        ts = datetime.now(_tz.utc).isoformat(timespec="seconds")
+        header = f"# Buddy TUI Box — `{widget_id}` — {ts}\n\n"
+
+        # Map widget IDs to the snapshot module's section helpers so the
+        # operator gets the canonical structured view of just that box.
+        try:
+            from src.tui import snapshot as _snap
+        except Exception:
+            _snap = None
+
+        if _snap is not None:
+            id_to_section = {
+                "header-bar": _snap._heartbeat_section,
+                "agent-panel": _snap._agents_section,
+                "brain-stream": _snap._brain_feed_section,
+                "reflection-log": _snap._reflection_log_section,
+                "trades-table": _snap._trades_section,
+                "diag-error-log": _snap._debug_log_section,
+            }
+            section_fn = id_to_section.get(widget_id)
+            if section_fn is not None:
+                return header + section_fn()
+
+        # Fallback: render whatever the widget produces as plain text.
+        try:
+            renderable = widget.render()
+        except Exception as e:
+            return header + f"```\n(render failed: {e!r})\n```\n"
+
+        try:
+            from rich.text import Text as _RichText
+            if isinstance(renderable, _RichText):
+                body = renderable.plain
+            else:
+                body = str(renderable)
+        except Exception:
+            body = repr(renderable)
+
+        return header + f"```\n{body}\n```\n"
 
     def action_unhalt(self) -> None:
         """Clear the halted flag so the scanner resumes the per-cycle loop.

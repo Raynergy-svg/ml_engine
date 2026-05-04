@@ -110,3 +110,54 @@ def test_copy_to_clipboard_handles_no_tool(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr("shutil.which", lambda _name: None)
     result = copy_to_clipboard("hello world")
     assert result is None
+
+
+def test_focusable_static_panels_have_can_focus() -> None:
+    """Click-to-focus contract: every Static panel that operators
+    interact with must declare can_focus=True so the magenta focus
+    border renders on click. Without can_focus, mouse clicks go
+    nowhere and the operator can't target a box for the 'c' copy.
+    """
+    from src.tui.app import (
+        AgentPanel,
+        HeaderBar,
+        MTFConfluencePanel,
+        RiskPanel,
+        SystemHealthBar,
+    )
+
+    for cls in (HeaderBar, AgentPanel, RiskPanel, MTFConfluencePanel, SystemHealthBar):
+        assert getattr(cls, "can_focus", False) is True, (
+            f"{cls.__name__} is not focusable — operator can't click "
+            f"into it to highlight + copy. Add `can_focus = True`."
+        )
+
+
+def test_per_box_section_helpers_are_callable() -> None:
+    """The widget-id-to-section map in app.py:_dump_focused_widget
+    expects these snapshot module functions to exist. If any are
+    renamed or removed without updating the map, the per-box copy
+    silently falls through to the generic widget.render() path.
+    """
+    from src.tui import snapshot as _snap
+
+    required = (
+        "_heartbeat_section",
+        "_agents_section",
+        "_brain_feed_section",
+        "_reflection_log_section",
+        "_trades_section",
+        "_debug_log_section",
+    )
+    for fname in required:
+        fn = getattr(_snap, fname, None)
+        assert callable(fn), (
+            f"snapshot.{fname} is not callable — the per-box copy "
+            f"map in app.py:_dump_focused_widget will fail for the "
+            f"widget mapped to it."
+        )
+        # Each section should produce some output.
+        out = fn()
+        assert isinstance(out, str) and len(out) > 0, (
+            f"snapshot.{fname}() returned empty/non-string output"
+        )

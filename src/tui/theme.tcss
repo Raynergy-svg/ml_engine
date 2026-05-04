@@ -1,13 +1,13 @@
 /* ═══════════════════════════════════════════════════════════════════
-   BUDDY — CYBERPUNK COMMAND BRIDGE THEME
-   Blade Runner 2049 meets Bloomberg Terminal
+   BUDDY // 2046 COMMAND BRIDGE THEME
+   Neon operations console meets Bloomberg-grade density
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Global ─────────────────────────────────────────────────────── */
 
 Screen {
-    background: #0a0a0f;
-    color: #e0e0ff;
+    background: #05060a;
+    color: #e8f7ff;
 }
 
 /* ── Header Bar ─────────────────────────────────────────────────── */
@@ -15,24 +15,24 @@ Screen {
 #header-bar {
     dock: top;
     height: 3;
-    background: #1a1a2e;
-    color: #00ffcc;
+    background: #090b14;
+    color: #00f5ff;
     padding: 0 1;
-    border-bottom: solid #2a2a4a;
+    border-bottom: double #ff2bd6;
 }
 
 #header-bar .title {
-    color: #00ffcc;
+    color: #00f5ff;
     text-style: bold;
 }
 
 #header-bar .nav-value {
-    color: #00ff41;
+    color: #39ff14;
     text-style: bold;
 }
 
 #header-bar .nav-label {
-    color: #6666aa;
+    color: #7483b8;
 }
 
 /* ── Tab Bar ────────────────────────────────────────────────────── */
@@ -42,32 +42,38 @@ TabbedContent {
 }
 
 Tabs {
-    background: #131320;
+    background: #080a12;
     dock: top;
     height: 3;
-    border-bottom: solid #2a2a4a;
+    border-bottom: solid #26304f;
 }
 
 Tab {
-    background: #131320;
-    color: #6666aa;
+    background: #080a12;
+    color: #7483b8;
     padding: 0 2;
+    text-style: none;
 }
 
 Tab:hover {
-    background: #1a1a2e;
-    color: #00ffcc;
+    background: #101627;
+    color: #00f5ff;
 }
 
 Tab.-active {
-    background: #1a1a2e;
-    color: #00ffcc;
+    background: #ff2bd6;
+    color: #05060a;
     text-style: bold;
-    border-bottom: tall #00ffcc;
+}
+
+Tab.-active:hover {
+    background: #ffea00;
+    color: #05060a;
+    text-style: bold;
 }
 
 Underline {
-    color: #00ffcc;
+    color: #00f5ff;
 }
 
 TabPane {
@@ -77,65 +83,74 @@ TabPane {
 /* ── Panels (generic containers) ────────────────────────────────── */
 
 .panel {
-    border: solid #2a2a4a;
-    background: #131320;
+    border: solid #26304f;
+    background: #0b0f1a;
     padding: 0 1;
     margin: 0 0 1 0;
 }
 
 .panel:focus-within {
-    border: solid #00ffcc;
+    border: tall #00f5ff;
+}
+
+/* Mythos audit 2026-05-04 — global focus highlight. Any widget with the
+   `can_focus = True` flag (mouse-clickable into focus) gets a prominent
+   magenta double-border so the operator knows EXACTLY which box is
+   active before pressing 'c' to copy that box's content. Higher
+   specificity than .panel:focus-within so it wins for direct focus. */
+*:focus {
+    border: double #ff2bd6;
 }
 
 .panel-title {
-    color: #00ffcc;
+    color: #00f5ff;
     text-style: bold;
-    background: #131320;
+    background: #0b0f1a;
 }
 
 /* ── Brain Stream (RichLog) ─────────────────────────────────────── */
 
 #brain-stream {
-    border: solid #7c4dff;
-    background: #0d0d18;
+    border: double #b84dff;
+    background: #070912;
     height: 1fr;
     min-height: 10;
 }
 
 #brain-stream:focus {
-    border: solid #ff00ff;
+    border: tall #ff2bd6;
 }
 
 RichLog {
-    background: #0d0d18;
-    color: #e0e0ff;
-    scrollbar-color: #7c4dff;
-    scrollbar-color-active: #ff00ff;
-    scrollbar-background: #0a0a0f;
+    background: #070912;
+    color: #e8f7ff;
+    scrollbar-color: #26304f;
+    scrollbar-color-active: #ff2bd6;
+    scrollbar-background: #05060a;
 }
 
 /* ── Live Trades Table ──────────────────────────────────────────── */
 
 DataTable {
-    background: #131320;
-    color: #e0e0ff;
+    background: #090d18;
+    color: #e8f7ff;
     height: auto;
     max-height: 15;
 }
 
 DataTable > .datatable--header {
-    background: #1a1a2e;
-    color: #00ffcc;
+    background: #111827;
+    color: #00f5ff;
     text-style: bold;
 }
 
 DataTable > .datatable--cursor {
-    background: #2a2a4a;
-    color: #00ffcc;
+    background: #1f2a44;
+    color: #ffea00;
 }
 
 DataTable > .datatable--hover {
-    background: #1a1a2e;
+    background: #101627;
 }
 
 /* ── Sparkline ──────────────────────────────────────────────────── */
@@ -152,52 +167,52 @@ ProgressBar {
 }
 
 ProgressBar > .bar--bar {
-    color: #00ffcc;
-    background: #2a2a4a;
+    color: #00f5ff;
+    background: #26304f;
 }
 
 ProgressBar > .bar--complete {
-    color: #00ff41;
+    color: #39ff14;
 }
 
 Bar {
-    color: #00ffcc;
-    background: #2a2a4a;
+    color: #00f5ff;
+    background: #26304f;
 }
 
 /* ── Status Indicators ──────────────────────────────────────────── */
 
 .status-ok {
-    color: #00ff41;
+    color: #39ff14;
     text-style: bold;
 }
 
 .status-warn {
-    color: #ffab00;
+    color: #ffb000;
     text-style: bold;
 }
 
 .status-error {
-    color: #ff1744;
+    color: #ff3158;
     text-style: bold;
 }
 
 .status-dim {
-    color: #6666aa;
+    color: #7483b8;
 }
 
 /* ── Profit/Loss Colors ─────────────────────────────────────────── */
 
 .profit {
-    color: #00ff41;
+    color: #39ff14;
 }
 
 .loss {
-    color: #ff1744;
+    color: #ff3158;
 }
 
 .neutral {
-    color: #6666aa;
+    color: #7483b8;
 }
 
 /* ── Overview Layout ────────────────────────────────────────────── */
@@ -224,20 +239,20 @@ Bar {
 
 /* MTF Confluence Panel */
 #mtf-panel {
-    border: solid #7c4dff;
-    background: #131320;
+    border: double #b84dff;
+    background: #0b0f1a;
     padding: 0 1;
 }
 
 #mtf-panel:focus-within {
-    border: solid #ff00ff;
+    border: tall #ff2bd6;
 }
 
 .mtf-screen {
     width: 1fr;
     height: auto;
     padding: 0 1;
-    border-right: solid #2a2a4a;
+    border-right: solid #26304f;
 }
 
 .mtf-screen:last-child {
@@ -245,7 +260,7 @@ Bar {
 }
 
 .mtf-label {
-    color: #7c4dff;
+    color: #b84dff;
     text-style: bold;
     text-align: center;
 }
@@ -262,13 +277,13 @@ Bar {
 /* ── Risk Panel ─────────────────────────────────────────────────── */
 
 #risk-panel {
-    border: solid #ffab00;
-    background: #131320;
+    border: double #ffb000;
+    background: #11100a;
     padding: 0 1;
 }
 
 #risk-panel:focus-within {
-    border: solid #ffab00;
+    border: tall #ffb000;
 }
 
 /* ── System Health ──────────────────────────────────────────────── */
@@ -276,10 +291,10 @@ Bar {
 #system-health {
     dock: bottom;
     height: 3;
-    background: #1a1a2e;
-    color: #6666aa;
+    background: #080a12;
+    color: #7483b8;
     padding: 0 1;
-    border-top: solid #2a2a4a;
+    border-top: double #00f5ff;
 }
 
 /* ── Agent Consensus Panel ──────────────────────────────────────── */
@@ -291,12 +306,12 @@ Bar {
 
 .agent-name {
     width: 12;
-    color: #6666aa;
+    color: #7483b8;
 }
 
 .agent-score {
     width: 6;
-    color: #00ffcc;
+    color: #00f5ff;
     text-style: bold;
 }
 
@@ -307,38 +322,38 @@ Bar {
 /* ── Scrollbar Styling ──────────────────────────────────────────── */
 
 * {
-    scrollbar-color: #2a2a4a;
-    scrollbar-color-active: #00ffcc;
-    scrollbar-color-hover: #7c4dff;
-    scrollbar-background: #0a0a0f;
-    scrollbar-corner-color: #0a0a0f;
+    scrollbar-color: #26304f;
+    scrollbar-color-active: #00f5ff;
+    scrollbar-color-hover: #ff2bd6;
+    scrollbar-background: #05060a;
+    scrollbar-corner-color: #05060a;
 }
 
 /* ── Footer ─────────────────────────────────────────────────────── */
 
 Footer {
-    background: #1a1a2e;
-    color: #6666aa;
+    background: #080a12;
+    color: #7483b8;
 }
 
 Footer > .footer--key {
-    color: #00ffcc;
-    background: #2a2a4a;
+    color: #00f5ff;
+    background: #1f2a44;
 }
 
 Footer > .footer--description {
-    color: #6666aa;
+    color: #7483b8;
 }
 
 /* ── Placeholder Screens ────────────────────────────────────────── */
 
 .placeholder-screen {
     align: center middle;
-    color: #6666aa;
+    color: #7483b8;
 }
 
 .placeholder-screen .coming-soon {
-    color: #7c4dff;
+    color: #b84dff;
     text-style: bold italic;
     text-align: center;
 }
@@ -346,42 +361,42 @@ Footer > .footer--description {
 /* ── Input / Command ────────────────────────────────────────────── */
 
 Input {
-    background: #131320;
-    color: #e0e0ff;
-    border: solid #2a2a4a;
+    background: #090d18;
+    color: #e8f7ff;
+    border: solid #26304f;
 }
 
 Input:focus {
-    border: solid #00ffcc;
+    border: tall #00f5ff;
 }
 
 /* ── Button ─────────────────────────────────────────────────────── */
 
 Button {
-    background: #2a2a4a;
-    color: #00ffcc;
-    border: none;
+    background: #111827;
+    color: #00f5ff;
+    border: solid #26304f;
 }
 
 Button:hover {
-    background: #00ffcc;
-    color: #0a0a0f;
+    background: #00f5ff;
+    color: #05060a;
 }
 
 Button:focus {
-    border: tall #ff00ff;
+    border: tall #ff2bd6;
 }
 
 /* ── Rule (divider) ─────────────────────────────────────────────── */
 
 Rule {
-    color: #2a2a4a;
+    color: #26304f;
 }
 
 /* ── Loading ────────────────────────────────────────────────────── */
 
 LoadingIndicator {
-    color: #00ffcc;
+    color: #00f5ff;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -399,8 +414,8 @@ TradesScreen {
 }
 
 #trades-drilldown {
-    border: solid #7c4dff;
-    background: #131320;
+    border: double #b84dff;
+    background: #0b0f1a;
     height: auto;
     min-height: 3;
     max-height: 45%;
@@ -409,7 +424,7 @@ TradesScreen {
 }
 
 #trades-drilldown:focus {
-    border: solid #ff00ff;
+    border: tall #ff2bd6;
 }
 
 #trades-closed-panel {
@@ -483,56 +498,56 @@ ConfigScreen {
 }
 
 #config-profile-radios RadioButton {
-    background: #131320;
-    color: #6666aa;
+    background: #090d18;
+    color: #7483b8;
     height: auto;
     padding: 0 1;
 }
 
 #config-profile-radios RadioButton:hover {
-    color: #00ffcc;
+    color: #00f5ff;
 }
 
 #btn-apply-profile {
     margin: 0 1;
     min-width: 16;
-    background: #2a2a4a;
-    color: #00ffcc;
+    background: #111827;
+    color: #00f5ff;
 }
 
 #btn-apply-profile:hover {
-    background: #00ffcc;
-    color: #0a0a0f;
+    background: #00f5ff;
+    color: #05060a;
 }
 
 #btn-save-config {
     margin: 0 1;
     min-width: 10;
-    background: #2a2a4a;
-    color: #00ff41;
+    background: #111827;
+    color: #39ff14;
 }
 
 #btn-save-config:hover {
-    background: #00ff41;
-    color: #0a0a0f;
+    background: #39ff14;
+    color: #05060a;
 }
 
 #btn-reset-config {
     margin: 0 1;
     min-width: 18;
-    background: #2a2a4a;
-    color: #ffab00;
+    background: #111827;
+    color: #ffb000;
 }
 
 #btn-reset-config:hover {
-    background: #ffab00;
-    color: #0a0a0f;
+    background: #ffb000;
+    color: #05060a;
 }
 
 #config-status-label {
     width: auto;
     margin: 0 1;
-    color: #6666aa;
+    color: #7483b8;
 }
 
 #config-middle-row {
@@ -568,7 +583,7 @@ ConfigScreen {
 #gate-section-risk,
 #gate-section-trade,
 #gate-section-filter {
-    color: #7c4dff;
+    color: #b84dff;
     text-style: bold;
     padding: 1 0 0 0;
 }
@@ -582,19 +597,19 @@ ConfigScreen {
 
 .config-field-label {
     width: 20;
-    color: #6666aa;
+    color: #7483b8;
 }
 
 .config-field-input {
     width: 16;
     height: 3;
-    background: #131320;
-    color: #00ffcc;
-    border: solid #2a2a4a;
+    background: #090d18;
+    color: #00f5ff;
+    border: solid #26304f;
 }
 
 .config-field-input:focus {
-    border: solid #00ffcc;
+    border: tall #00f5ff;
 }
 
 /* Agent toggle rows */
@@ -606,7 +621,7 @@ ConfigScreen {
 
 .config-toggle-label {
     width: 18;
-    color: #6666aa;
+    color: #7483b8;
 }
 
 .config-toggle-switch {
@@ -614,15 +629,15 @@ ConfigScreen {
 }
 
 Switch {
-    background: #2a2a4a;
+    background: #26304f;
 }
 
 Switch.-on > .switch--slider {
-    color: #00ff41;
+    color: #39ff14;
 }
 
 Switch.-off > .switch--slider {
-    color: #ff1744;
+    color: #ff3158;
 }
 
 #config-history-panel {
@@ -661,13 +676,13 @@ DiagnosticsScreen {
     margin: 0 1;
     width: auto;
     min-width: 20;
-    background: #2a2a4a;
-    color: #00ffcc;
+    background: #111827;
+    color: #00f5ff;
 }
 
 #diag-test-btn:hover {
-    background: #00ffcc;
-    color: #0a0a0f;
+    background: #00f5ff;
+    color: #05060a;
 }
 
 #diag-row-1 {
@@ -701,20 +716,20 @@ DiagnosticsScreen {
     width: 12;
     height: 3;
     margin: 0 1;
-    background: #1a1a2e;
-    color: #00ffcc;
-    border: solid #2a2a4a;
+    background: #090d18;
+    color: #00f5ff;
+    border: solid #26304f;
 }
 
 #diag-error-log {
-    border: solid #7c4dff;
-    background: #0d0d18;
+    border: double #b84dff;
+    background: #070912;
     height: 1fr;
     min-height: 5;
 }
 
 #diag-error-log:focus {
-    border: solid #ff00ff;
+    border: tall #ff2bd6;
 }
 
 #diag-maint-panel {
@@ -727,33 +742,33 @@ DiagnosticsScreen {
 
 #state-strip {
     height: 1;
-    background: #1a1a2e;
+    background: #090b14;
     padding: 0 1;
-    border-bottom: solid #2a2a4a;
+    border-bottom: solid #26304f;
 }
 
 .state-running {
-    color: #00ff41;
+    color: #39ff14;
     text-style: bold;
 }
 
 .state-paused {
-    color: #ffab00;
+    color: #ffb000;
     text-style: bold;
 }
 
 .state-halted {
-    color: #ff1744;
+    color: #ff3158;
     text-style: bold;
 }
 
 .mode-dryrun {
-    color: #00ffcc;
+    color: #00f5ff;
     text-style: bold;
 }
 
 .mode-live {
-    color: #ff1744;
+    color: #ff3158;
     text-style: bold;
 }
 
@@ -766,31 +781,31 @@ GateTraceModal {
 }
 
 GateTraceModal #trace-dialog {
-    border: double #00ffcc;
-    background: #0a0a0f;
+    border: double #00f5ff;
+    background: #05060a;
 }
 
 GateTraceModal #trace-title {
-    color: #00ffcc;
+    color: #00f5ff;
     text-style: bold;
 }
 
 GateTraceModal .trace-section {
-    background: #131320;
-    border: solid #2a2a4a;
+    background: #0b0f1a;
+    border: solid #26304f;
 }
 
 .gate-pass {
-    color: #00ff41;
+    color: #39ff14;
     text-style: bold;
 }
 
 .gate-near {
-    color: #ffab00;
+    color: #ffb000;
     text-style: bold;
 }
 
 .gate-fail {
-    color: #ff1744;
+    color: #ff3158;
     text-style: bold;
 }
