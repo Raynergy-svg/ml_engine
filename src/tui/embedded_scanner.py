@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +191,7 @@ class EmbeddedScanner:
                 profile="smart",
                 force=True,         # skip session filter
             )
+            self._sync_meta_env_from_config(self._config)
             # Enable execution for auto-execute
             self._config.enable_execution = self._auto_execute
             # Cap scan passes to 1 (OOM guard for 8GB M1)
@@ -265,6 +266,25 @@ class EmbeddedScanner:
             logger.error("EmbeddedScanner init failed: %s", e, exc_info=True)
             self._brain(f"[red]✗ Scanner init failed: {_format_init_error(e)}[/]")
             return False
+
+    def _sync_meta_env_from_config(self, config: Any) -> None:
+        """Bridge ScannerConfig flags to meta_manager.is_enabled().
+
+        The TUI embeds Scanner directly and does not instantiate Orchestrator,
+        so Orchestrator's env export path never runs here. Without this bridge,
+        smart profile can have enable_meta_manager=True while
+        meta_manager.is_enabled() still reads the bootstrap default
+        BUDDY_META_MANAGER_ENABLED=0 and silently skips per-cycle routing.
+        """
+        enabled = bool(getattr(config, "enable_meta_manager", False))
+        use_llm = bool(getattr(config, "meta_manager_use_llm", False))
+        os.environ["BUDDY_META_MANAGER_ENABLED"] = "1" if enabled else "0"
+        os.environ["BUDDY_META_USE_LLM"] = "1" if use_llm else "0"
+        logger.info(
+            "EmbeddedScanner: meta env synced enabled=%s use_llm=%s",
+            enabled,
+            use_llm,
+        )
 
     def _init_automation_modules(self) -> None:
         """Initialize optional automation modules (non-fatal if any fail)."""
@@ -360,6 +380,12 @@ class EmbeddedScanner:
         if not self._running or self._scanner is None:
             return None
 
+        # Keep the meta-cybernetic pipeline owned by the TUI runtime too.
+        # This must run before the trading halt gate: an auto-halt should
+        # stop scans/execution, not leave approved packages or post-deploy
+        # reviews stranded until an external script drains MetaManager.
+        self._maybe_drain_meta_pipeline()
+
         # Mythos audit 2026-04-30 — halt-aware scan skip. The auto-halt
         # in commit eacb617 sets StateEngine.halted=True when consecutive
         # losses ≥ threshold, but neither EmbeddedScanner nor Scanner
@@ -374,7 +400,7 @@ class EmbeddedScanner:
                 if not getattr(self, "_halt_message_emitted", False):
                     self._brain(
                         "[bold red]◈ SCANNER HALTED — auto-halt active. "
-                        "Toggle halted=false in state.json or via TUI 'k' "
+                        "Toggle halted=false in state.json or via TUI 'u' "
                         "key to resume.[/]"
                     )
                     self._halt_message_emitted = True
@@ -568,6 +594,29 @@ class EmbeddedScanner:
             )
         except Exception as e:
             logger.debug("embedded_scanner.meta_route_failed err=%r", e)
+
+    def _maybe_drain_meta_pipeline(self) -> None:
+        """Advance approved/deployed meta ChangePackages from the TUI path.
+
+        Orchestrator owns this in the CLI smart-loop path, but the TUI embeds
+        Scanner directly and never instantiates Orchestrator. Without this,
+        approved meta packages can sit idle unless the operator happens to
+        use the Inbox approve-all inline drain or a standalone script.
+        """
+        try:
+            from src.scanner.automation import meta_manager as _mm
+        except ImportError:
+            return
+        try:
+            if not _mm.is_enabled():
+                return
+            if _mm._PRODUCTION_MGR is None:
+                _mm._PRODUCTION_MGR = _mm._build_production_manager()
+            counters = _mm._PRODUCTION_MGR.drain(current_cycle=self._scan_count)
+            if any(int(v or 0) for v in counters.values()):
+                logger.info("embedded_scanner.meta_drain %s", counters)
+        except Exception as e:
+            logger.debug("embedded_scanner.meta_drain_failed err=%r", e)
 
     def _filter_correlated_exposure(self, tradeable: list) -> list:
         """Filter out trades that would double exposure on correlated pairs."""

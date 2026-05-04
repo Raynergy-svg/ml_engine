@@ -229,32 +229,35 @@ class HeaderBar(Static):
     def render(self) -> Text:
         now = datetime.now(timezone.utc).strftime("%H:%M UTC")
         pnl_sign = "+" if self.pnl >= 0 else ""
-        pnl_color = "green" if self.pnl >= 0 else "red"
-        oanda_style = "bold #00ff41" if self.oanda_ok else "bold #ff1744"
+        pnl_color = "#39ff14" if self.pnl >= 0 else "#ff3158"
+        oanda_style = "bold #39ff14" if self.oanda_ok else "bold #ff3158"
         oanda_text = "● LIVE" if self.oanda_ok else "● OFF"
-        scanner_style = "bold #00ff41" if self.scanner_ok else "bold #6666aa"
+        scanner_style = "bold #39ff14" if self.scanner_ok else "bold #7483b8"
         scanner_text = "● ACTIVE" if self.scanner_ok else "● IDLE"
 
         t = Text()
-        t.append("  ◈ ", style="bold #ff00ff")
-        t.append("BUDDY", style="bold #00ffcc")
-        t.append(f" [{self.mode_label}]", style="bold #7c4dff" if self.mode_label == "DEMO" else "bold #00ff41")
-        t.append("  │  ", style="#2a2a4a")
-        t.append("NAV ", style="#6666aa")
-        t.append(f"${self.nav:,.0f}", style="bold #00ff41")
-        t.append("  │  ", style="#2a2a4a")
-        t.append("P/L ", style="#6666aa")
+        t.append("  ▰ ", style="bold #ff2bd6")
+        t.append("BUDDY//2046", style="bold #00f5ff")
+        t.append(
+            f" [{self.mode_label}]",
+            style="bold #b84dff" if self.mode_label == "DEMO" else "bold #39ff14",
+        )
+        t.append("  ║  ", style="#26304f")
+        t.append("NAV ", style="#7483b8")
+        t.append(f"${self.nav:,.0f}", style="bold #39ff14")
+        t.append("  │  ", style="#26304f")
+        t.append("P/L ", style="#7483b8")
         t.append(f"{pnl_sign}${self.pnl:,.0f}", style=f"bold {pnl_color}")
-        t.append("  │  ", style="#2a2a4a")
-        t.append(f"Open: {self.open_count}", style="#6666aa")
-        t.append("  │  ", style="#2a2a4a")
-        t.append("OANDA ", style="#6666aa")
+        t.append("  │  ", style="#26304f")
+        t.append(f"Open: {self.open_count}", style="#7483b8")
+        t.append("  │  ", style="#26304f")
+        t.append("OANDA ", style="#7483b8")
         t.append(oanda_text, style=oanda_style)
-        t.append("  │  ", style="#2a2a4a")
-        t.append("Scanner ", style="#6666aa")
+        t.append("  │  ", style="#26304f")
+        t.append("Scanner ", style="#7483b8")
         t.append(scanner_text, style=scanner_style)
-        t.append("  │  ", style="#2a2a4a")
-        t.append(f"{now}", style="#6666aa")
+        t.append("  ║  ", style="#26304f")
+        t.append(f"{now}", style="#7483b8")
         return t
 
 
@@ -275,25 +278,25 @@ class AgentPanel(Static):
             s = max(0.0, min(1.0, score))
             filled = int(s * 10)
             empty = 10 - filled
-            color = "#00ff41" if s >= 0.7 else "#ffab00" if s >= 0.5 else "#ff1744"
-            t.append(f"  {name:<6}", style="#6666aa")
+            color = "#39ff14" if s >= 0.7 else "#ffb000" if s >= 0.5 else "#ff3158"
+            t.append(f"  {name:<6}", style="#7483b8")
             t.append(" █" * filled, style=color)
-            t.append("░" * empty, style="#2a2a4a")
+            t.append("░" * empty, style="#26304f")
             t.append(f" {s:.2f}", style=f"bold {color}")
-            t.append(f"  {signal}", style="#6666aa")
+            t.append(f"  {signal}", style="#7483b8")
             t.append("\n")
 
         if self._agents:
             avg = sum(s for _, s, _ in self._agents) / len(self._agents)
             bar_filled = int(avg * 20)
             bar_empty = 20 - bar_filled
-            t.append("  ─────────────────────────────\n", style="#2a2a4a")
-            t.append("  WEIGHTED ", style="#6666aa")
-            t.append(f"{avg:.2f}", style="bold #00ffcc")
-            t.append("  [", style="#2a2a4a")
-            t.append("█" * bar_filled, style="#00ffcc")
-            t.append("░" * bar_empty, style="#2a2a4a")
-            t.append("]", style="#2a2a4a")
+            t.append("  ─────────────────────────────\n", style="#26304f")
+            t.append("  WEIGHTED ", style="#7483b8")
+            t.append(f"{avg:.2f}", style="bold #00f5ff")
+            t.append("  [", style="#26304f")
+            t.append("█" * bar_filled, style="#00f5ff")
+            t.append("░" * bar_empty, style="#26304f")
+            t.append("]", style="#26304f")
         return t
 
 
@@ -439,10 +442,10 @@ class RiskPanel(Static):
 
     def render(self) -> Text:
         pr, dd, mdd = self._risk, self._dd, self._max_dd
-        rc = "#00ff41" if pr < 10 else "#ffab00" if pr < 13 else "#ff1744"
-        dc = "#00ff41" if dd < 3 else "#ffab00" if dd < 5 else "#ff1744"
+        rc = "#39ff14" if pr < 10 else "#ffb000" if pr < 13 else "#ff3158"
+        dc = "#39ff14" if dd < 3 else "#ffb000" if dd < 5 else "#ff3158"
         corr_text = "OK ✓" if self._corr_ok else "WARN ▲"
-        corr_style = "bold #00ff41" if self._corr_ok else "bold #ffab00"
+        corr_style = "bold #39ff14" if self._corr_ok else "bold #ffb000"
 
         # Render em-dash placeholder while we're still waiting for first scan.
         def _fmt(val: float) -> str:
@@ -451,13 +454,13 @@ class RiskPanel(Static):
             return f"{val:.1f}%"
 
         t = Text()
-        t.append("  Portfolio Risk: ", style="#6666aa")
+        t.append("  Portfolio Risk: ", style="#7483b8")
         t.append(f"{_fmt(pr)}\n", style=f"bold {rc}")
-        t.append("  Drawdown:       ", style="#6666aa")
+        t.append("  Drawdown:       ", style="#7483b8")
         t.append(f"{_fmt(dd)}\n", style=f"bold {dc}")
-        t.append("  Max DD Today:   ", style="#6666aa")
-        t.append(f"{_fmt(mdd)}\n", style="bold #ffab00")
-        t.append("  Correlation:    ", style="#6666aa")
+        t.append("  Max DD Today:   ", style="#7483b8")
+        t.append(f"{_fmt(mdd)}\n", style="bold #ffb000")
+        t.append("  Correlation:    ", style="#7483b8")
         t.append(f"{corr_text}\n", style=corr_style)
         return t
 
@@ -505,30 +508,30 @@ class MTFConfluencePanel(Static):
         weights = [0.50, 0.30, 0.20]
 
         for label, score, closes, indicator in screens:
-            color = "#00ff41" if score >= 0.7 else "#ffab00" if score >= 0.5 else "#ff1744"
+            color = "#39ff14" if score >= 0.7 else "#ffb000" if score >= 0.5 else "#ff3158"
             signal = "BULLISH" if score >= 0.7 else "CAUTION" if score >= 0.5 else "WEAK"
             spark = self._sparkline_str(closes)
 
-            t.append(f"  {label:<10}", style="bold #7c4dff")
+            t.append(f"  {label:<10}", style="bold #b84dff")
             t.append(f"  {spark}", style=color)
             t.append(f"  {score:.2f}", style=f"bold {color}")
             t.append(f"  {signal:<8}", style=color)
-            t.append(f"  {indicator}", style="#6666aa")
+            t.append(f"  {indicator}", style="#7483b8")
             t.append("\n")
 
         conf = self._confluence or sum(s * w for (_, s, _, _), w in zip(screens, weights))
-        conf_color = "#00ff41" if conf >= 0.65 else "#ffab00" if conf >= 0.45 else "#ff1744"
+        conf_color = "#39ff14" if conf >= 0.65 else "#ffb000" if conf >= 0.45 else "#ff3158"
         conf_signal = "PROCEED ✓" if conf >= 0.65 else "CAUTION ▲" if conf >= 0.45 else "REJECT ✗"
         bar_filled = int(conf * 25)
         bar_empty = 25 - bar_filled
 
-        t.append("  ──────────────────────────────────────────────────────\n", style="#2a2a4a")
-        t.append("  CONFLUENCE ", style="#6666aa")
+        t.append("  ──────────────────────────────────────────────────────\n", style="#26304f")
+        t.append("  CONFLUENCE ", style="#7483b8")
         t.append(f"{conf:.2f}", style=f"bold {conf_color}")
-        t.append("  [", style="#2a2a4a")
+        t.append("  [", style="#26304f")
         t.append("█" * bar_filled, style=conf_color)
-        t.append("░" * bar_empty, style="#2a2a4a")
-        t.append("]  ", style="#2a2a4a")
+        t.append("░" * bar_empty, style="#26304f")
+        t.append("]  ", style="#26304f")
         t.append(conf_signal, style=f"bold {conf_color}")
         return t
 
@@ -551,24 +554,39 @@ class SystemHealthBar(Static):
         cpu = s.cpu_pct if s else 0
         mem = s.mem_mb if s else 0
         oanda_ok = s.oanda_connected if s else False
-        oanda_style = "bold #00ff41" if oanda_ok else "bold #ff1744"
+        oanda_style = "bold #39ff14" if oanda_ok else "bold #ff3158"
+        if not s or not s.scanner_ready:
+            scanner_text = "● OFFLINE"
+            scanner_style = "bold #ff3158"
+        elif s.halted:
+            scanner_text = "● HALTED"
+            scanner_style = "bold #ff3158"
+        elif s.scanner_paused:
+            scanner_text = "● PAUSED"
+            scanner_style = "bold #ffb000"
+        elif s.scan_cycle_count <= 0:
+            scanner_text = "● READY"
+            scanner_style = "bold #ffb000"
+        else:
+            scanner_text = f"● {scan_ms:.0f}ms"
+            scanner_style = "bold #39ff14"
 
         t = Text()
-        t.append("  Scanner: ", style="#6666aa")
-        t.append(f"● {scan_ms:.0f}ms", style="bold #00ff41")
-        t.append("  │  ", style="#2a2a4a")
-        t.append("OANDA: ", style="#6666aa")
+        t.append("  Scanner: ", style="#7483b8")
+        t.append(scanner_text, style=scanner_style)
+        t.append("  │  ", style="#26304f")
+        t.append("OANDA: ", style="#7483b8")
         t.append(f"● {api_ms:.0f}ms", style=oanda_style)
-        t.append("  │  ", style="#2a2a4a")
-        t.append("Models: ", style="#6666aa")
-        t.append(f"● {models}", style="bold #00ff41")
-        t.append("  │  ", style="#2a2a4a")
-        t.append("RL Sync: ", style="#6666aa")
-        t.append("● CURRENT", style="bold #00ff41")
-        t.append("  │  ", style="#2a2a4a")
-        t.append(f"CPU: {cpu:.0f}%", style="#6666aa")
-        t.append("  │  ", style="#2a2a4a")
-        t.append(f"MEM: {mem:.0f}MB", style="#6666aa")
+        t.append("  │  ", style="#26304f")
+        t.append("Models: ", style="#7483b8")
+        t.append(f"● {models}", style="bold #39ff14")
+        t.append("  │  ", style="#26304f")
+        t.append("RL Sync: ", style="#7483b8")
+        t.append("● CURRENT", style="bold #39ff14")
+        t.append("  │  ", style="#26304f")
+        t.append(f"CPU: {cpu:.0f}%", style="#7483b8")
+        t.append("  │  ", style="#26304f")
+        t.append(f"MEM: {mem:.0f}MB", style="#7483b8")
         return t
 
 
@@ -582,11 +600,11 @@ class PlaceholderContent(Static):
     def render(self) -> Text:
         t = Text(justify="center")
         t.append("\n\n")
-        t.append("╔══════════════════════════════════╗\n", style="#2a2a4a")
-        t.append(f"║  {self.screen_name:^30}  ║\n", style="bold #7c4dff")
-        t.append("║     ◈ COMING SOON ◈              ║\n", style="#ff00ff")
-        t.append("║  Phase 2-5 of Command Bridge     ║\n", style="#6666aa")
-        t.append("╚══════════════════════════════════╝\n", style="#2a2a4a")
+        t.append("╔══════════════════════════════════╗\n", style="#26304f")
+        t.append(f"║  {self.screen_name:^30}  ║\n", style="bold #b84dff")
+        t.append("║     ◈ COMING SOON ◈              ║\n", style="#ff2bd6")
+        t.append("║  Phase 2-5 of Command Bridge     ║\n", style="#7483b8")
+        t.append("╚══════════════════════════════════╝\n", style="#26304f")
         return t
 
 
@@ -619,6 +637,7 @@ class BuddyApp(App):
         # in Textual; if the operator has terminal-history-search muscle
         # memory, alias it via `bind ctrl+shift+r` in their shell.
         Binding("ctrl+r", "safe_restart", "Restart", show=True),
+        Binding("u", "unhalt", "Unhalt", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
 
@@ -843,7 +862,11 @@ class BuddyApp(App):
             except Exception:
                 pass
             if self._live:
-                scanner_alive = scanner_alive or bool(getattr(self, "_scanner_thread", None))
+                scanner = getattr(self, "_scanner", None)
+                scanner_alive = scanner_alive or bool(
+                    getattr(scanner, "is_ready", False)
+                    or getattr(scanner, "_running", False)
+                )
             write_heartbeat(
                 repo_root,
                 cycle_count=cycle,
@@ -863,7 +886,7 @@ class BuddyApp(App):
         header.mode_label = mode
 
         msgs = [
-            f"[bold #ff00ff]◈ BUDDY COMMAND BRIDGE — {mode} MODE[/]",
+            f"[bold #ff2bd6]◈ BUDDY COMMAND BRIDGE — {mode} MODE[/]",
             f"[dim]  Session started {now.strftime('%Y-%m-%d %H:%M:%S UTC')}[/]",
         ]
         if self._live:
@@ -1625,6 +1648,51 @@ class BuddyApp(App):
 
         _handle = self.set_interval(1.0, _tick, pause=False)
         _cancel_holder[0] = _handle.stop
+
+    def action_unhalt(self) -> None:
+        """Clear the halted flag so the scanner resumes the per-cycle loop.
+
+        Mythos audit 2026-05-01. The auto-halt protocol (eacb617) sets
+        state.halted=True when consecutive_losses ≥ threshold and
+        EmbeddedScanner.run_one_cycle (a561f2d) early-returns whenever
+        StateEngine().get_halted() is true. Without an unhalt hotkey,
+        the operator had to hand-edit `.claude/state.json` to resume —
+        the brain message even pointed at 'k' which is supervisor_kill
+        (flatten-all), not unhalt.
+
+        This action toggles the flag via the same StateEngine the halt
+        check reads, so the next run_one_cycle picks it up immediately
+        without a process restart.
+        """
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+        except Exception as e:
+            try:
+                self._write_brain(
+                    f"[red]✗ unhalt failed: state_engine import — {e}[/]"
+                )
+            except Exception:
+                pass
+            return
+        try:
+            engine = StateEngine()
+            was_halted = bool(engine.get_halted())
+            engine.set_halted(False)
+            if was_halted:
+                self._write_brain(
+                    "[bold green]◈ UNHALT — scanner will resume on next cycle.[/]"
+                )
+            else:
+                self._write_brain(
+                    "[dim]◈ unhalt no-op — scanner was not halted.[/]"
+                )
+        except Exception as e:
+            try:
+                self._write_brain(
+                    f"[red]✗ unhalt failed: {e}[/]"
+                )
+            except Exception:
+                pass
 
     def action_safe_restart(self) -> None:
         """Mythos audit 2026-04-29 Tier-7 step D — state-preserving restart.

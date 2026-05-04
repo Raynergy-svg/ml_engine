@@ -105,7 +105,34 @@ def _predict_with_named_input_if_needed(model: Any, batch: np.ndarray) -> Any:
 
 @contextlib.contextmanager
 def _suppress_native_stderr():
-    """Silence native-library stderr output during fragile pickle loads."""
+    """Silence native-library stderr output during fragile pickle loads.
+
+    Mythos audit 2026-05-04 — root cause of the [Errno 9] Bad file
+    descriptor cascade that broke EVERY pickle load in the TUI. The
+    previous implementation did `os.dup2(devnull, sys.stderr.fileno())`
+    which works in a normal CLI but corrupts file descriptors when the
+    process runs under Textual: Textual replaces sys.stderr with its
+    own pipe, the dup2 cycle leaves fd 2 in a state where subsequent
+    C-extension I/O (lightgbm/sklearn pickle internals) sees a stale
+    fd and raises EBADF. Symptom: 14+ "Failed to load X: [Errno 9]
+    Bad file descriptor" warnings per scan, scanner reporting
+    `momentum: none` even when lgbm_momentum.pkl exists on disk.
+
+    Fix: only do OS-level dup2 when sys.stderr is the real CPython
+    stderr (which a TUI process never has). Otherwise fall back to
+    the Python-only `redirect_stderr(StringIO)` path which doesn't
+    touch fds. We lose the ability to silence native-library prints
+    that bypass sys.stderr, but that's acceptable noise — broken
+    model loads are not.
+    """
+    real_stderr = getattr(sys, "__stderr__", None)
+    in_tui = real_stderr is None or sys.stderr is not real_stderr
+
+    if in_tui:
+        with contextlib.redirect_stderr(io.StringIO()):
+            yield
+        return
+
     try:
         stderr_fd = sys.stderr.fileno()
     except (AttributeError, io.UnsupportedOperation):
@@ -113,15 +140,27 @@ def _suppress_native_stderr():
             yield
         return
 
-    saved_fd = os.dup(stderr_fd)
+    try:
+        saved_fd = os.dup(stderr_fd)
+    except OSError:
+        with contextlib.redirect_stderr(io.StringIO()):
+            yield
+        return
+
     try:
         with open(os.devnull, "w") as devnull:
             os.dup2(devnull.fileno(), stderr_fd)
             with contextlib.redirect_stderr(devnull):
                 yield
     finally:
-        os.dup2(saved_fd, stderr_fd)
-        os.close(saved_fd)
+        try:
+            os.dup2(saved_fd, stderr_fd)
+        except OSError:
+            pass
+        try:
+            os.close(saved_fd)
+        except OSError:
+            pass
 
 
 def _load_pickle_quietly(handle: Any) -> Any:
@@ -466,13 +505,27 @@ class GateEvaluator:
                 compile=False,
             )
 
-            # Load metadata if available
+            # Load metadata if available — best-effort. Mythos audit
+            # 2026-05-01: an [Errno 9] Bad file descriptor reading the
+            # sidecar .meta.pkl was failing the WHOLE TCN load even
+            # though the keras model was already in memory. Brain feed
+            # showed `✓ tcn_volatility` while the gate WARNING said
+            # "Failed to load TCN Volatility Regime" — contradictory
+            # truth. Isolate the metadata read so a sidecar failure
+            # degrades to "no scaler" instead of "no gate".
             if meta_path.exists():
-                with open(meta_path, 'rb') as f:
-                    meta = _load_pickle_quietly(f)
-                    self._tcn_scaler = meta.get('scaler')
-                    self._tcn_feature_names = meta.get('feature_names')
-                    logger.debug(f"TCN metadata loaded: {meta.get('metrics', {})}")
+                try:
+                    with open(meta_path, 'rb') as f:
+                        meta = _load_pickle_quietly(f)
+                        self._tcn_scaler = meta.get('scaler')
+                        self._tcn_feature_names = meta.get('feature_names')
+                        logger.debug(f"TCN metadata loaded: {meta.get('metrics', {})}")
+                except Exception as meta_err:
+                    logger.warning(
+                        "TCN Volatility metadata sidecar unreadable (%s) "
+                        "— model loaded, running without scaler/features",
+                        meta_err,
+                    )
 
             logger.info(
                 "✓ TCN Volatility Regime gate loaded (REQUIRED) via %s",
