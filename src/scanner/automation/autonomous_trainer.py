@@ -78,9 +78,14 @@ SCHEDULED_TRAIN_DAYS = _parse_train_days(
 # State file persists cooldown across process restarts.
 STATE_PATH = Path("trained_data/.autonomous_retrain_state.json")
 
-# Reflection log shared with the rest of the autonomy loop so the TUI
-# Reflection Stream panel can show retrain events in real time.
-REFLECTION_LOG = Path("logs/reflection_log.jsonl")
+# Mythos audit 2026-05-04 — autonomous trainer writes its own observability
+# log, NOT the Claude inference log. Pre-fix, _append_reflection_log dumped
+# `mode=system` rows into logs/reflection_log.jsonl which made the TUI
+# reflection box look like Claude was firing under the no-LLM policy
+# (operator-visible symptom). Now retrain events go to a dedicated file
+# so the Claude audit trail stays clean — invoke_claude_reflection's
+# chokepoint (e1c5ebf) is the sole writer of reflection_log.jsonl.
+AUTOTRAIN_LOG = Path("logs/autonomous_trainer.jsonl")
 
 DEFAULT_PAIRS = (
     "EUR_USD,GBP_USD,USD_JPY,USD_CHF,AUD_USD,EUR_GBP,EUR_JPY"
@@ -141,15 +146,22 @@ def _save_state(state: RetrainState) -> None:
         logger.warning("autonomous_trainer.state_save_failed", error=str(e))
 
 
-def _append_reflection_log(payload: Dict[str, Any]) -> None:
-    """Mirror the format used by claude_subprocess._append_reflection_log so
-    the TUI Reflection Stream panel renders these as a 'system' line."""
+def _append_autotrain_log(payload: Dict[str, Any]) -> None:
+    """Append a JSONL row to logs/autonomous_trainer.jsonl.
+
+    Mythos audit 2026-05-04 — split off from the LLM reflection_log.
+    Same payload schema as before so any TUI consumer still parses it
+    cleanly; the only thing that changed is the destination file.
+    Operators (and Claude reading TUI snapshots) can now distinguish
+    'Claude was invoked' (reflection_log.jsonl) from 'autonomous
+    retrain fired' (autonomous_trainer.jsonl).
+    """
     try:
-        REFLECTION_LOG.parent.mkdir(parents=True, exist_ok=True)
-        with open(REFLECTION_LOG, "a") as f:
+        AUTOTRAIN_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(AUTOTRAIN_LOG, "a") as f:
             f.write(json.dumps(payload) + "\n")
     except OSError as e:
-        logger.warning("autonomous_trainer.reflection_log_append_failed", error=str(e))
+        logger.warning("autonomous_trainer.autotrain_log_append_failed", error=str(e))
 
 
 def _is_process_running(pid: Optional[int]) -> bool:
@@ -334,7 +346,7 @@ def maybe_spawn_autonomous_retrain(
     brain_callback(f"[dim]    log: {log_path}[/]")
 
     # Reflection log entry so TUI Reflection Stream shows it
-    _append_reflection_log({
+    _append_autotrain_log({
         "ts": datetime.now(timezone.utc).isoformat(),
         "trade_id": f"AUTOTRAIN-{ts}",
         "mode": "system",
@@ -406,7 +418,7 @@ def poll_completion(brain_callback: Callable[[str], None]) -> Optional[str]:
         f"(rc={rc}, {duration/60:.1f}min, pairs={state.last_pairs})[/]"
     )
 
-    _append_reflection_log({
+    _append_autotrain_log({
         "ts": datetime.now(timezone.utc).isoformat(),
         "trade_id": f"AUTOTRAIN-DONE-{state.last_pid}",
         "mode": "system",

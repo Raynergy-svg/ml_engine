@@ -246,7 +246,14 @@ def _virtual_trades_section() -> str:
 
 
 def _reflection_log_section() -> str:
-    """Tail of reflection_log.jsonl — should be empty/blocked under no-LLM."""
+    """Tail of reflection_log.jsonl — Claude inference attempts only.
+
+    Mythos audit 2026-05-04: under the no-LLM policy this should be
+    empty (or only contain "blocked_by_no_llm_policy" warnings in
+    buddy_debug.log, not in this file). Pre-fix, autonomous_trainer
+    polluted this with mode=system retrain events; that's now split
+    into _autotrain_log_section below.
+    """
     lines = _safe_read_lines(
         PROJECT_ROOT / "logs" / "reflection_log.jsonl", DEFAULT_REFLECTION_LINES,
     )
@@ -261,7 +268,32 @@ def _reflection_log_section() -> str:
             )
         except (json.JSONDecodeError, AttributeError):
             parsed.append(raw[:200])
-    return _section("Reflection log tail", parsed)
+    return _section("Reflection log tail (Claude inference attempts)", parsed)
+
+
+def _autotrain_log_section() -> str:
+    """Tail of autonomous_trainer.jsonl — retrain events.
+
+    Operator-relevant retrain observability: schedule fires, freshness
+    triggers, completion status. Distinct from Claude reflection.
+    """
+    lines = _safe_read_lines(
+        PROJECT_ROOT / "logs" / "autonomous_trainer.jsonl",
+        DEFAULT_REFLECTION_LINES,
+    )
+    parsed: list[str] = []
+    for raw in lines:
+        try:
+            r = json.loads(raw)
+            parsed.append(
+                f"{str(r.get('ts',''))[:19]} "
+                f"trade_id={r.get('trade_id','?')} "
+                f"success={r.get('success','?')} "
+                f"hypothesis={(r.get('hypothesis','') or '')[:80]!r}"
+            )
+        except (json.JSONDecodeError, AttributeError):
+            parsed.append(raw[:200])
+    return _section("Autonomous trainer log tail", parsed)
 
 
 def _brain_feed_section() -> str:
@@ -372,6 +404,7 @@ def build_snapshot() -> str:
         "\n## Logs\n",
         _brain_feed_section(),
         _reflection_log_section(),
+        _autotrain_log_section(),
         _debug_log_section(),
     ]
     return "\n".join(parts)

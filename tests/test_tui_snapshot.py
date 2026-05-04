@@ -46,6 +46,7 @@ REQUIRED_SECTIONS = [
     "## Logs",
     "### Brain feed",
     "### Reflection log tail",
+    "### Autonomous trainer log tail",
     "### Debug log",
 ]
 
