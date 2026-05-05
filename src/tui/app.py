@@ -487,18 +487,24 @@ class ReflectionLogReader:
                 # Once we have a real file, clear the waiting flag so a later
                 # deletion + recreation re-announces.
                 self._announced_waiting = False
+                # Mythos audit 2026-05-05 — `for line in f:` uses the
+                # iterator protocol which DISABLES f.tell() afterwards
+                # ("telling position disabled by next() call" — visible
+                # in buddy_debug.log after commit 26bdb88). Use a
+                # readline() loop so f.tell() stays valid for offset
+                # tracking + boot-marker boundary detection.
                 with open(self._log_path, "r") as f:
                     f.seek(self._offset)
-                    for raw in f:
+                    while True:
+                        raw = f.readline()
+                        if not raw:
+                            break
                         if not raw.strip():
                             continue
                         try:
                             entry = json.loads(raw)
                         except json.JSONDecodeError:
-                            # Skip malformed line, keep consuming
                             continue
-                        # Day-rollover separator BEFORE the entry, so the
-                        # date header sits above the day's first row.
                         try:
                             sep = self._maybe_day_separator(entry)
                             if sep:
@@ -508,13 +514,9 @@ class ReflectionLogReader:
                         try:
                             self._callback(self._format(entry))
                         except Exception:
-                            pass  # callback errors must not poison reader
+                            pass
 
-                        # Boot marker: once we cross the byte position the
-                        # file held at TUI start, emit a single bright
-                        # divider. Anything below it is NEW for this
-                        # session — operator can scroll up to see history,
-                        # but the demarcation is unambiguous.
+                        # Boot marker: once we cross pre-session EOF.
                         if (
                             not self._boot_marker_emitted
                             and self._boot_eof > 0
@@ -532,9 +534,7 @@ class ReflectionLogReader:
                                 )
                             except Exception:
                                 pass
-                    # Edge case: the file was empty / matched boot_eof
-                    # exactly at start, so we never crossed inside the
-                    # loop above. Emit the marker on first poll anyway.
+                    # Edge case: empty file or already at EOF.
                     if (
                         not self._boot_marker_emitted
                         and f.tell() >= self._boot_eof
@@ -557,6 +557,7 @@ class ReflectionLogReader:
 
             # Multiplex aux sources (meta + autotrainer). Each reuses the
             # primary's day-separator state for chronological coherence.
+            # readline() loop keeps f.tell() valid (see primary loop note).
             for src in self._aux_sources:
                 try:
                     p = src["path"]
@@ -569,7 +570,10 @@ class ReflectionLogReader:
                         continue
                     with open(p, "r") as f:
                         f.seek(src["offset"])
-                        for raw in f:
+                        while True:
+                            raw = f.readline()
+                            if not raw:
+                                break
                             if not raw.strip():
                                 continue
                             try:
