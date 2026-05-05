@@ -5111,36 +5111,70 @@ class Scanner:
         self._init_feature_engineer()
         self._init_modular_ensemble()
 
-        # Parallel scan
+        # Two-phase parallel scan (BUDDY_PARALLEL_SCAN env var, opt-in).
+        # When enabled, per-pair work runs through ParallelScanCoordinator
+        # which produces candidates with no shared writes (Phase 1) and
+        # commits Scanner shared state under a single lock (Phase 2).
+        # When disabled, fall through to the original ThreadPoolExecutor
+        # path so behaviour is bit-for-bit unchanged.
         analyses: List[PairAnalysis] = []
+        from .automation.parallel_scan import (
+            ParallelScanCoordinator,
+            is_parallel_scan_enabled,
+        )
 
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            futures = {
-                executor.submit(self._scan_pair, pair): pair
-                for pair in pair_list
-            }
+        _parallel_enabled = is_parallel_scan_enabled()
+        _parallel_succeeded = False
+        self._last_parallel_scan_stats = None
 
-            for future in as_completed(futures, timeout=300):
-                pair = futures[future]
-                try:
-                    result = future.result(timeout=60)
-                    if result is not None:
-                        analyses.append(result)
+        if _parallel_enabled:
+            coordinator = ParallelScanCoordinator(
+                scanner=self,
+                max_workers=worker_count,
+            )
+            try:
+                analyses, scan_stats = coordinator.run(
+                    pair_list=list(pair_list),
+                    on_pair_complete=on_pair_complete,
+                )
+                self._last_parallel_scan_stats = scan_stats
+                _parallel_succeeded = True
+            except Exception as ps_err:
+                logger.error(
+                    "Parallel scan coordinator failed (%s) — falling back to sequential path",
+                    ps_err,
+                )
+                analyses = []
 
-                        # Callback for live display updates
-                        if on_pair_complete:
-                            on_pair_complete(result)
+        if not _parallel_succeeded:
+            # Sequential / legacy parallel path. Identical to pre-change behaviour.
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = {
+                    executor.submit(self._scan_pair, pair): pair
+                    for pair in pair_list
+                }
 
-                except TimeoutError:
-                    logger.error(f"Scan TIMEOUT for {pair} (>60s)")
-                except Exception as e:
-                    logger.error(f"Scan failed for {pair}: {e}")
-                    analyses.append(PairAnalysis(
-                        pair=pair,
-                        direction="HOLD",
-                        confidence=0.0,
-                        error=str(e),
-                    ))
+                for future in as_completed(futures, timeout=300):
+                    pair = futures[future]
+                    try:
+                        result = future.result(timeout=60)
+                        if result is not None:
+                            analyses.append(result)
+
+                            # Callback for live display updates
+                            if on_pair_complete:
+                                on_pair_complete(result)
+
+                    except TimeoutError:
+                        logger.error(f"Scan TIMEOUT for {pair} (>60s)")
+                    except Exception as e:
+                        logger.error(f"Scan failed for {pair}: {e}")
+                        analyses.append(PairAnalysis(
+                            pair=pair,
+                            direction="HOLD",
+                            confidence=0.0,
+                            error=str(e),
+                        ))
 
         analyses = self._run_sub_inference_pass(
             analyses,
