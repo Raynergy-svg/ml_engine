@@ -1,0 +1,30 @@
+{
+  "cycles": 3,
+  "workers": 0,
+  "pairs": [
+    "AUD_USD",
+    "EUR_USD",
+    "GBP_USD",
+    "NZD_USD",
+    "USD_CAD",
+    "USD_CHF",
+    "USD_JPY"
+  ],
+  "sequential_walls": [
+    0.02778031899998723,
+    0.024984639000024345,
+    0.02494246200001271
+  ],
+  "parallel_walls": [
+    0.02680277099997852,
+    0.027561325000021952,
+    0.02537853000001178
+  ],
+  "decision_match_per_cycle": [
+    true,
+    true,
+    true
+  ],
+  "mismatches": [],
+  "errors": []
+}
