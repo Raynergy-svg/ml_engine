@@ -331,6 +331,30 @@ class ReflectionLogReader:
         self._poll_interval = poll_interval
         self._offset = 0
         self._announced_waiting = False
+        # Mythos audit 2026-05-04 — make 159+ entries of history
+        # SCANNABLE. Snapshot the file size at boot so we can render a
+        # "▼ NEW SESSION ▼" marker once replay catches up; track the
+        # last-rendered day so a yellow "── Mon May 04 2026 ──" line
+        # gets injected on day rollovers.
+        try:
+            self._boot_eof = log_path.stat().st_size if log_path.exists() else 0
+        except OSError:
+            self._boot_eof = 0
+        self._boot_marker_emitted = False
+        self._last_day: str = ""
+
+    @staticmethod
+    def _local_dt(ts_raw):
+        """Parse ISO timestamp → datetime in operator's local timezone."""
+        from datetime import datetime as _dt
+        try:
+            ts_obj = _dt.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+        try:
+            return ts_obj.astimezone()
+        except Exception:
+            return ts_obj
 
     def _format(self, entry: dict) -> str:
         # Trade ID — keep first 12 chars (human-recognizable prefix)
@@ -341,14 +365,10 @@ class ReflectionLogReader:
         success = bool(entry.get("success"))
         hyp = str(entry.get("hypothesis") or "").strip()[:70]
         err = str(entry.get("error") or "").strip()[:60]
-        # HH:MM — parse the ISO timestamp properly (handles microseconds + TZ)
-        ts_raw = str(entry.get("ts", ""))
-        try:
-            from datetime import datetime as _dt
-            ts_obj = _dt.fromisoformat(ts_raw.replace("Z", "+00:00"))
-            ts = ts_obj.strftime("%H:%M")
-        except (ValueError, TypeError):
-            ts = "--:--"
+        # Local-timezone HH:MM (was raw UTC). Lets operator correlate
+        # entries with their wall-clock without mental TZ math.
+        ts_local = self._local_dt(entry.get("ts", ""))
+        ts = ts_local.strftime("%H:%M") if ts_local else "--:--"
 
         if not success and err:
             return f"[red]  ✗ {ts} {tid} {mode} FAILED: {err}[/]"
@@ -360,6 +380,22 @@ class ReflectionLogReader:
                 f"${cost:.2f} → {hyp}[/]"
             )
         return f"[cyan]  ▸ {ts} {tid} light {dur:.0f}s → {hyp}[/]"
+
+    def _maybe_day_separator(self, entry: dict):
+        """Return a '── Day Date Year ──' line when the day rolls, else None.
+
+        Sticky watermark — emitted once per day-change as we walk through
+        the log. Lets the operator see the boundary between, say, April
+        15's losing-streak entries and today's clean state.
+        """
+        ts_local = self._local_dt(entry.get("ts", ""))
+        if ts_local is None:
+            return None
+        day = ts_local.strftime("%a %b %d %Y")
+        if day != self._last_day:
+            self._last_day = day
+            return f"[bold yellow]── {day} ──[/]"
+        return None
 
     def run(self) -> None:
         """Main loop. Call from a thread; exits when stop_flag is set."""
@@ -396,10 +432,60 @@ class ReflectionLogReader:
                         except json.JSONDecodeError:
                             # Skip malformed line, keep consuming
                             continue
+                        # Day-rollover separator BEFORE the entry, so the
+                        # date header sits above the day's first row.
+                        try:
+                            sep = self._maybe_day_separator(entry)
+                            if sep:
+                                self._callback(sep)
+                        except Exception:
+                            pass
                         try:
                             self._callback(self._format(entry))
                         except Exception:
                             pass  # callback errors must not poison reader
+
+                        # Boot marker: once we cross the byte position the
+                        # file held at TUI start, emit a single bright
+                        # divider. Anything below it is NEW for this
+                        # session — operator can scroll up to see history,
+                        # but the demarcation is unambiguous.
+                        if (
+                            not self._boot_marker_emitted
+                            and self._boot_eof > 0
+                            and f.tell() >= self._boot_eof
+                        ):
+                            self._boot_marker_emitted = True
+                            try:
+                                from datetime import datetime as _dt2
+                                now_local = _dt2.now().astimezone()
+                                stamp = now_local.strftime("%H:%M:%S")
+                                self._callback(
+                                    f"[bold #ff2bd6]"
+                                    f"━━━━━━ ▼ NEW SESSION @ {stamp} "
+                                    f"(history above) ▼ ━━━━━━[/]"
+                                )
+                            except Exception:
+                                pass
+                    # Edge case: the file was empty / matched boot_eof
+                    # exactly at start, so we never crossed inside the
+                    # loop above. Emit the marker on first poll anyway.
+                    if (
+                        not self._boot_marker_emitted
+                        and f.tell() >= self._boot_eof
+                    ):
+                        self._boot_marker_emitted = True
+                        try:
+                            from datetime import datetime as _dt2
+                            now_local = _dt2.now().astimezone()
+                            stamp = now_local.strftime("%H:%M:%S")
+                            self._callback(
+                                f"[bold #ff2bd6]"
+                                f"━━━━━━ ▼ NEW SESSION @ {stamp} "
+                                f"(history above) ▼ ━━━━━━[/]"
+                            )
+                        except Exception:
+                            pass
                     self._offset = f.tell()
             except Exception as e:
                 logger.debug("ReflectionLogReader error: %s", e)
