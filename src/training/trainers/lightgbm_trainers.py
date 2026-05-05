@@ -55,7 +55,26 @@ logger = logging.getLogger(__name__)
 
 @contextlib.contextmanager
 def _suppress_native_stderr():
-    """Suppress native-library stderr output during pickle deserialization."""
+    """Suppress native-library stderr output during model deserialization.
+
+    Mythos audit 2026-05-04 — same root-cause fix as gates.py:107.
+    The previous implementation's `os.dup2(devnull, sys.stderr.fileno())`
+    corrupted file descriptors when the process runs under Textual
+    (sys.stderr replaced by Textual's own pipe wrapper). Subsequent
+    model deserialization raised [Errno 9] Bad file descriptor.
+    Symptom in production: every per-pair lgbm_momentum.pkl load via
+    modular_inference → LightGBMMomentumTrainer.load() failed under the
+    TUI runtime, returning momentum=0.000 on every scan and blocking
+    every trade. Fix: detect TUI context and skip OS-level dup2.
+    """
+    real_stderr = getattr(sys, "__stderr__", None)
+    in_tui = real_stderr is None or sys.stderr is not real_stderr
+
+    if in_tui:
+        with contextlib.redirect_stderr(io.StringIO()):
+            yield
+        return
+
     try:
         stderr_fd = sys.stderr.fileno()
     except (AttributeError, io.UnsupportedOperation):
@@ -63,15 +82,27 @@ def _suppress_native_stderr():
             yield
         return
 
-    saved_fd = os.dup(stderr_fd)
+    try:
+        saved_fd = os.dup(stderr_fd)
+    except OSError:
+        with contextlib.redirect_stderr(io.StringIO()):
+            yield
+        return
+
     try:
         with open(os.devnull, "w") as devnull:
             os.dup2(devnull.fileno(), stderr_fd)
             with contextlib.redirect_stderr(devnull):
                 yield
     finally:
-        os.dup2(saved_fd, stderr_fd)
-        os.close(saved_fd)
+        try:
+            os.dup2(saved_fd, stderr_fd)
+        except OSError:
+            pass
+        try:
+            os.close(saved_fd)
+        except OSError:
+            pass
 
 
 class RegimeLGBMTrainer(BaseTrainer):

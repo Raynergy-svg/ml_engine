@@ -143,6 +143,17 @@ class PairAnalysis:
     # 'disagreement_gate', 'drawdown_gate', 'accuracy_gate', 'other'.
     kill_reason: Optional[str] = None
 
+    # Mythos audit 2026-05-04 — operator-facing rejection reason consumed by
+    # embedded_scanner.py:521 when populating brain-feed reject lines.
+    # Read pattern was `analysis.rejection_reason or "gates"` — pre-fix this
+    # raised AttributeError because the field didn't exist on PairAnalysis,
+    # crashing every Scanner.scan_pair invocation:
+    #   ERROR: Scan failed for GBP_USD: 'PairAnalysis' object has no attribute 'rejection_reason'
+    # which is why every scan returned 0/N tradeable with momentum=0.000 in
+    # the virtual_trade_logger. None default means "no operator-overlaid
+    # reason set"; the consumer falls back to "gates" via `or "gates"`.
+    rejection_reason: Optional[str] = None
+
     # Error handling
     error: Optional[str] = None
     scan_time_ms: float = 0.0

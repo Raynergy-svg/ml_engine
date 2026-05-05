@@ -32,7 +32,23 @@ DEFAULT_ALIAS_MAP: Dict[str, str] = {
 
 @contextlib.contextmanager
 def _suppress_native_stderr():
-    """Suppress native-library stderr output during fragile pickle loads."""
+    """Suppress native-library stderr output during model deserialization.
+
+    Mythos audit 2026-05-04 — same root-cause fix as gates.py:107
+    and lightgbm_trainers.py:57. The previous implementation's
+    `os.dup2(devnull, sys.stderr.fileno())` corrupted file descriptors
+    in the Textual TUI process (Textual replaces sys.stderr with its
+    own pipe wrapper). Detect TUI context and skip OS-level dup2 —
+    fall through to a Python-only `redirect_stderr(StringIO)`.
+    """
+    real_stderr = getattr(sys, "__stderr__", None)
+    in_tui = real_stderr is None or sys.stderr is not real_stderr
+
+    if in_tui:
+        with contextlib.redirect_stderr(io.StringIO()):
+            yield
+        return
+
     try:
         stderr_fd = sys.stderr.fileno()
     except (AttributeError, io.UnsupportedOperation):
@@ -40,15 +56,27 @@ def _suppress_native_stderr():
             yield
         return
 
-    saved_fd = os.dup(stderr_fd)
+    try:
+        saved_fd = os.dup(stderr_fd)
+    except OSError:
+        with contextlib.redirect_stderr(io.StringIO()):
+            yield
+        return
+
     try:
         with open(os.devnull, "w") as devnull:
             os.dup2(devnull.fileno(), stderr_fd)
             with contextlib.redirect_stderr(devnull):
                 yield
     finally:
-        os.dup2(saved_fd, stderr_fd)
-        os.close(saved_fd)
+        try:
+            os.dup2(saved_fd, stderr_fd)
+        except OSError:
+            pass
+        try:
+            os.close(saved_fd)
+        except OSError:
+            pass
 
 
 def _load_xgboost_module():
