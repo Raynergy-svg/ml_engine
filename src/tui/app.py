@@ -343,6 +343,68 @@ class ReflectionLogReader:
         self._boot_marker_emitted = False
         self._last_day: str = ""
 
+        # Mythos audit 2026-05-05 — operator: panel showed "old logs"
+        # because Claude reflection_log.jsonl is dormant under no-LLM.
+        # Multiplex two extra live "system thinking" sources into the
+        # same panel: meta-pipeline ledger + autonomous_trainer log.
+        # Each tracked with its own offset + boot_eof so day-rollover
+        # / boot-marker logic reuses the primary source's _last_day.
+        # The PANEL display now matches the per-box `c` snapshot
+        # (commit a308b9d) — same merged stream, formatted live.
+        from pathlib import Path as _P
+        _root = _P(__file__).resolve().parents[2]
+        self._aux_sources = [
+            {
+                "path": _root / ".claude" / "meta" / "changes.jsonl",
+                "tag": "meta",
+                "color": "cyan",
+                "formatter": self._format_meta,
+                "offset": 0,
+                "announced_waiting": False,
+            },
+            {
+                "path": _root / "logs" / "autonomous_trainer.jsonl",
+                "tag": "train",
+                "color": "yellow",
+                "formatter": self._format_autotrain,
+                "offset": 0,
+                "announced_waiting": False,
+            },
+        ]
+        for src in self._aux_sources:
+            try:
+                src["offset"] = (
+                    src["path"].stat().st_size if src["path"].exists() else 0
+                )
+            except OSError:
+                src["offset"] = 0
+
+    def _format_meta(self, entry: dict) -> str:
+        """Format a .claude/meta/changes.jsonl entry."""
+        ts_local = self._local_dt(entry.get("updated_at") or entry.get("ts", ""))
+        ts = ts_local.strftime("%H:%M") if ts_local else "--:--"
+        cid = (entry.get("change_id", "") or "")[:12]
+        stage = entry.get("stage", "?")
+        event = entry.get("event") or ""
+        kind = entry.get("kind", "?")
+        # Color stage: green for promotions, red for rejections, dim otherwise
+        color = "green" if "promoted" in event or stage in ("deployed_live", "closed") else \
+                "red" if stage in ("rejected", "aborted") else "cyan"
+        return (
+            f"[{color}]  ◆ {ts} meta cid={cid} stage={stage} "
+            f"event={event} kind={kind}[/]"
+        )
+
+    def _format_autotrain(self, entry: dict) -> str:
+        """Format a logs/autonomous_trainer.jsonl entry."""
+        ts_local = self._local_dt(entry.get("ts", ""))
+        ts = ts_local.strftime("%H:%M") if ts_local else "--:--"
+        tid = str(entry.get("trade_id", "?"))[:20]
+        success = bool(entry.get("success"))
+        hyp = str(entry.get("hypothesis") or "").strip()[:80]
+        sym = "[green]✓[/]" if success else "[yellow]○[/]"
+        return f"[yellow]  ▣ {ts} train {sym} {tid} → {hyp}[/]"
+
     @staticmethod
     def _local_dt(ts_raw):
         """Parse ISO timestamp → datetime in operator's local timezone."""
@@ -386,9 +448,12 @@ class ReflectionLogReader:
 
         Sticky watermark — emitted once per day-change as we walk through
         the log. Lets the operator see the boundary between, say, April
-        15's losing-streak entries and today's clean state.
+        15's losing-streak entries and today's clean state. Schema-tolerant:
+        meta entries use `updated_at`, claude entries use `ts`.
         """
-        ts_local = self._local_dt(entry.get("ts", ""))
+        ts_local = self._local_dt(
+            entry.get("ts") or entry.get("updated_at", "")
+        )
         if ts_local is None:
             return None
         day = ts_local.strftime("%a %b %d %Y")
@@ -489,6 +554,45 @@ class ReflectionLogReader:
                     self._offset = f.tell()
             except Exception as e:
                 logger.debug("ReflectionLogReader error: %s", e)
+
+            # Multiplex aux sources (meta + autotrainer). Each reuses the
+            # primary's day-separator state for chronological coherence.
+            for src in self._aux_sources:
+                try:
+                    p = src["path"]
+                    if not p.exists():
+                        continue
+                    size = p.stat().st_size
+                    if size < src["offset"]:
+                        src["offset"] = 0
+                    if size == src["offset"]:
+                        continue
+                    with open(p, "r") as f:
+                        f.seek(src["offset"])
+                        for raw in f:
+                            if not raw.strip():
+                                continue
+                            try:
+                                entry = json.loads(raw)
+                            except json.JSONDecodeError:
+                                continue
+                            try:
+                                sep = self._maybe_day_separator(entry)
+                                if sep:
+                                    self._callback(sep)
+                            except Exception:
+                                pass
+                            try:
+                                self._callback(src["formatter"](entry))
+                            except Exception:
+                                pass
+                        src["offset"] = f.tell()
+                except Exception as e:
+                    logger.debug(
+                        "ReflectionLogReader aux source %s error: %s",
+                        src.get("tag", "?"), e,
+                    )
+
             self._stop.wait(self._poll_interval)
 
 
