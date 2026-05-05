@@ -512,7 +512,31 @@ class AlertManager:
 
             # CRITICAL-2: Update cooldown timestamp (unix time) and state atomically
             self._last_fired[alert.alert_type] = time.time()
-            self._active_alerts.append(alert)
+
+            # Mythos audit 2026-05-05 — operator-visible bug: 73 duplicate
+            # `consecutive_losses` entries accumulated in active_alerts
+            # because every fire append'd to the list with no dedup. The
+            # defensive agents (devil_advocate, risk_sentinel, uncertainty —
+            # combined weight 3.65/6.30) read these as "active loss streak
+            # in progress" → voted NO on every setup → only conf>=0.72
+            # could clear the WVS gate. Pairs with conf 0.40-0.69
+            # (genuine setups) blocked solely on agent_passed=False.
+            #
+            # Fix: replace existing unacknowledged alert of same type with
+            # the latest one. Each alert_type has AT MOST ONE entry in
+            # active_alerts. Acknowledged (resolved) alerts stay until
+            # explicitly cleared so the operator audit trail survives.
+            replaced = False
+            for i, existing in enumerate(self._active_alerts):
+                if (
+                    existing.alert_type == alert.alert_type
+                    and not existing.acknowledged
+                ):
+                    self._active_alerts[i] = alert
+                    replaced = True
+                    break
+            if not replaced:
+                self._active_alerts.append(alert)
 
             # Immediately persist state (do not defer)
             self._save_state()
