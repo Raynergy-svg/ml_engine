@@ -1,0 +1,44 @@
+{
+  "training_type": "joint_multi_pair",
+  "instruments": [
+    "EUR_USD"
+  ],
+  "metrics": {
+    "direction": {
+      "train_accuracy": 0.7798843383789062,
+      "val_accuracy": 0.5116279069767442,
+      "val_balanced_accuracy": 0.5218223067018211,
+      "val_up_accuracy": 0.5244956772334294,
+      "val_down_accuracy": 0.5191489361702127,
+      "val_direction_gap": 0.005346741063216642,
+      "epochs_trained": 10,
+      "n_train_samples": 3112,
+      "n_val_samples": 817,
+      "total_weight_norm": 62.720917098186874,
+      "avg_weight_norm": 1.650550449952286,
+      "drift_detected": false
+    },
+    "momentum": {
+      "momentum_mae": 0.024890373532346535,
+      "acceleration_accuracy": 0.8577154308617234,
+      "model_type": "lightgbm"
+    },
+    "risk": {
+      "drawdown_mae_pct": 0.0014389273178883337,
+      "drawdown_mae_bps": 14.389273178883338,
+      "streak_prob_mae": 0.03291043629942135,
+      "model_type": "lightgbm"
+    },
+    "confidence": {
+      "confidence_mae": 0.3597111754796336,
+      "r2_score": 0.9949077968098177,
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_total_features": 15
+    }
+  },
+  "per_instrument_metrics": {},
+  "fine_tune_decisions": {},
+  "saved_at": "2026-05-04T18:53:31.364716"
+}

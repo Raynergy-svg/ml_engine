@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/buddy/Documents/ml_engine/.claude/tools/ensure_buddy_tmux.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

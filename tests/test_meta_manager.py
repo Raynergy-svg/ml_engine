@@ -200,7 +200,14 @@ def test_drain_advances_approved_to_shadow(tmp_layout, fake_specialist_invoker):
     assert refreshed.stage == ChangeStage.DEPLOYED_SHADOW
 
 
-def test_post_deploy_review_promotes_on_pass(tmp_layout, fake_specialist_invoker):
+def test_post_deploy_review_promotes_on_pass(tmp_layout, fake_specialist_invoker, monkeypatch):
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    trade_counts = iter([100, 115, 115])
+    monkeypatch.setattr(
+        StagedDeployer,
+        "_read_trade_journal_count",
+        lambda self: next(trade_counts),
+    )
     mgr = _build_manager(tmp_layout, fake_specialist_invoker)
     pkg = mgr.intake({"kind": "self_heal", "proposed_config_delta": {"min_confidence": {"old": 0.5, "new": 0.55}}})
     mgr.propose(pkg)
@@ -214,6 +221,74 @@ def test_post_deploy_review_promotes_on_pass(tmp_layout, fake_specialist_invoker
     assert counters["promotions"] >= 1
     refreshed = mgr.get(pkg.change_id)
     assert refreshed.deploy_target == DeployStage.CANARY
+
+
+def test_post_deploy_review_does_not_promote_without_closed_trades(tmp_layout, fake_specialist_invoker, monkeypatch):
+    """Regression: promotion must use closed-trade/R gates, not cycle elapsed.
+
+    A package can have passed its post-deploy critic, but without the required
+    closed trades since deploy it must remain in shadow/canary soak.
+    """
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    monkeypatch.setattr(StagedDeployer, "_read_trade_journal_count", lambda self: 100)
+    mgr = _build_manager(tmp_layout, fake_specialist_invoker)
+    pkg = mgr.intake({"kind": "self_heal", "proposed_config_delta": {"min_confidence": {"old": 0.5, "new": 0.55}}})
+    mgr.propose(pkg)
+    mgr.evaluate(pkg)
+    mgr.check_constitution(pkg)
+    mgr.request_approval(pkg)
+    ApprovalQueue(root=tmp_layout.approval_root).approve(pkg.change_id, DeployStage.SHADOW)
+    mgr.drain(current_cycle=1)
+
+    counters = mgr.drain(current_cycle=999)
+
+    assert counters["post_deploy_reviews"] >= 1
+    assert counters["promotions"] == 0
+    refreshed = mgr.get(pkg.change_id)
+    assert refreshed is not None
+    assert refreshed.deploy_target == DeployStage.SHADOW
+    assert refreshed.stage == ChangeStage.DEPLOYED_SHADOW
+
+
+def test_post_deploy_zero_sample_defers_without_rollback(tmp_layout, fake_specialist_invoker, monkeypatch):
+    """A zero-sample post-deploy review is inconclusive, not a pass or rollback."""
+    from src.scanner.automation.staged_deployer import StagedDeployer
+    monkeypatch.setattr(StagedDeployer, "_read_trade_journal_count", lambda self: 100)
+    cfg = SimpleNamespace(min_confidence=0.50)
+    queue = ApprovalQueue(root=tmp_layout.approval_root)
+    deployer = StagedDeployer(
+        config=cfg,
+        config_adjuster=ConfigAdjuster(persistence_path=tmp_layout.changes_dir.parent / "adj.json"),
+    )
+    critic = PostDeployCritic(
+        metrics_slicer=lambda p, s: {"sample_size": 0},
+        ledger_path=tmp_layout.ledger,
+    )
+    mgr = MetaManager(
+        config=cfg,
+        eval_harness=_build_eval_harness(tmp_layout),
+        constitution=Constitution(path=SEED_CONSTITUTION),
+        approval_queue=queue,
+        staged_deployer=deployer,
+        post_deploy_critic=critic,
+        specialist_invoker=fake_specialist_invoker,
+        changes_dir=tmp_layout.changes_dir,
+        ledger_path=tmp_layout.ledger,
+    )
+    pkg = mgr.process({
+        "kind": "self_heal",
+        "proposed_config_delta": {"min_confidence": {"old": 0.5, "new": 0.55}},
+    })
+    queue.approve(pkg.change_id, DeployStage.SHADOW)
+    mgr.drain(current_cycle=1)
+
+    counters = mgr.drain(current_cycle=999)
+
+    assert counters["rollbacks"] == 0
+    refreshed = mgr.get(pkg.change_id)
+    assert refreshed is not None
+    assert refreshed.stage == ChangeStage.DEPLOYED_SHADOW
+    assert refreshed.post_deploy_reviews[-1].notes == "insufficient_sample_deferred"
 
 
 def test_post_deploy_review_rolls_back_on_miss(tmp_layout, fake_specialist_invoker):
@@ -249,6 +324,58 @@ def test_post_deploy_review_rolls_back_on_miss(tmp_layout, fake_specialist_invok
     refreshed = mgr.get(pkg.change_id)
     assert refreshed.stage == ChangeStage.REJECTED
     assert "post_deploy_miss" in (refreshed.rejection_reason or "")
+
+
+def test_failed_scorecard_rejects_before_approval(tmp_layout, fake_specialist_invoker):
+    """Eval-first gate: failed scorecards must not reach human approval."""
+    class _FailEval:
+        def score(self, pkg):
+            from src.scanner.automation.meta_types import Scorecard, SubScore
+            return Scorecard(
+                software_correctness=SubScore("software_correctness", False),
+                trading_quality=SubScore("trading_quality", True),
+                governance_quality=SubScore("governance_quality", True),
+                regime_robustness=SubScore("regime_robustness", True),
+            )
+
+    mgr = MetaManager(
+        config=SimpleNamespace(min_confidence=0.5),
+        eval_harness=_FailEval(),
+        constitution=Constitution(path=SEED_CONSTITUTION),
+        approval_queue=ApprovalQueue(root=tmp_layout.approval_root),
+        staged_deployer=None,
+        specialist_invoker=fake_specialist_invoker,
+        changes_dir=tmp_layout.changes_dir,
+        ledger_path=tmp_layout.ledger,
+    )
+    pkg = mgr.process({
+        "kind": "self_heal",
+        "proposed_config_delta": {"min_confidence": {"old": 0.5, "new": 0.55}},
+    })
+    assert pkg.stage == ChangeStage.REJECTED
+    assert pkg.rejection_reason == "scorecard_failed"
+    assert ApprovalQueue(root=tmp_layout.approval_root).list_pending() == []
+
+
+def test_missing_eval_harness_aborts_before_approval(tmp_layout, fake_specialist_invoker):
+    """Eval-first gate: a manager without an eval harness cannot approve packages."""
+    mgr = MetaManager(
+        config=SimpleNamespace(min_confidence=0.5),
+        eval_harness=None,
+        constitution=Constitution(path=SEED_CONSTITUTION),
+        approval_queue=ApprovalQueue(root=tmp_layout.approval_root),
+        staged_deployer=None,
+        specialist_invoker=fake_specialist_invoker,
+        changes_dir=tmp_layout.changes_dir,
+        ledger_path=tmp_layout.ledger,
+    )
+    pkg = mgr.process({
+        "kind": "self_heal",
+        "proposed_config_delta": {"min_confidence": {"old": 0.5, "new": 0.55}},
+    })
+    assert pkg.stage == ChangeStage.ABORTED
+    assert pkg.rejection_reason == "eval_harness_missing"
+    assert ApprovalQueue(root=tmp_layout.approval_root).list_pending() == []
 
 
 def test_max_concurrent_throttles_intake(tmp_layout, fake_specialist_invoker):

@@ -384,12 +384,17 @@ class Orchestrator:
                 from src.scanner.automation.adjustment_approver import AdjustmentApprover
                 eval_harness = None
                 try:
+                    from src.scanner.automation.replay_validator import ReplayValidator
                     eval_harness = ChangeEvalHarness(
-                        replay_validator=None,
+                        replay_validator=ReplayValidator(),
                         qa_pipeline=self._qa_pipeline,
+                        baseline_config=dict(getattr(_cfg, "__dict__", {}) or {}),
                     )
                 except Exception as eh_err:
-                    logger.debug("MetaManager: eval harness init failed: %s", eh_err)
+                    logger.warning(
+                        "MetaManager: eval harness init failed: %s — "
+                        "packages will abort at eval stage", eh_err,
+                    )
                 # Approver is required so canary deploys can move their own
                 # proposals from pending → approved-history without tripping
                 # ConfigAdjuster.apply_adjustments's BypassAttempt write-guard

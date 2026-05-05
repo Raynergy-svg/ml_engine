@@ -1,0 +1,35 @@
+{
+  "type": "transferred",
+  "source_pair": "EUR_USD",
+  "target_pair": "USD_CHF",
+  "correlation": -0.8180787509617143,
+  "transfer_config": {
+    "lr_factor": 0.03,
+    "encoder_layers_frozen": 2,
+    "epochs": 50,
+    "use_ewc": true,
+    "ewc_lambda": 100.0
+  },
+  "metrics": {
+    "momentum": {
+      "momentum_mae": 0.024867546181615467,
+      "acceleration_accuracy": 0.8637274549098196,
+      "model_type": "lightgbm"
+    },
+    "risk": {
+      "drawdown_mae_pct": 0.0016371841328283452,
+      "drawdown_mae_bps": 16.371841328283452,
+      "streak_prob_mae": 0.01992933850431651,
+      "model_type": "lightgbm"
+    },
+    "confidence": {
+      "confidence_mae": 0.38453677749395976,
+      "r2_score": 0.9934248059600661,
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_total_features": 15
+    }
+  },
+  "saved_at": "2026-05-04T18:55:54.261899"
+}

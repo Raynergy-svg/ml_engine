@@ -179,27 +179,27 @@ class RejectModal(ModalScreen[Optional[str]]):
     #reject-dialog {
         width: 60;
         height: auto;
-        background: #0a0a0f;
-        border: double #ff1744;
+        background: #05060a;
+        border: double #ff3158;
         padding: 1 2;
     }
 
     #reject-title {
         text-align: center;
-        color: #ff1744;
+        color: #ff3158;
         text-style: bold;
         padding: 0 0 1 0;
     }
 
     #reject-prompt {
-        color: #ffab00;
+        color: #ffb000;
         padding: 0 0 0 0;
     }
 
     #reject-input {
         margin: 1 0 1 0;
-        border: solid #ff1744;
-        background: #131320;
+        border: solid #ff3158;
+        background: #090d18;
     }
 
     #reject-buttons {
@@ -254,21 +254,21 @@ class DetailModal(ModalScreen[None]):
         width: 72;
         height: auto;
         max-height: 40;
-        background: #0a0a0f;
-        border: double #7c4dff;
+        background: #05060a;
+        border: double #b84dff;
         padding: 1 2;
         overflow-y: auto;
     }
 
     #detail-title {
         text-align: center;
-        color: #7c4dff;
+        color: #b84dff;
         text-style: bold;
         padding: 0 0 1 0;
     }
 
     #detail-body {
-        color: #e0e0ff;
+        color: #e8f7ff;
         padding: 0 0 1 0;
     }
 
@@ -335,21 +335,21 @@ class PreviewModal(ModalScreen[None]):
         width: 76;
         height: auto;
         max-height: 42;
-        background: #0a0a0f;
-        border: double #00ff41;
+        background: #05060a;
+        border: double #39ff14;
         padding: 1 2;
         overflow-y: auto;
     }
 
     #preview-title {
         text-align: center;
-        color: #00ff41;
+        color: #39ff14;
         text-style: bold;
         padding: 0 0 1 0;
     }
 
     #preview-body {
-        color: #e0e0ff;
+        color: #e8f7ff;
         padding: 0 0 1 0;
     }
 
@@ -425,27 +425,27 @@ class HomeworkEditModal(ModalScreen[Optional[dict]]):
     #edit-dialog {
         width: 76;
         height: auto;
-        background: #0a0a0f;
-        border: double #00ff41;
+        background: #05060a;
+        border: double #39ff14;
         padding: 1 2;
     }
 
     #edit-title {
         text-align: center;
-        color: #00ff41;
+        color: #39ff14;
         text-style: bold;
         padding: 0 0 1 0;
     }
 
     #edit-prompt {
-        color: #ffab00;
+        color: #ffb000;
         padding: 0 0 0 0;
     }
 
     .edit-input {
         margin: 1 0 1 0;
-        border: solid #00ff41;
-        background: #131320;
+        border: solid #39ff14;
+        background: #090d18;
     }
 
     #edit-buttons {
@@ -518,21 +518,24 @@ class InboxScreen(Container):
     InboxScreen {
         height: 1fr;
         padding: 0 1;
+        background: #05060a;
     }
 
     #inbox-header {
         height: 3;
         align: left middle;
+        background: #090b14;
+        border-bottom: solid #26304f;
     }
 
     #inbox-title {
-        color: #ff00ff;
+        color: #ff2bd6;
         text-style: bold;
         padding: 0 1;
     }
 
     #inbox-subtitle {
-        color: #6666aa;
+        color: #7483b8;
         padding: 0 2;
     }
 
@@ -544,16 +547,21 @@ class InboxScreen(Container):
 
     .filter-pill {
         margin: 0 1;
-        background: #1a1a2a;
-        color: #6666aa;
-        border: solid #2a2a4a;
+        background: #111827;
+        color: #7483b8;
+        border: solid #26304f;
     }
 
     .filter-pill.active {
-        background: #2a2a4a;
-        color: #ff00ff;
+        background: #1f2a44;
+        color: #ffea00;
         text-style: bold;
-        border: solid #ff00ff;
+        border: tall #ff2bd6;
+    }
+
+    .filter-pill:hover {
+        color: #00f5ff;
+        border: solid #00f5ff;
     }
 
     #two-pane-row {
@@ -563,20 +571,21 @@ class InboxScreen(Container):
     #inbox-queue {
         width: 1fr;
         height: 1fr;
-        border: solid #2a2a4a;
-        background: #131320;
+        border: double #00f5ff;
+        background: #090d18;
+        color: #e8f7ff;
     }
 
     #detail-pane {
         width: 1fr;
         height: 1fr;
-        border: solid #7c4dff;
-        background: #0a0a0f;
+        border: double #b84dff;
+        background: #070912;
         padding: 1 2;
     }
 
     #detail-pane-md {
-        color: #e0e0ff;
+        color: #e8f7ff;
     }
 
     #inbox-actions {
@@ -592,9 +601,11 @@ class InboxScreen(Container):
     #inbox-empty {
         height: 3;
         align: center middle;
-        color: #6666aa;
+        color: #7483b8;
         text-align: center;
         display: none;
+        border: solid #26304f;
+        background: #090d18;
     }
     """
 
@@ -846,7 +857,7 @@ class InboxScreen(Container):
 
             # Color homework rows by P/L sign
             if r.entry_type == "homework" and r.pl is not None:
-                color = "#00ff41" if r.pl >= 0 else "#ff1744"
+                color = "#39ff14" if r.pl >= 0 else "#ff3158"
                 detail_cell: Any = Text(detail, style=color)
             else:
                 detail_cell = detail

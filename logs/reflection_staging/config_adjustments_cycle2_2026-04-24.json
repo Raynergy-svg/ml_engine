@@ -1,0 +1,71 @@
+{
+  "cycle": 2,
+  "timestamp": "2026-04-24T22:21:09Z",
+  "trigger": "losing_streak_3_consecutive",
+  "evidence_trades": ["1243", "1255", "1261"],
+  "notes": [
+    "Same 3 trades as cycles 04-21. Scanner has produced zero new closed trades since 04-16.",
+    "Prior cycle adjustments (04-21) never applied by ConfigAdjuster — applied_ids=[].",
+    "All keys validated against ScannerConfig dataclass field names per orphan-key rule (2026-04-16).",
+    "Defensive / capital-preservation layer until models retrain and agent team reactivates."
+  ],
+  "adjustments": [
+    {
+      "key": "atr_sl_multiplier_low",
+      "current_assumed": 0.8,
+      "proposed": 1.3,
+      "reason": "Rule regime_sl (2026-04-15): LOW regime sl_mult >= 1.2. All 3 losses had SL/ATR ~0.8-1.0x in a chop market. MFE=0 proves SL was triggered by noise, not adverse move. VERIFY key name matches dataclass field; cycle 2 original proposal used 'low_regime_sl_multiplier' which may be an orphan key.",
+      "priority": "P0_BLOCKER"
+    },
+    {
+      "key": "enable_mean_reversion_veto",
+      "current_assumed": false,
+      "proposed": true,
+      "reason": "Rule mean_reversion_veto (2026-04-17) promoted but not active. Trades 1255/1261 had model_disagreement=0.5 and MR score in the veto band — should have been hard-blocked."
+    },
+    {
+      "key": "mean_reversion_veto_disagree_floor",
+      "current_assumed": 0.25,
+      "proposed": 0.25,
+      "reason": "Confirm active threshold per 2026-04-17 rule."
+    },
+    {
+      "key": "max_model_disagreement",
+      "current_assumed": 0.50,
+      "proposed": 0.35,
+      "reason": "Two of three losses had disagreement=0.5 and passed risk gate. Tighten until per_pair models retrain."
+    },
+    {
+      "key": "max_uncertainty_score",
+      "current_assumed": 0.45,
+      "proposed": 0.35,
+      "reason": "Staleness rule (2026-04-15): when max_component_age_days > 7, drop to 0.35. agent_weights age = 8d, triggers this rule."
+    },
+    {
+      "key": "min_confidence",
+      "current_assumed": 0.65,
+      "proposed": 0.72,
+      "reason": "All 3 losses had confidence 0.64-0.68 — barely over current floor. Raise until retrain."
+    },
+    {
+      "key": "risk_per_trade",
+      "current_assumed": 0.025,
+      "proposed": 0.0125,
+      "reason": "Capital preservation: halve sizing until 3 consecutive winners. Consistent with 04-21 cycle 3 IMMEDIATE_ACTION."
+    },
+    {
+      "key": "scheduled_retrain_trigger_days",
+      "current_assumed": 14,
+      "proposed": 7,
+      "reason": "Agent weights at 8d, already in aging band. Trigger retrain before hitting 14d staleness hard-block."
+    }
+  ],
+  "operator_flags": [
+    "CRITICAL: agent_total=3 on all 3 trades (should be up to 15). Verify ScannerConfig.enable_order_flow_agent / enable_trader_readiness_agent / enable_devil_advocate_agent and the other 9 core agents are active in the running profile.",
+    "CRITICAL: gate_details.scores.used_learned_weights=false. Gate ensemble is using static defaults. Check learned-weights loader path.",
+    "CRITICAL: cycle 2/3 proposals from 04-21 never landed in ConfigAdjuster pending queue. Verify ConfigAdjuster.collect_adjustment() actually ingests logs/reflection_staging/ output, OR write directly to .claude/config_adjustments.json pending slot."
+  ],
+  "do_not_propose_weight_reductions_this_cycle": {
+    "reason": "Only 3 of 15 agents voted. Reducing weights on a degenerate vote set amplifies degradation. Fix agent enablement first, then revisit weights after a full 15-agent trade sample."
+  }
+}

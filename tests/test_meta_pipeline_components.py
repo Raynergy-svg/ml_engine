@@ -295,13 +295,14 @@ def test_critic_fails_when_realized_drifts(tmp_path):
     assert "outside" in review.notes
 
 
-def test_critic_treats_no_sample_as_pass(tmp_path):
+def test_critic_defers_no_sample(tmp_path):
     critic = PostDeployCritic(
         metrics_slicer=lambda p, s: {"sample_size": 0},
         ledger_path=tmp_path / "changes.jsonl",
     )
     review = critic.review(_scored_pkg(), DeployStage.SHADOW)
-    assert review.passed is True
+    assert review.passed is False
+    assert review.notes == "insufficient_sample_deferred"
 
 
 def test_critic_appends_ledger_jsonl(tmp_path):
@@ -328,6 +329,28 @@ def test_deployment_record_has_regime_and_trade_count_fields():
     blob = asdict(rec)
     assert blob["regime_at_deploy"] == "LOW"
     assert blob["closed_trade_count_at_deploy"] == 1234
+
+
+def test_change_package_round_trips_deployment_regime_and_trade_count():
+    """Deployment metadata must survive disk persistence.
+
+    The post-deploy critic and trade-count promotion gates depend on these
+    fields after `ApprovalQueue` and `MetaManager` reload packages from JSON.
+    """
+    pkg = ChangePackage()
+    pkg.deployments.append(DeploymentRecord(
+        stage=DeployStage.SHADOW,
+        deployed_at_cycle=42,
+        closed_trade_count_at_deploy=1234,
+        regime_at_deploy="LOW",
+    ))
+
+    restored = ChangePackage.from_dict(pkg.to_dict())
+    rec = restored.deployments[0]
+
+    assert rec.deployed_at_cycle == 42
+    assert rec.closed_trade_count_at_deploy == 1234
+    assert rec.regime_at_deploy == "LOW"
 
 
 def test_change_package_dedup_hash_stable_and_collision_correct():

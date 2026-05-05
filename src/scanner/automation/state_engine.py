@@ -212,6 +212,11 @@ class StateEngine:
         self._update_flag("halted", value)
         logger.info("StateEngine: halted=%s", value)
 
+    def set_last_actor(self, actor: str) -> None:
+        """Record the last supervisor/control actor in state."""
+        self._update_flag("last_actor", str(actor or ""))
+        logger.info("StateEngine: last_actor=%s", actor)
+
     def get_paused(self) -> bool:
         """Return whether the scanner is paused."""
         return bool(self.load_state().get("scanner_paused", False))

@@ -67,6 +67,9 @@ Every binding shipped from US-504 onward. Hotkeys are global unless a screen or 
 | `F7`     | Switch to **Rules** tab                       | US-504     |
 | `F8`     | Switch to **Diagnostics** tab                 | US-504     |
 | `Ctrl+F` | Cycle asset class (FX ⇄ Futures ⇄ Hybrid)     | US-504     |
+| `Ctrl+R` | State-preserving TUI restart                  | Mythos     |
+| `F12`    | State-preserving TUI restart fallback         | Mythos     |
+| `c`      | Copy focused panel or full snapshot           | Mythos     |
 | `q`      | Quit (clean shutdown, flushes state)          | US-504     |
 
 ### Supervisor controls (any screen, destructive)
@@ -77,6 +80,7 @@ Every binding shipped from US-504 onward. Hotkeys are global unless a screen or 
 | `k`      | **Kill switch** — flatten all open positions          | US-507 |
 | `m`      | Toggle scanner mode (DRY-RUN ⇄ LIVE)                  | US-508 |
 | `a`      | Abort the highest-priority pending signal             | US-509 |
+| `u`      | Health-gated unhalt after auto-halt                   | Mythos |
 
 > Supervisor controls are **disabled** while a kill is in progress (`_kill_in_progress` guard). The status strip displays `KILL IN PROGRESS` and ignores keypresses.
 
@@ -127,6 +131,12 @@ Every destructive action requires an explicit confirmation modal. The modal cann
 - Publishes `control.pause` or `control.resume` on the event bus.
 - Status strip updates to `PAUSED` / `RUNNING`.
 - **Reversible**: press `Space` again.
+
+### 3.1.1 Auto-halt Unhalt (`u`)
+- No modal. Clears `halted` only after the TUI passes live-source checks.
+- Required checks: LIVE runtime, OANDA connected, embedded scanner ready, heartbeat fresh, no open trades, scanner not paused, model stack complete, and model freshness not `STALE`/`CRITICAL`.
+- On pass: sets `halted=false`, records `last_actor=TUI_UNHALT`, publishes `control.resume`, and appends `.claude/brain/strategic_log.md`.
+- On fail: leaves `halted=true`, writes `UNHALT BLOCKED` to the brain feed, and appends the failed reasons to the strategic log.
 
 ### 3.2 Kill Switch (`k`)
 - Modal: `KillModal` (red border, double-confirm).
@@ -359,14 +369,14 @@ All 10 enumerated sections are complete, accurate against source, and operationa
 
 ```
 [ ] 1. Stop currently-running TUI: focus tui pane, press 'q' (or kill via launchctl)
-[ ] 2. Patch US-604 wiring gap (see §12.4 below) — DO NOT SKIP
+[ ] 2. Verify US-604 TUI telemetry wiring is still present (see §12.4 below)
 [ ] 3. Run: bash scripts/install_launchd_service.sh
 [ ] 4. Run: bash scripts/install_watchdog_service.sh
 [ ] 5. Verify: launchctl list | grep com.buddy.trader     → status 0 (running)
 [ ] 6. Verify: launchctl list | grep com.buddy.watchdog   → status 0 (running)
 [ ] 7. Wait 60s, verify: cat .claude/heartbeat.json       → ts within last 15s, scanner_alive: true
 [ ] 8. Wait 60s, verify: ls -la .claude/state_drift_log.jsonl  → file exists (drift event from initial reconcile)
-[ ] 9. Wait 5 min, verify: ls -la trained_data/dry_run_validation.jsonl → exists + line count growing
+[ ] 9. Wait 5 min, verify: wc -l trained_data/dry_run_validation.jsonl → line count growing
 [ ] 10. Confirm state.json mode=dry_run (NOT live!)
 ```
 
@@ -390,7 +400,7 @@ Only after ALL of §12.1 + §12.2 pass:
 
 ```
 [ ] 14. Append distribution summary to .claude/ralph/reports/phase95_evidence.md
-[ ] 15. Re-run architect verdict on phase95_evidence.md; require PASS (not NEEDS_WORK)
+[ ] 15. Re-run architect verdict on phase95_evidence.md; require PASS / not RUNTIME_GATED
 [ ] 16. In TUI: press M to open Mode toggle modal
 [ ] 17. Type 'LIVE' (case-sensitive)
 [ ] 18. Tab → ⚡ Go Live → Enter
@@ -399,7 +409,7 @@ Only after ALL of §12.1 + §12.2 pass:
 [ ] 21. Watch first 4h of LIVE operation closely. K (kill) is always one keystroke away.
 ```
 
-### 12.4 US-604 Wiring Gap — KNOWN DEFECT (must patch before §12.2)
+### 12.4 US-604 TUI Telemetry Wiring
 
 **Discovered during US-606 close-out, 2026-04-25.**
 
@@ -407,7 +417,9 @@ The `validation_stats` module was wired into `src/scanner/automation/continuous.
 
 This is the same TUI-wiring gap pattern that caused the 2026-04-16 ConfigAdjuster orphan-key incident ($3,527 loss).
 
-**Status: PATCHED 2026-04-25.** The wiring was added to `embedded_scanner.py` `_post_scan_automation()` after the observation_log block, mirroring `continuous.py:529-540`. No mode guard — record every cycle regardless of dry_run/live, so the jsonl provides complete gate-firing history.
+**Status: PATCHED AND VERIFIED 2026-05-05.** The wiring is present in `src/tui/embedded_scanner.py::_post_scan_automation()` after the observation_log block, mirroring `continuous.py`. Current evidence: `trained_data/dry_run_validation.jsonl` has 2,304 rows across 155 scan cycles.
+
+Current distribution remains a LIVE re-enable blocker: `would_submit=7/2304 (0.3%)` and `circuit_breaker=2297/2304 (99.7%)`, which violates the §12.2 “no single block reason > 95%” gate. Do not use `u` to clear an auto-halt until this distribution and model freshness are healthy.
 
 If for any reason the patch is reverted or the wiring needs to be re-applied:
 

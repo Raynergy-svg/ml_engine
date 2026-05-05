@@ -199,8 +199,9 @@ class EmbeddedScanner:
 
             # ── Create Scanner ─────────────────────────────────────
             self._scanner = Scanner(config=self._config)
+            self._scan_count = self._load_persisted_scan_count()
 
-            pair_count = len(self._config.pairs or self._config.default_pairs or [])
+            pair_count = len(self._resolve_scan_pairs())
             self._brain(f"[dim]  Scanner ready — {pair_count} pairs loaded[/]")
 
             # ── Automation modules (cherry-picked from ContinuousScanner) ──
@@ -266,6 +267,58 @@ class EmbeddedScanner:
             logger.error("EmbeddedScanner init failed: %s", e, exc_info=True)
             self._brain(f"[red]✗ Scanner init failed: {_format_init_error(e)}[/]")
             return False
+
+    def get_config(self) -> Any:
+        """Return the live ScannerConfig object used by the embedded scanner."""
+        return self._config
+
+    def get_model_health(self) -> dict:
+        """Return Scanner.get_model_health() when the engine is initialized."""
+        if self._scanner is None or not hasattr(self._scanner, "get_model_health"):
+            return {}
+        return self._scanner.get_model_health() or {}
+
+    def _load_persisted_scan_count(self) -> int:
+        """Seed local cycle count from .claude/state.json after restarts."""
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            state = StateEngine().load_state()
+            return int(state.get("scan_cycle_count", state.get("scan_cycles", 0)) or 0)
+        except Exception:
+            return 0
+
+    def _persist_next_scan_count(self) -> int:
+        """Increment the shared scan counter and mirror it locally."""
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            count = int(StateEngine().increment_scan_cycle() or 0)
+            if count > 0:
+                self._scan_count = count
+                return count
+        except Exception as exc:
+            logger.debug("scan count persistence failed: %s", exc)
+        self._scan_count += 1
+        return self._scan_count
+
+    def _resolve_scan_pairs(self) -> list[str]:
+        """Resolve the current instrument list from ScannerConfig.
+
+        The TUI can switch asset_class at runtime. ScannerConfig.active_instruments
+        is the canonical selector for FX/Futures/Hybrid, while pairs remains an
+        optional CLI override.
+        """
+        if self._config is None:
+            return []
+        explicit_pairs = list(getattr(self._config, "pairs", None) or [])
+        if explicit_pairs:
+            pairs = explicit_pairs
+        else:
+            active = getattr(self._config, "active_instruments", None)
+            pairs = list(active or getattr(self._config, "default_pairs", []) or [])
+        blocked = set(getattr(self._config, "blocked_pairs", set()) or set())
+        if blocked:
+            pairs = [p for p in pairs if p not in blocked]
+        return pairs
 
     def _sync_meta_env_from_config(self, config: Any) -> None:
         """Bridge ScannerConfig flags to meta_manager.is_enabled().
@@ -410,20 +463,18 @@ class EmbeddedScanner:
         except Exception as _halt_err:
             logger.debug("Halted check error (non-blocking): %s", _halt_err)
 
-        self._scan_count += 1
+        self._persist_next_scan_count()
         cycle_start = time.monotonic()
 
         now = datetime.now(timezone.utc).strftime("%H:%M:%S")
         self._brain(f"[cyan]▸ Scan #{self._scan_count} starting at {now}...[/]")
 
         try:
-            # ── Get pairs to scan ──────────────────────────────────
-            pairs = self._config.pairs or self._config.default_pairs or []
-
-            # Filter blocked pairs
-            blocked = getattr(self._config, "blocked_pairs", set()) or set()
-            if blocked:
-                pairs = [p for p in pairs if p not in blocked]
+            # ── Get instruments to scan ─────────────────────────────
+            pairs = self._resolve_scan_pairs()
+            if not pairs:
+                self._brain("[yellow]  ▸ No active instruments configured; scan skipped[/]")
+                return None
 
             # ── Run scan with per-pair callbacks ───────────────────
             result = self._scanner.scan(

@@ -1,1009 +1,1009 @@
 {
   "version": 1,
-  "total_predictions": 7094,
+  "total_predictions": 27646,
   "predictions": {
     "TCN": [
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:45:34.613171+00:00"
+        "timestamp": "2026-05-03T02:40:13.535987+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:45:44.497152+00:00"
+        "timestamp": "2026-05-03T02:40:20.198398+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:45:51.091377+00:00"
+        "timestamp": "2026-05-03T02:40:28.785481+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:05.608369+00:00"
+        "timestamp": "2026-05-03T02:40:32.568161+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:06.324748+00:00"
+        "timestamp": "2026-05-03T02:40:39.034407+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:14.835382+00:00"
+        "timestamp": "2026-05-03T02:40:46.895323+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.01157015562056607,
         "won": false,
-        "timestamp": "2026-04-16T15:46:23.191049+00:00"
+        "timestamp": "2026-05-03T02:40:55.276373+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:32.138508+00:00"
+        "timestamp": "2026-05-03T02:40:58.511364+00:00"
       },
       {
-        "confidence": 0.04391074180603027,
+        "confidence": 0.7647371292114236,
         "won": false,
-        "timestamp": "2026-04-16T15:46:42.397540+00:00"
+        "timestamp": "2026-05-03T02:41:11.939467+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.20844280719756192,
         "won": false,
-        "timestamp": "2026-04-16T15:46:48.612223+00:00"
+        "timestamp": "2026-05-03T02:41:18.568935+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:57.900417+00:00"
+        "timestamp": "2026-05-04T22:49:06.217452+00:00"
       },
       {
-        "confidence": 0.260306596755977,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:10.439368+00:00"
+        "timestamp": "2026-05-04T22:49:06.245838+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:15.614869+00:00"
+        "timestamp": "2026-05-04T22:49:23.115294+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:25.241573+00:00"
+        "timestamp": "2026-05-04T22:49:26.609531+00:00"
       },
       {
-        "confidence": 0.3936201333999634,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:36.633519+00:00"
+        "timestamp": "2026-05-04T22:49:37.939952+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:43.016047+00:00"
+        "timestamp": "2026-05-04T22:49:45.859179+00:00"
       },
       {
-        "confidence": 0.28756737709045854,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:50.286759+00:00"
+        "timestamp": "2026-05-04T22:49:53.345572+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:57.707658+00:00"
+        "timestamp": "2026-05-04T22:50:02.373934+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:59.596058+00:00"
+        "timestamp": "2026-05-04T22:50:02.699738+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:50:31.231947+00:00"
+        "timestamp": "2026-05-04T22:50:12.392527+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:50:44.820139+00:00"
+        "timestamp": "2026-05-04T22:50:19.932580+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.9880679845809981,
         "won": false,
-        "timestamp": "2026-04-16T15:50:54.653191+00:00"
+        "timestamp": "2026-05-04T22:50:28.377485+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:50:56.871577+00:00"
+        "timestamp": "2026-05-04T22:50:32.610194+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.4287382960319608,
         "won": false,
-        "timestamp": "2026-04-16T15:51:06.992666+00:00"
+        "timestamp": "2026-05-04T22:50:42.877040+00:00"
       },
       {
-        "confidence": 0.8820283412933394,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:08.844432+00:00"
+        "timestamp": "2026-05-04T22:50:50.795659+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:33.856766+00:00"
+        "timestamp": "2026-05-05T00:20:06.772272+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:36.993074+00:00"
+        "timestamp": "2026-05-05T00:20:06.778413+00:00"
       },
       {
-        "confidence": 0.8492624759674161,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:47.296285+00:00"
+        "timestamp": "2026-05-05T00:20:22.407744+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:54.974881+00:00"
+        "timestamp": "2026-05-05T00:20:26.738493+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:00.993314+00:00"
+        "timestamp": "2026-05-05T00:20:35.450324+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:18.661293+00:00"
+        "timestamp": "2026-05-05T00:20:43.071082+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:22.280365+00:00"
+        "timestamp": "2026-05-05T00:20:50.248325+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:35.169708+00:00"
+        "timestamp": "2026-05-05T00:20:57.869672+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:35.300504+00:00"
+        "timestamp": "2026-05-05T00:21:01.917423+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:47.561176+00:00"
+        "timestamp": "2026-05-05T00:21:08.547389+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:57.518279+00:00"
+        "timestamp": "2026-05-05T00:21:14.959200+00:00"
       },
       {
-        "confidence": 0.12327373027801736,
+        "confidence": 0.9026250243186928,
         "won": false,
-        "timestamp": "2026-04-16T15:53:04.444533+00:00"
+        "timestamp": "2026-05-05T00:21:23.553629+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.8949649333953813,
         "won": false,
-        "timestamp": "2026-04-16T15:53:08.063289+00:00"
+        "timestamp": "2026-05-05T00:21:24.657524+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:53:17.954472+00:00"
+        "timestamp": "2026-05-05T00:21:39.049565+00:00"
       },
       {
-        "confidence": 0.7778745889663652,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:53:27.186808+00:00"
+        "timestamp": "2026-05-05T00:21:46.210967+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:23.923716+00:00"
+        "timestamp": "2026-05-05T00:40:09.819378+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:24.061800+00:00"
+        "timestamp": "2026-05-05T00:40:09.821023+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:39.174137+00:00"
+        "timestamp": "2026-05-05T00:40:25.930999+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:41.378076+00:00"
+        "timestamp": "2026-05-05T00:40:26.922966+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:54.003966+00:00"
+        "timestamp": "2026-05-05T00:40:42.486607+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:04.288488+00:00"
+        "timestamp": "2026-05-05T00:40:49.720247+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:12.268677+00:00"
+        "timestamp": "2026-05-05T00:40:56.870789+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:20.256677+00:00"
+        "timestamp": "2026-05-05T00:41:05.721321+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:20.798622+00:00"
+        "timestamp": "2026-05-05T00:41:09.509787+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:30.394952+00:00"
+        "timestamp": "2026-05-05T00:41:15.890813+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:39.077960+00:00"
+        "timestamp": "2026-05-05T00:41:23.743372+00:00"
       },
       {
-        "confidence": 0.05845785140990989,
+        "confidence": 0.02350926399230513,
         "won": false,
-        "timestamp": "2026-04-16T16:02:46.427934+00:00"
+        "timestamp": "2026-05-05T00:41:31.331643+00:00"
       },
       {
-        "confidence": 0.4347857832908586,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:59.447090+00:00"
+        "timestamp": "2026-05-05T00:41:35.631840+00:00"
       },
       {
-        "confidence": 0.2410149574279874,
+        "confidence": 0.33396273851393765,
         "won": false,
-        "timestamp": "2026-04-16T16:02:59.836861+00:00"
+        "timestamp": "2026-05-05T00:41:44.379958+00:00"
       },
       {
-        "confidence": 0.7981902360916115,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:03:12.447413+00:00"
+        "timestamp": "2026-05-05T00:41:52.413568+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:12.627880+00:00"
+        "timestamp": "2026-05-05T00:44:49.216486+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:13.862783+00:00"
+        "timestamp": "2026-05-05T00:44:53.492856+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:29.216922+00:00"
+        "timestamp": "2026-05-05T00:45:03.539497+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:31.592981+00:00"
+        "timestamp": "2026-05-05T00:45:07.823444+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:46.618323+00:00"
+        "timestamp": "2026-05-05T00:45:17.773860+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:54.411593+00:00"
+        "timestamp": "2026-05-05T00:45:24.778215+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:02.426150+00:00"
+        "timestamp": "2026-05-05T00:45:31.294369+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:12.943189+00:00"
+        "timestamp": "2026-05-05T00:45:39.245030+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:38.240408+00:00"
+        "timestamp": "2026-05-05T00:45:42.518757+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:56.865505+00:00"
+        "timestamp": "2026-05-05T00:45:48.759922+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:59.039704+00:00"
+        "timestamp": "2026-05-05T00:45:55.702724+00:00"
       },
       {
-        "confidence": 0.21382123231887817,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:08:13.864047+00:00"
+        "timestamp": "2026-05-05T00:46:02.893106+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:08:14.330642+00:00"
+        "timestamp": "2026-05-05T00:46:07.327569+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.7347184419632002,
         "won": false,
-        "timestamp": "2026-04-16T16:08:34.938197+00:00"
+        "timestamp": "2026-05-05T00:46:16.583587+00:00"
       },
       {
-        "confidence": 0.8829349279403709,
+        "confidence": 0.986533463001249,
         "won": false,
-        "timestamp": "2026-04-16T16:08:40.505570+00:00"
+        "timestamp": "2026-05-05T00:46:23.058948+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:11:42.555778+00:00"
+        "timestamp": "2026-05-05T00:49:50.939098+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:11:43.530144+00:00"
+        "timestamp": "2026-05-05T00:49:52.461860+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:11:59.081121+00:00"
+        "timestamp": "2026-05-05T00:50:07.666406+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:02.594885+00:00"
+        "timestamp": "2026-05-05T00:50:11.251648+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:14.113245+00:00"
+        "timestamp": "2026-05-05T00:50:23.696096+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:20.798933+00:00"
+        "timestamp": "2026-05-05T00:50:30.744306+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:30.009665+00:00"
+        "timestamp": "2026-05-05T00:50:38.729635+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:41.378856+00:00"
+        "timestamp": "2026-05-05T00:50:49.178218+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:42.798711+00:00"
+        "timestamp": "2026-05-05T00:50:53.110740+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:59.398545+00:00"
+        "timestamp": "2026-05-05T00:50:59.797458+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:00.696573+00:00"
+        "timestamp": "2026-05-05T00:51:08.074073+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.4418927431106612,
         "won": false,
-        "timestamp": "2026-04-16T16:13:15.889777+00:00"
+        "timestamp": "2026-05-05T00:51:16.251516+00:00"
       },
       {
-        "confidence": 0.5224737524986311,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:17.193922+00:00"
+        "timestamp": "2026-05-05T00:51:21.115768+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:35.064287+00:00"
+        "timestamp": "2026-05-05T00:51:30.655637+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:40.762687+00:00"
+        "timestamp": "2026-05-05T00:51:38.981394+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:26.092551+00:00"
+        "timestamp": "2026-05-05T00:57:39.311904+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:35.014108+00:00"
+        "timestamp": "2026-05-05T00:57:39.335591+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:39.005478+00:00"
+        "timestamp": "2026-05-05T00:57:56.484373+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:47.952012+00:00"
+        "timestamp": "2026-05-05T00:57:59.933792+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:59.243643+00:00"
+        "timestamp": "2026-05-05T00:58:13.829058+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:19.813276+00:00"
+        "timestamp": "2026-05-05T00:58:19.818739+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:21.445664+00:00"
+        "timestamp": "2026-05-05T00:58:28.685066+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:40.249976+00:00"
+        "timestamp": "2026-05-05T00:58:37.176536+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:41.570219+00:00"
+        "timestamp": "2026-05-05T00:58:41.795475+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:56.027298+00:00"
+        "timestamp": "2026-05-05T00:58:47.565687+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:18:06.427428+00:00"
+        "timestamp": "2026-05-05T00:58:56.259300+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.8519628643989474,
         "won": false,
-        "timestamp": "2026-04-16T16:18:14.549615+00:00"
+        "timestamp": "2026-05-05T00:59:04.185777+00:00"
       },
       {
-        "confidence": 1.0,
+        "confidence": 0.4226228594780057,
         "won": false,
-        "timestamp": "2026-04-16T16:18:16.141479+00:00"
+        "timestamp": "2026-05-05T00:59:07.887556+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:18:33.790973+00:00"
+        "timestamp": "2026-05-05T00:59:18.353761+00:00"
       },
       {
-        "confidence": 0.6541943550109841,
+        "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:18:42.625188+00:00"
+        "timestamp": "2026-05-05T00:59:26.435064+00:00"
       }
     ],
     "Ridge": [
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:45:34.613185+00:00"
+        "timestamp": "2026-05-03T02:40:13.535993+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:45:44.497161+00:00"
+        "timestamp": "2026-05-03T02:40:20.198403+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:45:51.091393+00:00"
+        "timestamp": "2026-05-03T02:40:28.785486+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:05.608383+00:00"
+        "timestamp": "2026-05-03T02:40:32.568175+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:06.324755+00:00"
+        "timestamp": "2026-05-03T02:40:39.034419+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:14.835396+00:00"
+        "timestamp": "2026-05-03T02:40:46.895332+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:23.191373+00:00"
+        "timestamp": "2026-05-03T02:40:55.276378+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:32.138516+00:00"
+        "timestamp": "2026-05-03T02:40:58.511371+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:42.397548+00:00"
+        "timestamp": "2026-05-03T02:41:11.939472+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:48.612230+00:00"
+        "timestamp": "2026-05-03T02:41:18.568941+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:46:57.900427+00:00"
+        "timestamp": "2026-05-04T22:49:06.217457+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:10.439387+00:00"
+        "timestamp": "2026-05-04T22:49:06.245846+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:15.614879+00:00"
+        "timestamp": "2026-05-04T22:49:23.115301+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:25.241586+00:00"
+        "timestamp": "2026-05-04T22:49:26.609538+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:36.633533+00:00"
+        "timestamp": "2026-05-04T22:49:37.939957+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:43.016061+00:00"
+        "timestamp": "2026-05-04T22:49:45.859185+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:50.286775+00:00"
+        "timestamp": "2026-05-04T22:49:53.345579+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:57.707666+00:00"
+        "timestamp": "2026-05-04T22:50:02.373939+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:47:59.596063+00:00"
+        "timestamp": "2026-05-04T22:50:02.699745+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:50:31.231955+00:00"
+        "timestamp": "2026-05-04T22:50:12.392540+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:50:44.820149+00:00"
+        "timestamp": "2026-05-04T22:50:19.932588+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:50:54.653203+00:00"
+        "timestamp": "2026-05-04T22:50:28.377490+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:50:56.871583+00:00"
+        "timestamp": "2026-05-04T22:50:32.610200+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:06.992677+00:00"
+        "timestamp": "2026-05-04T22:50:42.877046+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:08.844437+00:00"
+        "timestamp": "2026-05-04T22:50:50.795664+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:33.856785+00:00"
+        "timestamp": "2026-05-05T00:20:06.772281+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:36.993081+00:00"
+        "timestamp": "2026-05-05T00:20:06.778419+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:47.296314+00:00"
+        "timestamp": "2026-05-05T00:20:22.407751+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:51:54.974893+00:00"
+        "timestamp": "2026-05-05T00:20:26.738500+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:00.993330+00:00"
+        "timestamp": "2026-05-05T00:20:35.450332+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:18.661312+00:00"
+        "timestamp": "2026-05-05T00:20:43.071091+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:22.280370+00:00"
+        "timestamp": "2026-05-05T00:20:50.248333+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:35.169958+00:00"
+        "timestamp": "2026-05-05T00:20:57.869677+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:35.300510+00:00"
+        "timestamp": "2026-05-05T00:21:01.917452+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:47.561196+00:00"
+        "timestamp": "2026-05-05T00:21:08.547397+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:52:57.518300+00:00"
+        "timestamp": "2026-05-05T00:21:14.959214+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:53:04.444538+00:00"
+        "timestamp": "2026-05-05T00:21:23.553634+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:53:08.063294+00:00"
+        "timestamp": "2026-05-05T00:21:24.657529+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:53:17.954495+00:00"
+        "timestamp": "2026-05-05T00:21:39.049573+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T15:53:27.186813+00:00"
+        "timestamp": "2026-05-05T00:21:46.210973+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:23.923722+00:00"
+        "timestamp": "2026-05-05T00:40:09.819384+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:24.061805+00:00"
+        "timestamp": "2026-05-05T00:40:09.821029+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:39.174144+00:00"
+        "timestamp": "2026-05-05T00:40:25.931005+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:41.378083+00:00"
+        "timestamp": "2026-05-05T00:40:26.922974+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:01:54.003971+00:00"
+        "timestamp": "2026-05-05T00:40:42.486613+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:04.288502+00:00"
+        "timestamp": "2026-05-05T00:40:49.720255+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:12.268687+00:00"
+        "timestamp": "2026-05-05T00:40:56.870799+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:20.256682+00:00"
+        "timestamp": "2026-05-05T00:41:05.721332+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:20.798632+00:00"
+        "timestamp": "2026-05-05T00:41:09.509798+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:30.394964+00:00"
+        "timestamp": "2026-05-05T00:41:15.890819+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:39.077973+00:00"
+        "timestamp": "2026-05-05T00:41:23.743380+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:46.427939+00:00"
+        "timestamp": "2026-05-05T00:41:31.331647+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:59.447095+00:00"
+        "timestamp": "2026-05-05T00:41:35.631846+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:02:59.836866+00:00"
+        "timestamp": "2026-05-05T00:41:44.379970+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:03:12.447422+00:00"
+        "timestamp": "2026-05-05T00:41:52.413573+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:12.627901+00:00"
+        "timestamp": "2026-05-05T00:44:49.216491+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:13.862788+00:00"
+        "timestamp": "2026-05-05T00:44:53.492863+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:29.216927+00:00"
+        "timestamp": "2026-05-05T00:45:03.539502+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:31.592985+00:00"
+        "timestamp": "2026-05-05T00:45:07.823449+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:46.618331+00:00"
+        "timestamp": "2026-05-05T00:45:17.773865+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:06:54.411613+00:00"
+        "timestamp": "2026-05-05T00:45:24.778222+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:02.426160+00:00"
+        "timestamp": "2026-05-05T00:45:31.294379+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:12.943194+00:00"
+        "timestamp": "2026-05-05T00:45:39.245036+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:38.240413+00:00"
+        "timestamp": "2026-05-05T00:45:42.518762+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:56.865512+00:00"
+        "timestamp": "2026-05-05T00:45:48.759927+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:07:59.039710+00:00"
+        "timestamp": "2026-05-05T00:45:55.702734+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:08:13.864066+00:00"
+        "timestamp": "2026-05-05T00:46:02.893111+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:08:14.330647+00:00"
+        "timestamp": "2026-05-05T00:46:07.327575+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:08:34.938211+00:00"
+        "timestamp": "2026-05-05T00:46:16.583593+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:08:40.505575+00:00"
+        "timestamp": "2026-05-05T00:46:23.058953+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:11:42.555783+00:00"
+        "timestamp": "2026-05-05T00:49:50.939103+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:11:43.530149+00:00"
+        "timestamp": "2026-05-05T00:49:52.461867+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:11:59.081127+00:00"
+        "timestamp": "2026-05-05T00:50:07.666411+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:02.594893+00:00"
+        "timestamp": "2026-05-05T00:50:11.251654+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:14.113255+00:00"
+        "timestamp": "2026-05-05T00:50:23.696101+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:20.798943+00:00"
+        "timestamp": "2026-05-05T00:50:30.744314+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:30.009692+00:00"
+        "timestamp": "2026-05-05T00:50:38.729643+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:41.378861+00:00"
+        "timestamp": "2026-05-05T00:50:49.178226+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:42.798726+00:00"
+        "timestamp": "2026-05-05T00:50:53.110745+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:12:59.398563+00:00"
+        "timestamp": "2026-05-05T00:50:59.797465+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:00.696578+00:00"
+        "timestamp": "2026-05-05T00:51:08.074082+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:15.889794+00:00"
+        "timestamp": "2026-05-05T00:51:16.251529+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:17.193927+00:00"
+        "timestamp": "2026-05-05T00:51:21.115774+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:35.064308+00:00"
+        "timestamp": "2026-05-05T00:51:30.655646+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:13:40.762696+00:00"
+        "timestamp": "2026-05-05T00:51:38.981399+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:26.092558+00:00"
+        "timestamp": "2026-05-05T00:57:39.311914+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:35.014118+00:00"
+        "timestamp": "2026-05-05T00:57:39.335598+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:39.005483+00:00"
+        "timestamp": "2026-05-05T00:57:56.484382+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:47.952020+00:00"
+        "timestamp": "2026-05-05T00:57:59.933799+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:16:59.243664+00:00"
+        "timestamp": "2026-05-05T00:58:13.829063+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:19.813295+00:00"
+        "timestamp": "2026-05-05T00:58:19.818748+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:21.445669+00:00"
+        "timestamp": "2026-05-05T00:58:28.685075+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:40.249993+00:00"
+        "timestamp": "2026-05-05T00:58:37.176542+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:41.570225+00:00"
+        "timestamp": "2026-05-05T00:58:41.795482+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:17:56.027310+00:00"
+        "timestamp": "2026-05-05T00:58:47.565694+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:18:06.427444+00:00"
+        "timestamp": "2026-05-05T00:58:56.259305+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:18:14.549620+00:00"
+        "timestamp": "2026-05-05T00:59:04.185783+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:18:16.141484+00:00"
+        "timestamp": "2026-05-05T00:59:07.887561+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:18:33.790995+00:00"
+        "timestamp": "2026-05-05T00:59:18.353776+00:00"
       },
       {
         "confidence": 1.0,
         "won": false,
-        "timestamp": "2026-04-16T16:18:42.625195+00:00"
+        "timestamp": "2026-05-05T00:59:26.435068+00:00"
       }
     ]
   },
@@ -1012,702 +1012,702 @@
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 36.8234,
+      "avg_confidence": 35.8569,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 21.8836,
-        "Ridge": 51.7631
+        "TCN": 24.5037,
+        "Ridge": 47.2101
       },
-      "timestamp": "2026-04-16T16:02:04.288563+00:00"
+      "timestamp": "2026-05-05T00:40:56.870831+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 34.8766,
+      "avg_confidence": 35.537,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 21.98,
-        "Ridge": 47.7732
+        "TCN": 19.4344,
+        "Ridge": 51.6395
       },
-      "timestamp": "2026-04-16T16:02:12.268714+00:00"
+      "timestamp": "2026-05-05T00:41:05.721379+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 34.9791,
+      "avg_confidence": 34.4797,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 19.1278,
-        "Ridge": 50.8305
+        "TCN": 18.1255,
+        "Ridge": 50.834
       },
-      "timestamp": "2026-04-16T16:02:20.256706+00:00"
+      "timestamp": "2026-05-05T00:41:09.509820+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 33.3913,
+      "avg_confidence": 36.9991,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 15.2008,
-        "Ridge": 51.5818
+        "TCN": 23.1643,
+        "Ridge": 50.834
       },
-      "timestamp": "2026-04-16T16:02:20.798650+00:00"
+      "timestamp": "2026-05-05T00:41:15.890842+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 34.9066,
+      "avg_confidence": 34.5242,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 18.913,
-        "Ridge": 50.9003
+        "TCN": 20.3885,
+        "Ridge": 48.66
       },
-      "timestamp": "2026-04-16T16:02:30.394992+00:00"
+      "timestamp": "2026-05-05T00:41:23.743408+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.2088,
+      "avg_confidence": 26.4785,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 22.0418,
-        "Ridge": 48.3758
+        "TCN": 2.1647,
+        "Ridge": 50.7923
       },
-      "timestamp": "2026-04-16T16:02:39.078006+00:00"
+      "timestamp": "2026-05-05T00:41:35.631865+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 25.1206,
+      "avg_confidence": 26.1574,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 0.7982,
-        "Ridge": 49.443
+        "TCN": 1.9402,
+        "Ridge": 50.3746
       },
-      "timestamp": "2026-04-16T16:03:12.447455+00:00"
+      "timestamp": "2026-05-05T00:41:52.413590+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 34.5362,
+      "avg_confidence": 33.8882,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 16.7774,
-        "Ridge": 52.2951
+        "TCN": 16.3206,
+        "Ridge": 51.4559
       },
-      "timestamp": "2026-04-16T16:06:12.627942+00:00"
+      "timestamp": "2026-05-05T00:44:49.216513+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.22,
+      "avg_confidence": 34.4163,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 18.1725,
-        "Ridge": 52.2675
+        "TCN": 17.3291,
+        "Ridge": 51.5035
       },
-      "timestamp": "2026-04-16T16:06:13.862811+00:00"
+      "timestamp": "2026-05-05T00:44:53.492885+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.7937,
+      "avg_confidence": 43.9639,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 19.5811,
-        "Ridge": 52.0063
+        "TCN": 36.2448,
+        "Ridge": 51.683
       },
-      "timestamp": "2026-04-16T16:06:29.216950+00:00"
+      "timestamp": "2026-05-05T00:45:03.539531+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 41.9611,
+      "avg_confidence": 45.1273,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 32.11,
-        "Ridge": 51.8122
+        "TCN": 38.4779,
+        "Ridge": 51.7768
       },
-      "timestamp": "2026-04-16T16:06:31.593003+00:00"
+      "timestamp": "2026-05-05T00:45:07.823468+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 37.9768,
+      "avg_confidence": 35.8814,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 26.462,
-        "Ridge": 49.4916
+        "TCN": 22.1543,
+        "Ridge": 49.6086
       },
-      "timestamp": "2026-04-16T16:06:46.618360+00:00"
+      "timestamp": "2026-05-05T00:45:17.773890+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 39.0052,
+      "avg_confidence": 48.096,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 26.2472,
-        "Ridge": 51.7631
+        "TCN": 44.2685,
+        "Ridge": 51.9235
       },
-      "timestamp": "2026-04-16T16:06:54.411658+00:00"
+      "timestamp": "2026-05-05T00:45:24.778247+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.1116,
+      "avg_confidence": 36.387,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 20.3054,
-        "Ridge": 49.9178
+        "TCN": 25.7895,
+        "Ridge": 46.9845
       },
-      "timestamp": "2026-04-16T16:07:02.426210+00:00"
+      "timestamp": "2026-05-05T00:45:31.294414+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.0012,
+      "avg_confidence": 34.4043,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 19.1709,
-        "Ridge": 50.8315
+        "TCN": 17.1147,
+        "Ridge": 51.694
       },
-      "timestamp": "2026-04-16T16:07:12.943211+00:00"
+      "timestamp": "2026-05-05T00:45:39.245056+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.9513,
+      "avg_confidence": 36.9436,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 20.3566,
-        "Ridge": 51.546
+        "TCN": 23.0533,
+        "Ridge": 50.834
       },
-      "timestamp": "2026-04-16T16:07:38.240453+00:00"
+      "timestamp": "2026-05-05T00:45:42.518781+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 36.9296,
+      "avg_confidence": 37.3019,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 23.9713,
-        "Ridge": 49.8879
+        "TCN": 23.7698,
+        "Ridge": 50.834
       },
-      "timestamp": "2026-04-16T16:07:56.865535+00:00"
+      "timestamp": "2026-05-05T00:45:48.759954+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 32.5064,
+      "avg_confidence": 35.8401,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 14.1424,
-        "Ridge": 50.8704
+        "TCN": 24.0891,
+        "Ridge": 47.5912
       },
-      "timestamp": "2026-04-16T16:07:59.039729+00:00"
+      "timestamp": "2026-05-05T00:45:55.702760+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 25.9576,
+      "avg_confidence": 25.5757,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 2.347,
-        "Ridge": 49.5682
+        "TCN": 1.5281,
+        "Ridge": 49.6232
       },
-      "timestamp": "2026-04-16T16:08:14.330702+00:00"
+      "timestamp": "2026-05-05T00:46:02.893130+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 26.3357,
+      "avg_confidence": 27.0989,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 1.4612,
-        "Ridge": 51.2102
+        "TCN": 3.4427,
+        "Ridge": 50.7551
       },
-      "timestamp": "2026-04-16T16:08:34.938262+00:00"
+      "timestamp": "2026-05-05T00:46:07.327593+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 25.163,
+      "avg_confidence": 26.3234,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 0.8829,
-        "Ridge": 49.443
+        "TCN": 0.7347,
+        "Ridge": 51.912
       },
-      "timestamp": "2026-04-16T16:08:40.505594+00:00"
+      "timestamp": "2026-05-05T00:46:16.583621+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 33.7198,
+      "avg_confidence": 25.6806,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 16.5491,
-        "Ridge": 50.8904
+        "TCN": 0.9865,
+        "Ridge": 50.3746
       },
-      "timestamp": "2026-04-16T16:11:42.555808+00:00"
+      "timestamp": "2026-05-05T00:46:23.058971+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 34.4108,
+      "avg_confidence": 34.4417,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 17.9886,
-        "Ridge": 50.833
+        "TCN": 17.3452,
+        "Ridge": 51.5381
       },
-      "timestamp": "2026-04-16T16:11:43.530171+00:00"
+      "timestamp": "2026-05-05T00:49:50.939128+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 38.7013,
+      "avg_confidence": 34.5861,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 25.5103,
-        "Ridge": 51.8923
+        "TCN": 17.6817,
+        "Ridge": 51.4905
       },
-      "timestamp": "2026-04-16T16:11:59.081152+00:00"
+      "timestamp": "2026-05-05T00:49:52.461891+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 39.3816,
+      "avg_confidence": 44.5641,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 26.8027,
-        "Ridge": 51.9605
+        "TCN": 37.3604,
+        "Ridge": 51.7677
       },
-      "timestamp": "2026-04-16T16:12:02.594916+00:00"
+      "timestamp": "2026-05-05T00:50:07.666436+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 36.1009,
+      "avg_confidence": 44.8975,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 24.8422,
-        "Ridge": 47.3595
+        "TCN": 38.0182,
+        "Ridge": 51.7768
       },
-      "timestamp": "2026-04-16T16:12:14.113291+00:00"
+      "timestamp": "2026-05-05T00:50:11.251679+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 38.6823,
+      "avg_confidence": 35.6445,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 25.563,
-        "Ridge": 51.8016
+        "TCN": 21.9464,
+        "Ridge": 49.3426
       },
-      "timestamp": "2026-04-16T16:12:20.798974+00:00"
+      "timestamp": "2026-05-05T00:50:23.696129+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.8186,
+      "avg_confidence": 38.838,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 25.6186,
-        "Ridge": 46.0185
+        "TCN": 25.7525,
+        "Ridge": 51.9235
       },
-      "timestamp": "2026-04-16T16:12:30.009817+00:00"
+      "timestamp": "2026-05-05T00:50:30.744349+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 33.4578,
+      "avg_confidence": 37.4442,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 16.085,
-        "Ridge": 50.8305
+        "TCN": 28.3497,
+        "Ridge": 46.5386
       },
-      "timestamp": "2026-04-16T16:12:41.378890+00:00"
+      "timestamp": "2026-05-05T00:50:38.729691+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 34.923,
+      "avg_confidence": 36.9521,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 18.2777,
-        "Ridge": 51.5682
+        "TCN": 22.2259,
+        "Ridge": 51.6782
       },
-      "timestamp": "2026-04-16T16:12:42.798748+00:00"
+      "timestamp": "2026-05-05T00:50:49.178251+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.6883,
+      "avg_confidence": 34.3105,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 20.4763,
-        "Ridge": 50.9003
+        "TCN": 17.787,
+        "Ridge": 50.834
       },
-      "timestamp": "2026-04-16T16:12:59.398666+00:00"
+      "timestamp": "2026-05-05T00:50:53.110766+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 38.1481,
+      "avg_confidence": 34.6006,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 27.8521,
-        "Ridge": 48.4442
+        "TCN": 18.3325,
+        "Ridge": 50.8686
       },
-      "timestamp": "2026-04-16T16:13:00.696600+00:00"
+      "timestamp": "2026-05-05T00:50:59.797495+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 27.7242,
+      "avg_confidence": 34.8053,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 3.5079,
-        "Ridge": 51.9404
+        "TCN": 22.0194,
+        "Ridge": 47.5912
       },
-      "timestamp": "2026-04-16T16:13:15.889865+00:00"
+      "timestamp": "2026-05-05T00:51:08.074113+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 26.3682,
+      "avg_confidence": 26.5637,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 1.5263,
-        "Ridge": 51.2102
+        "TCN": 2.3724,
+        "Ridge": 50.7551
       },
-      "timestamp": "2026-04-16T16:13:35.064388+00:00"
+      "timestamp": "2026-05-05T00:51:21.115805+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 27.0023,
+      "avg_confidence": 26.5865,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 4.5615,
-        "Ridge": 49.443
+        "TCN": 1.084,
+        "Ridge": 52.089
       },
-      "timestamp": "2026-04-16T16:13:40.762733+00:00"
+      "timestamp": "2026-05-05T00:51:30.655716+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 33.4468,
+      "avg_confidence": 25.7375,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 16.0488,
-        "Ridge": 50.8448
+        "TCN": 1.1003,
+        "Ridge": 50.3746
       },
-      "timestamp": "2026-04-16T16:16:26.092584+00:00"
+      "timestamp": "2026-05-05T00:51:38.981419+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 33.1419,
+      "avg_confidence": 34.2609,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 15.4169,
-        "Ridge": 50.8669
+        "TCN": 17.0313,
+        "Ridge": 51.4905
       },
-      "timestamp": "2026-04-16T16:16:35.014168+00:00"
+      "timestamp": "2026-05-05T00:57:39.311937+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.9976,
+      "avg_confidence": 35.3626,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 20.1987,
-        "Ridge": 51.7964
+        "TCN": 19.187,
+        "Ridge": 51.5381
       },
-      "timestamp": "2026-04-16T16:16:39.005508+00:00"
+      "timestamp": "2026-05-05T00:57:39.335621+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 36.6745,
+      "avg_confidence": 50.7083,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 21.5367,
-        "Ridge": 51.8122
+        "TCN": 49.7751,
+        "Ridge": 51.6415
       },
-      "timestamp": "2026-04-16T16:16:47.952050+00:00"
+      "timestamp": "2026-05-05T00:57:56.484403+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 33.2251,
+      "avg_confidence": 45.1692,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 20.3216,
-        "Ridge": 46.1287
+        "TCN": 38.5616,
+        "Ridge": 51.7768
       },
-      "timestamp": "2026-04-16T16:16:59.243789+00:00"
+      "timestamp": "2026-05-05T00:57:59.933820+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 44.1122,
+      "avg_confidence": 36.4842,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 36.4259,
-        "Ridge": 51.7985
+        "TCN": 23.3597,
+        "Ridge": 49.6086
       },
-      "timestamp": "2026-04-16T16:17:19.813413+00:00"
+      "timestamp": "2026-05-05T00:58:13.829087+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 33.6256,
+      "avg_confidence": 45.868,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 21.3834,
-        "Ridge": 45.8678
+        "TCN": 39.8125,
+        "Ridge": 51.9235
       },
-      "timestamp": "2026-04-16T16:17:21.445692+00:00"
+      "timestamp": "2026-05-05T00:58:19.818778+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 33.3239,
+      "avg_confidence": 37.0626,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 15.8163,
-        "Ridge": 50.8315
+        "TCN": 27.1408,
+        "Ridge": 46.9845
       },
-      "timestamp": "2026-04-16T16:17:40.250096+00:00"
+      "timestamp": "2026-05-05T00:58:28.685109+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 35.254,
+      "avg_confidence": 35.4371,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 18.9524,
-        "Ridge": 51.5556
+        "TCN": 19.1801,
+        "Ridge": 51.694
       },
-      "timestamp": "2026-04-16T16:17:41.570258+00:00"
+      "timestamp": "2026-05-05T00:58:37.176571+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 34.3926,
+      "avg_confidence": 33.9035,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 17.8731,
-        "Ridge": 50.9121
+        "TCN": 16.973,
+        "Ridge": 50.834
       },
-      "timestamp": "2026-04-16T16:17:56.027447+00:00"
+      "timestamp": "2026-05-05T00:58:41.795504+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 38.6453,
+      "avg_confidence": 34.9818,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 29.7972,
-        "Ridge": 47.4934
+        "TCN": 19.1297,
+        "Ridge": 50.834
       },
-      "timestamp": "2026-04-16T16:18:06.427560+00:00"
+      "timestamp": "2026-05-05T00:58:47.565724+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 27.6243,
+      "avg_confidence": 37.248,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 2.3509,
-        "Ridge": 52.8977
+        "TCN": 26.2818,
+        "Ridge": 48.2141
       },
-      "timestamp": "2026-04-16T16:18:14.549644+00:00"
+      "timestamp": "2026-05-05T00:58:56.259329+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 25.8928,
+      "avg_confidence": 25.2376,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 2.348,
-        "Ridge": 49.4375
+        "TCN": 0.852,
+        "Ridge": 49.6232
       },
-      "timestamp": "2026-04-16T16:18:16.141511+00:00"
+      "timestamp": "2026-05-05T00:59:04.185803+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 26.8489,
+      "avg_confidence": 26.472,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 2.542,
-        "Ridge": 51.1559
+        "TCN": 1.032,
+        "Ridge": 51.912
       },
-      "timestamp": "2026-04-16T16:18:33.791242+00:00"
+      "timestamp": "2026-05-05T00:59:18.353824+00:00"
     },
     {
       "flocking_score": 1.0,
       "is_flocking": true,
       "agreement_ratio": 1.0,
-      "avg_confidence": 24.8629,
+      "avg_confidence": 26.5343,
       "n_models": 2,
       "n_high_confidence": 2,
       "historical_flock_accuracy": null,
       "model_predictions": {
-        "TCN": 0.6542,
-        "Ridge": 49.0716
+        "TCN": 2.6939,
+        "Ridge": 50.3746
       },
-      "timestamp": "2026-04-16T16:18:42.625233+00:00"
+      "timestamp": "2026-05-05T00:59:26.435085+00:00"
     }
   ],
-  "last_updated": "2026-04-16T16:18:42.648220+00:00"
+  "last_updated": "2026-05-05T00:59:37.613576+00:00"
 }

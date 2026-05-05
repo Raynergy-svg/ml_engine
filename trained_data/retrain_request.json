@@ -1,0 +1,50 @@
+{
+  "accuracy_snapshot": {
+    "AUD_JPY": {
+      "drift_severity": 0.6
+    },
+    "AUD_USD": {
+      "drift_severity": 0.6
+    },
+    "EUR_AUD": {
+      "drift_severity": 0.6
+    },
+    "EUR_GBP": {
+      "drift_severity": 0.6
+    },
+    "GBP_CHF": {
+      "drift_severity": 1.0
+    },
+    "GBP_USD": {
+      "drift_severity": 1.0
+    },
+    "NZD_USD": {
+      "drift_severity": 1.0
+    },
+    "USD_JPY": {
+      "drift_severity": 0.6
+    }
+  },
+  "pairs": [
+    "GBP_USD",
+    "GBP_USD",
+    "USD_JPY",
+    "USD_JPY",
+    "AUD_USD",
+    "AUD_USD",
+    "NZD_USD",
+    "NZD_USD",
+    "EUR_GBP",
+    "EUR_GBP",
+    "AUD_JPY",
+    "AUD_JPY",
+    "EUR_AUD",
+    "EUR_AUD",
+    "GBP_CHF",
+    "GBP_CHF"
+  ],
+  "priority": "normal",
+  "reason": "DriftMonitor: 16 pair(s) showing feature/concept drift",
+  "source": "drift_monitor",
+  "triggered_at": "2026-04-30T13:41:33.325851+00:00"
+}

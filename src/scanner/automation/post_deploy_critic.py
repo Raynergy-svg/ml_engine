@@ -135,13 +135,20 @@ class PostDeployCritic:
         self._write_calibration_feedback(package, predicted, actual, stage)
         delta = _delta(predicted, actual)
         passed = self._evaluate(predicted, actual, delta)
+        notes = ""
+        if not passed:
+            notes = (
+                "insufficient_sample_deferred"
+                if not actual or actual.get("sample_size", 0) == 0
+                else "realized_outside_predicted_envelope"
+            )
         review = PostDeployReview(
             stage=stage,
             predicted=predicted,
             actual=actual,
             delta=delta,
             passed=passed,
-            notes="" if passed else "realized_outside_predicted_envelope",
+            notes=notes,
         )
         package.post_deploy_reviews.append(review)
         package.touch(f"post_deploy_review stage={stage.value} passed={passed}")
@@ -170,7 +177,7 @@ class PostDeployCritic:
         delta: Dict[str, Any],
     ) -> bool:
         if not actual or actual.get("sample_size", 0) == 0:
-            return True
+            return False
         win_rate_drift = abs(float(delta.get("win_rate", 0.0)))
         pnl_drift = abs(float(delta.get("pnl_delta_r", 0.0)))
         if win_rate_drift > WIN_RATE_TOLERANCE:
@@ -272,4 +279,3 @@ def _delta(predicted: Dict[str, Any], actual: Dict[str, Any]) -> Dict[str, Any]:
         except (TypeError, ValueError):
             out[key] = None
     return out
-

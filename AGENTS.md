@@ -43,69 +43,76 @@ Contains 37 LLM personality prompts (from agency-agents repo) for Claude Code se
 <claude-mem-context>
 # Memory Context
 
-# [ml_engine] recent context, 2026-04-23 11:02pm EDT
+# [ml_engine] recent context, 2026-05-04 9:09pm EDT
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (21,872t read) | 725,032t work | 97% savings
+Stats: 50 obs (18,484t read) | 1,119,754t work | 98% savings
 
-### Apr 16, 2026
-24 9:04p 🟣 US-516 E2E Test Harness: conftest.py Upgraded with Three Shared Pytest Fixtures
-27 " 🟣 US-516 E2E Test File Created: 12 Flow Tests for Supervisor Console
-28 " 🔵 ConfigAdjuster.apply_adjustments: Approved History Read from Hardcoded Path, Not Constructor Arg
-31 9:05p 🔴 Test Fix: ConfigAdjuster Uses persistence_path Not pending_path for Approved History
-34 " 🔵 11/12 E2E Tests Pass; test_per_trade_close_calls_oanda Fails — httpretty Mock Not Intercepting ExecutionManager
-36 9:08p 🔴 httpretty + urllib3≥2 Incompatibility Fixed: fakesock.__getattr__ Patched for shutdown/close
-37 " 🟣 US-516 All 12 E2E Tests Pass Green in 6.42s
-38 " 🟣 US-516 Deliverables Complete: Reality Check Report + CI Workflow Written
-39 9:10p 🟣 US-517: Phase 91 Security + Code Review Gate Initiated
-40 " 🔵 Phase 91 PRD: Full Module List US-501–US-515 Confirmed
-42 9:17p 🟣 US-517 Phase 91 Security + Code Review Gate Initiated
-43 " 🔵 All 15 Phase 91 Stories (US-501–US-515) Confirmed Passes=True
-45 9:20p 🟣 US-517: Phase 91 Security + Code Review Gate Reports Written
-46 " ⚖️ Phase 91 Closure: All 15 Stories Confirmed Complete Before Gate
-47 9:21p 🟣 phase91_security_review.md Written: 180 Lines, All-Green Gate
-50 9:22p 🟣 phase91_code_review.md Written: 146 Lines, All Gates PASS
-51 " 🔵 US-518 Pre-flight: tests/perf Directory Missing, Phase 91 Reports Present
-52 9:24p 🔵 DataProvider Architecture: threading.Lock Snapshot Swap, No deepcopy
-53 " 🟣 US-518: bench_supervisor_console.py Performance Benchmark Suite Created
-57 " 🔴 bench_supervisor_console.py Fails Direct Run: ModuleNotFoundError for src.tui
-S11 US-518: Performance benchmark — TUI refresh under scanner load — implement bench_supervisor_console.py and generate phase91_perf_report.md (Apr 16 at 9:25 PM)
-59 9:26p 🔵 Supervisor Console Hotkey Bindings Confirmed for US-519 Runbook
-60 9:27p 🔵 Complete TUI Hotkey Map Confirmed Across All Screens and Modals
-61 " 🔵 CLAUDE.md Brain Section Location and docs/ Structure Confirmed
-63 9:28p 🟣 docs/supervisor_console_runbook.md Created — Full 10-Section Operator Runbook
-65 9:30p ✅ Reality Checker Walkthrough Inlined into Runbook as Appendix A
-67 " ✅ CLAUDE.md Claude Brain Section Updated to Reference Supervisor Console Runbook
-68 9:31p 🟣 US-520: Phase 91 Final Reality Check + Evidence Collection Initiated
-70 " 🔵 Phase 91 PRD Structure: 20 userStories, US-501–US-519 All passes=True, US-520 passes=False
-72 " 🔵 All 19 Phase 91 Story Validation Commands Mapped for Evidence Collection
-74 9:32p 🔵 Phase 91 Story Definition-of-Done: Sub-agent Sign-offs and Evidence Artifacts Required Per Story
-76 " 🟣 Out-of-Band Verification Script Written for US-520 Evidence Collection
-78 9:34p 🔵 OOB Verification: All 19 Phase 91 Stories Confirmed REAL After Two Check Fixes
-81 9:35p 🟣 US-520: Phase 91 Evidence Collection Report Completed
-82 9:39p 🟣 Phase 91 Evidence Report Written: All 19 Stories Verified REAL
-S14 US-520: Final reality check + Phase 91 evidence collection — independent OOB verification of all 19 Supervisor Console stories (Apr 16 at 9:39 PM)
-### Apr 21, 2026
-440 9:49a 🔵 ML Engine Self-Heal Triggered — CRITICAL Drawdown Streak + RL Model Staleness
-441 9:50a 🔵 ML Engine Config Adjustments State — 5 Prior Self-Heal Changes Active Since Apr 16
-442 " 🔵 ML Engine Model File Inventory — agent_weights.json Last Modified Apr 16, RL Journal Updated Today
-444 9:51a 🔵 Buddy MCP Tool Failures — OANDA_API_URL Unresolved, src.scanner Missing, Feedback Log Empty
-445 " 🔵 Trade Journal Shows 17 Entries All With pl=None — No Closed Trades Recorded Locally
-446 " 🔵 Agent Weights Snapshot — devil_advocate Highest at 1.3, trader_readiness Lowest at 0.5, All Regimes Nearly Identical
-447 " 🔵 Learnings.md Documents Config Levers Maxed — Root Cause Is Outside Config Plane
-### Apr 23, 2026
-455 10:43p 🔵 Inbox Duplicate Adjustments — Root Cause Confirmed: 756 Pending, 252 Each for 3 Duplicate Keys
-456 " 🔵 InboxScreen Architecture — Current State Before Approve-All/Reject-All Additions
-457 10:44p 🔵 Inbox Duplicate Root Cause — engine.py Calls collect_adjustment() Every Scan Cycle Per Pair Without Dedup Guard
-458 10:54p 🔵 ML Engine Self-Heal Cycle #1 — Critical Drawdown Streak + Stale RL Model
-459 " 🔵 ML Engine Self-Heal Cycle #1 — Root Cause Confirmed: Retrain Never Executed + 4 Config Proposals Still Pending
-460 10:56p 🔴 Inbox Duplicate Proposals Fixed — ConfigAdjuster and ConfigTuner Now Suppress Identical Pending Entries
-461 " 🟣 Inbox Bulk Actions — AdjustmentApprover.approve_all() / reject_all() + InboxScreen Buttons
-462 10:59p 🔴 Inbox Duplicate Adjustments — Root Cause Fixed in ConfigAdjuster + ConfigTuner
-463 " 🟣 Inbox Approve-All / Reject-All Buttons Added to TUI InboxScreen
+### Apr 30, 2026
+1052 12:13p 🔵 GateEvaluator instrument Param Already Plumbed to evaluate_confidence — But Used Only for One-Hot Encoding, Not Model Loading
+1053 " 🔵 GateEvaluator Locks model_dir to joint/ at Construction — No Dynamic Per-Pair Loading Possible Without Refactor
+1057 " 🔵 modular_inference Has Two-Layer Model Resolution: Path Fallback Chain + Metadata-Based Lookup
+1058 " 🔵 evaluate_all_gates Internals: instrument Passed to evaluate_confidence Only, evaluate_momentum and evaluate_risk Are Instrument-Blind
+1054 12:14p 🔵 evaluate_all_gates Already Receives instrument=pair at engine.py:2501 — Gap is Entirely Inside GateEvaluator
+1059 12:17p 🟣 GateEvaluator Gets _pair_evaluators Cache — First Code Change of Tier 7 Per-Pair Gate Refactor
+1060 12:22p 🟣 GateEvaluator._get_pair_evaluator() Implemented — Core of Tier 7 Per-Pair Gate Routing
+1061 12:35p 🔵 Full runtime state cross-section — 2026-04-30T16:53 UTC
+1062 " 🔵 consecutive_losses alert firing at value=16.0 every ~hour without reset
+1063 12:55p 🔵 Tier 7 per-pair routing confirmed firing in PID 51337 — 15 per-pair subdirs detected
+1064 " 🔵 buddy_debug.log stale since 12:54 — markdown-it DEBUG spam drowned scanner output
+1065 " 🔵 Joint/ GateEvaluator parent loaded with "momentum: none" — per-pair sub-evaluator construction not logged
+1066 " 🔵 STALENESS HARD BLOCK firing — all models scoring 0.000 HOLD, scans pre-blocked before gate evaluation
+1067 " 🔵 All model loads failing with [Errno 9] Bad file descriptor — system-level FD error, not missing files
+### May 1, 2026
+1068 8:22p ✅ CLAUDE.md: "Work the Gap" Improvement Protocol Codified
+1069 " 🟣 Tier 7 Per-Pair Gate Routing Implemented and Live
+1070 " 🟣 Unified Debug Log: All Logger Calls to logs/buddy_debug.log
+1071 " 🔴 Inbox Approve-All: Meta Packages Silently Ignored + Drain Never Called
+1072 " 🟣 Brain Feed Teed to .claude/brain/feed.jsonl for External Verification
+1073 " 🔴 EmbeddedScanner.run_one_cycle Reads Halted Flag
+1074 " ✅ CLAUDE.md Hard Honesty + Verification Protocol (Post f070d39 Lie)
+1075 " 🔴 Training Staleness Telemetry and n_master_pairs Counter Fixed
+1076 " 🔴 EmbeddedScanner Routes Per-Cycle Diagnostics to Meta-Pipeline
+1077 " 🟣 Auto-Halt on Consecutive Loss Streak with Meta Incident Routing
+1078 " 🔴 MetaManager _concurrent_count Narrowed to Actively-Executing Stages
+1079 8:26p 🔵 Meta Pipeline End-to-End Confirmed Live: Full Stage Progression in brain/feed.jsonl
+1080 " 🔴 config_adjustments Runtime State Protection: Shrink-Guard Tripwire + .gitignore
+1081 " 🔴 Retrain Crash: dict/dataclass Contract Mismatch in Correlation Transfer
+1082 " 🔴 Trade Flow Unblocked: Relaxed min_confidence + Orphan Timeout in Meta Config
+1083 " 🟣 Ctrl+R State-Preserving Safe-Restart via os.execv
+1084 " 🟣 Brain Log Tail-Watches Meta-Pipeline Ledger for Live Stage Visibility
+1085 " 🟣 Phase 1: Deterministic Surgeon Closes use_llm=False Black Hole
+1086 " 🟣 Phase 1: Single-Source-of-Truth Bootstrap via ensure_runtime_env()
+1087 " 🔴 Self-Heal Gate-Overtightening Trap: Debounce + Diagnostics + schema-fix
+1088 " 🔴 Root Cause Fix: Default to Correlation-Transfer Training (Not Joint Multi-Pair)
+1089 " 🔴 Security + Core Fixes: Pickle→JSON Migration, Missing Features Dedup, NameError/Warning Spam
+1090 " 🔵 Commit Verification Pass: All 30 Recent Commits Confirmed Wired in ml_engine
+1092 8:30p ✅ CLAUDE.md: "Tier 7 Autonomous Architecture" Section Added (2026-05-01)
+1093 " 🔵 Deep Re-Verification Batch 1: drain() Confirmed, Per-Cycle Meta Route Has No Live Log Signal
+S320 Deep re-verification of all 30 recent ml_engine commits — confirm each is genuinely wired in codebase and runtime, not just surface-claimed (May 1 at 8:30 PM)
+S321 Commit verification audit (30 commits) — discovered and fixed critical meta-pipeline open-circuit: ConfigAdjuster missing from StagedDeployer production build (May 1 at 8:41 PM)
+S322 Commit verification audit (30 commits) — fixed meta-pipeline open-circuit (ConfigAdjuster missing from StagedDeployer), then codified "no mock code" rule across CLAUDE.md, MEMORY.md, and feedback_no_mocks.md (May 1 at 8:42 PM)
+S323 Fix failing regression test `tests/test_meta_pipeline_real_actuation.py` proving ConfigAdjuster→StagedDeployer autonomous loop wiring (May 1 at 8:48 PM)
+S324 Fix failing regression test `tests/test_meta_pipeline_real_actuation.py` — constructor injection to share pending/approved paths between ConfigAdjuster + AdjustmentApprover (May 1 at 8:52 PM)
+S325 Close the autonomous loop final yard — wire ConfigAdjuster into StagedDeployer so live ScannerConfig mutations actually apply (May 1 at 8:53 PM)
+S326 Commit the autonomous loop final yard fix — ConfigAdjuster wired into StagedDeployer (commit 57f9aa8) (May 1 at 8:53 PM)
+1094 9:06p 🔵 Pre-commit state: 3 intentional files changed, test file untracked
+1095 " 🔴 Committed: autonomous loop final yard closed — ConfigAdjuster wired into StagedDeployer
+S328 Runtime health check after committing autonomous loop fix — scanner halted, blockers identified before loop can be exercised (May 1 at 9:07 PM)
+1096 9:11p 🔵 TUI alive but scanner halted in dry_run mode with zero cycles
+1097 " 🔵 Scanner halted by auto-halt; meta ledger clean; models critically stale
+1098 " 🔵 All 5 recent journal trades are losses; auto-halt triggered by 14-consecutive-loss streak
+S327 Post-commit system health check — verify TUI state, scanner halt cause, trade journal, and meta-pipeline readiness after 57f9aa8 merge (May 1 at 9:12 PM)
+1099 9:13p 🔵 Ctrl+R safe-restart confirmed; ConfigAdjuster fix active; 'k' key is supervisor_kill not unhalt
+S329 Post-Ctrl+R verification — fix confirmed loaded, but misleading 'k' key unhalt guidance discovered and halt still active (May 1 at 9:14 PM)
+1100 9:15p 🔵 Misleading 'k' unhalt message located: embedded_scanner.py:376-377
+1101 " 🔵 Full TUI key binding map and failing model load chain identified in gates.py
+1102 " 🔵 Exact halt message code confirmed: one-shot latch at embedded_scanner.py:370-381
+1103 " 🔵 action_safe_restart pattern documented as template for new action_unhalt
+1104 " 🟣 TUI unhalt hotkey added: 'u' → action_unhalt binding in app.py
 
-Access 725k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 1120k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

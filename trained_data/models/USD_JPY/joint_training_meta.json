@@ -1,0 +1,44 @@
+{
+  "training_type": "joint_multi_pair",
+  "instruments": [
+    "USD_JPY"
+  ],
+  "metrics": {
+    "direction": {
+      "train_accuracy": 0.8284642100334167,
+      "val_accuracy": 0.5962596259625963,
+      "val_balanced_accuracy": 0.5368031225029197,
+      "val_up_accuracy": 0.5276292335115864,
+      "val_down_accuracy": 0.5459770114942529,
+      "val_direction_gap": 0.018347777982666513,
+      "epochs_trained": 10,
+      "n_train_samples": 3731,
+      "n_val_samples": 909,
+      "total_weight_norm": 63.36740756351992,
+      "avg_weight_norm": 1.6675633569347348,
+      "drift_detected": false
+    },
+    "momentum": {
+      "momentum_mae": 0.02088068875830152,
+      "acceleration_accuracy": 0.7949231796927188,
+      "model_type": "lightgbm"
+    },
+    "risk": {
+      "drawdown_mae_pct": 0.0017337602029081844,
+      "drawdown_mae_bps": 17.337602029081843,
+      "streak_prob_mae": 0.022055781093518703,
+      "model_type": "lightgbm"
+    },
+    "confidence": {
+      "confidence_mae": 0.3718550041168882,
+      "r2_score": 0.9946573257195646,
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_total_features": 15
+    }
+  },
+  "per_instrument_metrics": {},
+  "fine_tune_decisions": {},
+  "saved_at": "2026-05-04T18:55:49.867255"
+}

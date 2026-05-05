@@ -172,6 +172,10 @@ class DataProvider:
         with self._lock:
             return self._snapshot
 
+    def get_snapshot(self) -> DashboardSnapshot:
+        """Compatibility accessor for call sites that predate the property."""
+        return self.snapshot
+
     def apply_scan_enrichment(self, enrichment) -> None:
         """Store scan-derived enrichment data (thread-safe).
 
@@ -396,13 +400,16 @@ class DataProvider:
             # Real total gets set from scanner.get_model_health() on first cycle
             snap.models_total = len(model_files)
 
-        # Check scanner state and supervisor flags
+        # Check supervisor flags. Scanner readiness is intentionally NOT
+        # inferred from this file: state.json can outlive the embedded scanner
+        # process, so the App overlays readiness from the in-process scanner.
         state_path = self._project_root / ".claude" / "state.json"
         if state_path.exists():
             try:
                 state = json.loads(state_path.read_text())
-                snap.scan_cycle_count = state.get("scan_cycles", 0)
-                snap.scanner_ready = True
+                snap.scan_cycle_count = int(
+                    state.get("scan_cycle_count", state.get("scan_cycles", 0)) or 0
+                )
                 snap.scanner_paused = bool(state.get("scanner_paused", False))
                 snap.halted = bool(state.get("halted", False))
                 snap.mode = str(state.get("mode", "dry_run"))
@@ -470,11 +477,10 @@ class DataProvider:
             try:
                 entries = json.loads(journal_path.read_text())
                 if isinstance(entries, list) and entries:
-                    # Calculate basic stats from recent trades
+                    # Calculate basic drawdown stats from recent closed trades.
+                    # Do not overload tradeable_count here; that field is a
+                    # live scan result and must stay 0 until a scan completes.
                     recent = entries[-20:]
-                    wins = sum(1 for e in recent
-                               if e.get("outcome", {}).get("trade_won", False))
-                    snap.tradeable_count = len(recent)
 
                     # Rough drawdown from recent P/L
                     pnls = [e.get("outcome", {}).get("realized_pl", 0) for e in recent]

@@ -1,96 +1,24 @@
 {
   "version": 1,
-  "total_replays": 45,
+  "total_replays": 795,
   "replay_log": [
     {
-      "pair": "EUR_USD",
+      "pair": "USD_CAD",
       "config_label": "default",
       "n_candles": 200,
       "result": {
-        "pair": "EUR_USD",
+        "pair": "USD_CAD",
         "config_label": "default",
-        "total_trades": 72,
-        "total_pnl": -111.4,
-        "win_rate": 0.4167,
-        "sharpe": -0.0628,
-        "max_drawdown": 650.9,
-        "signals_generated": 72,
-        "signals_passed_gates": 72,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-15T21:11:00.705445+00:00"
-    },
-    {
-      "pair": "GBP_USD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "GBP_USD",
-        "config_label": "default",
-        "total_trades": 89,
-        "total_pnl": 511.9,
-        "win_rate": 0.5169,
-        "sharpe": 0.1698,
-        "max_drawdown": 644.3,
-        "signals_generated": 89,
-        "signals_passed_gates": 89,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-15T21:11:00.712541+00:00"
-    },
-    {
-      "pair": "USD_JPY",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "USD_JPY",
-        "config_label": "default",
-        "total_trades": 54,
-        "total_pnl": 385.7,
+        "total_trades": 32,
+        "total_pnl": 89.7,
         "win_rate": 0.5,
-        "sharpe": 0.2171,
-        "max_drawdown": 194.1,
-        "signals_generated": 54,
-        "signals_passed_gates": 54,
+        "sharpe": 0.1541,
+        "max_drawdown": 137.0,
+        "signals_generated": 32,
+        "signals_passed_gates": 32,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.717864+00:00"
-    },
-    {
-      "pair": "USD_CHF",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "USD_CHF",
-        "config_label": "default",
-        "total_trades": 88,
-        "total_pnl": -245.3,
-        "win_rate": 0.3977,
-        "sharpe": -0.1376,
-        "max_drawdown": 657.3,
-        "signals_generated": 88,
-        "signals_passed_gates": 88,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-15T21:11:00.722632+00:00"
-    },
-    {
-      "pair": "AUD_USD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "AUD_USD",
-        "config_label": "default",
-        "total_trades": 118,
-        "total_pnl": -839.2,
-        "win_rate": 0.2881,
-        "sharpe": -0.3449,
-        "max_drawdown": 991.8,
-        "signals_generated": 118,
-        "signals_passed_gates": 118,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-15T21:11:00.727663+00:00"
+      "timestamp": "2026-04-30T10:35:25.291298+00:00"
     },
     {
       "pair": "USD_CAD",
@@ -99,16 +27,16 @@
       "result": {
         "pair": "USD_CAD",
         "config_label": "default",
-        "total_trades": 62,
-        "total_pnl": -154.2,
-        "win_rate": 0.3871,
-        "sharpe": -0.1294,
-        "max_drawdown": 455.2,
-        "signals_generated": 62,
-        "signals_passed_gates": 62,
+        "total_trades": 32,
+        "total_pnl": 89.7,
+        "win_rate": 0.5,
+        "sharpe": 0.1541,
+        "max_drawdown": 137.0,
+        "signals_generated": 32,
+        "signals_passed_gates": 32,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.732406+00:00"
+      "timestamp": "2026-04-30T10:35:25.299749+00:00"
     },
     {
       "pair": "NZD_USD",
@@ -117,16 +45,34 @@
       "result": {
         "pair": "NZD_USD",
         "config_label": "default",
-        "total_trades": 112,
-        "total_pnl": 62.7,
-        "win_rate": 0.3929,
-        "sharpe": 0.0279,
-        "max_drawdown": 427.7,
-        "signals_generated": 112,
-        "signals_passed_gates": 112,
+        "total_trades": 105,
+        "total_pnl": -298.7,
+        "win_rate": 0.381,
+        "sharpe": -0.172,
+        "max_drawdown": 426.9,
+        "signals_generated": 105,
+        "signals_passed_gates": 105,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.737417+00:00"
+      "timestamp": "2026-04-30T10:35:25.309073+00:00"
+    },
+    {
+      "pair": "NZD_USD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "NZD_USD",
+        "config_label": "default",
+        "total_trades": 105,
+        "total_pnl": -298.7,
+        "win_rate": 0.381,
+        "sharpe": -0.172,
+        "max_drawdown": 426.9,
+        "signals_generated": 105,
+        "signals_passed_gates": 105,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T10:35:25.319135+00:00"
     },
     {
       "pair": "EUR_GBP",
@@ -135,16 +81,34 @@
       "result": {
         "pair": "EUR_GBP",
         "config_label": "default",
-        "total_trades": 28,
-        "total_pnl": -22.7,
-        "win_rate": 0.3571,
-        "sharpe": -0.0666,
-        "max_drawdown": 127.2,
-        "signals_generated": 28,
-        "signals_passed_gates": 28,
+        "total_trades": 21,
+        "total_pnl": -109.8,
+        "win_rate": 0.1429,
+        "sharpe": -0.8392,
+        "max_drawdown": 139.3,
+        "signals_generated": 21,
+        "signals_passed_gates": 21,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.741941+00:00"
+      "timestamp": "2026-04-30T10:35:25.328244+00:00"
+    },
+    {
+      "pair": "EUR_GBP",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_GBP",
+        "config_label": "default",
+        "total_trades": 21,
+        "total_pnl": -109.8,
+        "win_rate": 0.1429,
+        "sharpe": -0.8392,
+        "max_drawdown": 139.3,
+        "signals_generated": 21,
+        "signals_passed_gates": 21,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T10:35:25.337617+00:00"
     },
     {
       "pair": "EUR_JPY",
@@ -153,16 +117,34 @@
       "result": {
         "pair": "EUR_JPY",
         "config_label": "default",
-        "total_trades": 63,
-        "total_pnl": 506.9,
-        "win_rate": 0.6032,
-        "sharpe": 0.3036,
-        "max_drawdown": 302.6,
-        "signals_generated": 63,
-        "signals_passed_gates": 63,
+        "total_trades": 28,
+        "total_pnl": 77.8,
+        "win_rate": 0.4286,
+        "sharpe": 0.1091,
+        "max_drawdown": 159.5,
+        "signals_generated": 28,
+        "signals_passed_gates": 28,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.746681+00:00"
+      "timestamp": "2026-04-30T10:35:25.346741+00:00"
+    },
+    {
+      "pair": "EUR_JPY",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_JPY",
+        "config_label": "default",
+        "total_trades": 28,
+        "total_pnl": 77.8,
+        "win_rate": 0.4286,
+        "sharpe": 0.1091,
+        "max_drawdown": 159.5,
+        "signals_generated": 28,
+        "signals_passed_gates": 28,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T10:35:25.355775+00:00"
     },
     {
       "pair": "GBP_JPY",
@@ -171,16 +153,34 @@
       "result": {
         "pair": "GBP_JPY",
         "config_label": "default",
-        "total_trades": 78,
-        "total_pnl": 550.6,
-        "win_rate": 0.5385,
-        "sharpe": 0.1923,
-        "max_drawdown": 342.4,
-        "signals_generated": 78,
-        "signals_passed_gates": 78,
+        "total_trades": 35,
+        "total_pnl": 245.0,
+        "win_rate": 0.5143,
+        "sharpe": 0.214,
+        "max_drawdown": 175.0,
+        "signals_generated": 35,
+        "signals_passed_gates": 35,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.751782+00:00"
+      "timestamp": "2026-04-30T10:35:25.368041+00:00"
+    },
+    {
+      "pair": "GBP_JPY",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "GBP_JPY",
+        "config_label": "default",
+        "total_trades": 35,
+        "total_pnl": 245.0,
+        "win_rate": 0.5143,
+        "sharpe": 0.214,
+        "max_drawdown": 175.0,
+        "signals_generated": 35,
+        "signals_passed_gates": 35,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T10:35:25.377103+00:00"
     },
     {
       "pair": "AUD_JPY",
@@ -189,16 +189,34 @@
       "result": {
         "pair": "AUD_JPY",
         "config_label": "default",
-        "total_trades": 103,
-        "total_pnl": 259.4,
-        "win_rate": 0.4757,
-        "sharpe": 0.0854,
-        "max_drawdown": 354.5,
-        "signals_generated": 103,
-        "signals_passed_gates": 103,
+        "total_trades": 70,
+        "total_pnl": -479.7,
+        "win_rate": 0.2857,
+        "sharpe": -0.3404,
+        "max_drawdown": 479.7,
+        "signals_generated": 70,
+        "signals_passed_gates": 70,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.756685+00:00"
+      "timestamp": "2026-04-30T10:35:25.389638+00:00"
+    },
+    {
+      "pair": "AUD_JPY",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "AUD_JPY",
+        "config_label": "default",
+        "total_trades": 70,
+        "total_pnl": -479.7,
+        "win_rate": 0.2857,
+        "sharpe": -0.3404,
+        "max_drawdown": 479.7,
+        "signals_generated": 70,
+        "signals_passed_gates": 70,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T10:35:25.401656+00:00"
     },
     {
       "pair": "EUR_AUD",
@@ -207,16 +225,34 @@
       "result": {
         "pair": "EUR_AUD",
         "config_label": "default",
-        "total_trades": 84,
-        "total_pnl": -1231.8,
-        "win_rate": 0.2738,
-        "sharpe": -0.4676,
-        "max_drawdown": 1550.7,
-        "signals_generated": 84,
-        "signals_passed_gates": 84,
+        "total_trades": 49,
+        "total_pnl": -227.1,
+        "win_rate": 0.3673,
+        "sharpe": -0.1811,
+        "max_drawdown": 314.2,
+        "signals_generated": 49,
+        "signals_passed_gates": 49,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.761343+00:00"
+      "timestamp": "2026-04-30T10:35:25.411091+00:00"
+    },
+    {
+      "pair": "EUR_AUD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_AUD",
+        "config_label": "default",
+        "total_trades": 49,
+        "total_pnl": -227.1,
+        "win_rate": 0.3673,
+        "sharpe": -0.1811,
+        "max_drawdown": 314.2,
+        "signals_generated": 49,
+        "signals_passed_gates": 49,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T10:35:25.420382+00:00"
     },
     {
       "pair": "GBP_AUD",
@@ -225,16 +261,34 @@
       "result": {
         "pair": "GBP_AUD",
         "config_label": "default",
-        "total_trades": 86,
-        "total_pnl": -1244.7,
-        "win_rate": 0.2907,
-        "sharpe": -0.3997,
-        "max_drawdown": 2000.6,
-        "signals_generated": 86,
-        "signals_passed_gates": 86,
+        "total_trades": 40,
+        "total_pnl": 140.4,
+        "win_rate": 0.5,
+        "sharpe": 0.1068,
+        "max_drawdown": 215.4,
+        "signals_generated": 40,
+        "signals_passed_gates": 40,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.766348+00:00"
+      "timestamp": "2026-04-30T10:35:25.429465+00:00"
+    },
+    {
+      "pair": "GBP_AUD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "GBP_AUD",
+        "config_label": "default",
+        "total_trades": 40,
+        "total_pnl": 140.4,
+        "win_rate": 0.5,
+        "sharpe": 0.1068,
+        "max_drawdown": 215.4,
+        "signals_generated": 40,
+        "signals_passed_gates": 40,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T10:35:25.438418+00:00"
     },
     {
       "pair": "EUR_CHF",
@@ -243,16 +297,34 @@
       "result": {
         "pair": "EUR_CHF",
         "config_label": "default",
-        "total_trades": 47,
-        "total_pnl": 125.7,
-        "win_rate": 0.5532,
-        "sharpe": 0.2039,
-        "max_drawdown": 111.5,
-        "signals_generated": 47,
-        "signals_passed_gates": 47,
+        "total_trades": 14,
+        "total_pnl": 22.8,
+        "win_rate": 0.5,
+        "sharpe": 0.1647,
+        "max_drawdown": 30.5,
+        "signals_generated": 14,
+        "signals_passed_gates": 14,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.770961+00:00"
+      "timestamp": "2026-04-30T10:35:25.447269+00:00"
+    },
+    {
+      "pair": "EUR_CHF",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_CHF",
+        "config_label": "default",
+        "total_trades": 14,
+        "total_pnl": 22.8,
+        "win_rate": 0.5,
+        "sharpe": 0.1647,
+        "max_drawdown": 30.5,
+        "signals_generated": 14,
+        "signals_passed_gates": 14,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T10:35:25.455572+00:00"
     },
     {
       "pair": "GBP_CHF",
@@ -261,34 +333,34 @@
       "result": {
         "pair": "GBP_CHF",
         "config_label": "default",
-        "total_trades": 33,
-        "total_pnl": 37.6,
-        "win_rate": 0.5152,
-        "sharpe": 0.0666,
-        "max_drawdown": 141.3,
-        "signals_generated": 33,
-        "signals_passed_gates": 33,
+        "total_trades": 25,
+        "total_pnl": -25.4,
+        "win_rate": 0.4,
+        "sharpe": -0.072,
+        "max_drawdown": 100.5,
+        "signals_generated": 25,
+        "signals_passed_gates": 25,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-15T21:11:00.775460+00:00"
+      "timestamp": "2026-04-30T10:35:25.463804+00:00"
     },
     {
-      "pair": "GBP_USD",
+      "pair": "GBP_CHF",
       "config_label": "default",
       "n_candles": 200,
       "result": {
-        "pair": "GBP_USD",
+        "pair": "GBP_CHF",
         "config_label": "default",
-        "total_trades": 86,
-        "total_pnl": 562.0,
-        "win_rate": 0.5465,
-        "sharpe": 0.1918,
-        "max_drawdown": 644.3,
-        "signals_generated": 86,
-        "signals_passed_gates": 86,
+        "total_trades": 25,
+        "total_pnl": -25.4,
+        "win_rate": 0.4,
+        "sharpe": -0.072,
+        "max_drawdown": 100.5,
+        "signals_generated": 25,
+        "signals_passed_gates": 25,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T00:57:33.978010+00:00"
+      "timestamp": "2026-04-30T10:35:25.472256+00:00"
     },
     {
       "pair": "EUR_USD",
@@ -297,16 +369,70 @@
       "result": {
         "pair": "EUR_USD",
         "config_label": "default",
-        "total_trades": 69,
-        "total_pnl": -122.8,
-        "win_rate": 0.4203,
-        "sharpe": -0.0719,
-        "max_drawdown": 650.9,
-        "signals_generated": 69,
-        "signals_passed_gates": 69,
+        "total_trades": 60,
+        "total_pnl": 108.2,
+        "win_rate": 0.4667,
+        "sharpe": 0.0941,
+        "max_drawdown": 216.1,
+        "signals_generated": 60,
+        "signals_passed_gates": 60,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T00:57:33.984357+00:00"
+      "timestamp": "2026-04-30T13:41:32.999041+00:00"
+    },
+    {
+      "pair": "EUR_USD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_USD",
+        "config_label": "default",
+        "total_trades": 60,
+        "total_pnl": 108.2,
+        "win_rate": 0.4667,
+        "sharpe": 0.0941,
+        "max_drawdown": 216.1,
+        "signals_generated": 60,
+        "signals_passed_gates": 60,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.006567+00:00"
+    },
+    {
+      "pair": "GBP_USD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "GBP_USD",
+        "config_label": "default",
+        "total_trades": 53,
+        "total_pnl": -13.5,
+        "win_rate": 0.434,
+        "sharpe": -0.0107,
+        "max_drawdown": 232.5,
+        "signals_generated": 53,
+        "signals_passed_gates": 53,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.013547+00:00"
+    },
+    {
+      "pair": "GBP_USD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "GBP_USD",
+        "config_label": "default",
+        "total_trades": 53,
+        "total_pnl": -13.5,
+        "win_rate": 0.434,
+        "sharpe": -0.0107,
+        "max_drawdown": 232.5,
+        "signals_generated": 53,
+        "signals_passed_gates": 53,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.021299+00:00"
     },
     {
       "pair": "USD_JPY",
@@ -316,267 +442,15 @@
         "pair": "USD_JPY",
         "config_label": "default",
         "total_trades": 53,
-        "total_pnl": 430.7,
-        "win_rate": 0.5283,
-        "sharpe": 0.2468,
-        "max_drawdown": 194.1,
+        "total_pnl": -257.1,
+        "win_rate": 0.3396,
+        "sharpe": -0.1939,
+        "max_drawdown": 367.7,
         "signals_generated": 53,
         "signals_passed_gates": 53,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T00:57:33.993293+00:00"
-    },
-    {
-      "pair": "USD_CHF",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "USD_CHF",
-        "config_label": "default",
-        "total_trades": 85,
-        "total_pnl": -215.2,
-        "win_rate": 0.3882,
-        "sharpe": -0.1241,
-        "max_drawdown": 657.3,
-        "signals_generated": 85,
-        "signals_passed_gates": 85,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:33.998037+00:00"
-    },
-    {
-      "pair": "AUD_USD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "AUD_USD",
-        "config_label": "default",
-        "total_trades": 118,
-        "total_pnl": -746.1,
-        "win_rate": 0.339,
-        "sharpe": -0.3046,
-        "max_drawdown": 991.8,
-        "signals_generated": 118,
-        "signals_passed_gates": 118,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.003086+00:00"
-    },
-    {
-      "pair": "USD_CAD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "USD_CAD",
-        "config_label": "default",
-        "total_trades": 60,
-        "total_pnl": -129.8,
-        "win_rate": 0.4333,
-        "sharpe": -0.1118,
-        "max_drawdown": 455.2,
-        "signals_generated": 60,
-        "signals_passed_gates": 60,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.007683+00:00"
-    },
-    {
-      "pair": "NZD_USD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "NZD_USD",
-        "config_label": "default",
-        "total_trades": 111,
-        "total_pnl": 111.4,
-        "win_rate": 0.4144,
-        "sharpe": 0.0501,
-        "max_drawdown": 427.7,
-        "signals_generated": 111,
-        "signals_passed_gates": 111,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.012570+00:00"
-    },
-    {
-      "pair": "EUR_GBP",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "EUR_GBP",
-        "config_label": "default",
-        "total_trades": 28,
-        "total_pnl": -23.9,
-        "win_rate": 0.3571,
-        "sharpe": -0.07,
-        "max_drawdown": 128.4,
-        "signals_generated": 28,
-        "signals_passed_gates": 28,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.017133+00:00"
-    },
-    {
-      "pair": "EUR_JPY",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "EUR_JPY",
-        "config_label": "default",
-        "total_trades": 60,
-        "total_pnl": 325.3,
-        "win_rate": 0.55,
-        "sharpe": 0.2,
-        "max_drawdown": 306.2,
-        "signals_generated": 60,
-        "signals_passed_gates": 60,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.021735+00:00"
-    },
-    {
-      "pair": "GBP_JPY",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "GBP_JPY",
-        "config_label": "default",
-        "total_trades": 75,
-        "total_pnl": 389.1,
-        "win_rate": 0.5067,
-        "sharpe": 0.1403,
-        "max_drawdown": 342.4,
-        "signals_generated": 75,
-        "signals_passed_gates": 75,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.026301+00:00"
-    },
-    {
-      "pair": "AUD_JPY",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "AUD_JPY",
-        "config_label": "default",
-        "total_trades": 102,
-        "total_pnl": 176.1,
-        "win_rate": 0.4608,
-        "sharpe": 0.0587,
-        "max_drawdown": 354.5,
-        "signals_generated": 102,
-        "signals_passed_gates": 102,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.030985+00:00"
-    },
-    {
-      "pair": "EUR_AUD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "EUR_AUD",
-        "config_label": "default",
-        "total_trades": 86,
-        "total_pnl": -1191.6,
-        "win_rate": 0.314,
-        "sharpe": -0.4442,
-        "max_drawdown": 1550.7,
-        "signals_generated": 86,
-        "signals_passed_gates": 86,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.035568+00:00"
-    },
-    {
-      "pair": "GBP_AUD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "GBP_AUD",
-        "config_label": "default",
-        "total_trades": 89,
-        "total_pnl": -1189.3,
-        "win_rate": 0.3371,
-        "sharpe": -0.3707,
-        "max_drawdown": 2000.6,
-        "signals_generated": 89,
-        "signals_passed_gates": 89,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.040304+00:00"
-    },
-    {
-      "pair": "EUR_CHF",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "EUR_CHF",
-        "config_label": "default",
-        "total_trades": 45,
-        "total_pnl": 130.9,
-        "win_rate": 0.5333,
-        "sharpe": 0.2217,
-        "max_drawdown": 111.5,
-        "signals_generated": 45,
-        "signals_passed_gates": 45,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.044778+00:00"
-    },
-    {
-      "pair": "GBP_CHF",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "GBP_CHF",
-        "config_label": "default",
-        "total_trades": 31,
-        "total_pnl": 67.8,
-        "win_rate": 0.5484,
-        "sharpe": 0.1277,
-        "max_drawdown": 141.3,
-        "signals_generated": 31,
-        "signals_passed_gates": 31,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T00:57:34.049715+00:00"
-    },
-    {
-      "pair": "GBP_USD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "GBP_USD",
-        "config_label": "default",
-        "total_trades": 84,
-        "total_pnl": 674.2,
-        "win_rate": 0.5595,
-        "sharpe": 0.2335,
-        "max_drawdown": 644.3,
-        "signals_generated": 84,
-        "signals_passed_gates": 84,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T03:21:50.890641+00:00"
-    },
-    {
-      "pair": "EUR_USD",
-      "config_label": "default",
-      "n_candles": 200,
-      "result": {
-        "pair": "EUR_USD",
-        "config_label": "default",
-        "total_trades": 68,
-        "total_pnl": -57.4,
-        "win_rate": 0.4265,
-        "sharpe": -0.0334,
-        "max_drawdown": 650.9,
-        "signals_generated": 68,
-        "signals_passed_gates": 68,
-        "gate_pass_rate": 1.0
-      },
-      "timestamp": "2026-04-16T03:21:50.903397+00:00"
+      "timestamp": "2026-04-30T13:41:33.028930+00:00"
     },
     {
       "pair": "USD_JPY",
@@ -585,16 +459,16 @@
       "result": {
         "pair": "USD_JPY",
         "config_label": "default",
-        "total_trades": 55,
-        "total_pnl": 453.3,
-        "win_rate": 0.5273,
-        "sharpe": 0.2536,
-        "max_drawdown": 194.1,
-        "signals_generated": 55,
-        "signals_passed_gates": 55,
+        "total_trades": 53,
+        "total_pnl": -257.1,
+        "win_rate": 0.3396,
+        "sharpe": -0.1939,
+        "max_drawdown": 367.7,
+        "signals_generated": 53,
+        "signals_passed_gates": 53,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.911713+00:00"
+      "timestamp": "2026-04-30T13:41:33.036495+00:00"
     },
     {
       "pair": "USD_CHF",
@@ -603,16 +477,34 @@
       "result": {
         "pair": "USD_CHF",
         "config_label": "default",
-        "total_trades": 83,
-        "total_pnl": -177.2,
-        "win_rate": 0.3976,
-        "sharpe": -0.1042,
-        "max_drawdown": 657.3,
-        "signals_generated": 83,
-        "signals_passed_gates": 83,
+        "total_trades": 51,
+        "total_pnl": 78.5,
+        "win_rate": 0.4902,
+        "sharpe": 0.0962,
+        "max_drawdown": 113.1,
+        "signals_generated": 51,
+        "signals_passed_gates": 51,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.916878+00:00"
+      "timestamp": "2026-04-30T13:41:33.044849+00:00"
+    },
+    {
+      "pair": "USD_CHF",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "USD_CHF",
+        "config_label": "default",
+        "total_trades": 51,
+        "total_pnl": 78.5,
+        "win_rate": 0.4902,
+        "sharpe": 0.0962,
+        "max_drawdown": 113.1,
+        "signals_generated": 51,
+        "signals_passed_gates": 51,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.052705+00:00"
     },
     {
       "pair": "AUD_USD",
@@ -621,16 +513,34 @@
       "result": {
         "pair": "AUD_USD",
         "config_label": "default",
-        "total_trades": 117,
-        "total_pnl": -574.8,
-        "win_rate": 0.3504,
-        "sharpe": -0.226,
-        "max_drawdown": 991.8,
-        "signals_generated": 117,
-        "signals_passed_gates": 117,
+        "total_trades": 90,
+        "total_pnl": -158.0,
+        "win_rate": 0.4,
+        "sharpe": -0.0955,
+        "max_drawdown": 259.5,
+        "signals_generated": 90,
+        "signals_passed_gates": 90,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.923216+00:00"
+      "timestamp": "2026-04-30T13:41:33.063431+00:00"
+    },
+    {
+      "pair": "AUD_USD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "AUD_USD",
+        "config_label": "default",
+        "total_trades": 90,
+        "total_pnl": -158.0,
+        "win_rate": 0.4,
+        "sharpe": -0.0955,
+        "max_drawdown": 259.5,
+        "signals_generated": 90,
+        "signals_passed_gates": 90,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.075031+00:00"
     },
     {
       "pair": "USD_CAD",
@@ -639,16 +549,34 @@
       "result": {
         "pair": "USD_CAD",
         "config_label": "default",
-        "total_trades": 58,
-        "total_pnl": -18.0,
-        "win_rate": 0.4655,
-        "sharpe": -0.0152,
-        "max_drawdown": 455.2,
-        "signals_generated": 58,
-        "signals_passed_gates": 58,
+        "total_trades": 35,
+        "total_pnl": 88.9,
+        "win_rate": 0.4857,
+        "sharpe": 0.1456,
+        "max_drawdown": 137.0,
+        "signals_generated": 35,
+        "signals_passed_gates": 35,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.928213+00:00"
+      "timestamp": "2026-04-30T13:41:33.084525+00:00"
+    },
+    {
+      "pair": "USD_CAD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "USD_CAD",
+        "config_label": "default",
+        "total_trades": 35,
+        "total_pnl": 88.9,
+        "win_rate": 0.4857,
+        "sharpe": 0.1456,
+        "max_drawdown": 137.0,
+        "signals_generated": 35,
+        "signals_passed_gates": 35,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.092111+00:00"
     },
     {
       "pair": "NZD_USD",
@@ -657,16 +585,34 @@
       "result": {
         "pair": "NZD_USD",
         "config_label": "default",
-        "total_trades": 109,
-        "total_pnl": 180.5,
-        "win_rate": 0.4495,
-        "sharpe": 0.0821,
-        "max_drawdown": 427.7,
-        "signals_generated": 109,
-        "signals_passed_gates": 109,
+        "total_trades": 106,
+        "total_pnl": -266.4,
+        "win_rate": 0.3962,
+        "sharpe": -0.1535,
+        "max_drawdown": 395.6,
+        "signals_generated": 106,
+        "signals_passed_gates": 106,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.934179+00:00"
+      "timestamp": "2026-04-30T13:41:33.100399+00:00"
+    },
+    {
+      "pair": "NZD_USD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "NZD_USD",
+        "config_label": "default",
+        "total_trades": 106,
+        "total_pnl": -266.4,
+        "win_rate": 0.3962,
+        "sharpe": -0.1535,
+        "max_drawdown": 395.6,
+        "signals_generated": 106,
+        "signals_passed_gates": 106,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.108683+00:00"
     },
     {
       "pair": "EUR_GBP",
@@ -675,16 +621,34 @@
       "result": {
         "pair": "EUR_GBP",
         "config_label": "default",
-        "total_trades": 28,
-        "total_pnl": -23.9,
-        "win_rate": 0.3571,
-        "sharpe": -0.07,
-        "max_drawdown": 128.4,
-        "signals_generated": 28,
-        "signals_passed_gates": 28,
+        "total_trades": 21,
+        "total_pnl": -109.8,
+        "win_rate": 0.1429,
+        "sharpe": -0.8392,
+        "max_drawdown": 139.3,
+        "signals_generated": 21,
+        "signals_passed_gates": 21,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.940090+00:00"
+      "timestamp": "2026-04-30T13:41:33.116397+00:00"
+    },
+    {
+      "pair": "EUR_GBP",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_GBP",
+        "config_label": "default",
+        "total_trades": 21,
+        "total_pnl": -109.8,
+        "win_rate": 0.1429,
+        "sharpe": -0.8392,
+        "max_drawdown": 139.3,
+        "signals_generated": 21,
+        "signals_passed_gates": 21,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.123932+00:00"
     },
     {
       "pair": "EUR_JPY",
@@ -693,16 +657,34 @@
       "result": {
         "pair": "EUR_JPY",
         "config_label": "default",
-        "total_trades": 60,
-        "total_pnl": 306.7,
-        "win_rate": 0.55,
-        "sharpe": 0.1869,
-        "max_drawdown": 324.8,
-        "signals_generated": 60,
-        "signals_passed_gates": 60,
+        "total_trades": 30,
+        "total_pnl": 112.1,
+        "win_rate": 0.4667,
+        "sharpe": 0.1347,
+        "max_drawdown": 159.5,
+        "signals_generated": 30,
+        "signals_passed_gates": 30,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.945730+00:00"
+      "timestamp": "2026-04-30T13:41:33.131644+00:00"
+    },
+    {
+      "pair": "EUR_JPY",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_JPY",
+        "config_label": "default",
+        "total_trades": 30,
+        "total_pnl": 112.1,
+        "win_rate": 0.4667,
+        "sharpe": 0.1347,
+        "max_drawdown": 159.5,
+        "signals_generated": 30,
+        "signals_passed_gates": 30,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.140187+00:00"
     },
     {
       "pair": "GBP_JPY",
@@ -711,16 +693,34 @@
       "result": {
         "pair": "GBP_JPY",
         "config_label": "default",
-        "total_trades": 77,
-        "total_pnl": 345.1,
-        "win_rate": 0.5065,
-        "sharpe": 0.1228,
-        "max_drawdown": 342.4,
-        "signals_generated": 77,
-        "signals_passed_gates": 77,
+        "total_trades": 38,
+        "total_pnl": 256.0,
+        "win_rate": 0.5263,
+        "sharpe": 0.1959,
+        "max_drawdown": 175.0,
+        "signals_generated": 38,
+        "signals_passed_gates": 38,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.951452+00:00"
+      "timestamp": "2026-04-30T13:41:33.149130+00:00"
+    },
+    {
+      "pair": "GBP_JPY",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "GBP_JPY",
+        "config_label": "default",
+        "total_trades": 38,
+        "total_pnl": 256.0,
+        "win_rate": 0.5263,
+        "sharpe": 0.1959,
+        "max_drawdown": 175.0,
+        "signals_generated": 38,
+        "signals_passed_gates": 38,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.160926+00:00"
     },
     {
       "pair": "AUD_JPY",
@@ -729,16 +729,34 @@
       "result": {
         "pair": "AUD_JPY",
         "config_label": "default",
-        "total_trades": 99,
-        "total_pnl": 141.6,
-        "win_rate": 0.4646,
-        "sharpe": 0.0478,
-        "max_drawdown": 354.5,
-        "signals_generated": 99,
-        "signals_passed_gates": 99,
+        "total_trades": 71,
+        "total_pnl": -448.4,
+        "win_rate": 0.2958,
+        "sharpe": -0.3002,
+        "max_drawdown": 448.4,
+        "signals_generated": 71,
+        "signals_passed_gates": 71,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.958377+00:00"
+      "timestamp": "2026-04-30T13:41:33.170229+00:00"
+    },
+    {
+      "pair": "AUD_JPY",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "AUD_JPY",
+        "config_label": "default",
+        "total_trades": 71,
+        "total_pnl": -448.4,
+        "win_rate": 0.2958,
+        "sharpe": -0.3002,
+        "max_drawdown": 448.4,
+        "signals_generated": 71,
+        "signals_passed_gates": 71,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.198326+00:00"
     },
     {
       "pair": "EUR_AUD",
@@ -747,16 +765,34 @@
       "result": {
         "pair": "EUR_AUD",
         "config_label": "default",
-        "total_trades": 86,
-        "total_pnl": -1083.6,
-        "win_rate": 0.3372,
-        "sharpe": -0.3928,
-        "max_drawdown": 1550.7,
-        "signals_generated": 86,
-        "signals_passed_gates": 86,
+        "total_trades": 50,
+        "total_pnl": -180.5,
+        "win_rate": 0.36,
+        "sharpe": -0.1352,
+        "max_drawdown": 314.2,
+        "signals_generated": 50,
+        "signals_passed_gates": 50,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.964047+00:00"
+      "timestamp": "2026-04-30T13:41:33.208904+00:00"
+    },
+    {
+      "pair": "EUR_AUD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_AUD",
+        "config_label": "default",
+        "total_trades": 50,
+        "total_pnl": -180.5,
+        "win_rate": 0.36,
+        "sharpe": -0.1352,
+        "max_drawdown": 314.2,
+        "signals_generated": 50,
+        "signals_passed_gates": 50,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.255798+00:00"
     },
     {
       "pair": "GBP_AUD",
@@ -765,16 +801,34 @@
       "result": {
         "pair": "GBP_AUD",
         "config_label": "default",
-        "total_trades": 89,
-        "total_pnl": -1071.1,
-        "win_rate": 0.3596,
-        "sharpe": -0.3258,
-        "max_drawdown": 2000.6,
-        "signals_generated": 89,
-        "signals_passed_gates": 89,
+        "total_trades": 39,
+        "total_pnl": 181.2,
+        "win_rate": 0.5128,
+        "sharpe": 0.1393,
+        "max_drawdown": 215.4,
+        "signals_generated": 39,
+        "signals_passed_gates": 39,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.969695+00:00"
+      "timestamp": "2026-04-30T13:41:33.268473+00:00"
+    },
+    {
+      "pair": "GBP_AUD",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "GBP_AUD",
+        "config_label": "default",
+        "total_trades": 39,
+        "total_pnl": 181.2,
+        "win_rate": 0.5128,
+        "sharpe": 0.1393,
+        "max_drawdown": 215.4,
+        "signals_generated": 39,
+        "signals_passed_gates": 39,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.286464+00:00"
     },
     {
       "pair": "EUR_CHF",
@@ -783,16 +837,34 @@
       "result": {
         "pair": "EUR_CHF",
         "config_label": "default",
-        "total_trades": 44,
-        "total_pnl": 138.6,
-        "win_rate": 0.5455,
-        "sharpe": 0.2398,
-        "max_drawdown": 111.5,
-        "signals_generated": 44,
-        "signals_passed_gates": 44,
+        "total_trades": 17,
+        "total_pnl": 24.9,
+        "win_rate": 0.4706,
+        "sharpe": 0.1506,
+        "max_drawdown": 30.5,
+        "signals_generated": 17,
+        "signals_passed_gates": 17,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.975258+00:00"
+      "timestamp": "2026-04-30T13:41:33.298306+00:00"
+    },
+    {
+      "pair": "EUR_CHF",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "EUR_CHF",
+        "config_label": "default",
+        "total_trades": 17,
+        "total_pnl": 24.9,
+        "win_rate": 0.4706,
+        "sharpe": 0.1506,
+        "max_drawdown": 30.5,
+        "signals_generated": 17,
+        "signals_passed_gates": 17,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.306631+00:00"
     },
     {
       "pair": "GBP_CHF",
@@ -801,226 +873,262 @@
       "result": {
         "pair": "GBP_CHF",
         "config_label": "default",
-        "total_trades": 31,
-        "total_pnl": 67.8,
-        "win_rate": 0.5484,
-        "sharpe": 0.1277,
-        "max_drawdown": 141.3,
-        "signals_generated": 31,
-        "signals_passed_gates": 31,
+        "total_trades": 28,
+        "total_pnl": -4.6,
+        "win_rate": 0.4286,
+        "sharpe": -0.0114,
+        "max_drawdown": 100.5,
+        "signals_generated": 28,
+        "signals_passed_gates": 28,
         "gate_pass_rate": 1.0
       },
-      "timestamp": "2026-04-16T03:21:50.980152+00:00"
+      "timestamp": "2026-04-30T13:41:33.314990+00:00"
+    },
+    {
+      "pair": "GBP_CHF",
+      "config_label": "default",
+      "n_candles": 200,
+      "result": {
+        "pair": "GBP_CHF",
+        "config_label": "default",
+        "total_trades": 28,
+        "total_pnl": -4.6,
+        "win_rate": 0.4286,
+        "sharpe": -0.0114,
+        "max_drawdown": 100.5,
+        "signals_generated": 28,
+        "signals_passed_gates": 28,
+        "gate_pass_rate": 1.0
+      },
+      "timestamp": "2026-04-30T13:41:33.323504+00:00"
     }
   ],
   "drift_alerts": [
     {
-      "drift_score": 0.1333,
+      "drift_score": 0.4071,
       "is_drifting": true,
-      "current_accuracy": 0.4167,
-      "baseline_accuracy": 0.55,
-      "pair": "EUR_USD",
-      "n_trades": 72,
-      "timestamp": "2026-04-15T21:11:00.705459+00:00"
-    },
-    {
-      "drift_score": 0.1523,
-      "is_drifting": true,
-      "current_accuracy": 0.3977,
-      "baseline_accuracy": 0.55,
-      "pair": "USD_CHF",
-      "n_trades": 88,
-      "timestamp": "2026-04-15T21:11:00.722644+00:00"
-    },
-    {
-      "drift_score": 0.2619,
-      "is_drifting": true,
-      "current_accuracy": 0.2881,
-      "baseline_accuracy": 0.55,
-      "pair": "AUD_USD",
-      "n_trades": 118,
-      "timestamp": "2026-04-15T21:11:00.727673+00:00"
-    },
-    {
-      "drift_score": 0.1629,
-      "is_drifting": true,
-      "current_accuracy": 0.3871,
-      "baseline_accuracy": 0.55,
-      "pair": "USD_CAD",
-      "n_trades": 62,
-      "timestamp": "2026-04-15T21:11:00.732413+00:00"
-    },
-    {
-      "drift_score": 0.1571,
-      "is_drifting": true,
-      "current_accuracy": 0.3929,
-      "baseline_accuracy": 0.55,
-      "pair": "NZD_USD",
-      "n_trades": 112,
-      "timestamp": "2026-04-15T21:11:00.737427+00:00"
-    },
-    {
-      "drift_score": 0.1929,
-      "is_drifting": true,
-      "current_accuracy": 0.3571,
+      "current_accuracy": 0.1429,
       "baseline_accuracy": 0.55,
       "pair": "EUR_GBP",
-      "n_trades": 28,
-      "timestamp": "2026-04-15T21:11:00.741951+00:00"
+      "n_trades": 21,
+      "timestamp": "2026-04-30T10:35:25.337635+00:00"
     },
     {
-      "drift_score": 0.2762,
+      "drift_score": 0.1214,
       "is_drifting": true,
-      "current_accuracy": 0.2738,
+      "current_accuracy": 0.4286,
+      "baseline_accuracy": 0.55,
+      "pair": "EUR_JPY",
+      "n_trades": 28,
+      "timestamp": "2026-04-30T10:35:25.346756+00:00"
+    },
+    {
+      "drift_score": 0.1214,
+      "is_drifting": true,
+      "current_accuracy": 0.4286,
+      "baseline_accuracy": 0.55,
+      "pair": "EUR_JPY",
+      "n_trades": 28,
+      "timestamp": "2026-04-30T10:35:25.355791+00:00"
+    },
+    {
+      "drift_score": 0.2643,
+      "is_drifting": true,
+      "current_accuracy": 0.2857,
+      "baseline_accuracy": 0.55,
+      "pair": "AUD_JPY",
+      "n_trades": 70,
+      "timestamp": "2026-04-30T10:35:25.389661+00:00"
+    },
+    {
+      "drift_score": 0.2643,
+      "is_drifting": true,
+      "current_accuracy": 0.2857,
+      "baseline_accuracy": 0.55,
+      "pair": "AUD_JPY",
+      "n_trades": 70,
+      "timestamp": "2026-04-30T10:35:25.401677+00:00"
+    },
+    {
+      "drift_score": 0.1827,
+      "is_drifting": true,
+      "current_accuracy": 0.3673,
       "baseline_accuracy": 0.55,
       "pair": "EUR_AUD",
-      "n_trades": 84,
-      "timestamp": "2026-04-15T21:11:00.761351+00:00"
+      "n_trades": 49,
+      "timestamp": "2026-04-30T10:35:25.411107+00:00"
     },
     {
-      "drift_score": 0.2593,
+      "drift_score": 0.1827,
       "is_drifting": true,
-      "current_accuracy": 0.2907,
+      "current_accuracy": 0.3673,
       "baseline_accuracy": 0.55,
-      "pair": "GBP_AUD",
-      "n_trades": 86,
-      "timestamp": "2026-04-15T21:11:00.766356+00:00"
+      "pair": "EUR_AUD",
+      "n_trades": 49,
+      "timestamp": "2026-04-30T10:35:25.420400+00:00"
     },
     {
-      "drift_score": 0.1297,
+      "drift_score": 0.15,
       "is_drifting": true,
-      "current_accuracy": 0.4203,
+      "current_accuracy": 0.4,
       "baseline_accuracy": 0.55,
-      "pair": "EUR_USD",
-      "n_trades": 69,
-      "timestamp": "2026-04-16T00:57:33.984365+00:00"
+      "pair": "GBP_CHF",
+      "n_trades": 25,
+      "timestamp": "2026-04-30T10:35:25.463814+00:00"
     },
     {
-      "drift_score": 0.1618,
+      "drift_score": 0.15,
       "is_drifting": true,
-      "current_accuracy": 0.3882,
+      "current_accuracy": 0.4,
       "baseline_accuracy": 0.55,
-      "pair": "USD_CHF",
-      "n_trades": 85,
-      "timestamp": "2026-04-16T00:57:33.998046+00:00"
+      "pair": "GBP_CHF",
+      "n_trades": 25,
+      "timestamp": "2026-04-30T10:35:25.472267+00:00"
     },
     {
-      "drift_score": 0.211,
+      "drift_score": 0.116,
       "is_drifting": true,
-      "current_accuracy": 0.339,
+      "current_accuracy": 0.434,
+      "baseline_accuracy": 0.55,
+      "pair": "GBP_USD",
+      "n_trades": 53,
+      "timestamp": "2026-04-30T13:41:33.013559+00:00"
+    },
+    {
+      "drift_score": 0.116,
+      "is_drifting": true,
+      "current_accuracy": 0.434,
+      "baseline_accuracy": 0.55,
+      "pair": "GBP_USD",
+      "n_trades": 53,
+      "timestamp": "2026-04-30T13:41:33.021312+00:00"
+    },
+    {
+      "drift_score": 0.2104,
+      "is_drifting": true,
+      "current_accuracy": 0.3396,
+      "baseline_accuracy": 0.55,
+      "pair": "USD_JPY",
+      "n_trades": 53,
+      "timestamp": "2026-04-30T13:41:33.028941+00:00"
+    },
+    {
+      "drift_score": 0.2104,
+      "is_drifting": true,
+      "current_accuracy": 0.3396,
+      "baseline_accuracy": 0.55,
+      "pair": "USD_JPY",
+      "n_trades": 53,
+      "timestamp": "2026-04-30T13:41:33.036506+00:00"
+    },
+    {
+      "drift_score": 0.15,
+      "is_drifting": true,
+      "current_accuracy": 0.4,
       "baseline_accuracy": 0.55,
       "pair": "AUD_USD",
-      "n_trades": 118,
-      "timestamp": "2026-04-16T00:57:34.003096+00:00"
+      "n_trades": 90,
+      "timestamp": "2026-04-30T13:41:33.063446+00:00"
     },
     {
-      "drift_score": 0.1167,
+      "drift_score": 0.15,
       "is_drifting": true,
-      "current_accuracy": 0.4333,
-      "baseline_accuracy": 0.55,
-      "pair": "USD_CAD",
-      "n_trades": 60,
-      "timestamp": "2026-04-16T00:57:34.007691+00:00"
-    },
-    {
-      "drift_score": 0.1356,
-      "is_drifting": true,
-      "current_accuracy": 0.4144,
-      "baseline_accuracy": 0.55,
-      "pair": "NZD_USD",
-      "n_trades": 111,
-      "timestamp": "2026-04-16T00:57:34.012580+00:00"
-    },
-    {
-      "drift_score": 0.1929,
-      "is_drifting": true,
-      "current_accuracy": 0.3571,
-      "baseline_accuracy": 0.55,
-      "pair": "EUR_GBP",
-      "n_trades": 28,
-      "timestamp": "2026-04-16T00:57:34.017140+00:00"
-    },
-    {
-      "drift_score": 0.236,
-      "is_drifting": true,
-      "current_accuracy": 0.314,
-      "baseline_accuracy": 0.55,
-      "pair": "EUR_AUD",
-      "n_trades": 86,
-      "timestamp": "2026-04-16T00:57:34.035576+00:00"
-    },
-    {
-      "drift_score": 0.2129,
-      "is_drifting": true,
-      "current_accuracy": 0.3371,
-      "baseline_accuracy": 0.55,
-      "pair": "GBP_AUD",
-      "n_trades": 89,
-      "timestamp": "2026-04-16T00:57:34.040311+00:00"
-    },
-    {
-      "drift_score": 0.1235,
-      "is_drifting": true,
-      "current_accuracy": 0.4265,
-      "baseline_accuracy": 0.55,
-      "pair": "EUR_USD",
-      "n_trades": 68,
-      "timestamp": "2026-04-16T03:21:50.903408+00:00"
-    },
-    {
-      "drift_score": 0.1524,
-      "is_drifting": true,
-      "current_accuracy": 0.3976,
-      "baseline_accuracy": 0.55,
-      "pair": "USD_CHF",
-      "n_trades": 83,
-      "timestamp": "2026-04-16T03:21:50.916888+00:00"
-    },
-    {
-      "drift_score": 0.1996,
-      "is_drifting": true,
-      "current_accuracy": 0.3504,
+      "current_accuracy": 0.4,
       "baseline_accuracy": 0.55,
       "pair": "AUD_USD",
-      "n_trades": 117,
-      "timestamp": "2026-04-16T03:21:50.923226+00:00"
+      "n_trades": 90,
+      "timestamp": "2026-04-30T13:41:33.075044+00:00"
     },
     {
-      "drift_score": 0.1005,
+      "drift_score": 0.1538,
       "is_drifting": true,
-      "current_accuracy": 0.4495,
+      "current_accuracy": 0.3962,
       "baseline_accuracy": 0.55,
       "pair": "NZD_USD",
-      "n_trades": 109,
-      "timestamp": "2026-04-16T03:21:50.934190+00:00"
+      "n_trades": 106,
+      "timestamp": "2026-04-30T13:41:33.100415+00:00"
     },
     {
-      "drift_score": 0.1929,
+      "drift_score": 0.1538,
       "is_drifting": true,
-      "current_accuracy": 0.3571,
+      "current_accuracy": 0.3962,
+      "baseline_accuracy": 0.55,
+      "pair": "NZD_USD",
+      "n_trades": 106,
+      "timestamp": "2026-04-30T13:41:33.108698+00:00"
+    },
+    {
+      "drift_score": 0.4071,
+      "is_drifting": true,
+      "current_accuracy": 0.1429,
       "baseline_accuracy": 0.55,
       "pair": "EUR_GBP",
-      "n_trades": 28,
-      "timestamp": "2026-04-16T03:21:50.940098+00:00"
+      "n_trades": 21,
+      "timestamp": "2026-04-30T13:41:33.116405+00:00"
     },
     {
-      "drift_score": 0.2128,
+      "drift_score": 0.4071,
       "is_drifting": true,
-      "current_accuracy": 0.3372,
+      "current_accuracy": 0.1429,
+      "baseline_accuracy": 0.55,
+      "pair": "EUR_GBP",
+      "n_trades": 21,
+      "timestamp": "2026-04-30T13:41:33.123940+00:00"
+    },
+    {
+      "drift_score": 0.2542,
+      "is_drifting": true,
+      "current_accuracy": 0.2958,
+      "baseline_accuracy": 0.55,
+      "pair": "AUD_JPY",
+      "n_trades": 71,
+      "timestamp": "2026-04-30T13:41:33.170242+00:00"
+    },
+    {
+      "drift_score": 0.2542,
+      "is_drifting": true,
+      "current_accuracy": 0.2958,
+      "baseline_accuracy": 0.55,
+      "pair": "AUD_JPY",
+      "n_trades": 71,
+      "timestamp": "2026-04-30T13:41:33.198341+00:00"
+    },
+    {
+      "drift_score": 0.19,
+      "is_drifting": true,
+      "current_accuracy": 0.36,
       "baseline_accuracy": 0.55,
       "pair": "EUR_AUD",
-      "n_trades": 86,
-      "timestamp": "2026-04-16T03:21:50.964055+00:00"
+      "n_trades": 50,
+      "timestamp": "2026-04-30T13:41:33.208918+00:00"
     },
     {
-      "drift_score": 0.1904,
+      "drift_score": 0.19,
       "is_drifting": true,
-      "current_accuracy": 0.3596,
+      "current_accuracy": 0.36,
       "baseline_accuracy": 0.55,
-      "pair": "GBP_AUD",
-      "n_trades": 89,
-      "timestamp": "2026-04-16T03:21:50.969709+00:00"
+      "pair": "EUR_AUD",
+      "n_trades": 50,
+      "timestamp": "2026-04-30T13:41:33.255811+00:00"
+    },
+    {
+      "drift_score": 0.1214,
+      "is_drifting": true,
+      "current_accuracy": 0.4286,
+      "baseline_accuracy": 0.55,
+      "pair": "GBP_CHF",
+      "n_trades": 28,
+      "timestamp": "2026-04-30T13:41:33.315001+00:00"
+    },
+    {
+      "drift_score": 0.1214,
+      "is_drifting": true,
+      "current_accuracy": 0.4286,
+      "baseline_accuracy": 0.55,
+      "pair": "GBP_CHF",
+      "n_trades": 28,
+      "timestamp": "2026-04-30T13:41:33.323515+00:00"
     }
   ],
-  "last_updated": "2026-04-16T16:23:33.030357+00:00"
+  "last_updated": "2026-05-05T01:08:15.687592+00:00"
 }

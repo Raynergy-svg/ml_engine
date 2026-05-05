@@ -41,24 +41,16 @@ from src.tui.screens.kill_modal import KillModal
 from src.tui.screens.mode_modal import ModeConfirmModal, check_oanda_credentials
 from src.tui.screens.trades_screen import TradesScreen
 from src.tui.screens.agents_screen import AgentsScreen
+from src.tui.screens.config_screen import ConfigScreen
+from src.tui.screens.diagnostics_screen import DiagnosticsScreen
 from src.tui.screens.journal_screen import JournalScreen
 from src.tui.screens.inbox_screen import InboxScreen
 from src.tui.screens.rules_screen import RulesScreen
 from src.tui.widgets.state_strip import StateStrip
 from src.tui.widgets.staleness_banner import StalenessBanner
 
-# Lazy imports for screens still being built — fallback to None
-try:
-    from src.tui.screens.config_screen import ConfigScreen
-except ImportError:
-    ConfigScreen = None  # type: ignore[misc,assignment]
-
-try:
-    from src.tui.screens.diagnostics_screen import DiagnosticsScreen
-except ImportError:
-    DiagnosticsScreen = None  # type: ignore[misc,assignment]
-
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ── Simulated Data (demo mode) ──────────────────────────────────────
 
@@ -172,6 +164,17 @@ def _tee_brain_to_disk(markup: str) -> None:
             fh.write(line + "\n")
     except OSError:
         return
+
+
+def _scanner_alive_from_sources(snap: DashboardSnapshot | None, scanner: object | None) -> bool:
+    """Return whether the runtime scanner is alive from real in-process sources."""
+    cycle = int(getattr(snap, "scan_cycle_count", 0) or 0) if snap is not None else 0
+    has_open_trades = bool(getattr(snap, "trades", []) or []) if snap is not None else False
+    embedded_ready = bool(
+        getattr(scanner, "is_ready", False)
+        or getattr(scanner, "_running", False)
+    )
+    return bool(cycle > 0 or has_open_trades or embedded_ready)
 
 
 def format_meta_brain_line(blob: dict) -> str:
@@ -467,22 +470,24 @@ class ReflectionLogReader:
         import time as _time
         while not self._stop.is_set():
             try:
-                if not self._log_path.exists():
-                    if not self._announced_waiting:
-                        self._announced_waiting = True
-                        self._callback(
-                            "[dim]  waiting for first reflection… (fires on trade close)[/]"
-                        )
-                    self._stop.wait(self._poll_interval)
-                    continue
+	                if not self._log_path.exists():
+	                    if not self._announced_waiting:
+	                        self._announced_waiting = True
+	                        self._callback(
+	                            "[dim]  waiting for first reflection… (fires on trade close)[/]"
+	                        )
+	                    self._poll_aux_sources()
+	                    self._stop.wait(self._poll_interval)
+	                    continue
 
-                size = self._log_path.stat().st_size
-                if size < self._offset:
-                    # File was truncated/rotated — reset
-                    self._offset = 0
-                if size == self._offset:
-                    self._stop.wait(self._poll_interval)
-                    continue
+	                size = self._log_path.stat().st_size
+	                if size < self._offset:
+	                    # File was truncated/rotated — reset
+	                    self._offset = 0
+	                if size == self._offset:
+	                    self._poll_aux_sources()
+	                    self._stop.wait(self._poll_interval)
+	                    continue
 
                 # Once we have a real file, clear the waiting flag so a later
                 # deletion + recreation re-announces.
@@ -555,49 +560,53 @@ class ReflectionLogReader:
             except Exception as e:
                 logger.debug("ReflectionLogReader error: %s", e)
 
-            # Multiplex aux sources (meta + autotrainer). Each reuses the
-            # primary's day-separator state for chronological coherence.
-            # readline() loop keeps f.tell() valid (see primary loop note).
-            for src in self._aux_sources:
-                try:
-                    p = src["path"]
-                    if not p.exists():
-                        continue
-                    size = p.stat().st_size
-                    if size < src["offset"]:
-                        src["offset"] = 0
-                    if size == src["offset"]:
-                        continue
-                    with open(p, "r") as f:
-                        f.seek(src["offset"])
-                        while True:
-                            raw = f.readline()
-                            if not raw:
-                                break
-                            if not raw.strip():
-                                continue
-                            try:
-                                entry = json.loads(raw)
-                            except json.JSONDecodeError:
-                                continue
-                            try:
-                                sep = self._maybe_day_separator(entry)
-                                if sep:
-                                    self._callback(sep)
-                            except Exception:
-                                pass
-                            try:
-                                self._callback(src["formatter"](entry))
-                            except Exception:
-                                pass
-                        src["offset"] = f.tell()
-                except Exception as e:
-                    logger.debug(
-                        "ReflectionLogReader aux source %s error: %s",
-                        src.get("tag", "?"), e,
-                    )
+	            self._poll_aux_sources()
 
-            self._stop.wait(self._poll_interval)
+	            self._stop.wait(self._poll_interval)
+
+	    def _poll_aux_sources(self) -> None:
+	        """Poll meta/autotrain side streams even when Claude log is idle."""
+	        # Multiplex aux sources (meta + autotrainer). Each reuses the
+	        # primary's day-separator state for chronological coherence.
+	        # readline() loop keeps f.tell() valid (see primary loop note).
+	        for src in self._aux_sources:
+	            try:
+	                p = src["path"]
+	                if not p.exists():
+	                    continue
+	                size = p.stat().st_size
+	                if size < src["offset"]:
+	                    src["offset"] = 0
+	                if size == src["offset"]:
+	                    continue
+	                with open(p, "r") as f:
+	                    f.seek(src["offset"])
+	                    while True:
+	                        raw = f.readline()
+	                        if not raw:
+	                            break
+	                        if not raw.strip():
+	                            continue
+	                        try:
+	                            entry = json.loads(raw)
+	                        except json.JSONDecodeError:
+	                            continue
+	                        try:
+	                            sep = self._maybe_day_separator(entry)
+	                            if sep:
+	                                self._callback(sep)
+	                        except Exception:
+	                            pass
+	                        try:
+	                            self._callback(src["formatter"](entry))
+	                        except Exception:
+	                            pass
+	                    src["offset"] = f.tell()
+	            except Exception as e:
+	                logger.debug(
+	                    "ReflectionLogReader aux source %s error: %s",
+	                    src.get("tag", "?"), e,
+	                )
 
 
 class RiskPanel(Static):
@@ -793,24 +802,6 @@ class SystemHealthBar(Static):
         return t
 
 
-class PlaceholderContent(Static):
-    DEFAULT_CSS = "PlaceholderContent { align: center middle; height: 1fr; }"
-
-    def __init__(self, screen_name: str) -> None:
-        super().__init__()
-        self.screen_name = screen_name
-
-    def render(self) -> Text:
-        t = Text(justify="center")
-        t.append("\n\n")
-        t.append("╔══════════════════════════════════╗\n", style="#26304f")
-        t.append(f"║  {self.screen_name:^30}  ║\n", style="bold #b84dff")
-        t.append("║     ◈ COMING SOON ◈              ║\n", style="#ff2bd6")
-        t.append("║  Phase 2-5 of Command Bridge     ║\n", style="#7483b8")
-        t.append("╚══════════════════════════════════╝\n", style="#26304f")
-        return t
-
-
 # ── Main App ────────────────────────────────────────────────────────
 
 
@@ -856,7 +847,7 @@ class BuddyApp(App):
     def __init__(self, live: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
         self._live = live
-        self._provider = DataProvider(project_root=str(Path(__file__).resolve().parent.parent.parent))
+        self._provider = DataProvider(project_root=str(PROJECT_ROOT))
         self._demo_nav = 101420.0
         self._scanner = None  # EmbeddedScanner (live mode only)
         self._reflection_stop = threading.Event()  # Signals ReflectionLogReader to exit
@@ -910,7 +901,7 @@ class BuddyApp(App):
 
             with TabPane("◈ Inbox", id="inbox"):
                 yield InboxScreen(
-                    project_root=str(Path(__file__).resolve().parent.parent.parent),
+                    project_root=str(PROJECT_ROOT),
                     id="inbox-screen",
                 )
             with TabPane("◈ Trades", id="trades"):
@@ -919,31 +910,25 @@ class BuddyApp(App):
                 yield AgentsScreen(id="agents-screen")
             with TabPane("◈ Journal", id="journal"):
                 yield JournalScreen(
-                    project_root=str(Path(__file__).resolve().parent.parent.parent),
+                    project_root=str(PROJECT_ROOT),
                     id="journal-screen",
                 )
             with TabPane("◈ Config", id="config"):
-                if ConfigScreen is not None:
-                    yield ConfigScreen(
-                        project_root=str(Path(__file__).resolve().parent.parent.parent),
-                        id="config-screen",
-                    )
-                else:
-                    yield PlaceholderContent("CONFIG — The Tuning Bench")
+                yield ConfigScreen(
+                    project_root=str(PROJECT_ROOT),
+                    id="config-screen",
+                )
             with TabPane("◈ Rules", id="rules"):
                 yield RulesScreen(
-                    project_root=str(Path(__file__).resolve().parent.parent.parent),
+                    project_root=str(PROJECT_ROOT),
                     id="rules-screen",
                 )
             with TabPane("◈ Diagnostics", id="diag"):
-                if DiagnosticsScreen is not None:
-                    yield DiagnosticsScreen(
-                        project_root=str(Path(__file__).resolve().parent.parent.parent),
-                        live=self._live,
-                        id="diag-screen",
-                    )
-                else:
-                    yield PlaceholderContent("DIAGNOSTICS — The Engine Room")
+                yield DiagnosticsScreen(
+                    project_root=str(PROJECT_ROOT),
+                    live=self._live,
+                    id="diag-screen",
+                )
 
         yield SystemHealthBar(id="system-health")
         yield Footer()
@@ -1060,22 +1045,19 @@ class BuddyApp(App):
     def _write_heartbeat_tick(self) -> None:
         """US-603: emit .claude/heartbeat.json for the external watchdog daemon."""
         try:
-            repo_root = Path(__file__).resolve().parent.parent.parent
+            repo_root = PROJECT_ROOT
             cycle = 0
             scanner_alive = False
             try:
                 snap = self._provider.get_snapshot() if self._provider else None
                 if snap is not None:
                     cycle = int(getattr(snap, "scan_cycle_count", 0) or 0)
-                    scanner_alive = cycle > 0 or bool(getattr(snap, "trades", []) or [])
             except Exception:
+                snap = None
                 pass
             if self._live:
                 scanner = getattr(self, "_scanner", None)
-                scanner_alive = scanner_alive or bool(
-                    getattr(scanner, "is_ready", False)
-                    or getattr(scanner, "_running", False)
-                )
+                scanner_alive = _scanner_alive_from_sources(snap, scanner)
             write_heartbeat(
                 repo_root,
                 cycle_count=cycle,
@@ -1168,7 +1150,7 @@ class BuddyApp(App):
         """
         from src.tui.embedded_scanner import EmbeddedScanner
 
-        project_root = str(Path(__file__).resolve().parent.parent.parent)
+        project_root = str(PROJECT_ROOT)
         self._scanner = EmbeddedScanner(
             project_root=project_root,
             brain_callback=self._scanner_brain_bridge,
@@ -1207,7 +1189,7 @@ class BuddyApp(App):
     @work(thread=True)
     def _start_reflection_reader(self) -> None:
         """Background worker: tails logs/reflection_log.jsonl and streams to TUI."""
-        project_root = Path(__file__).resolve().parent.parent.parent
+        project_root = PROJECT_ROOT
         log_path = project_root / "logs" / "reflection_log.jsonl"
         reader = ReflectionLogReader(
             log_path=log_path,
@@ -1232,6 +1214,17 @@ class BuddyApp(App):
 
     def _schedule_scan_timer(self) -> None:
         """Schedule scan cycle timers (must be called on main thread)."""
+        try:
+            snap = self._provider.refresh()
+            if self._scanner is not None and self._scanner.is_ready:
+                snap.scanner_ready = True
+                snap.scan_cycle_count = max(
+                    int(getattr(snap, "scan_cycle_count", 0) or 0),
+                    int(getattr(self._scanner, "_scan_count", 0) or 0),
+                )
+            self._apply_snapshot(snap)
+        except Exception as exc:
+            logger.debug("_schedule_scan_timer readiness refresh failed: %s", exc)
         # First scan after 10s (let OANDA connect + models load)
         self.set_timer(10.0, self._trigger_scan_cycle)
         # Subsequent scans every 5 minutes (300s)
@@ -1282,8 +1275,11 @@ class BuddyApp(App):
     def _apply_snapshot(self, snap: DashboardSnapshot) -> None:
         """Apply a DashboardSnapshot to all widgets (runs on main thread)."""
         header = self.query_one("#header-bar", HeaderBar)
-        header.nav = snap.nav if snap.nav > 0 else self._demo_nav
-        header.pnl = snap.unrealized_pnl if snap.nav > 0 else (self._demo_nav - 100000)
+        fallback_nav = self._demo_nav if not self._live else 0.0
+        header.nav = snap.nav if snap.nav > 0 else fallback_nav
+        header.pnl = snap.unrealized_pnl if snap.nav > 0 else (
+            self._demo_nav - 100000 if not self._live else 0.0
+        )
         header.open_count = len(snap.trades)
         header.oanda_ok = snap.oanda_connected
         header.scanner_ok = snap.scanner_ready
@@ -1373,6 +1369,13 @@ class BuddyApp(App):
     def _do_live_refresh(self) -> None:
         """Run data refresh in background thread."""
         snap = self._provider.refresh()
+        scanner = getattr(self, "_scanner", None)
+        if scanner is not None:
+            snap.scanner_ready = bool(getattr(scanner, "is_ready", False))
+            snap.scan_cycle_count = max(
+                int(getattr(snap, "scan_cycle_count", 0) or 0),
+                int(getattr(scanner, "_scan_count", 0) or 0),
+            )
         self.call_from_thread(self._apply_snapshot, snap)
 
     def _refresh_all(self) -> None:
@@ -1978,7 +1981,7 @@ class BuddyApp(App):
         return header + f"```\n{body}\n```\n"
 
     def action_unhalt(self) -> None:
-        """Clear the halted flag so the scanner resumes the per-cycle loop.
+        """Health-gated resume from the halted state.
 
         Mythos audit 2026-05-01. The auto-halt protocol (eacb617) sets
         state.halted=True when consecutive_losses ≥ threshold and
@@ -1988,9 +1991,10 @@ class BuddyApp(App):
         the brain message even pointed at 'k' which is supervisor_kill
         (flatten-all), not unhalt.
 
-        This action toggles the flag via the same StateEngine the halt
-        check reads, so the next run_one_cycle picks it up immediately
-        without a process restart.
+        This action now runs the same live-source checks the operator would
+        perform manually before resuming. It never clears halted when OANDA,
+        scanner readiness, heartbeat, model freshness, or open-position state
+        are unsafe.
         """
         try:
             from src.scanner.automation.state_engine import StateEngine
@@ -2005,15 +2009,61 @@ class BuddyApp(App):
         try:
             engine = StateEngine()
             was_halted = bool(engine.get_halted())
+            if not was_halted:
+                self._write_brain(
+                    "[dim]◈ unhalt no-op — scanner was not halted.[/]"
+                )
+                return
+
+            ok, reasons = self._evaluate_unhalt_health()
+            if not ok:
+                reason_text = "; ".join(reasons)
+                self._write_brain(
+                    f"[bold red]◈ UNHALT BLOCKED[/] — {reason_text}"
+                )
+                self._append_control_log(
+                    title="Unhalt Blocked",
+                    fields={
+                        "actor": "TUI operator",
+                        "action": "unhalt_blocked",
+                        "reasons": reason_text,
+                    },
+                )
+                self.notify(
+                    reason_text,
+                    title="Unhalt Blocked",
+                    severity="error",
+                )
+                return
+
             engine.set_halted(False)
+            try:
+                engine.set_last_actor("TUI_UNHALT")
+            except Exception:
+                pass
+            try:
+                from src.scanner.automation.event_bus import get_event_bus
+                get_event_bus().publish("control.resume", {
+                    "source": "TUI",
+                    "actor": "operator",
+                    "reason": "health_gated_unhalt",
+                })
+            except Exception as _eb_err:
+                logger.warning("action_unhalt: event_bus publish failed: %s", _eb_err)
+            self._append_control_log(
+                title="Unhalt Approved",
+                fields={
+                    "actor": "TUI operator",
+                    "action": "unhalt",
+                    "nav": f"${self._provider.snapshot.nav:,.2f}",
+                    "open_trades": str(len(self._provider.snapshot.trades)),
+                },
+            )
             if was_halted:
                 self._write_brain(
                     "[bold green]◈ UNHALT — scanner will resume on next cycle.[/]"
                 )
-            else:
-                self._write_brain(
-                    "[dim]◈ unhalt no-op — scanner was not halted.[/]"
-                )
+                self.notify("Scanner resume armed", title="Unhalt", severity="information")
         except Exception as e:
             try:
                 self._write_brain(
@@ -2021,6 +2071,68 @@ class BuddyApp(App):
                 )
             except Exception:
                 pass
+
+    def _evaluate_unhalt_health(self) -> tuple[bool, list[str]]:
+        """Return whether it is safe to clear the halted flag."""
+        reasons: list[str] = []
+        snap = self._provider.snapshot
+        scanner = getattr(self, "_scanner", None)
+
+        if not self._live:
+            reasons.append("TUI is not in live runtime")
+        if not bool(getattr(snap, "oanda_connected", False)):
+            reasons.append("OANDA is not connected")
+        if scanner is None or not bool(getattr(scanner, "is_ready", False)):
+            reasons.append("embedded scanner is not ready")
+        if bool(getattr(snap, "scanner_paused", False)):
+            reasons.append("scanner is paused")
+        if getattr(snap, "trades", []):
+            reasons.append("open trades must be flat before unhalt")
+
+        heartbeat_path = PROJECT_ROOT / ".claude" / "heartbeat.json"
+        try:
+            payload = json.loads(heartbeat_path.read_text())
+            ts_raw = str(payload.get("ts", ""))
+            hb_ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+            age = (datetime.now(timezone.utc) - hb_ts).total_seconds()
+            if age > 30:
+                reasons.append(f"heartbeat stale ({age:.0f}s old)")
+            if not bool(payload.get("scanner_alive", False)):
+                reasons.append("heartbeat says scanner_alive=false")
+        except Exception as exc:
+            reasons.append(f"heartbeat unavailable ({exc})")
+
+        try:
+            health = scanner.get_model_health() if scanner is not None else {}
+            loaded = int(health.get("count", 0) or 0)
+            total = int(health.get("total", 0) or 0)
+            if total > 0 and loaded < total:
+                reasons.append(f"models incomplete ({loaded}/{total} loaded)")
+            freshness = dict(health.get("freshness", {}) or {})
+            status = str(freshness.get("status", "")).upper()
+            oldest = freshness.get("oldest_age_days")
+            if status in {"STALE", "CRITICAL"}:
+                if oldest is None:
+                    reasons.append(f"models {status.lower()}")
+                else:
+                    reasons.append(f"models {status.lower()} (oldest {float(oldest):.0f}d)")
+        except Exception as exc:
+            reasons.append(f"model health unavailable ({exc})")
+
+        return (len(reasons) == 0), reasons
+
+    def _append_control_log(self, title: str, fields: dict[str, str]) -> None:
+        """Append a compact control action entry to strategic_log.md."""
+        try:
+            ts = datetime.now(timezone.utc).isoformat()
+            log_path = PROJECT_ROOT / ".claude" / "brain" / "strategic_log.md"
+            if not log_path.exists():
+                return
+            field_text = "  ".join(f"**{k}:** {v}" for k, v in fields.items())
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"\n### {ts} — {title}\n{field_text}\n")
+        except Exception as exc:
+            logger.debug("control strategic_log write failed: %s", exc)
 
     def action_safe_restart(self) -> None:
         """Mythos audit 2026-04-29 Tier-7 step D — state-preserving restart.

@@ -1,0 +1,11 @@
+{
+  "type": "master",
+  "pair": "USD_JPY",
+  "group_id": "USD_JPY",
+  "correlated_pairs": [
+    "USD_JPY",
+    "EUR_JPY"
+  ],
+  "correlation_threshold": 0.7,
+  "saved_at": "2026-05-04T18:55:49.867632"
+}

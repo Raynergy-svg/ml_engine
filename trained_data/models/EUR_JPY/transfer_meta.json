@@ -1,0 +1,35 @@
+{
+  "type": "transferred",
+  "source_pair": "USD_JPY",
+  "target_pair": "EUR_JPY",
+  "correlation": 0.9381922985531885,
+  "transfer_config": {
+    "lr_factor": 0.03,
+    "encoder_layers_frozen": 2,
+    "epochs": 50,
+    "use_ewc": true,
+    "ewc_lambda": 100.0
+  },
+  "metrics": {
+    "momentum": {
+      "momentum_mae": 0.022702195658849424,
+      "acceleration_accuracy": 0.8216432865731463,
+      "model_type": "lightgbm"
+    },
+    "risk": {
+      "drawdown_mae_pct": 0.0013511024386674137,
+      "drawdown_mae_bps": 13.511024386674137,
+      "streak_prob_mae": 0.017325841811550717,
+      "model_type": "lightgbm"
+    },
+    "confidence": {
+      "confidence_mae": 0.40906521966646986,
+      "r2_score": 0.9928379917786592,
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_total_features": 15
+    }
+  },
+  "saved_at": "2026-05-04T18:55:58.487071"
+}

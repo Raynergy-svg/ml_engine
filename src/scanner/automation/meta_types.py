@@ -236,6 +236,8 @@ class ChangePackage:
                     "stage": dep.stage.value,
                     "deployed_at": dep.deployed_at,
                     "deployed_at_cycle": dep.deployed_at_cycle,
+                    "closed_trade_count_at_deploy": dep.closed_trade_count_at_deploy,
+                    "regime_at_deploy": dep.regime_at_deploy,
                     "rolled_back_at": dep.rolled_back_at,
                     "rollback_reason": dep.rollback_reason,
                 }
@@ -332,6 +334,8 @@ class ChangePackage:
                 stage=DeployStage(d["stage"]),
                 deployed_at=d.get("deployed_at", _utcnow_iso()),
                 deployed_at_cycle=int(d.get("deployed_at_cycle", 0) or 0),
+                closed_trade_count_at_deploy=int(d.get("closed_trade_count_at_deploy", 0) or 0),
+                regime_at_deploy=d.get("regime_at_deploy"),
                 rolled_back_at=d.get("rolled_back_at"),
                 rollback_reason=d.get("rollback_reason"),
             )

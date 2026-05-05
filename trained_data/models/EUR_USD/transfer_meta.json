@@ -1,0 +1,13 @@
+{
+  "type": "master",
+  "pair": "EUR_USD",
+  "group_id": "EUR_USD",
+  "correlated_pairs": [
+    "EUR_USD",
+    "GBP_USD",
+    "USD_CHF",
+    "AUD_USD"
+  ],
+  "correlation_threshold": 0.7,
+  "saved_at": "2026-05-04T18:53:31.365071"
+}

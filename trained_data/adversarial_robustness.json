@@ -132,7 +132,103 @@
         "n_adversarial_samples": 27,
         "training_rounds": 0
       }
+    },
+    {
+      "timestamp": "2026-04-30T06:25:21.604826+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 30,
+        "n_adversarial_samples": 27,
+        "training_rounds": 0
+      }
+    },
+    {
+      "timestamp": "2026-04-30T07:15:05.615177+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 30,
+        "n_adversarial_samples": 27,
+        "training_rounds": 0
+      }
+    },
+    {
+      "timestamp": "2026-04-30T08:05:21.665933+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 30,
+        "n_adversarial_samples": 27,
+        "training_rounds": 0
+      }
+    },
+    {
+      "timestamp": "2026-04-30T08:55:08.871547+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 30,
+        "n_adversarial_samples": 27,
+        "training_rounds": 0
+      }
+    },
+    {
+      "timestamp": "2026-04-30T09:45:17.358733+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 30,
+        "n_adversarial_samples": 27,
+        "training_rounds": 0
+      }
+    },
+    {
+      "timestamp": "2026-04-30T10:35:25.522202+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 30,
+        "n_adversarial_samples": 27,
+        "training_rounds": 0
+      }
+    },
+    {
+      "timestamp": "2026-04-30T12:51:41.687552+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 30,
+        "n_adversarial_samples": 27,
+        "training_rounds": 0
+      }
+    },
+    {
+      "timestamp": "2026-04-30T13:41:33.367393+00:00",
+      "score": {
+        "clean_accuracy": 0.0,
+        "adversarial_accuracy": 0.0,
+        "robustness_ratio": 0.0,
+        "scenario_scores": {},
+        "n_clean_samples": 30,
+        "n_adversarial_samples": 27,
+        "training_rounds": 0
+      }
     }
   ],
-  "last_updated": "2026-04-16T12:20:58.488725+00:00"
+  "last_updated": "2026-04-30T13:41:33.367405+00:00"
 }

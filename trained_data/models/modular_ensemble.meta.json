@@ -2,12 +2,12 @@
   "_mythos_heal_note": "2026-04-30 Mythos audit healed lying trained_at. Was bumped by 02:07 retrain that holdout REJECTED 0/3. Reverted to 04-16 last-validated baseline. Future retrains will only update trained_at after holdout passes.",
   "bootstrapped_at": "2026-03-18",
   "bootstrapped_from": "joint_training_meta.json",
-  "candidate_trained_at": "2026-04-30T06:07:33.493797+00:00",
+  "candidate_trained_at": "2026-05-04T22:55:58.489339+00:00",
   "candles": 7500,
   "granularity": "H1",
   "holdout_pending": false,
   "joint_metrics": {},
-  "last_holdout_failure_at": "2026-04-30T02:07:55+00:00",
+  "last_holdout_failure_at": "2026-05-04T22:56:07.953913+00:00",
   "models": {
     "direction": {
       "metrics": {
@@ -18,8 +18,8 @@
     }
   },
   "n_instruments": 7,
-  "n_master_pairs": 0,
-  "n_transfer_pairs": 3,
+  "n_master_pairs": 2,
+  "n_transfer_pairs": 4,
   "results": {
     "random_forest": {
       "drawdown_mae_bps": 14.434506959040284,

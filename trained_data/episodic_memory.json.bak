@@ -5611,8 +5611,8 @@
     "confidence": 0.6407486926377108,
     "weighted_vote_score": 0.8286,
     "rr_ratio": 0.0,
-    "outcome": null,
-    "pnl_pips": null,
-    "closed_at": null
+    "outcome": "LOSS",
+    "pnl_pips": -7.4,
+    "closed_at": "2026-04-16T15:21:07.089394+00:00"
   }
 ]

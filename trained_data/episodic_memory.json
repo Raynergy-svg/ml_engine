@@ -5614,5 +5614,23 @@
     "outcome": "LOSS",
     "pnl_pips": -7.4,
     "closed_at": "2026-04-16T15:21:07.089394+00:00"
+  },
+  {
+    "episode_id": "59355da7-4d9e-44bb-b9ac-4bdf169ea42e",
+    "timestamp": "2026-05-05T00:42:40.810623+00:00",
+    "pair": "USD_CHF",
+    "direction": "LONG",
+    "regime": "NORMAL",
+    "session": "UNKNOWN",
+    "news_risk_score": 0.0,
+    "uncertainty_score": 0.2693037982519113,
+    "atr_normalized": 0.0,
+    "spread_pips": 1.7,
+    "confidence": 0.7213430524682962,
+    "weighted_vote_score": 0.91,
+    "rr_ratio": 0.0,
+    "outcome": null,
+    "pnl_pips": null,
+    "closed_at": null
   }
 ]

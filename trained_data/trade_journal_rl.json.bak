@@ -2758,5 +2758,145 @@
     "fill_price": 1.37174,
     "expected_price": 1.37174,
     "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1269",
+    "episode_id": "59355da7-4d9e-44bb-b9ac-4bdf169ea42e",
+    "timestamp": "2026-05-05T00:42:40.819222+00:00",
+    "pair": "USD_CHF",
+    "direction": "LONG",
+    "confidence": 0.7213430524682962,
+    "entry_price": 0.78458,
+    "sl_price": 0.7832,
+    "tp_price": 0.7866,
+    "sl_pips": 13.8,
+    "tp_pips": 20.2,
+    "rr_ratio": 1.46,
+    "risk_reward": 1.46,
+    "lots": 2.5,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.91,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.72,
+          "passed": true,
+          "weight": 0.3341386666666667,
+          "reason": "trend neutral (ADX 52)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.5348360655737725,
+          "passed": true,
+          "weight": 0.3712190000000001,
+          "reason": "RSI neutral (RSI 47.2)",
+          "reason_code": "mean_reversion_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "volatility",
+          "score": 0.863,
+          "passed": true,
+          "weight": 0.22768499999999997,
+          "reason": "volatility supportive (normal, 10.8 pips)",
+          "reason_code": "volatility_support",
+          "confidence_delta": 0.03,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 1.0,
+          "passed": true,
+          "weight": 0.49528833333333344,
+          "reason": "risk acceptable (0.19% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.36534810087404435,
+          "passed": true,
+          "weight": 0.48095500000000013,
+          "reason": "uncertainty borderline (0.27)",
+          "reason_code": "uncertainty_watch",
+          "confidence_delta": -0.03,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.2693037982519113,
+            "confidence_variance": 0.32441983187659285,
+            "model_disagreement": 0.0,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "NORMAL",
+      "atr_pips": 10.804913734660786,
+      "uncertainty_score": 0.2693037982519113,
+      "model_disagreement": 0.0,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 1.0,
+        "tp_mult": 1.5
+      }
+    },
+    "spread_pips": 1.7,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.1023,
+      "base_score": 0.3099,
+      "quote_score": 0.1054,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {
+        "direction_score": 0.36668682992458335,
+        "confidence_score": 0.517768112468679,
+        "momentum_score": 1.0,
+        "risk_score": 0.8098804292500399,
+        "used_learned_weights": false,
+        "ensemble_weights": {
+          "direction": 0.35,
+          "confidence": 0.3,
+          "momentum": 0.2,
+          "risk": 0.15
+        }
+      },
+      "core_score": 0.605152888601714,
+      "final_score": 0.5446375997415426
+    },
+    "ridge_features": null,
+    "outcome": null,
+    "fill_price": 0.78458,
+    "expected_price": 0.78458,
+    "slippage_pips": 0.0
   }
 ]

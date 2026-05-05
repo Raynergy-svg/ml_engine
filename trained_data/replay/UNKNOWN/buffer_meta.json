@@ -1,14 +1,14 @@
 {
   "capacity_ratio": 0.1,
   "mix_ratio": 0.2,
-  "sample_count": 28259,
-  "buffer_size": 2825,
-  "saved_at": "2026-04-16T11:29:26.990035",
+  "sample_count": 3731,
+  "buffer_size": 373,
+  "saved_at": "2026-05-04T18:55:47.567649",
   "data_sources": [
     {
-      "id": "JOINT_15pairs_20260416_112408_92f0813b",
-      "n_samples": 28259,
-      "timestamp": "2026-04-16T11:24:16.570022"
+      "id": "JOINT_USD_JPY_20260504_185331_7c31b783",
+      "n_samples": 3731,
+      "timestamp": "2026-05-04T18:53:31.619957"
     }
   ]
 }

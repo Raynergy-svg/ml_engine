@@ -1,0 +1,6 @@
+{
+  "observed_at": "2026-05-03T01:46:11.644500+00:00",
+  "raw_message": "You've hit your limit \u00b7 resets May 4 at 3am (America/New_York)",
+  "reset_epoch": 1777776371.642306,
+  "reset_iso": "2026-05-03T02:46:11.642306+00:00"
+}

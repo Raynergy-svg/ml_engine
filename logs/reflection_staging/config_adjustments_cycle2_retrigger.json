@@ -1,0 +1,30 @@
+{
+  "cycle": 2,
+  "timestamp": "2026-04-21T14:15:31.568397+00:00",
+  "trigger": "losing_streak_retrigger_models_aging",
+  "evidence_trades": [1243, 1255, 1261],
+  "note": "Re-trigger on same 3 trades. Cycle 2 proposals in .claude/config_adjustments.json never applied (applied_ids=[]). Adding time-bounded defensive layer.",
+  "adjustments": {
+    "scheduled_retrain_trigger_days": {
+      "current": 14,
+      "proposed": 7,
+      "reason": "Models 5d old, still losing on fresh data previously. Lower retrain trigger to avoid hitting 04-15-rule staleness block (14d) with real money."
+    },
+    "require_supervision_after_losses": {
+      "current": 5,
+      "proposed": 3,
+      "reason": "3 consecutive SL hits with MFE=0 is deterministic — supervision should engage at streak==3, not 5. Current streak is exactly 3."
+    },
+    "risk_per_trade": {
+      "current": 0.025,
+      "proposed": 0.0125,
+      "reason": "Capital-preservation until retrain. Halve until 3 consecutive winners unlock normal sizing (per cycle 3 IMMEDIATE_ACTION)."
+    }
+  },
+  "unresolved_from_cycle2": [
+    "enable_ensemble_hold_veto proposed true, still false",
+    "low_regime_sl_multiplier proposed 1.3, still 0.8 in code override",
+    "max_model_disagreement proposed 0.35, still 0.5",
+    "min_confidence proposed 72.0, still 68.0"
+  ]
+}
