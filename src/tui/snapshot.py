@@ -245,30 +245,90 @@ def _virtual_trades_section() -> str:
     return _section("Virtual trades (gate-rejected scans)", parsed)
 
 
-def _reflection_log_section() -> str:
-    """Tail of reflection_log.jsonl — Claude inference attempts only.
+def _reflection_log_section(*, max_lines: int = 30) -> str:
+    """Combined system-activity tail — every "Buddy thinking" stream.
 
-    Mythos audit 2026-05-04: under the no-LLM policy this should be
-    empty (or only contain "blocked_by_no_llm_policy" warnings in
-    buddy_debug.log, not in this file). Pre-fix, autonomous_trainer
-    polluted this with mode=system retrain events; that's now split
-    into _autotrain_log_section below.
+    Mythos audit 2026-05-04 — operator complaint: "the copy isnt working..
+    those are old logs". The original reflection-log panel was fed
+    exclusively by Claude reflection (claude_subprocess.py), so under the
+    no-LLM chokepoint (e1c5ebf) it stays frozen on its last pre-fix
+    entries. Real current "system thinking" now lives in three files:
+
+      1. `.claude/meta/changes.jsonl`        — meta-pipeline stage
+         transitions (intake/scorecard/promote/reject — the actual live
+         autonomy loop). PRIMARY.
+      2. `logs/autonomous_trainer.jsonl`     — retrain events post-split
+         (b0b18e5).
+      3. `logs/reflection_log.jsonl`         — Claude attempts (should stay
+         empty under the policy — nonzero growth here is a real bug).
+
+    All three merged + sorted by timestamp so the per-box `c` snapshot
+    on #reflection-log shows live activity instead of a frozen Claude
+    history.
     """
-    lines = _safe_read_lines(
-        PROJECT_ROOT / "logs" / "reflection_log.jsonl", DEFAULT_REFLECTION_LINES,
+    events: list[tuple[str, str]] = []  # (ts, formatted)
+
+    # Meta-pipeline stage transitions
+    meta_lines = _safe_read_lines(
+        PROJECT_ROOT / ".claude" / "meta" / "changes.jsonl", max_lines,
     )
-    parsed: list[str] = []
-    for raw in lines:
+    for raw in meta_lines:
         try:
             r = json.loads(raw)
-            parsed.append(
-                f"{str(r.get('ts',''))[:19]} mode={r.get('mode','?')} "
-                f"err={(r.get('error') or '')[:60]!r} "
-                f"dur={r.get('duration_seconds','?')}s"
-            )
+            ts = str(r.get("updated_at") or r.get("ts", ""))
+            events.append((
+                ts,
+                f"[meta]  {ts[:19]} cid={(r.get('change_id','') or '')[:12]} "
+                f"stage={r.get('stage','?')} event={r.get('event','?')} "
+                f"kind={r.get('kind','?')}",
+            ))
         except (json.JSONDecodeError, AttributeError):
-            parsed.append(raw[:200])
-    return _section("Reflection log tail (Claude inference attempts)", parsed)
+            events.append(("", f"[meta]  {raw[:200]}"))
+
+    # Autonomous trainer events
+    autotrain = _safe_read_lines(
+        PROJECT_ROOT / "logs" / "autonomous_trainer.jsonl", max_lines,
+    )
+    for raw in autotrain:
+        try:
+            r = json.loads(raw)
+            ts = str(r.get("ts", ""))
+            events.append((
+                ts,
+                f"[train] {ts[:19]} {r.get('trade_id','?')} "
+                f"success={r.get('success','?')} "
+                f"hyp={(r.get('hypothesis','') or '')[:70]!r}",
+            ))
+        except (json.JSONDecodeError, AttributeError):
+            events.append(("", f"[train] {raw[:200]}"))
+
+    # Claude reflection (under policy: empty)
+    refl = _safe_read_lines(
+        PROJECT_ROOT / "logs" / "reflection_log.jsonl", max_lines,
+    )
+    for raw in refl:
+        try:
+            r = json.loads(raw)
+            ts = str(r.get("ts", ""))
+            mode = r.get("mode", "?")
+            err = (r.get("error") or "").strip()[:60]
+            dur = r.get("duration_seconds", "?")
+            events.append((
+                ts,
+                f"[claude] {ts[:19]} mode={mode} dur={dur}s err={err!r}",
+            ))
+        except (json.JSONDecodeError, AttributeError):
+            events.append(("", f"[claude] {raw[:200]}"))
+
+    # Sort by timestamp, take the most recent max_lines
+    events.sort(key=lambda kv: kv[0])
+    tail = [line for _, line in events[-max_lines:]]
+    if not tail:
+        tail = ["(no system activity events found in any source)"]
+    return _section(
+        f"System activity (last {max_lines} across meta + autotrain + claude)",
+        tail,
+    )
 
 
 def _autotrain_log_section() -> str:

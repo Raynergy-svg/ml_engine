@@ -45,7 +45,7 @@ REQUIRED_SECTIONS = [
     "### Virtual trades",
     "## Logs",
     "### Brain feed",
-    "### Reflection log tail",
+    "### System activity",
     "### Autonomous trainer log tail",
     "### Debug log",
 ]
