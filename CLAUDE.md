@@ -70,7 +70,7 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 ```
 
 ## Core Loop
-1. **Scan** — multi-pair analysis through model ensemble (see ML stack below)
+1. **Scan** — multi-pair analysis through model ensemble (see ML stack below). Two-phase architecture available behind `BUDDY_PARALLEL_SCAN=1` env var (default off): Phase 1 fans per-pair work onto a thread pool; Phase 2 commits under lock so correlation filter / drawdown guardian / journal stay single-writer. See `docs/parallel_scan_architecture.md`.
 2. **Agents** — 15-agent team (truth: `_BASE_WEIGHTS` in `src/scanner/agents/_team.py`)
    - Core 12: trend, mean_reversion, volatility, risk_sentinel, uncertainty, execution_quality, momentum, news_risk, multi_timeframe, pair_performance, session_timing, support_resistance
    - Extended 3: order_flow (0.95), trader_readiness (0.50), devil_advocate (1.30, runs LAST). All toggleable via `enable_*_agent` flags in `ScannerConfig`.
