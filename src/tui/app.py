@@ -329,8 +329,20 @@ class ReflectionLogReader:
         self._callback = callback
         self._stop = stop_flag
         self._poll_interval = poll_interval
-        self._offset = 0
+        # Mythos audit 2026-05-04 — operator complaint: every TUI restart
+        # replays all 159+ historical reflection entries (back to 2026-04-15)
+        # in the F1 reflection-log panel. None of it is current under the
+        # no-LLM chokepoint (e1c5ebf), but it drowns out anything useful.
+        # Seek to EOF on init so this is a STREAM viewer (new events from
+        # boot onward), not a HISTORY replayer. If the file doesn't exist
+        # yet, offset stays 0 and we'll start from byte 0 the first time
+        # an entry lands — which is correct (that's the first new event).
+        try:
+            self._offset = log_path.stat().st_size if log_path.exists() else 0
+        except OSError:
+            self._offset = 0
         self._announced_waiting = False
+        self._initial_skipped = self._offset
 
     def _format(self, entry: dict) -> str:
         # Trade ID — keep first 12 chars (human-recognizable prefix)
@@ -364,13 +376,30 @@ class ReflectionLogReader:
     def run(self) -> None:
         """Main loop. Call from a thread; exits when stop_flag is set."""
         import time as _time
+        # One-time announce that history was skipped + the panel is now
+        # tailing from EOF. Without this the operator sees an empty panel
+        # post-restart and wonders if the reader is broken.
+        if self._initial_skipped > 0:
+            try:
+                size_kb = self._initial_skipped // 1024
+                self._callback(
+                    f"[dim]  ⟫ Tailing from EOF — {size_kb}KB of historical "
+                    f"entries skipped. New reflections (if any) appear below.[/]"
+                )
+                self._callback(
+                    "[dim]  ⟫ Under no-LLM policy this panel stays empty by "
+                    "design — Claude inference is blocked at the chokepoint.[/]"
+                )
+            except Exception:
+                pass
         while not self._stop.is_set():
             try:
                 if not self._log_path.exists():
                     if not self._announced_waiting:
                         self._announced_waiting = True
                         self._callback(
-                            "[dim]  waiting for first reflection… (fires on trade close)[/]"
+                            "[dim]  waiting for first reflection… "
+                            "(under no-LLM policy this is the expected steady state)[/]"
                         )
                     self._stop.wait(self._poll_interval)
                     continue
