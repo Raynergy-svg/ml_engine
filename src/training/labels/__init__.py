@@ -15,6 +15,10 @@ from __future__ import annotations
 from src.training.labels.realized_confidence_label import (
     compute_realized_confidence_labels,
 )
+from src.training.labels.realized_volatility_regime_label import (
+    NAN_SENTINEL,
+    compute_realized_volatility_regime_labels,
+)
 from src.training.labels.journal_loader import (
     load_all_journal_trades,
     salvage_corrupt_journal,
@@ -22,6 +26,8 @@ from src.training.labels.journal_loader import (
 
 __all__ = [
     "compute_realized_confidence_labels",
+    "compute_realized_volatility_regime_labels",
+    "NAN_SENTINEL",
     "load_all_journal_trades",
     "salvage_corrupt_journal",
 ]
