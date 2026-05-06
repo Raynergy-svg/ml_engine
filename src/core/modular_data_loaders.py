@@ -3618,44 +3618,103 @@ def load_volatility_regime_data(
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
 
-    # Compute volatility regime labels using compute_volatility_regime()
-    vol_config = VolatilityRegimeConfig(
-        lookback_bars=lookback_bars,
-        thresholds=thresholds,
-    )
-    y = compute_volatility_regime(df, config=vol_config)
-
-    # VALIDATION: Ensure labels are valid integers 0-3
-    # This prevents accidentally using the continuous 'volatility_regime' feature (0.0-1.0)
-    # from FeatureEngineering as labels instead of the discrete binned labels
-    y = y.astype(np.int32)  # Explicit cast to int32
-    unique_labels = np.unique(y)
-    invalid_labels = [v for v in unique_labels if v not in {0, 1, 2, 3}]
-    if invalid_labels:
-        raise ValueError(
-            f"compute_volatility_regime() returned invalid labels: {invalid_labels}. "
-            f"Expected only integers 0-3 (LOW/NORMAL/HIGH/EXTREME). "
-            f"If you see float values like 0.5, ensure the continuous 'volatility_regime' "
-            f"feature from FeatureEngineering is not being used as labels."
-        )
-
-    # Skip initial bars where we don't have enough lookback
+    # Skip initial bars where indicator warm-up may produce stale values
+    # (preserves backward compatibility with the prior `lookback_bars`
+    # semantics — trims indicator warm-up rows from BOTH X and the source
+    # frame used by the realized-vol label generator below).
     valid_start = lookback_bars
     X = X[valid_start:]
-    y = y[valid_start:]
+    df_for_labels = df.iloc[valid_start:].reset_index(drop=True)
 
     # Handle NaN/Inf in features
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # Temporal split
+    # === REALIZED-OUTCOME LABELS (B1 leak fix, 2026-05-06) ===
+    # The legacy compute_volatility_regime() rolling-percentile formula
+    # leaked into the TCN feature matrix because the formula's input
+    # (atr_pct_14[i] vs prior 100-bar window) is reconstructable from
+    # the X-feature list at lines 3580-3595 (which includes atr_pct_14
+    # and atr_pct_5/10/20). Replaced with forward-realized-volatility
+    # labels — see src/training/labels/realized_volatility_regime_label.py
+    # for the formula and leak-prevention guarantee.
+    #
+    # The legacy compute_volatility_regime() is preserved as a runtime
+    # utility for live-inference callers (it computes regime from the
+    # *current* ATR percentile, no forward dependency); only the training
+    # labels move to forward-realized.
+    from src.training.labels import compute_realized_volatility_regime_labels  # noqa: E402
+
+    # Map legacy `thresholds` (percentile boundaries) → cut_quantiles for
+    # the new generator. Both are length-3 fractions in [0, 1].
+    cut_quantiles = tuple(thresholds)
+
+    # Temporal split FIRST (mirrors the train-only normalization pattern
+    # at modular_data_loaders.py:3050-3058). We need train_idx to fit the
+    # cut points without cross-split leakage.
+    train_idx_pre, val_idx_pre, test_idx_pre = temporal_split(len(X), *split)
+
+    # vol_horizon_bars: parity with the confidence head's lookahead
+    # (operator-confirmed default 24 bars for H1 = 1 day).
+    vol_horizon_bars = 24
+
+    raw_labels, label_metadata = compute_realized_volatility_regime_labels(
+        df_for_labels,
+        vol_horizon_bars=vol_horizon_bars,
+        n_classes=4,
+        train_idx=train_idx_pre,
+        val_idx=val_idx_pre,
+        test_idx=test_idx_pre,
+        cut_quantiles=cut_quantiles,
+    )
+
+    # Drop sentinel (-1) rows — these are the trailing rows whose forward
+    # window runs off the end. Mirror the confidence loader's NaN-tail
+    # drop pattern at modular_data_loaders.py:3461-3469.
+    label_available = raw_labels != -1  # NAN_SENTINEL
+    n_dropped = int((~label_available).sum())
+    if n_dropped > 0:
+        logger.info(
+            "Dropped %d/%d rows with NaN forward-vol label (insufficient forward window of %d bars)",
+            n_dropped, len(raw_labels), vol_horizon_bars,
+        )
+    X = X[label_available]
+    y = raw_labels[label_available].astype(np.int32)
+
+    if len(X) == 0:
+        raise ValueError(
+            f"No usable forward-vol labels for instrument={instrument}. "
+            f"label_metadata={label_metadata}"
+        )
+
+    # VALIDATION: Ensure labels are valid integers 0-3 (sentinel was -1
+    # and was dropped above — defensive double-check).
+    unique_labels = np.unique(y)
+    invalid_labels = [v for v in unique_labels if v not in {0, 1, 2, 3}]
+    if invalid_labels:
+        raise ValueError(
+            f"compute_realized_volatility_regime_labels() returned invalid "
+            f"labels after sentinel drop: {invalid_labels}. Expected only "
+            f"integers 0-3 (QUIET/STABLE/ACTIVE/EXTREME)."
+        )
+
+    # Re-derive temporal split AFTER the sentinel drop (the row count
+    # changed, so the original split indices are stale). The dropped rows
+    # were at the tail, so the split fractions remain valid.
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
 
-    # Log class distribution
+    # Log class distribution (post-drop, post-realized labels)
     unique, counts = np.unique(y, return_counts=True)
     for cls, count in zip(unique, counts):
         pct = count / len(y) * 100
         regime_name = VOL_REGIME_NAMES.get(cls, f'REGIME_{cls}')
         logger.info(f"  {regime_name}: {count} ({pct:.1f}%)")
+
+    label_metadata.update({
+        "n_dropped_nan": n_dropped,
+        "n_after_drop": int(len(X)),
+        "leak_fix_version": "2026-05-06",
+        "vol_horizon_bars": vol_horizon_bars,
+    })
 
     # Optionally append instrument one-hot encoding for joint multi-pair training
     instrument_feature_names = []
@@ -3680,6 +3739,8 @@ def load_volatility_regime_data(
         'lookback_bars': lookback_bars,
         'thresholds': thresholds,
         'instrument': instrument,
+        'label_metadata': label_metadata,
+        'vol_horizon_bars': vol_horizon_bars,
     }
 
     logger.info(f"Volatility regime data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
