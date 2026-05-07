@@ -201,6 +201,35 @@ grep -n "compute_volatility_regime" src/core/modular_data_loaders.py | head -3
 - commit: 13 cherry-picks landed: `9fc68e9, 451c9fc, 1a10663, 406322f, c790d28, c1ec625, e6d2474, 847c1c8, 710bd0e, 0bf4c9e, a92b37c, 711722f, 77b70a7` (post-rebase hashes; pre-rebase hashes were `ae39613..332d6c6` per worktree log)
 - next: A1.5 — run `python scripts/retrain_per_pair_confidence.py` to populate per-pair confidence pkls on current main journal (replaces what the unpicked `a5f5f02` would have brought, but freshly fitted to journal-as-of-now). After A1.5: per-pair val R² should land in 0.05–0.30 band per audit prediction. Then A2 (W&B control plane).
 
+### 2026-05-07 23:50 UTC Claude — 16-pair sweep — routing artifact NOT model regression
+- did: kicked off 16-pair sweep (`scripts/scheduled_retrain.py --pairs AUD_JPY,...,USD_JPY --granularity H1`); 377s wall-time, exit 0. Holdout result LOOKED bad: H1 37.3% / M15 53.2% / H4 31.5% / aggregate 40.7%. Promotion HOLD.
+- **diagnosed (verified on disk):** the holdout function at `scripts/scheduled_retrain.py:405` tests `pairs[:3]` = first 3 of the comma-separated list. The list I passed (alphabetical) puts **AUD_JPY, AUD_NZD, AUD_USD first**. AUD_JPY and AUD_NZD have NO per-pair model in `trained_data/models/` (verified `ls trained_data/models/`). The `GateEvaluator` with `use_per_pair_routing=True` falls back to the JOINT MODEL for those pairs. Joint dir scaler is STILL None (verified `meta['scaler']` post-sweep). So 2 of 3 holdout-test pairs were measuring the **broken joint**, not any actual trained per-pair model. The 37.3% H1 number reflects the joint dir's scaler-null state — pre-existing bug, not a regression.
+- **post-sweep per-pair scaler state (verified):**
+
+  | Pair | meta scaler | direction_scaler.pkl | keras mtime |
+  |---|---|---|---|
+  | EUR_USD | StandardScaler ✓ | Y | 05-07 19:48 (just retrained) |
+  | USD_JPY | StandardScaler ✓ | Y | 05-07 19:46 (just retrained — was None!) |
+  | AUD_USD | StandardScaler ✓ | Y | 03-24 (pre-existing) |
+  | EUR_GBP | StandardScaler ✓ | Y | 03-24 (pre-existing) |
+  | GBP_JPY | StandardScaler ✓ | Y | 03-24 (pre-existing) |
+  | USD_CAD | StandardScaler ✓ | Y | 03-24 (pre-existing) |
+  | GBP_USD | **None** | N | 05-05 (correlation donor; never retrained) |
+  | joint | **None** | N | 04-28 (never updated by per-pair pipeline) |
+
+  The 16-pair sweep DID add USD_JPY to the C1.A-valid set. **6 of 17 dirs now have valid scalers** (vs 4 pre-fix, vs 5 after 2-pair smoke).
+- **the 2-pair smoke result is the real signal**, NOT the 16-pair number. The 2-pair smoke tested EUR_USD + GBP_USD which both have per-pair models present (EUR_USD's just-trained-with-valid-scaler; GBP_USD's older-with-null-scaler). Mixed but shows REAL signal: M15 68.2%, H4 56.8%, H1 48.8%, aggregate 57.9%.
+- **operationally what this means:**
+  - **The bot can trade safely on:** EUR_USD, USD_JPY, AUD_USD, EUR_GBP, GBP_JPY, USD_CAD (6 pairs with valid C1.A-fixed scalers)
+  - **The bot will route through broken joint on:** AUD_JPY, AUD_NZD, EUR_AUD, EUR_CHF, EUR_JPY, GBP_AUD, GBP_CHF, NZD_USD, USD_CHF, GBP_USD (10 pairs without per-pair models OR with null scaler)
+  - Joint promotion gate is failing because the holdout test set includes pairs that route through joint
+- **next moves (operator decision):**
+  1. **Re-run smoke with curated pair order — `--pairs EUR_USD,USD_JPY,GBP_JPY` (3 pairs that all have valid scalers and ARE the holdout test set).** This tests the C1.A-fixed models cleanly. If H1 ≥52%, joint AUTO-PROMOTES via the existing policy. Cheap (~5 min), no risk.
+  2. **Retrain GBP_USD specifically as TARGET (not donor)** so it gets a valid scaler. `--pairs GBP_USD,EUR_USD --granularity H1` with GBP_USD listed first. Adds a 7th valid-scaler pair.
+  3. **Manual promote — copy the EUR_USD per-pair scaler-valid model into joint dir.** Operator override; cost = joint dir uses an EUR_USD-specialized model as the correlation-dropped fallback (suboptimal but better than scaler-null). Demo account makes the risk acceptable.
+  4. **Constrain bot to trade only the 6 valid-scaler pairs** (config flag). Surgical; preserves halt protection on the 10 broken-routing pairs.
+- **commit:** none from this turn — just data captured in this CHECKPOINT LOG entry. Models on disk are unchanged from the 16-pair sweep state. No code changes proposed yet.
+
 ### 2026-05-07 23:40 UTC Claude — Option G shipped + smoke retrain — model has REAL signal, H1 still 3.2pp short of gate
 - did: shipped Option G fix (commit `6477a86`) — replaced hardcoded `lookahead=5` at `scripts/scheduled_retrain.py:451-453` with `HOLDOUT_LOOKAHEAD=24` constant matching the trainer's `buddy_training_helpers.py:536`. Re-ran 2-pair smoke retrain on EUR_USD,GBP_USD H1 with both fixes (C1.A + Option G) live.
 - **HOLDOUT RESULT (the load-bearing experiment):**
