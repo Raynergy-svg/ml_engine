@@ -447,10 +447,18 @@ def validate_holdout_accuracy(
                 logger.info("Holdout %s [%s]: %d features rows, %d columns", pair, granularity, len(features), features.shape[1])
 
                 # Check direction predictions against actual price movement
+                # C1 Option G fix (2026-05-07): HOLDOUT_LOOKAHEAD must match the
+                # trainer's lookahead default at src/training/buddy_training_helpers.py:536
+                # (currently 24). Pre-fix used hardcoded 5 which produced a 4.8x
+                # train/eval label-horizon mismatch and was the actual cause of
+                # the 44% holdout blocking promotion since Apr 16. See
+                # docs/superpowers/plans/2026-05-07-track-C1-h1-asymmetry.md
+                # for the full trace + Option H (architectural follow-up).
+                HOLDOUT_LOOKAHEAD = 24
                 n_errors = 0
-                for i in range(min(len(features) - 5, 200)):  # cap at 200 for speed
+                for i in range(min(len(features) - HOLDOUT_LOOKAHEAD, 200)):  # cap at 200 for speed
                     row = features.iloc[i : i + 1]
-                    future_close = test_df["close"].iloc[min(i + 5, len(test_df) - 1)]
+                    future_close = test_df["close"].iloc[min(i + HOLDOUT_LOOKAHEAD, len(test_df) - 1)]
                     current_close = test_df["close"].iloc[i]
                     actual_dir = "LONG" if future_close > current_close else "SHORT"
 
@@ -507,6 +515,8 @@ def validate_holdout_accuracy(
 def verify_ensemble_refreshed(
     retrain_start_ts: datetime,
     models_root: Path,
+    pairs: Optional[List[str]] = None,
+    include_joint: bool = True,
 ) -> Dict[str, Any]:
     """Verify every ensemble meta file's mtime is >= retrain_start_ts.
 
@@ -534,20 +544,31 @@ def verify_ensemble_refreshed(
     if top.exists():
         checks.append(("modular_ensemble", top))
 
-    # Joint models directory (transformer + tcn + ridge etc.)
+    # Joint models directory (legacy path only). Correlation-transfer writes
+    # master/target artifacts under per-pair directories, so validating joint
+    # here would reject or score the wrong surface.
     joint_dir = models_root / "joint"
-    if joint_dir.exists():
+    if include_joint and joint_dir.exists():
         for name in ("transformer_direction.keras", "tcn_volatility_regime.keras", "ridge_confidence.pkl"):
             p = joint_dir / name
             if p.exists():
                 checks.append((f"joint/{name}", p))
 
-    # Per-pair directories: SKIP. The joint retrain's fine-tuning step only
-    # retunes pairs that exceed fine_tune_threshold (typically ~5 of 15). Pairs
-    # that performed well keep their existing models — making their mtimes stale
-    # by design, not by bug. Only the joint directory + meta.json are guaranteed
-    # fresh after every retrain. Per-pair staleness is tracked separately by the
-    # retrain_agent's model_staleness trigger.
+    if not include_joint:
+        for pair in pairs or []:
+            pdir = models_root / pair
+            candidates = [
+                pdir / "transfer_meta.json",
+                pdir / "joint_training_meta.json",
+                pdir / "transformer_direction.keras",
+                pdir / "ridge_confidence.pkl",
+            ]
+            present = [p for p in candidates if p.exists()]
+            if present:
+                newest = max(present, key=lambda p: p.stat().st_mtime)
+                checks.append((f"{pair}/{newest.name}", newest))
+            else:
+                checks.append((f"{pair}/missing", pdir / "transfer_meta.json"))
 
     stale: List[str] = []
     max_age_days: float = 0.0
@@ -700,7 +721,7 @@ def check_drift_retrain_request() -> Optional[list]:
 def main():
     """Main entry point for scheduled retraining."""
     parser = argparse.ArgumentParser(
-        description="Scheduled joint model retraining for ML Engine scanner",
+        description="Scheduled model retraining for ML Engine scanner",
     )
     parser.add_argument(
         "--pairs",
@@ -735,6 +756,8 @@ def main():
         ),
     )
     args = parser.parse_args()
+    use_joint_legacy = os.environ.get("BUDDY_USE_JOINT_TRAINING", "0").lower() in ("1", "true", "yes")
+    training_surface = "legacy joint" if use_joint_legacy else "per-pair correlation transfer"
 
     # Determine pairs: check for drift request first, then args, then defaults
     pairs = []
@@ -762,7 +785,7 @@ def main():
     # Log start
     start_time = datetime.now(timezone.utc)
     logger.info("=" * 60)
-    logger.info("ML ENGINE SCHEDULED JOINT RETRAINING")
+    logger.info("ML ENGINE SCHEDULED RETRAINING — %s", training_surface.upper())
     logger.info(f"Start time: {start_time.isoformat()}")
     logger.info(f"Log file: {LOG_FILE}")
     logger.info("=" * 60)
@@ -782,9 +805,11 @@ def main():
         force_per_pair=args.force_per_pair,
     )
     
-    # Validate models
-    model_dir = PROJECT_ROOT / "trained_data" / "models" / "joint"
-    if success:
+    # Validate models. Legacy joint writes trained_data/models/joint; the
+    # production correlation-transfer path writes per-pair artifacts and is
+    # validated by holdout + completeness below.
+    model_dir = PROJECT_ROOT / "trained_data" / "models" / ("joint" if use_joint_legacy else "")
+    if success and use_joint_legacy:
         valid, valid_msg = validate_models(model_dir)
         if not valid:
             success = False
@@ -847,7 +872,12 @@ def main():
     # Always runs; never blocks success at this layer (policy handles rejection).
     if success:
         models_root = PROJECT_ROOT / "trained_data" / "models"
-        ensemble_metrics = verify_ensemble_refreshed(start_time, models_root)
+        ensemble_metrics = verify_ensemble_refreshed(
+            start_time,
+            models_root,
+            pairs=pairs,
+            include_joint=use_joint_legacy,
+        )
         holdout_metrics.update(ensemble_metrics)
         message = (
             f"{message}\n\nEnsemble completeness: "
@@ -914,7 +944,7 @@ def main():
     # Send failure email (no spam on success)
     if not success:
         email_body = f"""
-ML Engine Joint Retraining Failed
+ML Engine Retraining Failed ({training_surface})
 
 Time: {start_time.isoformat()}
 Duration: {duration:.1f} seconds
@@ -930,7 +960,7 @@ This is an automated alert. No action required if you're already investigating.
         """.strip()
 
         send_failure_email(
-            subject=f"Joint Retraining FAILED - {start_time.strftime('%Y-%m-%d')}",
+            subject=f"Retraining FAILED ({training_surface}) - {start_time.strftime('%Y-%m-%d')}",
             body=email_body,
         )
         return 1
