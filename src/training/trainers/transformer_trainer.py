@@ -1574,19 +1574,32 @@ class TransformerDirectionTrainer(BaseTrainer):
                 f"to {pre_selection_path}"
             )
         
-        # Save post-selection scaler (for model input)
-        if self.scaler is not None:
-            post_selection_path = model_dir / "direction_scaler.pkl"
-            joblib.dump({
-                'scaler': self.scaler,
-                'n_features_in_': self.scaler.n_features_in_,
-                'selected_indices': getattr(self, 'selected_indices_', None),
-                'feature_names': self.feature_names,
-            }, post_selection_path)
-            logger.info(
-                f"💾 Saved post-selection scaler ({self.scaler.n_features_in_} features) "
-                f"to {post_selection_path}"
+        # Save post-selection scaler (for model input).
+        # C1 hardening (2026-05-07): self.scaler must be a fitted scaler at this point.
+        # Pre-fix, joint_trainer.py:391 called train(skip_scaling=True) which set
+        # self.scaler=None, leading to silent scaler drop and 13/17 broken direction
+        # models at inference. The save path now refuses to silently produce a
+        # scaler-less model. See docs/superpowers/plans/2026-05-06-track-C1-findings.md
+        # section 8.0a for the full trace.
+        if self.scaler is None:
+            raise RuntimeError(
+                "TransformerDirectionTrainer.save: self.scaler is None at save time. "
+                "This means training was run with skip_scaling=True without a pre-fitted "
+                "scaler being assigned. See joint_trainer.py:391 + the C1 fix at "
+                "load_direction_data(..., apply_scaler=False). Refusing to save a "
+                "scaler-less model — inference would silently produce sub-coin-flip output."
             )
+        post_selection_path = model_dir / "direction_scaler.pkl"
+        joblib.dump({
+            'scaler': self.scaler,
+            'n_features_in_': self.scaler.n_features_in_,
+            'selected_indices': getattr(self, 'selected_indices_', None),
+            'feature_names': self.feature_names,
+        }, post_selection_path)
+        logger.info(
+            f"💾 Saved post-selection scaler ({self.scaler.n_features_in_} features) "
+            f"to {post_selection_path}"
+        )
 
     def _load_scalers(self, model_dir: Path) -> None:
         """Load scalers preserving feature alignment info.

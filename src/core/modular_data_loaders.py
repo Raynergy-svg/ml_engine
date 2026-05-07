@@ -1728,6 +1728,7 @@ def load_direction_data(
     threshold: float = DIRECTION_DEFAULTS['threshold'],
     locked_feature_names: Optional[List[str]] = None,
     gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
+    apply_scaler: bool = True,  # When False, skip RobustScaler+clip; trainer must fit own scaler. See C1 fix at docs/superpowers/plans/2026-05-06-track-C1-findings.md
 ) -> Dict[str, np.ndarray]:
     """
     Load data for direction prediction model (TCN or Transformer).
@@ -2005,34 +2006,52 @@ def load_direction_data(
     # =========================================================================
     # FEATURE SCALING: Fit on train, apply to all (prevents data leakage)
     # =========================================================================
-    from sklearn.preprocessing import RobustScaler
+    # NOTE C1 fix (2026-05-07): when apply_scaler=False, this block is skipped
+    # so the downstream trainer can fit + save its OWN scaler (otherwise inference
+    # has no scaler to apply — see docs/superpowers/plans/2026-05-06-track-C1-findings.md
+    # section 8.0a for the joint_trainer.py:391 skip_scaling=True bug).
+    if apply_scaler:
+        from sklearn.preprocessing import RobustScaler
 
-    scaler = RobustScaler()  # Robust to outliers (better for financial data)
+        scaler = RobustScaler()  # Robust to outliers (better for financial data)
 
-    # Fit ONLY on training data
-    X_train_scaled = scaler.fit_transform(X[train_idx])
-    X_val_scaled = scaler.transform(X[val_idx])
-    X_test_scaled = scaler.transform(X[test_idx])
+        # Fit ONLY on training data
+        X_train_scaled = scaler.fit_transform(X[train_idx])
+        X_val_scaled = scaler.transform(X[val_idx])
+        X_test_scaled = scaler.transform(X[test_idx])
 
-    # Clip extreme values after scaling (prevents numerical issues)
-    clip_value = 10.0  # Clip to [-10, 10] after robust scaling
-    X_train_scaled = np.clip(X_train_scaled, -clip_value, clip_value)
-    X_val_scaled = np.clip(X_val_scaled, -clip_value, clip_value)
-    X_test_scaled = np.clip(X_test_scaled, -clip_value, clip_value)
+        # Clip extreme values after scaling (prevents numerical issues)
+        clip_value = 10.0  # Clip to [-10, 10] after robust scaling
+        X_train_scaled = np.clip(X_train_scaled, -clip_value, clip_value)
+        X_val_scaled = np.clip(X_val_scaled, -clip_value, clip_value)
+        X_test_scaled = np.clip(X_test_scaled, -clip_value, clip_value)
 
-    # Remove constant features (zero variance after scaling)
-    feature_stds = np.std(X_train_scaled, axis=0)
-    valid_features = feature_stds > 1e-6
-    n_removed = np.sum(~valid_features)
-    if n_removed > 0:
-        logger.info(f"Removing {n_removed} constant features")
-        X_train_scaled = X_train_scaled[:, valid_features]
-        X_val_scaled = X_val_scaled[:, valid_features]
-        X_test_scaled = X_test_scaled[:, valid_features]
-        features = [f for f, v in zip(features, valid_features) if v]
+        # Remove constant features (zero variance after scaling)
+        feature_stds = np.std(X_train_scaled, axis=0)
+        valid_features = feature_stds > 1e-6
+        n_removed = np.sum(~valid_features)
+        if n_removed > 0:
+            logger.info(f"Removing {n_removed} constant features")
+            X_train_scaled = X_train_scaled[:, valid_features]
+            X_val_scaled = X_val_scaled[:, valid_features]
+            X_test_scaled = X_test_scaled[:, valid_features]
+            features = [f for f, v in zip(features, valid_features) if v]
 
-    logger.info(f"Feature scaling: max={np.max(np.abs(X_train_scaled)):.2f}, "
-                f"mean_abs={np.mean(np.abs(X_train_scaled)):.4f}")
+        logger.info(f"Feature scaling: max={np.max(np.abs(X_train_scaled)):.2f}, "
+                    f"mean_abs={np.mean(np.abs(X_train_scaled)):.4f}")
+    else:
+        # Skip loader-level scaling; trainer fits + saves its own scaler.
+        # Constant-feature filter is also skipped here because (a) the trainer
+        # will fit its own StandardScaler which handles zero-variance via
+        # n_features_in_ tracking, and (b) consistent feature-count between
+        # train and inference is already enforced via saved feature_names.
+        scaler = None
+        X_train_scaled = X[train_idx]
+        X_val_scaled = X[val_idx]
+        X_test_scaled = X[test_idx]
+        logger.info(f"Feature scaling: SKIPPED (apply_scaler=False); raw stats "
+                    f"max={np.max(np.abs(X_train_scaled)):.4f}, "
+                    f"mean_abs={np.mean(np.abs(X_train_scaled)):.4f}")
 
     # Label statistics
     total_clear = n_clear_up + n_clear_down

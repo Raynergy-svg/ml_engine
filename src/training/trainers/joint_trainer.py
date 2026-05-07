@@ -172,7 +172,11 @@ class JointMultiPairTrainer:
             # Load each model's data (pass individual params, not config object)
             try:
                 # Direction data (for Transformer)
-                dir_result = load_direction_data(df)
+                # apply_scaler=False: trainer below fits + saves its own StandardScaler.
+                # Pre-2026-05-07 the loader applied RobustScaler+clip and the trainer
+                # was passed skip_scaling=True, leaving self.scaler=None at save time
+                # (see docs/superpowers/plans/2026-05-06-track-C1-findings.md sec 8.0a).
+                dir_result = load_direction_data(df, apply_scaler=False)
                 if dir_result:
                     # Add instrument features - pass original feature names to get combined list
                     x_train, feature_names = append_instrument_features(
@@ -388,7 +392,7 @@ class JointMultiPairTrainer:
                     "w_train"
                 ),  # Pass weights to filter unclear samples
                 w_val=data["direction"].get("w_val"),
-                skip_scaling=True,  # Data from load_direction_data is already scaled
+                skip_scaling=False,  # C1 fix 2026-05-07: loader now passes raw via apply_scaler=False; trainer fits + saves its own StandardScaler so inference can apply it. Old skip_scaling=True nulled self.scaler and broke 13/17 saved direction models. See docs/superpowers/plans/2026-05-06-track-C1-findings.md sec 8.0a.
                 instrument=joint_instrument,
             )
             self.direction_trainer.save(str(save_path / TRANSFORMER_DIRECTION_FILENAME))
@@ -497,7 +501,10 @@ class JointMultiPairTrainer:
 
             try:
                 # Evaluate direction model
-                dir_result = load_direction_data(df)
+                # apply_scaler=False matches the training-time call at L173-180:
+                # the trainer's saved StandardScaler is applied at predict() so
+                # eval data must be raw for symmetric scaling.
+                dir_result = load_direction_data(df, apply_scaler=False)
                 if dir_result and self.direction_trainer:
                     # Get expected feature count and names from trained model
                     expected_n_features = self.direction_trainer.n_features
