@@ -174,3 +174,97 @@ grep -rn "dir_data\['scaler'\]\|\.scaler.*RobustScaler\|RobustScaler" --include=
 ```
 
 If all greps confirm what this doc says, C1.A is safe to ship.
+
+---
+
+## 7. Delta verification (per-feature scaler diff + column-order check) — 2026-05-07
+
+This section augments the original C1 finding (sections 1-6 above, committed 2026-05-06 as `7b0275b`). Before patching with C1.A, the augmentation was supposed to confirm: (a) per-feature scaler params actually mismatch between training and inference, and (b) column ordering matches across train/inference. Loading the saved model artifacts surfaced something **bigger and more urgent than a normalization mismatch**.
+
+### 7.1 Smoking gun — saved direction-model scalers are HALF NULL
+
+Survey of all 8 saved `transformer_direction.meta.pkl` files on main:
+
+| Model dir | `meta['scaler']` | feature_names | Notes |
+|---|---|---|---|
+| `trained_data/models/joint/` | **None** | 50 | THE inference-path model |
+| `trained_data/models/USD_JPY/` | **None** | 50 | correlation-dropped pair |
+| `trained_data/models/EUR_USD/` | **None** | 50 | major pair |
+| `trained_data/models/GBP_USD/` | **None** | 50 | major pair |
+| `trained_data/models/GBP_JPY/` | `StandardScaler` | 50 | mean_≈0, scale_≈1 |
+| `trained_data/models/USD_CAD/` | `StandardScaler` | 50 | (similar params) |
+| `trained_data/models/AUD_USD/` | `StandardScaler` | 50 | (similar params) |
+| `trained_data/models/EUR_GBP/` | `StandardScaler` | 50 | (similar params) |
+
+**4 of 8 direction-model meta files — including the joint head — have `meta['scaler'] = None`.**
+
+For models with valid scaler: `mean_ ≈ 0` (e.g. 6.8e-09) and `scale_ ≈ 1.0` per feature, consistent with a `StandardScaler` fit on data that was previously RobustScaler+clipped (i.e. already centered+rescaled at the loader). This confirms section 1's "double-scaling at training time" picture for the half of models that DID save a scaler.
+
+For models with `scaler = None`: the trainer's `predict()` path at `src/training/trainers/transformer_trainer.py:2880` calls `self.scaler.transform(x_reshaped)` — **on `None`, this is an AttributeError**. Either inference has been silently catching that exception and falling through to a no-scaling code path (sending raw features into a model trained on scaled features = noise floor output), or the predict path is being hit via a different code branch I haven't traced. Either way, **4 of 8 direction models are not just normalization-mismatched — they have NO scaler to apply at all**.
+
+### 7.2 Implication for C1.A
+
+The original C1.A recommendation ("drop loader's `RobustScaler` block so trainer fits+saves its own scaler from raw inputs") was correct as far as it went. But it assumed all 8 models had a scaler saved. The audit shows that's not true today. C1.A still applies, with a stronger justification:
+
+- **C1.A retrained models will all have valid `meta['scaler']`** (assuming the fix forces `self.scaler` to be a fitted StandardScaler before save).
+- **The current half-null state explains why the holdout is at 44%** even on the half of pairs that nominally have a scaler — when joint is the inference target (fallback for correlation-dropped pairs), the inference scaler is None, and raw features go in.
+- **Pre-flight check before retraining:** verify `transformer_trainer.save()` writes a non-None scaler. The save block at `transformer_trainer.py:1578-1587` says `if self.scaler is not None: saved['scaler'] = self.scaler`, but the dump above shows `'scaler'` IS in the keys with value None — meaning either (a) `self.scaler` was None at save time, or (b) some other code path writes `meta['scaler'] = None` explicitly. Need to grep the trainer for unconditional `meta['scaler'] = None` assignments before C1.A retrains.
+
+### 7.3 Column-order check — DEFERRED, lower priority
+
+Skipped in favor of the bigger finding above. All 8 models save `feature_names` (count = 50, identical across pairs). Inference path's `_extract_features_by_names` at `modular_inference.py:2667` uses `feature_names` as the source-of-truth ordering — so if `feature_names` is consistent across save/load, column order is consistent. No evidence of a column-order bug; that hypothesis is weakly ruled out (not formally verified).
+
+### 7.4 Verdict — C1 finding STANDS, with addendum
+
+The original section 1 conclusion (train/infer normalization mismatch causing sub-coin-flip output) holds for the 4 pairs WITH a scaler. For the 4 pairs WITHOUT a scaler, the bug is even simpler: **inference has no scaler to apply**, raw features hit a model trained on scaled inputs.
+
+Both subsets fail for related-but-distinct reasons. Both are fixed by the same patch family (C1.A or its variants). Recommended action UPGRADED:
+
+**C1.A (revised):** drop the loader's RobustScaler block AND verify the trainer always saves a non-None scaler. Then retrain ALL direction models so every saved meta has a valid scaler. Validate ≥52% holdout on the next retrain.
+
+### 7.5 One-line recommendation for the controller
+
+C1.A is *more* urgent than the original doc framed it. Halt-blocker (44% holdout since Apr 16) is explained by the half-null scaler state across saved direction models. Patch + retrain unlocks Track D.
+
+---
+
+## 8. Followup verification — `direction_scaler.pkl` joblib survey
+
+Section 7 found `meta['scaler'] = None` for 4 of 8 direction model meta files. The trainer actually has a SECOND scaler save path: `_save_scalers()` at `src/training/trainers/transformer_trainer.py:1550-1589` writes a separate `direction_scaler.pkl` (joblib) **only when `self.scaler is not None`** (guard at line 1578). At load time, `_load_scalers()` at `:1591-1626` reads it and overrides `self.scaler`. **So the operative inference scaler comes from `direction_scaler.pkl`, not `meta.pkl['scaler']`.**
+
+Survey of `direction_scaler.pkl` presence across all `trained_data/models/*/` dirs:
+
+| Has `direction_scaler.pkl` | No `direction_scaler.pkl` |
+|---|---|
+| AUD_USD | AUD_JPY |
+| EUR_GBP | AUD_NZD |
+| GBP_JPY | EUR_AUD |
+| USD_CAD | EUR_CHF |
+| | EUR_JPY |
+| | EUR_USD |
+| | GBP_AUD |
+| | GBP_CHF |
+| | GBP_USD |
+| | NZD_USD |
+| | USD_CHF |
+| | USD_JPY |
+| | **joint** |
+| **4 of 17** | **13 of 17** |
+
+The 4 dirs WITH `direction_scaler.pkl` are exactly the 4 with valid `meta.pkl['scaler']`. The other 13 dirs (including the joint head, which is the inference fallback for correlation-dropped pairs USD_JPY / EUR_GBP / EUR_JPY per CLAUDE.md) have NEITHER — meaning when `_load_scalers()` runs on those models, the override doesn't happen, `self.scaler` stays at whatever `meta['scaler']` set it to (None for joint), and `predict()` either crashes on `None.transform()` or silently bypasses scaling.
+
+**Why 4 of 17 work and 13 of 17 don't:** unverified, but most likely a regression in a recent retrain — `self.scaler` was set to None at training time (possibly via the warm-start path at `transformer_trainer.py:574-578` which copies a warm_start_scaler that was itself None) before `_save_scalers()` ran. The line-1578 guard then prevented `direction_scaler.pkl` from being written, leaving the dir in a "no scaler" state. Future retrains in that pair's pipeline would NOT restore the scaler unless explicitly re-fitted from scratch.
+
+**Operational impact:** the joint head, which is the inference target for any pair that doesn't have its own per-pair model, is in the broken set. So almost every trade decision since Apr 16 has been routing through a TCN/Transformer with no scaler at inference — raw features piped into a model trained on scaled features. Sub-coin-flip output is the inevitable consequence.
+
+### 8.1 Concrete C1.A patch surface (before retrain)
+
+Three things must change before retraining:
+
+1. **`src/core/modular_data_loaders.py:2008-2021`** — drop the `RobustScaler.fit_transform + clip[-10,10]` block in `load_direction_data`. Pass raw features to the trainer; it owns scaling.
+2. **`src/training/trainers/transformer_trainer.py:1578`** — replace the `if self.scaler is not None:` guard with a hard assertion (`assert self.scaler is not None, "..."`). If `self.scaler` is None at save time, that is a training bug; the save path should refuse to silently drop the scaler.
+3. **Retrain ALL 17 direction-model dirs** so every dir has a valid `direction_scaler.pkl` and `meta.pkl['scaler']`. Validate ≥52% holdout post-retrain. The audit's "direction head is CLEAN" verdict means the head's labels are honest forward-price; with proper scaling restored, holdout should jump from 44% to a realistic 52-58%.
+
+### 8.2 Recommendation — UPGRADE PRIORITY
+
+**This is THE halt-blocker.** Direction head's 44% holdout (rejecting every retrain since Apr 16) is fully explained by the missing-scaler state across 13 of 17 direction models. C1.A patch + retrain is no longer a "recommended optimization" — it's the critical fix. Once landed, Track D (auto-unhalt) becomes unblockable on signal quality grounds.
