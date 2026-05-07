@@ -257,13 +257,39 @@ The 4 dirs WITH `direction_scaler.pkl` are exactly the 4 with valid `meta.pkl['s
 
 **Operational impact:** the joint head, which is the inference target for any pair that doesn't have its own per-pair model, is in the broken set. So almost every trade decision since Apr 16 has been routing through a TCN/Transformer with no scaler at inference — raw features piped into a model trained on scaled features. Sub-coin-flip output is the inevitable consequence.
 
-### 8.1 Concrete C1.A patch surface (before retrain)
+### 8.0a Exact root cause traced
 
-Three things must change before retraining:
+`src/training/trainers/joint_trainer.py:391` calls `dir_trainer.train(..., skip_scaling=True, ...)` with the comment `# Data from load_direction_data is already scaled`. That `skip_scaling=True` triggers the `_scale_features` branch at `src/training/trainers/transformer_trainer.py:474-476`:
 
-1. **`src/core/modular_data_loaders.py:2008-2021`** — drop the `RobustScaler.fit_transform + clip[-10,10]` block in `load_direction_data`. Pass raw features to the trainer; it owns scaling.
-2. **`src/training/trainers/transformer_trainer.py:1578`** — replace the `if self.scaler is not None:` guard with a hard assertion (`assert self.scaler is not None, "..."`). If `self.scaler` is None at save time, that is a training bug; the save path should refuse to silently drop the scaler.
-3. **Retrain ALL 17 direction-model dirs** so every dir has a valid `direction_scaler.pkl` and `meta.pkl['scaler']`. Validate ≥52% holdout post-retrain. The audit's "direction head is CLEAN" verdict means the head's labels are honest forward-price; with proper scaling restored, holdout should jump from 44% to a realistic 52-58%.
+```python
+if skip_scaling:
+    logger.info("Skipping scaling (data is already pre-scaled)")
+    self.scaler = None             # ← THE BUG
+    x_train_scaled = X_train.reshape(-1, X_train.shape[-1])
+    x_val_scaled = x_val.reshape(-1, x_val.shape[-1])
+```
+
+`self.scaler = None` propagates to save: the line-1578 guard `if self.scaler is not None:` in `_save_scalers` then skips writing `direction_scaler.pkl`, AND the meta.pkl save (different code path) writes `meta['scaler'] = None`. At inference, `_load_scalers` finds no `direction_scaler.pkl` to restore from, so `self.scaler` stays None.
+
+**Why 4 of 17 work**: the per-pair path in `cli/training.py:1944-1971` calls `dir_trainer.train(...)` WITHOUT `skip_scaling=True` (default is False per `transformer_trainer.py:2647`). The trainer fits its own StandardScaler on the loader-RobustScaled data, saves it. Inference loads it. That path is correct (modulo the original C1 normalization mismatch — StandardScaler fit on clipped data applied to raw — but at least the scaler exists).
+
+**The 4 dirs were trained via the per-pair path; the 13 broken dirs (incl. joint) via `JointMultiPairTrainer` which sets `skip_scaling=True`.** That single flag is the bug.
+
+### 8.1 Concrete C1.A patch surface (before retrain) — three options, ranked
+
+| Option | Patch lines | Behavior change | Backward compat |
+|---|---|---|---|
+| **D (minimal symptom fix)** | flip `skip_scaling=True` → `False` at `src/training/trainers/joint_trainer.py:391` | Trainer fits StandardScaler on already-RobustScaler-clipped data (composes both scalers at training); saves StandardScaler; inference applies StandardScaler to raw → reintroduces the original C1 normalization mismatch. **Fixes "scaler is None" but NOT the train/infer distribution gap.** | full — only joint trainer affected |
+| **E (recommended — full C1.A)** | (a) drop `RobustScaler+clip` block at `src/core/modular_data_loaders.py:2008-2032`; (b) drop `'scaler': scaler` at `:2097`; (c) flip `skip_scaling=True` → `False` at `joint_trainer.py:391` | Trainer fits StandardScaler on raw features at training; saves it; inference applies same StandardScaler to raw. **Symmetric, fixes both bugs.** | breaks any caller that depends on loader's pre-scaled X (verified consumers: `cli/candle_optimizer.py:145`, `scripts/train_meta_calibrator.py:79`, `tests/test_fold_debug.py:34` — each needs review before patch lands) |
+| **F (additive flag)** | add `apply_scaler: bool = True` arg to `load_direction_data`; default True (backward compat); joint_trainer calls with `apply_scaler=False, skip_scaling=False` | Same as E for joint path; existing callers unchanged | full backward compat; ~10 LOC change |
+
+**Recommended: Option F** — narrowest blast radius, full backward compat for existing callers, fixes the bug exclusively in the broken (joint) training path. Option E is cleaner long-term but warrants explicit operator confirmation that the 3 verified consumers won't break.
+
+After whichever patch lands: harden `transformer_trainer.py:1578` guard (`if self.scaler is not None:`) into a hard assertion. If `self.scaler` is None at save time post-fix, that's a regression that must crash loudly, not silently produce a scaler-less model.
+
+### 8.1b Retrain after patch
+
+Retrain ALL 17 direction-model dirs so every dir has a valid `direction_scaler.pkl` and `meta.pkl['scaler']`. Validate ≥52% holdout post-retrain. The audit's "direction head is CLEAN" verdict means the head's labels are honest forward-price; with proper scaling restored, holdout should jump from 44% to a realistic 52-58%.
 
 ### 8.2 Recommendation — UPGRADE PRIORITY
 
