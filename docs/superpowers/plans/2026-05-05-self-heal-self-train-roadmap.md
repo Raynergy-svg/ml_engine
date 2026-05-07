@@ -1,8 +1,8 @@
 # Self-Heal & Self-Train Closed-Loop — Cross-Session Roadmap
 
 > **Status banner — read first.**
-> **Active step:** ➜ **H1 ASYMMETRY ROOT-CAUSED.** Holdout validator at `scripts/scheduled_retrain.py:451-453` hardcodes `lookahead=5` bars for ALL TFs; trainer's lookahead is 24. **Train/eval label-horizon mismatch** is what's blocking promotion since Apr 16, NOT the model. C1.A patch is structurally correct + has measurably improved direction model (M15 +9.5pp). **OPERATOR DECISION:** apply Option G (3-line fix to use `lookahead=24`) → re-run smoke → expect H1 to clear 52% gate. Main HEAD `72ea487`.
-> **Last updated:** 2026-05-07 — H1 root cause found. Both parallel sub-agents weak (Explore=hand-waving; AI Engineer=stale worktree base, ran pre-patch code). Foreground investigation completed.
+> **Active step:** ➜ **MODEL HAS SIGNAL.** Option G + C1.A fixes shipped. Smoke retrain (EUR_USD,GBP_USD H1): M15 **68.2%**, H4 **56.8%**, H1 48.8%, aggregate **57.9%** (vs ~44% pre-fix). 2 of 3 TFs pass 52% gate. Promotion still HOLD because policy gates on H1 specifically (3.2pp short). Joint dir not yet updated. **OPERATOR DECISION:** run 17-pair sweep / wire heuristic consumers in parallel / manual promote on demo. Main HEAD `6477a86`.
+> **Last updated:** 2026-05-07 — Option G validated end-to-end. Direction head is structurally working; gate-policy revision is the remaining unlock.
 > **Next session must:** read this file top-to-bottom before any code or merge.
 
 ---
@@ -200,6 +200,28 @@ grep -n "compute_volatility_regime" src/core/modular_data_loaders.py | head -3
 - did: rebased `heal-train/A1-confidence-leak-fix` onto `7f69b3a` (clean — 13 commits replay; new tip `77b70a7`); fast-forwarded main → 7f69b3a..77b70a7 (58 files, +14708/-218); zero overlap with 50+ unstaged WT files (verified pre-FF). Operator rationale: needs per-pair training infrastructure live; system halted so noise-floor joint R² has no live impact; per-pair pkls will be regenerated via `scripts/retrain_per_pair_confidence.py` (ships with `711722f feat(training): re-enable per-pair confidence fine-tunes + W&B observability`) which is the cleaner path than overwriting main's stale May-4 leak-version pkls. Q3 date-check earlier surfaced that main's USD_JPY.pkl was newer in mtime (May 4 via `279d486`) but older in correctness (created from leak-version code); Option A skips clobber by retraining fresh.
 - commit: 13 cherry-picks landed: `9fc68e9, 451c9fc, 1a10663, 406322f, c790d28, c1ec625, e6d2474, 847c1c8, 710bd0e, 0bf4c9e, a92b37c, 711722f, 77b70a7` (post-rebase hashes; pre-rebase hashes were `ae39613..332d6c6` per worktree log)
 - next: A1.5 — run `python scripts/retrain_per_pair_confidence.py` to populate per-pair confidence pkls on current main journal (replaces what the unpicked `a5f5f02` would have brought, but freshly fitted to journal-as-of-now). After A1.5: per-pair val R² should land in 0.05–0.30 band per audit prediction. Then A2 (W&B control plane).
+
+### 2026-05-07 23:40 UTC Claude — Option G shipped + smoke retrain — model has REAL signal, H1 still 3.2pp short of gate
+- did: shipped Option G fix (commit `6477a86`) — replaced hardcoded `lookahead=5` at `scripts/scheduled_retrain.py:451-453` with `HOLDOUT_LOOKAHEAD=24` constant matching the trainer's `buddy_training_helpers.py:536`. Re-ran 2-pair smoke retrain on EUR_USD,GBP_USD H1 with both fixes (C1.A + Option G) live.
+- **HOLDOUT RESULT (the load-bearing experiment):**
+
+  | TF | Pre-anyfix | C1.A only | C1.A + Option G | Δ vs original |
+  |---|---|---|---|---|
+  | H1 | 43.8% | 43.2% | **48.8%** | +5.0pp |
+  | M15 | 44.5% | 54.0% | **68.2%** | +23.7pp |
+  | H4 | 43.8% | 50.5% | **56.8%** | +13.0pp |
+  | aggregate | ~44% | 49.2% | **57.9%** | +13.9pp |
+
+  **2 of 3 timeframes pass the 52% gate.** Aggregate is 5.9pp above gate. **The direction head has real signal.** The M15 jump from 44.5% to 68.2% is unambiguous — the audit was right that the head is CLEAN; it was the holdout horizon mismatch (and prior to that, the scaler-null bug) that made it look broken.
+- **PROMOTION:** verdict still HOLD because the policy uses primary-TF (H1) accuracy as the floor, and H1 is 48.8% (3.2pp short). Joint dir not updated; gates.py still loads the scaler-null pre-fix joint TCN at inference. So the promotion bottleneck has SHIFTED from "the model is broken" (Apr 16 → today) to "the policy gate is on the noisiest TF". Three honest interpretations:
+  1. **H1's true ceiling at this feature set IS ~50%.** 1-hour direction at 24-bar-forward horizon is intrinsically the noisiest TF; the audit's "CLEAN" verdict applies to label generation, not to predictability. M15/H4 having stronger signal is consistent with the trader's adage that lower-frequency direction is easier to predict.
+  2. **Sample-size issue on 2 pairs.** EUR_USD + GBP_USD is highly correlated; the trainer effectively saw 1.x pairs of independent signal. A full 17-pair sweep might push H1 above 52% via cross-pair feature transfer.
+  3. **Policy-gate review.** Aggregate 57.9% on 1200 samples is a stronger signal than primary-TF 48.8% on 400. The promotion policy at `scripts/scheduled_retrain.py:670` deliberately uses primary_tf as the gate ("requiring a model to predict on timeframes it wasn't trained for is asking the wrong question"); but with C1.A + Option G fixes, M15/H4 ARE measuring the same trained model with the same horizon — they're not "wrong question" anymore. Worth revisiting whether aggregate should gate primary in this regime.
+- commit: `6477a86 fix(holdout): Option G — align validator lookahead to trainer (24, was 5)`. Then 2-pair smoke retrain (3.5 min) producing the result above.
+- next (operator decision; partnership framing applies):
+  1. **Run 17-pair sweep** — best case H1 clears 52% via more cross-pair signal, joint auto-promotes, demo bot can be unhalted. ~30 min, no risk. **Recommended; I'll kick this off in background while we wait.**
+  2. **Start wiring heuristic consumers** — independent of retrain outcome; gets the leaky-head bridges live so the scanner doesn't depend on the broken joint TCN. ~30-60 min foreground. **Recommended in parallel.**
+  3. **Manual promote + unhalt on demo** — operator's call. The model HAS signal (M15 68.2%, H4 56.8%, agg 57.9%); demo account makes the cost of being wrong low. The 52% gate exists for live-money safety; on demo the calculus is "get real-trade signal data fast vs spend more cycles on holdout pre-validation". I'd lean toward yes-promote-and-trade once 17-pair sweep result is in, even if H1 stays <52%. **Surfaced for explicit operator approval; not auto-executing.**
 
 ### 2026-05-07 22:50 UTC Claude — H1 asymmetry root-cause found; both parallel sub-agents weak
 - did: per "1 and 2 in parallel with skilled subagents", dispatched AI Engineer (full 17-pair retrain + validation, isolation:worktree, run_in_background) and Explore (H1 asymmetry investigation, read-only, run_in_background) in single message. **BOTH SUB-AGENTS DELIVERED WEAK RESULTS:**
