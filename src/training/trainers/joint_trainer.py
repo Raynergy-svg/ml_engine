@@ -775,7 +775,19 @@ class JointMultiPairTrainer:
         logger.info(f"Fine-tuning for {instrument}")
         logger.info("-" * 50)
 
-        pair_save_dir = Path(save_dir) / instrument
+        # Phase 7 fix (2026-05-08): callers pass save_dir either as the base
+        # models dir (legacy) OR as the already-pair-suffixed dir (correlation
+        # transfer at correlation_transfer.py:424). The previous unconditional
+        # `save_dir / instrument` produced doubled paths like
+        # trained_data/models/GBP_USD/GBP_USD/ when transfer was active —
+        # silently shadowing the per-pair routing's expected location for
+        # every artifact (LGBM heads, scalers, AND the new transformer copy).
+        # Detect and avoid duplication.
+        save_dir_path = Path(save_dir)
+        if save_dir_path.name == instrument:
+            pair_save_dir = save_dir_path
+        else:
+            pair_save_dir = save_dir_path / instrument
         pair_save_dir.mkdir(parents=True, exist_ok=True)
 
         results = {}
