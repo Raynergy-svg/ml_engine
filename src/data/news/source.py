@@ -504,13 +504,16 @@ class ForexFactoryNewsSource(NewsSource):
                 continue
             new_rows.extend(week_rows)
             weeks_fetched += 1
-            # Progress log every 4 weeks (~10s of polite traffic).
-            if weeks_fetched % 4 == 0:
-                logger.info(
-                    "FF HTML backfill progress: %d weeks fetched "
-                    "(%d skipped cached, %d failed) for %s",
-                    weeks_fetched, weeks_skipped_cached, weeks_failed, pair,
-                )
+            # Per-week heartbeat (watchdog needs <300s between stdout lines;
+            # 2s polite sleep + ~1s parse keeps us at ~3s/log = comfortably
+            # under). Promoted from every-4-weeks during 2026-05-08 36mo
+            # backfill to ensure long pair scrapes never go silent >5min.
+            logger.info(
+                "FF HTML backfill progress: %s week=%s fetched=%d "
+                "(skipped_cached=%d failed=%d new_events=%d)",
+                pair, week_key, weeks_fetched, weeks_skipped_cached,
+                weeks_failed, len(week_rows),
+            )
 
         # If everything failed AND cache is empty, surface a hard error per
         # NewsSource contract. Otherwise serve whatever combination of cached
