@@ -243,6 +243,15 @@ class TransformerDirectionTrainer(BaseTrainer):
         self.seq_len = None
         self.selected_indices = None  # Feature selection indices (set during training)
 
+        # Phase 2.A inference contract fields (2026-05-08). Populated from
+        # load_direction_data return dict via train() **kwargs and embedded
+        # into save() meta. Inference (gates._load_transformer) reads these
+        # to reproduce the regime one-hots and validate pipeline compatibility.
+        # See docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+        self._regime_quantiles: Optional[Dict[str, float]] = None
+        self._regime_atr_col: Optional[str] = None
+        self._feature_pipeline_version: Optional[str] = None
+
         # Transformer-specific config - defaults match TrainerConfig for proven 60.9% config
         self.transformer_d_model = (
             getattr(config, "transformer_d_model", 16) if config else 16
@@ -483,7 +492,41 @@ class TransformerDirectionTrainer(BaseTrainer):
             )
             x_val_scaled = self.scaler.transform(x_val.reshape(-1, x_val.shape[-1]))
 
+            # Phase 2.A tripwire (2026-05-08): catch the var_=1.0 identity-scaler
+            # signature that arises from fitting StandardScaler on already-scaled
+            # data. If we ever see it again, fail loud — the saved scaler would
+            # be an identity transform and inference would receive raw values.
+            self._assert_scaler_not_identity(self.scaler)
+
         return x_train_scaled, x_val_scaled
+
+    @staticmethod
+    def _assert_scaler_not_identity(scaler) -> None:
+        """Warn loudly if a fitted StandardScaler looks like the identity transform.
+
+        Phase 2.A diagnostic (2026-05-08). Mathematically, fitting StandardScaler
+        on data that's already mean=0/std=1 produces var_=1.0 ± float-epsilon and
+        mean_≈0, scale_=1.0 — the saved scaler is then the identity, which means
+        the training pipeline has accidentally double-scaled. We hit exactly this
+        before the Phase 2.A fix; this check ensures any future regression fails
+        visibly during training rather than silently corrupting inference.
+        """
+        if scaler is None or not hasattr(scaler, "var_"):
+            return
+        var = np.asarray(scaler.var_)
+        if var.size == 0:
+            return
+        identity_mask = np.isclose(var, 1.0, atol=1e-9)
+        identity_ratio = float(identity_mask.sum()) / var.size
+        if identity_ratio > 0.5:
+            logger.error(
+                "⚠️ SCALER IDENTITY-FINGERPRINT DETECTED: %.0f%% of %d features have "
+                "var_≈1.0 (±1e-9). This indicates StandardScaler was fit on "
+                "already-standardized data — the saved scaler will be the identity "
+                "transform and inference will receive un-standardized features. "
+                "See docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md",
+                identity_ratio * 100, var.size,
+            )
 
     def _load_warm_start_feature_meta(
         self, warm_start_path: Optional[str]
@@ -574,9 +617,11 @@ class TransformerDirectionTrainer(BaseTrainer):
             self.scaler = warm_start_scaler
             logger.info("✓ Using saved scaler from checkpoint")
         elif self.scaler is not None:
-            self.scaler = StandardScaler()
-            x_train_scaled = self.scaler.fit_transform(x_train_scaled)
-            x_val_scaled = self.scaler.transform(x_val_scaled)
+            # Phase 2.A fix (2026-05-08): subset existing scaler instead of
+            # refitting on already-scaled data. The previous code's refit
+            # produced an identity scaler — see _update_features_after_selection
+            # for the full rationale.
+            self.scaler = self._subset_scaler(self.scaler, selected_indices)
 
         logger.info(
             f"🔥 WARM-START: Using ALL {len(selected_indices)} saved features (weights compatible)"
@@ -616,9 +661,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         self.n_features = len(selected_indices)
 
         if self.scaler is not None:
-            self.scaler = StandardScaler()
-            x_train_scaled = self.scaler.fit_transform(x_train_scaled)
-            x_val_scaled = self.scaler.transform(x_val_scaled)
+            # Phase 2.A fix (2026-05-08): subset existing scaler instead of
+            # refitting. See _update_features_after_selection for rationale.
+            self.scaler = self._subset_scaler(self.scaler, selected_indices)
 
         logger.info(
             f"🔥 WARM-START: Using {len(selected_indices)} available features (fresh model, no weight transfer)"
@@ -728,9 +773,26 @@ class TransformerDirectionTrainer(BaseTrainer):
     def _update_features_after_selection(
         self, selected_indices: list, x_train_selected: np.ndarray
     ) -> None:
-        """Update feature names and scaler after selection."""
-        from sklearn.preprocessing import StandardScaler
+        """Update feature names and scaler after selection.
 
+        Phase 2.A fix (2026-05-08): the prior implementation reset self.scaler
+        to a fresh StandardScaler() with the comment "Re-fitting will be done
+        by caller". The caller (`_handle_feature_preparation`) then refit the
+        scaler on data that was ALREADY scaled by `_scale_features` line 481.
+        That double-fit produced an effectively-identity scaler (var_=1.0,
+        mean_≈1e-17), which the saved meta then served to inference — where
+        raw feature values were passed through the identity scaler and into
+        the keras model expecting standardized inputs. See
+        docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+        for the full root-cause trace.
+
+        Fix: subset the existing fitted scaler's per-column mean_/scale_/var_
+        to the selected indices. The x_train_selected matrix passed in is
+        ALREADY correctly scaled (it's a column subset of the line-481 fit
+        output), so no transform is needed. The subsetted scaler is the one
+        that, applied to RAW selected features at inference, reproduces the
+        same per-column standardization the model was trained on.
+        """
         if self.feature_names is not None:
             self.feature_names = [self.feature_names[i] for i in selected_indices]
             logger.info(
@@ -740,11 +802,39 @@ class TransformerDirectionTrainer(BaseTrainer):
         self.n_features = len(selected_indices)
 
         if self.scaler is not None:
-            self.scaler = StandardScaler()
-            # Re-fitting will be done by caller
+            self.scaler = self._subset_scaler(self.scaler, selected_indices)
             logger.info(
-                f"✓ Scaler will be re-fitted on {x_train_selected.shape[-1]} selected features"
+                f"✓ Scaler subsetted to {len(selected_indices)} selected features "
+                f"(no refit; preserves real per-column stats from initial fit)"
             )
+
+    @staticmethod
+    def _subset_scaler(fitted_scaler, indices: list):
+        """Return a fresh StandardScaler with mean_/scale_/var_ narrowed to `indices`.
+
+        Phase 2.A helper (2026-05-08). Applied wherever the previous code refit
+        StandardScaler on already-scaled data. The output scaler, when applied
+        to RAW input matching the selected columns, produces the same
+        standardized values the model saw during training.
+        """
+        from sklearn.preprocessing import StandardScaler
+
+        if fitted_scaler is None:
+            return None
+        # If the source scaler isn't a fitted StandardScaler with array-shaped
+        # stats, return it untouched (defensive — should not happen post-fit).
+        for attr in ("mean_", "scale_", "var_"):
+            if not hasattr(fitted_scaler, attr):
+                return fitted_scaler
+
+        idx = np.asarray(indices, dtype=int)
+        new_scaler = StandardScaler()
+        new_scaler.mean_ = np.asarray(fitted_scaler.mean_)[idx].copy()
+        new_scaler.scale_ = np.asarray(fitted_scaler.scale_)[idx].copy()
+        new_scaler.var_ = np.asarray(fitted_scaler.var_)[idx].copy()
+        new_scaler.n_features_in_ = int(idx.size)
+        new_scaler.n_samples_seen_ = getattr(fitted_scaler, "n_samples_seen_", 0)
+        return new_scaler
 
     def _compute_class_statistics(
         self, y_train_filtered: np.ndarray, y_val_filtered: np.ndarray
@@ -2669,6 +2759,15 @@ class TransformerDirectionTrainer(BaseTrainer):
         self.feature_names = feature_names
         self.n_features = X_train.shape[-1]
 
+        # Phase 2.A: capture inference contract fields from caller (joint_trainer
+        # forwards these from load_direction_data result). Stored on self so
+        # save() can embed them in meta for the inference path.
+        self._regime_quantiles = kwargs.get("regime_quantiles", self._regime_quantiles)
+        self._regime_atr_col = kwargs.get("regime_atr_col", self._regime_atr_col)
+        self._feature_pipeline_version = kwargs.get(
+            "feature_pipeline_version", self._feature_pipeline_version
+        )
+
         # Scale features
         x_train_scaled, x_val_scaled = self._scale_features(X_train, x_val, skip_scaling)
 
@@ -2811,12 +2910,19 @@ class TransformerDirectionTrainer(BaseTrainer):
             x_train_scaled, x_val_scaled = self._apply_feature_selection(
                 x_train_scaled, x_val_scaled, y_train, top_k_features, feature_selection_method
             )
-            if self.scaler is not None:
-                from sklearn.preprocessing import StandardScaler
-                self.scaler = StandardScaler()
-                x_train_scaled = self.scaler.fit_transform(x_train_scaled)
-                x_val_scaled = self.scaler.transform(x_val_scaled)
-                logger.info(f"✓ Re-fitted scaler on {x_train_scaled.shape[-1]} selected features")
+            # Phase 2.A fix (2026-05-08): the previous code refit a fresh
+            # StandardScaler here on x_train_scaled — but x_train_scaled was
+            # already standardized at line 481. The refit produced an
+            # effectively-identity scaler (var_=1.0, mean_≈1e-17) that was
+            # saved to meta and applied to raw inputs at inference, breaking
+            # every downstream prediction since C1.A landed.
+            #
+            # Fix: `_apply_feature_selection` → `_update_features_after_selection`
+            # now subsets the fitted scaler to the selected indices (no refit).
+            # x_train_scaled is already correctly scaled (column subset of the
+            # line-481 fit output), so no transform is needed here. The saved
+            # scaler will, at inference, produce the same per-column
+            # standardization the model was trained on.
             logger.info(f"🔍 Feature Selection Complete: train={x_train_scaled.shape}, val={x_val_scaled.shape}")
         
         # [2026-02-14] Feature alignment fix: Propagate selected indices to meta-labeler if available
@@ -3076,6 +3182,11 @@ class TransformerDirectionTrainer(BaseTrainer):
                 "transformer_dff": self.transformer_dff,
                 "transformer_dropout": self.transformer_dropout,
             },
+            # === Phase 2.A inference contract fields (2026-05-08) ===
+            # See docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+            "regime_quantiles": self._regime_quantiles,  # {q25,q50,q75} or None
+            "regime_atr_col": self._regime_atr_col,  # 'atr_pct_20' / 'atr_pct_14' / None
+            "feature_pipeline_version": self._feature_pipeline_version,  # e.g. '2026-05-08-v1'
         }
         meta_path = path.with_suffix(META_PKL_SUFFIX)
         with open(meta_path, "wb") as f:

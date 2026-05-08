@@ -51,6 +51,7 @@ warnings.filterwarnings(
 # Import normalized feature computation for alignment with inference
 try:
     from src.core.modular_data_loaders import (
+        FEATURE_PIPELINE_VERSION as _LOADER_PIPELINE_VERSION,
         compute_normalized_features,
         get_normalized_feature_names,
     )
@@ -59,6 +60,7 @@ except ImportError:
     FEATURES_AVAILABLE = False
     compute_normalized_features = None
     get_normalized_feature_names = None
+    _LOADER_PIPELINE_VERSION = None
 
 # Import regime-conditional gates for adaptive thresholds
 try:
@@ -290,6 +292,18 @@ class GateEvaluator:
         # TCN metadata
         self._tcn_scaler = None
         self._tcn_feature_names = None
+
+        # Phase 2.B inference contract for transformer (2026-05-08).
+        # Loaded from transformer_direction.meta.pkl by _load_transformer.
+        # See docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+        # for the full contract definition.
+        self._transformer_feature_names: Optional[list] = None
+        self._transformer_scaler = None
+        self._transformer_regime_quantiles: Optional[Dict[str, float]] = None
+        self._transformer_regime_atr_col: Optional[str] = None
+        self._transformer_pipeline_version: Optional[str] = None
+        # Dedup flag for inference-time feature mismatch warnings.
+        self._warned_transformer_contract_mismatch = False
 
         # Track which model is active for momentum
         self._momentum_model_type: str = "none"
@@ -1014,10 +1028,14 @@ class GateEvaluator:
             return False
 
     def _load_transformer(self) -> bool:
-        """Load Transformer direction model.
+        """Load Transformer direction model + inference contract from meta.
 
-        Returns:
-            True if loaded successfully
+        Phase 2.B (2026-05-08): also loads the meta sidecar (feature_names,
+        scaler, regime_quantiles, regime_atr_col, feature_pipeline_version) so
+        evaluate_transformer can align inference features to the model's
+        training-time contract. Pre-fix this method loaded only the keras
+        file; the contract was never read. See
+        docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
         """
         model_path = self.model_dir / "transformer_direction.keras"
 
@@ -1043,6 +1061,10 @@ class GateEvaluator:
                 "✓ Transformer direction gate loaded via %s",
                 load_meta.get("approach_used"),
             )
+
+            # Phase 2.B: load inference contract sidecar
+            self._load_transformer_contract(model_path)
+
             return True
 
         except ImportError:
@@ -1051,6 +1073,68 @@ class GateEvaluator:
         except Exception as e:
             logger.debug(f"Failed to load Transformer: {e}")
             return False
+
+    def _load_transformer_contract(self, model_path: Path) -> None:
+        """Populate the inference contract attrs from the model's meta sidecar.
+
+        Best-effort: a missing or partial sidecar is logged but not fatal.
+        evaluate_transformer falls back to the legacy untyped path when the
+        contract is absent (and that path is known broken — see audit doc).
+        """
+        meta_path = model_path.with_suffix(".meta.pkl")
+        if not meta_path.exists():
+            logger.warning(
+                "Transformer meta sidecar not found at %s — inference will "
+                "fall back to legacy untyped path (likely broken). Retrain "
+                "with Phase 2.A pipeline to populate the contract.",
+                meta_path,
+            )
+            return
+
+        try:
+            with open(meta_path, "rb") as f:
+                meta = _load_pickle_quietly(f)
+        except Exception as e:
+            logger.warning("Failed to load transformer meta from %s: %s", meta_path, e)
+            return
+
+        self._transformer_feature_names = meta.get("feature_names")
+        self._transformer_scaler = meta.get("scaler")
+        self._transformer_regime_quantiles = meta.get("regime_quantiles")
+        self._transformer_regime_atr_col = meta.get("regime_atr_col") or "atr_pct_20"
+        self._transformer_pipeline_version = meta.get("feature_pipeline_version")
+
+        if (
+            self._transformer_pipeline_version is not None
+            and _LOADER_PIPELINE_VERSION is not None
+            and self._transformer_pipeline_version != _LOADER_PIPELINE_VERSION
+        ):
+            logger.error(
+                "⚠️ Transformer pipeline version mismatch: artifact=%s "
+                "runtime=%s. Refusing to use this model — inference and "
+                "training would compute features differently. Retrain with "
+                "the current pipeline.",
+                self._transformer_pipeline_version, _LOADER_PIPELINE_VERSION,
+            )
+            self._transformer = None
+            return
+
+        if self._transformer_pipeline_version is None:
+            logger.warning(
+                "Transformer artifact at %s has no feature_pipeline_version "
+                "(pre-Phase 2.A). Inference will use legacy untyped path; "
+                "expected to produce broken predictions until retrain.",
+                meta_path,
+            )
+
+        logger.info(
+            "✓ Transformer contract loaded: %d features, scaler=%s, "
+            "regime_q=%s, version=%s",
+            len(self._transformer_feature_names) if self._transformer_feature_names else 0,
+            "yes" if self._transformer_scaler is not None else "no",
+            "yes" if self._transformer_regime_quantiles is not None else "no",
+            self._transformer_pipeline_version,
+        )
 
     def _load_meta_labeler(self) -> bool:
         """Load Meta-labeler model.
@@ -1612,6 +1696,12 @@ class GateEvaluator:
     ) -> Tuple[Optional[str], float]:
         """Evaluate Transformer direction gate.
 
+        Phase 2.B (2026-05-08): when the inference contract is present (post
+        Phase 2.A retrain), build the feature matrix via the saved
+        `feature_names` order, compute regime one-hots from saved quantiles,
+        and apply the saved scaler. Pre-Phase-2.A artifacts (no contract) hit
+        the legacy path which is known broken — see audit doc.
+
         Args:
             features: DataFrame with engineered features
             seq_len: Sequence length for Transformer input
@@ -1625,44 +1715,130 @@ class GateEvaluator:
             return None, 0.5
 
         try:
-            # Prepare sequence input
             if len(features) < seq_len:
                 logger.debug(f"Insufficient data for Transformer: {len(features)} < {seq_len}")
                 return None, 0.5
 
-            # Get normalized features if available
+            # Get normalized features (canonical inference path)
             if FEATURES_AVAILABLE and compute_normalized_features is not None:
                 norm_features = compute_normalized_features(features)
             else:
                 norm_features = features
 
-            # Select numeric columns only
-            numeric_cols = norm_features.select_dtypes(include=[np.number]).columns
-            X = norm_features[numeric_cols].iloc[-seq_len:].values
+            # === Phase 2.B contract path ===
+            # When feature_names are loaded from meta, build X strictly via
+            # that ordering and compute regime one-hots from saved quantiles.
+            if self._transformer_feature_names is not None:
+                X = self._build_transformer_inference_matrix(
+                    norm_features, self._transformer_feature_names, seq_len
+                )
+                if X is None:
+                    return None, 0.5
+                if self._transformer_scaler is not None:
+                    X = self._transformer_scaler.transform(X)
+            else:
+                # Legacy path (pre-Phase-2.A artifacts) — known broken; the
+                # warning fires once per evaluator instance via the dedup flag.
+                if not self._warned_transformer_contract_mismatch:
+                    logger.warning(
+                        "Transformer evaluating without inference contract "
+                        "(no feature_names in meta). Predictions are unreliable "
+                        "until Phase 2.A retrain lands."
+                    )
+                    self._warned_transformer_contract_mismatch = True
+                numeric_cols = norm_features.select_dtypes(include=[np.number]).columns
+                X = norm_features[numeric_cols].iloc[-seq_len:].values
 
-            # Handle NaN/Inf
             X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-
-            # Reshape for batch input: (1, seq_len, features)
             X = X.reshape(1, seq_len, -1).astype(np.float32)
 
-            # Predict
             proba = _predict_with_named_input_if_needed(self._transformer, X)
 
-            # Extract probability (assumes binary classification)
             if len(proba.shape) > 1 and proba.shape[1] > 1:
                 prob_long = float(proba[0, 1])
             else:
                 prob_long = float(proba[0])
 
             direction = "LONG" if prob_long > 0.5 else "SHORT"
-            abs(prob_long - 0.5) * 2  # Scale to 0-1
-
             return direction, prob_long
 
         except Exception as e:
             logger.debug(f"Transformer prediction failed: {e}")
             return None, 0.5
+
+    def _build_transformer_inference_matrix(
+        self,
+        norm_features: pd.DataFrame,
+        feature_names: list,
+        seq_len: int,
+    ) -> Optional[np.ndarray]:
+        """Assemble the (seq_len, len(feature_names)) inference matrix.
+
+        Phase 2.B helper (2026-05-08). Builds columns in the exact order the
+        trainer saved in feature_names. For regime_* columns, computes the
+        one-hot from the saved regime_quantiles applied to the saved
+        regime_atr_col. Refuses (returns None) on any required column that's
+        unavailable — silent zero-fill is forbidden because it would hide
+        contract drift.
+        """
+        n_rows = len(norm_features)
+        if n_rows < seq_len:
+            return None
+
+        regime_cols = ("regime_low", "regime_normal", "regime_high", "regime_extreme")
+        regime_class_idx = {name: i for i, name in enumerate(regime_cols)}
+
+        cols: list[np.ndarray] = []
+        for name in feature_names:
+            if name in norm_features.columns:
+                cols.append(norm_features[name].values.astype(np.float32))
+            elif name in regime_class_idx:
+                # Compute regime one-hot from saved quantiles
+                if self._transformer_regime_quantiles is None:
+                    self._log_contract_gap(
+                        f"feature '{name}' required but regime_quantiles "
+                        f"missing from contract"
+                    )
+                    return None
+                atr_col = self._transformer_regime_atr_col or "atr_pct_20"
+                if atr_col not in norm_features.columns:
+                    self._log_contract_gap(
+                        f"feature '{name}' requires '{atr_col}' which is "
+                        f"missing from compute_normalized_features output"
+                    )
+                    return None
+                atr = norm_features[atr_col].values.astype(np.float32)
+                q = self._transformer_regime_quantiles
+                q25, q50, q75 = q["q25"], q["q50"], q["q75"]
+                # Per-row class: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME (matches loader)
+                cls = np.where(
+                    atr <= q25, 0,
+                    np.where(atr <= q50, 1,
+                             np.where(atr <= q75, 2, 3)),
+                )
+                # Replace non-finite atr with NORMAL (loader's fallback at line 1934)
+                cls = np.where(np.isfinite(atr), cls, 1)
+                target = regime_class_idx[name]
+                cols.append((cls == target).astype(np.float32))
+            else:
+                self._log_contract_gap(
+                    f"feature '{name}' required by trained model is "
+                    f"unavailable in compute_normalized_features output"
+                )
+                return None
+
+        X = np.column_stack(cols)[-seq_len:]
+        return X
+
+    def _log_contract_gap(self, reason: str) -> None:
+        """Dedup-warn once per evaluator instance about an inference contract gap."""
+        if not self._warned_transformer_contract_mismatch:
+            logger.warning(
+                "Transformer inference contract gap: %s. Predictions will fall "
+                "back to (None, 0.5). Fix by retraining with current pipeline.",
+                reason,
+            )
+            self._warned_transformer_contract_mismatch = True
 
     def evaluate_meta_labeler(
         self,

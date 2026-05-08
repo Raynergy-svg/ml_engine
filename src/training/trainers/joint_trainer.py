@@ -115,6 +115,15 @@ class JointMultiPairTrainer:
                 "y_val": [],
                 "w_val": [],
                 "feature_names": None,
+                # Phase 2.A inference contract fields (2026-05-08).
+                # Captured from the FIRST instrument's dir_result and forwarded
+                # to direction_trainer.train(). For multi-pair joint training,
+                # this is a known limitation: each pair's regime quantiles differ;
+                # we save the first pair's. Per-pair correlation-transfer (the
+                # default path) trains one pair at a time so this is unambiguous.
+                "regime_quantiles": None,
+                "regime_atr_col": None,
+                "feature_pipeline_version": None,
             },
             "momentum": {
                 "X_train": [],
@@ -203,6 +212,17 @@ class JointMultiPairTrainer:
                     )
                     if combined_data["direction"]["feature_names"] is None:
                         combined_data["direction"]["feature_names"] = feature_names
+                    # Phase 2.A: capture inference contract from first pair's loader result
+                    if combined_data["direction"]["regime_quantiles"] is None:
+                        combined_data["direction"]["regime_quantiles"] = dir_result.get(
+                            "regime_quantiles"
+                        )
+                        combined_data["direction"]["regime_atr_col"] = dir_result.get(
+                            "regime_atr_col"
+                        )
+                        combined_data["direction"]["feature_pipeline_version"] = (
+                            dir_result.get("feature_pipeline_version")
+                        )
 
                 # Momentum data (for LightGBM)
                 mom_result = load_xgboost_data(df)
@@ -394,6 +414,15 @@ class JointMultiPairTrainer:
                 w_val=data["direction"].get("w_val"),
                 skip_scaling=False,  # C1 fix 2026-05-07: loader now passes raw via apply_scaler=False; trainer fits + saves its own StandardScaler so inference can apply it. Old skip_scaling=True nulled self.scaler and broke 13/17 saved direction models. See docs/superpowers/plans/2026-05-06-track-C1-findings.md sec 8.0a.
                 instrument=joint_instrument,
+                # Phase 2.A inference contract (2026-05-08): forward loader's
+                # regime quantiles + pipeline version into the trainer so save()
+                # embeds them in meta. Inference (gates) reads them to reproduce
+                # regime classifications and validate pipeline compatibility.
+                regime_quantiles=data["direction"].get("regime_quantiles"),
+                regime_atr_col=data["direction"].get("regime_atr_col"),
+                feature_pipeline_version=data["direction"].get(
+                    "feature_pipeline_version"
+                ),
             )
             self.direction_trainer.save(str(save_path / TRANSFORMER_DIRECTION_FILENAME))
             results["direction"] = metrics

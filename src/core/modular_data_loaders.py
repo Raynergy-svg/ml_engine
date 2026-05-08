@@ -34,6 +34,14 @@ from src.core.constants import DIRECTION_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
+# Feature pipeline contract version. Bump on any change to compute_normalized_features
+# or load_direction_data feature columns / ordering. Saved into trained model meta;
+# inference asserts version match before predicting.
+# 2026-05-08-v1: introduces explicit train↔inference contract (regime_quantiles,
+#                regime_atr_col, feature_names ordering authoritative). See
+#                docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+FEATURE_PIPELINE_VERSION = "2026-05-08-v1"
+
 
 # =============================================================================
 # VALID INSTRUMENTS (shared with main.py)
@@ -1922,6 +1930,16 @@ def load_direction_data(
     # Regime embedding: append 4-dim one-hot (LOW/NORMAL/HIGH/EXTREME) derived
     # from ATR percentile. The model learns regime-conditional patterns without
     # architecture changes — just 4 extra columns on the feature matrix.
+    #
+    # Quantiles are persisted into model meta (regime_quantiles, regime_atr_col)
+    # so inference can reproduce the same regime classifications. Without this
+    # persistence, inference can't compute the regime one-hots that the model
+    # was trained on. See docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+    regime_quantiles: Optional[Dict[str, float]] = None
+    regime_atr_col: Optional[str] = None
+    # NOTE: quantiles are computed over the full corpus (mild leak from val/test).
+    # This matches existing pre-fix behavior; train-fold-only quantiles are queued
+    # as a Phase 2 follow-up to avoid entangling two changes in this fix.
     try:
         if 'atr_pct_14' in df.columns or 'atr_pct_20' in df.columns:
             _atr_col = 'atr_pct_20' if 'atr_pct_20' in df.columns else 'atr_pct_14'
@@ -1942,9 +1960,21 @@ def load_direction_data(
                         _regime_onehot[_ri, 3] = 1.0  # EXTREME
                 X = np.concatenate([X, _regime_onehot], axis=1)
                 features = features + ['regime_low', 'regime_normal', 'regime_high', 'regime_extreme']
-                logger.info("Regime embedding appended: 4 one-hot columns (from %s)", _atr_col)
+                regime_quantiles = {
+                    "q25": float(_q25),
+                    "q50": float(_q50),
+                    "q75": float(_q75),
+                }
+                regime_atr_col = _atr_col
+                logger.info(
+                    "Regime embedding appended: 4 one-hot columns "
+                    "(from %s; q25=%.6f q50=%.6f q75=%.6f)",
+                    _atr_col, _q25, _q50, _q75,
+                )
     except Exception as _regime_err:
         logger.debug("Regime embedding skipped: %s", _regime_err)
+        regime_quantiles = None
+        regime_atr_col = None
 
     # Create direction labels with THRESHOLD FILTERING
     close = df['close'].values
@@ -2125,6 +2155,11 @@ def load_direction_data(
         'feature_names': features,
         'label_stats': label_stats,
         'scaler': scaler,  # Save scaler for inference
+        # === Inference contract fields (Phase 2.A, 2026-05-08) ===
+        # See docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+        'regime_quantiles': regime_quantiles,  # {q25, q50, q75} or None if regime not appended
+        'regime_atr_col': regime_atr_col,  # 'atr_pct_20' or 'atr_pct_14' or None
+        'feature_pipeline_version': FEATURE_PIPELINE_VERSION,
     }
 
     logger.info(f"Direction data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
