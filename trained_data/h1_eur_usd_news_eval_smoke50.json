@@ -1,0 +1,18 @@
+{
+  "candles": 1500,
+  "gate": 0.52,
+  "lookahead": 24,
+  "results": [
+    {
+      "accuracy": 0.6,
+      "long_accuracy": 0.4482758620689655,
+      "n_correct": 30,
+      "n_predictions": 50,
+      "pair": "EUR_USD",
+      "passed_gate": true,
+      "short_accuracy": 0.8095238095238095
+    }
+  ],
+  "ts": "2026-05-08T23:38:04.735673+00:00",
+  "windows": 50
+}
