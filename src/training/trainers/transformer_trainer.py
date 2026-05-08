@@ -20,7 +20,7 @@ import logging
 import pickle
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -251,6 +251,18 @@ class TransformerDirectionTrainer(BaseTrainer):
         self._regime_quantiles: Optional[Dict[str, float]] = None
         self._regime_atr_col: Optional[str] = None
         self._feature_pipeline_version: Optional[str] = None
+
+        # Stage 4-A news fusion contract fields (2026-05-08). All None when
+        # news fusion not active. Populated by train() from kwargs (which
+        # joint_trainer/buddy_training_helpers forward from load_direction_data
+        # result). Inference (gates.evaluate_transformer) reads news_pca to
+        # PCA.transform freshly-fetched news embeddings; reads
+        # news_event_class_count_columns + news_lookback_window_hours to
+        # rebuild the news feature block at the right shape.
+        self._news_pca: Optional[Any] = None
+        self._news_event_class_count_columns: List[str] = []
+        self._news_lookback_window_hours: Optional[int] = None
+        self._news_pca_n_components: Optional[int] = None
 
         # Transformer-specific config - defaults match TrainerConfig for proven 60.9% config
         self.transformer_d_model = (
@@ -2768,6 +2780,18 @@ class TransformerDirectionTrainer(BaseTrainer):
             "feature_pipeline_version", self._feature_pipeline_version
         )
 
+        # Stage 4-A: capture news-fusion contract fields. None when not active.
+        self._news_pca = kwargs.get("news_pca", self._news_pca)
+        self._news_event_class_count_columns = kwargs.get(
+            "news_event_class_count_columns", self._news_event_class_count_columns
+        )
+        self._news_lookback_window_hours = kwargs.get(
+            "news_lookback_window_hours", self._news_lookback_window_hours
+        )
+        self._news_pca_n_components = kwargs.get(
+            "news_pca_n_components", self._news_pca_n_components
+        )
+
         # Scale features
         x_train_scaled, x_val_scaled = self._scale_features(X_train, x_val, skip_scaling)
 
@@ -3187,6 +3211,14 @@ class TransformerDirectionTrainer(BaseTrainer):
             "regime_quantiles": self._regime_quantiles,  # {q25,q50,q75} or None
             "regime_atr_col": self._regime_atr_col,  # 'atr_pct_20' / 'atr_pct_14' / None
             "feature_pipeline_version": self._feature_pipeline_version,  # e.g. '2026-05-08-v1'
+            # === Stage 4-A news-fusion contract fields (2026-05-08) ===
+            # See docs/superpowers/specs/2026-05-08-mtf-news-fusion-stage-4a-spec.md
+            # All None when news fusion was not active during training. gates
+            # checks news_pca is not None before attempting news inference path.
+            "news_pca": self._news_pca,  # fitted sklearn PCA (joblib-serializable) or None
+            "news_event_class_count_columns": self._news_event_class_count_columns,  # ['ec_0', ..., 'ec_7'] or []
+            "news_lookback_window_hours": self._news_lookback_window_hours,
+            "news_pca_n_components": self._news_pca_n_components,
         }
         meta_path = path.with_suffix(META_PKL_SUFFIX)
         with open(meta_path, "wb") as f:
