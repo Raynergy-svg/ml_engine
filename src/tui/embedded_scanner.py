@@ -185,13 +185,17 @@ class EmbeddedScanner:
             # Changed from "balanced" on 2026-04-16 to match hedge-fund-grade selectivity.
             self._config = ScannerConfig.from_cli_args(
                 config_path=None,
-                pairs=None,         # uses profile defaults
+                # 2026-05-07: constrained to the 2 pairs retrained at M15
+                # 24-bar with C1.A scaler-valid models (EUR_USD/GBP_USD).
+                # Other pairs' per-pair models were trained at H1
+                # lookahead=24 → horizon mismatch when scanned at M15.
+                # Expand back to profile defaults after retraining each
+                # pair at --granularity M15.
+                pairs=["EUR_USD", "GBP_USD"],
                 # Switched H1 → M15 on 2026-05-07: M15-trained model holdout
-                # 69.2% validated over 22 months of data (vs ~50% on H1 across
+                # 70.0% validated over 22 months of data (vs ~50% on H1 across
                 # all architectures incl. Chronos foundation models). M15
                 # 24-bar-forward direction is the operative trading horizon.
-                # See docs/superpowers/plans/2026-05-05-...-roadmap.md
-                # CHECKPOINT LOG entry "2026-05-07 ~21:00".
                 granularity="M15",
                 top_n=5,
                 profile="smart",
