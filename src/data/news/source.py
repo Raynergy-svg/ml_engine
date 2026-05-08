@@ -27,9 +27,12 @@ backfill across weeks.
 from __future__ import annotations
 
 import abc
+import json
 import logging
+import re
+import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -183,6 +186,27 @@ _FF_HEADERS = {
     "Referer": "https://www.forexfactory.com/",
 }
 
+# HTML scraper config (Stage 4-A.ii). FF blocks bot UAs at the Cloudflare layer
+# but accepts a vanilla Firefox UA after a homepage warm-up that sets the
+# ``__cf_bm`` cookie. We session-cache cookies across week fetches to avoid
+# tripping rate-limits on every request. Verified empirically 2026-05-08.
+_FF_HTML_BASE = "https://www.forexfactory.com"
+_FF_HTML_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7; rv:124.0) "
+                  "Gecko/20100101 Firefox/124.0",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+              "image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
+# FF rate-limits aggressively; observed 429 with <2s gaps. 2.5s gives margin.
+_FF_HTML_MIN_INTERVAL_SEC = 2.5
+# Month abbreviation order matches FF's URL convention (lowercase, e.g. "mar11.2024").
+_FF_MONTH_ABBR = ["jan", "feb", "mar", "apr", "may", "jun",
+                  "jul", "aug", "sep", "oct", "nov", "dec"]
+
 
 def _split_pair(pair: str) -> List[str]:
     """EUR_USD -> ['EUR', 'USD']; raises ValueError if malformed."""
@@ -306,6 +330,13 @@ class ForexFactoryNewsSource(NewsSource):
             cache_dir = "trained_data/news"
         self.cache_dir = cache_dir
         self._cache_path = Path(cache_dir)
+        # Lazy-built ``requests.Session`` for HTML scraping (warmed once,
+        # then reused so Cloudflare cookies (``__cf_bm``) survive across
+        # week-page requests). Initialized in ``_ensure_html_session``.
+        self._html_sess = None
+        # Throttle bookkeeping for HTML path. Wall-clock seconds since epoch
+        # of the most-recent HTML fetch. Used to enforce the 2.5s polite gap.
+        self._last_html_fetch_at: float = 0.0
 
     # -- Public contract ---------------------------------------------------
 
@@ -317,13 +348,26 @@ class ForexFactoryNewsSource(NewsSource):
     ) -> List[NewsEvent]:
         """See ``NewsSource.fetch_events``.
 
-        Behavior:
+        Auto-routes between two implementations:
+          - **JSON path (fast)**: window fully inside the rolling current
+            week (Sun-Sat ET, mirrored to ``ff_calendar_thisweek.json``).
+            Single HTTP call, no rate-limit concerns.
+          - **HTML path (historical)**: window touches any prior week.
+            Walks weekly URLs from FF's calendar archive, parses event
+            JSON embedded in each page, dedupe-merges into the same parquet
+            cache. Polite 2.5s sleep between fetches.
+
+        Either path returns ``List[NewsEvent]`` with identical schema.
+
+        Behavior (JSON path):
           1. Validate args (UTC tz-aware, since < until, pair format).
           2. Load any existing parquet cache rows in [since, until).
           3. Fetch live FF thisweek JSON; merge any rows in [since, until).
           4. Dedupe on (timestamp, currency, title); write back to parquet.
           5. Return ascending-sorted ``NewsEvent`` list filtered to currencies
              of ``pair``.
+
+        Behavior (HTML path): see ``fetch_events_historical``.
         """
         currencies = _split_pair(pair)  # raises ValueError on bad pair
         since_utc = self._coerce_utc(since, "since")
@@ -332,6 +376,17 @@ class ForexFactoryNewsSource(NewsSource):
             raise ValueError(
                 f"since ({since_utc}) must be < until ({until_utc})"
             )
+
+        # Auto-route. The JSON mirror covers a Sun-Sat ET week; if either
+        # boundary falls before the start of the current ET week, we MUST
+        # walk the HTML archive. Otherwise the JSON path is sufficient.
+        if self._needs_historical(since_utc, until_utc):
+            logger.info(
+                "ForexFactory: window crosses prior weeks; routing to HTML "
+                "historical path (pair=%s, since=%s, until=%s)",
+                pair, since_utc.isoformat(), until_utc.isoformat(),
+            )
+            return self.fetch_events_historical(pair, since_utc, until_utc)
 
         # Clip until to now() per NewsSource contract — backfill cannot return
         # events from the future regardless of caller's window.
@@ -365,8 +420,140 @@ class ForexFactoryNewsSource(NewsSource):
             self._write_cache(pair, merged)
 
         # 5. Filter to window + relevant currencies + build NewsEvent list.
+        return self._rows_to_events(
+            merged, pair, currencies, since_utc, effective_until
+        )
+
+    # -- HTML historical path (Stage 4-A.ii) -------------------------------
+
+    def fetch_events_historical(
+        self,
+        pair: str,
+        since: datetime,
+        until: datetime,
+    ) -> List[NewsEvent]:
+        """Fetch events for arbitrary past windows by scraping FF's HTML
+        calendar archive.
+
+        FF organizes the calendar by week with URLs of the form
+        ``/calendar?week=mmmDD.YYYY`` (lowercase 3-letter month + day-of-month
+        + year, no separators between month-and-day; verified 2026-05-08 with
+        ``mar11.2024``). The page accepts ANY date in the displayed week and
+        returns 7 consecutive days starting from that date — to avoid
+        overlap and gaps we anchor each fetch to the Monday of the ISO week
+        containing each requested day.
+
+        Caches dedupe-merge into ``{cache_dir}/{pair}_ff_events.parquet`` —
+        the same parquet the JSON path uses, so a forward-cron + a one-time
+        backfill compose cleanly into a single artifact.
+
+        Args:
+            pair: Currency pair, e.g. ``"EUR_USD"``.
+            since: UTC tz-aware lower bound on event timestamps (inclusive).
+            until: UTC tz-aware upper bound on event timestamps (exclusive).
+
+        Returns:
+            Ascending-sorted ``List[NewsEvent]`` filtered to currencies of
+            ``pair``.
+
+        Raises:
+            ValueError: malformed pair or naive timestamps.
+            RuntimeError: irrecoverable transport failure AND empty cache
+                (per NewsSource contract; partial cache is served if any
+                weeks already on disk).
+        """
+        currencies = _split_pair(pair)
+        since_utc = self._coerce_utc(since, "since")
+        until_utc = self._coerce_utc(until, "until")
+        if since_utc >= until_utc:
+            raise ValueError(
+                f"since ({since_utc}) must be < until ({until_utc})"
+            )
+        now = datetime.now(timezone.utc)
+        effective_until = min(until_utc, now)
+
+        # Existing cache rows — used for idempotency (skip already-cached
+        # weeks) AND fallback (serve cache if all live fetches fail).
+        cache_rows = self._read_cache(pair)
+        cached_week_keys = self._weeks_in_rows(cache_rows)
+
+        weeks_needed = self._iter_weeks(since_utc, effective_until)
+        new_rows: List[dict] = []
+        weeks_attempted = 0
+        weeks_fetched = 0
+        weeks_skipped_cached = 0
+        weeks_failed = 0
+        for monday in weeks_needed:
+            weeks_attempted += 1
+            week_key = monday.strftime("%Y-%m-%d")
+            if week_key in cached_week_keys:
+                # Idempotent: skip weeks already represented in cache. We
+                # consider a week "covered" if ANY event exists for that
+                # ISO-Monday in cache. FF event volume is consistent enough
+                # that a week with zero events is impossible in practice
+                # (50-100 events/week typical).
+                weeks_skipped_cached += 1
+                continue
+            try:
+                week_rows = self._fetch_week_html(monday)
+            except RuntimeError as e:
+                weeks_failed += 1
+                logger.warning(
+                    "FF HTML fetch failed for week %s: %s", week_key, e
+                )
+                continue
+            new_rows.extend(week_rows)
+            weeks_fetched += 1
+            # Progress log every 4 weeks (~10s of polite traffic).
+            if weeks_fetched % 4 == 0:
+                logger.info(
+                    "FF HTML backfill progress: %d weeks fetched "
+                    "(%d skipped cached, %d failed) for %s",
+                    weeks_fetched, weeks_skipped_cached, weeks_failed, pair,
+                )
+
+        # If everything failed AND cache is empty, surface a hard error per
+        # NewsSource contract. Otherwise serve whatever combination of cached
+        # rows + freshly-fetched rows we have.
+        if not cache_rows and not new_rows:
+            raise RuntimeError(
+                f"FF HTML backfill: 0 weeks fetched for pair={pair}, window="
+                f"{since_utc.isoformat()}..{effective_until.isoformat()}; "
+                f"weeks_attempted={weeks_attempted}, failed={weeks_failed}. "
+                "All fetches failed and cache is empty."
+            )
+
+        merged = self._merge_dedupe(cache_rows, new_rows)
+        if new_rows:
+            # Only rewrite parquet when we actually added rows. Idempotent
+            # re-runs (all weeks cached) are a no-op on disk.
+            self._write_cache(pair, merged)
+
+        logger.info(
+            "FF HTML backfill complete: pair=%s weeks_attempted=%d "
+            "fetched=%d skipped_cached=%d failed=%d new_rows=%d total=%d",
+            pair, weeks_attempted, weeks_fetched, weeks_skipped_cached,
+            weeks_failed, len(new_rows), len(merged),
+        )
+        return self._rows_to_events(
+            merged, pair, currencies, since_utc, effective_until
+        )
+
+    # -- Row -> NewsEvent shared helper ------------------------------------
+
+    def _rows_to_events(
+        self,
+        rows: List[dict],
+        pair: str,
+        currencies: List[str],
+        since_utc: datetime,
+        effective_until: datetime,
+    ) -> List[NewsEvent]:
+        """Filter cached rows to (window, currencies) + materialize
+        ``NewsEvent`` objects. Skips and logs rows that fail invariants
+        rather than crashing the backfill."""
         events: List[NewsEvent] = []
-        for row in merged:
+        for row in rows:
             ts: datetime = row["timestamp"]
             if ts < since_utc or ts >= effective_until:
                 continue
@@ -383,11 +570,9 @@ class ForexFactoryNewsSource(NewsSource):
                     impact=row.get("impact"),
                 ))
             except (ValueError, TypeError) as e:
-                # Bad row in cache — log and skip rather than crash backfill.
                 logger.warning(
                     "Skipping malformed FF cache row: %s; row=%s", e, row
                 )
-
         events.sort(key=lambda e: e.timestamp)
         return events
 
@@ -566,3 +751,262 @@ class ForexFactoryNewsSource(NewsSource):
         merged = list(out.values())
         merged.sort(key=lambda r: r["timestamp"])
         return merged
+
+    # -- HTML scraper internals --------------------------------------------
+
+    @staticmethod
+    def _needs_historical(since_utc: datetime, until_utc: datetime) -> bool:
+        """Return True if the window touches any week before the current ET
+        Sun-Sat. The JSON mirror only covers the rolling current week.
+
+        Heuristic: if ``since_utc`` is older than 6 days ago we route to HTML
+        unconditionally. (FF's calendar week resets Sun 00:00 ET; computing
+        the exact ET week boundary for a UTC `since` requires a tz database
+        and adds little — 6-day-floor is safe and conservative.)
+        """
+        now = datetime.now(timezone.utc)
+        return since_utc < now - timedelta(days=6)
+
+    @staticmethod
+    def _iter_weeks(since_utc: datetime, until_utc: datetime) -> List[datetime]:
+        """Yield Monday 00:00 UTC anchors covering [since_utc, until_utc].
+
+        FF's ``?week=mmmDD.YYYY`` URL accepts any date and returns 7 days
+        starting from that date. To get non-overlapping coverage we anchor
+        each fetch to the Monday of the ISO week containing ``since_utc``,
+        then step 7 days at a time until past ``until_utc``.
+        """
+        # ISO weekday: Mon=0 .. Sun=6 (datetime.weekday())
+        first_day = since_utc.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        days_back = first_day.weekday()
+        monday = first_day - timedelta(days=days_back)
+        weeks: List[datetime] = []
+        cursor = monday
+        # Iterate while any part of the week could overlap [since, until).
+        # The week starting at `cursor` covers [cursor, cursor + 7d).
+        while cursor < until_utc:
+            weeks.append(cursor)
+            cursor = cursor + timedelta(days=7)
+        return weeks
+
+    @staticmethod
+    def _format_ff_week_param(monday: datetime) -> str:
+        """Monday datetime -> FF URL fragment (e.g. ``mar11.2024``)."""
+        m = _FF_MONTH_ABBR[monday.month - 1]
+        return f"{m}{monday.day}.{monday.year}"
+
+    @staticmethod
+    def _weeks_in_rows(rows: List[dict]) -> set:
+        """Return {YYYY-MM-DD Monday} for every event timestamp in ``rows``.
+
+        Used to skip already-cached weeks during backfill (idempotency).
+        """
+        weeks: set = set()
+        for r in rows:
+            ts = r.get("timestamp")
+            if ts is None:
+                continue
+            ts_utc = ts.astimezone(timezone.utc) if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+            monday = ts_utc - timedelta(days=ts_utc.weekday())
+            weeks.add(monday.strftime("%Y-%m-%d"))
+        return weeks
+
+    def _ensure_html_session(self):
+        """Build (lazily) a ``requests.Session`` warmed against the FF
+        homepage so Cloudflare's ``__cf_bm`` cookie is set. Reused across
+        weekly fetches so we don't re-warm per request (saves rate-limit
+        budget and avoids redundant network hops).
+
+        Raises:
+            RuntimeError on transport failure of the warm-up request.
+        """
+        if self._html_sess is not None:
+            return self._html_sess
+        try:
+            import requests
+        except ImportError as e:  # pragma: no cover
+            raise RuntimeError(f"requests not available: {e}") from e
+        sess = requests.Session()
+        sess.headers.update(_FF_HTML_HEADERS)
+        try:
+            r = sess.get(_FF_HTML_BASE + "/", timeout=15)
+        except requests.RequestException as e:
+            raise RuntimeError(f"FF HTML warm-up transport error: {e}") from e
+        if r.status_code != 200:
+            raise RuntimeError(
+                f"FF HTML warm-up HTTP {r.status_code}: {r.text[:200]}"
+            )
+        # Throttle bookkeeping starts here.
+        self._last_html_fetch_at = time.monotonic()
+        self._html_sess = sess
+        return sess
+
+    def _polite_sleep(self) -> None:
+        """Sleep just enough to keep ``_FF_HTML_MIN_INTERVAL_SEC`` between
+        consecutive HTML fetches. Uses ``time.monotonic`` so it is robust
+        to wall-clock jumps."""
+        elapsed = time.monotonic() - self._last_html_fetch_at
+        wait = _FF_HTML_MIN_INTERVAL_SEC - elapsed
+        if wait > 0:
+            time.sleep(wait)
+
+    def _fetch_week_html(self, monday: datetime) -> List[dict]:
+        """Fetch one week of FF calendar HTML and parse to internal-row dicts.
+
+        Args:
+            monday: Monday 00:00 UTC anchor for the week to fetch.
+
+        Returns:
+            List of internal-row dicts (same schema as ``_fetch_live_json``).
+            Empty list if the page parses cleanly but contains zero events
+            (rare; usually means the page format changed).
+
+        Raises:
+            RuntimeError on transport failure (HTTP non-200, JSON-blob not
+            found, decode error). The caller decides whether to retry, fall
+            back, or surface to the user.
+        """
+        try:
+            import requests
+        except ImportError as e:  # pragma: no cover
+            raise RuntimeError(f"requests not available: {e}") from e
+
+        sess = self._ensure_html_session()
+        self._polite_sleep()
+
+        week_param = self._format_ff_week_param(monday)
+        url = f"{_FF_HTML_BASE}/calendar?week={week_param}"
+        try:
+            resp = sess.get(url, timeout=20)
+        except requests.RequestException as e:
+            self._last_html_fetch_at = time.monotonic()
+            raise RuntimeError(f"FF HTML transport error: {e}") from e
+        finally:
+            self._last_html_fetch_at = time.monotonic()
+
+        if resp.status_code == 429:
+            raise RuntimeError(
+                f"FF HTML 429 rate-limit on {url}; back off and retry later"
+            )
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"FF HTML HTTP {resp.status_code} on {url}: "
+                f"{resp.text[:200]}"
+            )
+        return self._parse_ff_html_events(resp.text)
+
+    @staticmethod
+    def _parse_ff_html_events(html: str) -> List[dict]:
+        """Parse internal-row dicts from a FF calendar HTML page.
+
+        FF embeds the events as a JS-object literal under
+        ``window.calendarComponentStates[1] = { days: [{events: [...]}, ...] }``.
+        The outer object uses unquoted JS keys (so ``json.loads`` chokes on
+        it) but each event object inside ``events`` is well-formed JSON.
+        We bracket-match each ``{"id":<digits>,...}`` event and parse it
+        individually. Robust to FF's occasional whitespace tweaks.
+
+        Returns:
+            List of internal-row dicts (timestamp, currency, title, impact,
+            relevance_score, category). Empty if the JS blob is missing
+            (e.g., page format change) — caller surfaces this as a fetch
+            failure if the empty result is unexpected.
+        """
+        # 1. Locate the JS blob.
+        m = re.search(
+            r"window\.calendarComponentStates\[1\]\s*=\s*(\{.*?\});\s*</script>",
+            html,
+            re.DOTALL,
+        )
+        if not m:
+            # Page format may have changed, or page returned an error/login
+            # screen with no calendar payload.
+            logger.warning(
+                "FF HTML parse: calendarComponentStates[1] blob not found "
+                "(html_len=%d); FF page format may have changed", len(html)
+            )
+            return []
+        blob = m.group(1)
+
+        # 2. Extract each event JSON object via bracket-counting from the
+        # ``{"id":<digits>`` anchor. We avoid a full JS parser because
+        # ``demjson3`` etc. add a heavy optional dep for one parsing job.
+        events_raw: List[str] = []
+        for anchor in re.finditer(r'\{"id":\d+,', blob):
+            start = anchor.start()
+            depth = 0
+            in_str = False
+            esc = False
+            end = -1
+            for i in range(start, len(blob)):
+                c = blob[i]
+                if esc:
+                    esc = False
+                    continue
+                if c == "\\":
+                    esc = True
+                    continue
+                if c == '"':
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+            if end > 0:
+                events_raw.append(blob[start:end])
+
+        rows: List[dict] = []
+        for raw in events_raw:
+            try:
+                ev = json.loads(raw)
+            except json.JSONDecodeError as e:
+                logger.debug(
+                    "FF HTML parse: event JSON decode failed: %s; raw=%r",
+                    e, raw[:120]
+                )
+                continue
+
+            # Schema fields per empirically-verified FF HTML payload
+            # (2026-05-08, week=mar11.2024):
+            #   dateline: int epoch seconds (UTC)
+            #   currency: 3-char ISO ("USD", "EUR", "JPY", ...)
+            #   name: event title (post-prefix; "prefixedName" has CCY prefix)
+            #   impactName: "low" | "medium" | "high" | "holiday" | ""
+            ts_epoch = ev.get("dateline")
+            if not isinstance(ts_epoch, (int, float)) or ts_epoch <= 0:
+                continue
+            try:
+                ts = datetime.fromtimestamp(int(ts_epoch), tz=timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                continue
+
+            currency = (ev.get("currency") or "").strip().upper()
+            if len(currency) != 3:
+                continue
+
+            title = (ev.get("name") or "").strip()
+            if not title:
+                # Some FF "all-day" rows (e.g., bank holidays) have no name;
+                # fall back to the prefixed name.
+                title = (ev.get("prefixedName") or "").strip()
+            if not title:
+                continue
+
+            impact = (ev.get("impactName") or "").strip().lower()
+            rows.append({
+                "timestamp": ts,
+                "currency": currency,
+                "title": title,
+                "impact": impact,
+                "relevance_score": _impact_to_relevance(impact),
+                "category": _categorize(title, currency),
+            })
+        return rows

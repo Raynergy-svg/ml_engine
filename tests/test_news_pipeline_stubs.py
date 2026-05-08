@@ -824,15 +824,359 @@ def test_forex_factory_offline_cache_only(tmp_path) -> None:
 
 
 def test_forex_factory_offline_no_cache_propagates_error(tmp_path) -> None:
-    """If live fails AND cache is empty, RuntimeError surfaces (per contract)."""
+    """If live fails AND cache is empty, RuntimeError surfaces (per contract).
+
+    Stage-4-A note: ``fetch_events`` now auto-routes to the HTML historical
+    path when the window touches prior weeks. The OfflineFFSource overrides
+    BOTH the JSON path (``_fetch_live_json``) and the HTML path
+    (``_fetch_week_html``) so the test holds whichever route is taken.
+    """
     from src.data.news import ForexFactoryNewsSource
 
     class OfflineFFSource(ForexFactoryNewsSource):
         def _fetch_live_json(self):
             raise RuntimeError("offline test — no network")
 
+        def _fetch_week_html(self, monday):
+            raise RuntimeError("offline test — no network")
+
     src = OfflineFFSource(cache_dir=str(tmp_path))
-    since = datetime(2026, 5, 1, tzinfo=timezone.utc)
-    until = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    # Use an in-current-week range to keep targeting the JSON path. The
+    # historical path's RuntimeError wraps "all weeks failed" and would
+    # contain "offline" via the inner cause; this keeps the assertion strict.
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=12)
+    until = now
     with pytest.raises(RuntimeError, match="offline"):
         src.fetch_events("EUR_USD", since, until)
+
+
+# ---------------------------------------------------------------------------
+# Stage 4-A.ii — HTML historical scraper tests (NO MOCKS)
+# ---------------------------------------------------------------------------
+# Per CLAUDE.md / .claude/rules/improvement.md: no unittest.mock anywhere.
+# Offline tests use a real saved HTML fixture; integration tests live-fetch.
+
+
+def _fixture_path() -> "Path":
+    """Path to the saved FF calendar HTML fixture (week=mar11.2024)."""
+    from pathlib import Path
+
+    return Path(__file__).parent / "fixtures" / "ff_sample_week.html"
+
+
+def test_ff_format_week_param() -> None:
+    """Monday datetime -> FF URL fragment is lowercase mmmDD.YYYY."""
+    from src.data.news.source import ForexFactoryNewsSource
+
+    # 2024-03-11 is a Monday
+    monday = datetime(2024, 3, 11, tzinfo=timezone.utc)
+    assert ForexFactoryNewsSource._format_ff_week_param(monday) == "mar11.2024"
+    # Single-digit month boundary
+    monday2 = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    assert ForexFactoryNewsSource._format_ff_week_param(monday2) == "jan1.2024"
+    # End of year
+    monday3 = datetime(2024, 12, 30, tzinfo=timezone.utc)
+    assert ForexFactoryNewsSource._format_ff_week_param(monday3) == "dec30.2024"
+
+
+def test_ff_iter_weeks_anchors_to_monday() -> None:
+    """Week iteration anchors to ISO Monday and steps 7 days at a time."""
+    from src.data.news.source import ForexFactoryNewsSource
+
+    # since = Wednesday 2024-03-13 -> first Monday is 2024-03-11
+    since = datetime(2024, 3, 13, 14, 30, tzinfo=timezone.utc)
+    until = datetime(2024, 4, 3, 0, 0, tzinfo=timezone.utc)
+    weeks = ForexFactoryNewsSource._iter_weeks(since, until)
+    expected_mondays = [
+        datetime(2024, 3, 11, tzinfo=timezone.utc),
+        datetime(2024, 3, 18, tzinfo=timezone.utc),
+        datetime(2024, 3, 25, tzinfo=timezone.utc),
+        datetime(2024, 4, 1, tzinfo=timezone.utc),
+    ]
+    assert weeks == expected_mondays
+    # All anchors are Mondays (weekday() == 0)
+    for w in weeks:
+        assert w.weekday() == 0
+        assert w.hour == 0 and w.minute == 0 and w.second == 0
+
+
+def test_ff_iter_weeks_single_week_window() -> None:
+    """Window inside one week yields exactly one Monday anchor."""
+    from src.data.news.source import ForexFactoryNewsSource
+
+    since = datetime(2024, 3, 12, 12, 0, tzinfo=timezone.utc)
+    until = datetime(2024, 3, 14, 12, 0, tzinfo=timezone.utc)
+    weeks = ForexFactoryNewsSource._iter_weeks(since, until)
+    assert weeks == [datetime(2024, 3, 11, tzinfo=timezone.utc)]
+
+
+def test_ff_html_parser_on_fixture_extracts_75_events() -> None:
+    """Saved fixture (week=mar11.2024) parses to 75 events with valid schema.
+
+    Empirically locked count: a clean parse of the 2024-03-11 fixture yields
+    75 calendar rows. If FF's page format changes and the parser silently
+    extracts a different count, this test fails fast.
+    """
+    from src.data.news.source import (
+        ForexFactoryNewsSource,
+        _VALID_CATEGORIES,
+    )
+
+    html = _fixture_path().read_text(encoding="utf-8")
+    rows = ForexFactoryNewsSource._parse_ff_html_events(html)
+    assert len(rows) == 75, f"Expected 75 events from fixture, got {len(rows)}"
+
+    # Schema invariants on every parsed row
+    for r in rows:
+        assert isinstance(r["timestamp"], datetime)
+        assert r["timestamp"].tzinfo is timezone.utc
+        assert isinstance(r["currency"], str) and len(r["currency"]) == 3
+        assert isinstance(r["title"], str) and r["title"].strip()
+        assert 0.0 <= r["relevance_score"] <= 1.0
+        assert r["category"] in _VALID_CATEGORIES
+        assert r["impact"] in ("low", "medium", "high", "holiday", "non-economic", "")
+
+    # Ordered by week (range falls within the displayed Sun-Sat window).
+    ts_min = min(r["timestamp"] for r in rows)
+    ts_max = max(r["timestamp"] for r in rows)
+    assert ts_min >= datetime(2024, 3, 10, tzinfo=timezone.utc)
+    assert ts_max <= datetime(2024, 3, 18, 23, 59, tzinfo=timezone.utc)
+
+    # Currency mix: USD must dominate a typical NFP-week.
+    usd_count = sum(1 for r in rows if r["currency"] == "USD")
+    assert usd_count >= 15, f"USD events look low for NFP-week: {usd_count}"
+
+
+def test_ff_html_parser_handles_missing_blob_gracefully() -> None:
+    """If the JS blob is absent (page format change / error page), return []."""
+    from src.data.news.source import ForexFactoryNewsSource
+
+    rows = ForexFactoryNewsSource._parse_ff_html_events(
+        "<html><body>No calendar payload here</body></html>"
+    )
+    assert rows == []
+
+
+def test_ff_fetch_events_historical_uses_cache_and_fixture(tmp_path) -> None:
+    """End-to-end historical path: subclass overrides _fetch_week_html to
+    return parsed-fixture rows. Verifies (a) cache write, (b) currency
+    filter, (c) sort + invariants, (d) idempotent re-runs.
+    """
+    from src.data.news import ForexFactoryNewsSource, NewsEvent
+
+    html = _fixture_path().read_text(encoding="utf-8")
+    base_rows = ForexFactoryNewsSource._parse_ff_html_events(html)
+
+    class FixtureBackedSource(ForexFactoryNewsSource):
+        """Returns the SAME 75 events for any week. Real disk, no mocks."""
+
+        fetch_calls: int = 0
+
+        def _fetch_week_html(self, monday: datetime):
+            type(self).fetch_calls += 1
+            # Shift fixture timestamps into the requested week so each week
+            # contributes distinct events. Real-world weeks differ; the
+            # fixture is a stand-in for "FF returns SOMETHING for this URL".
+            shifted = []
+            shift = monday - datetime(2024, 3, 11, tzinfo=timezone.utc)
+            for r in base_rows:
+                rr = dict(r)
+                rr["timestamp"] = rr["timestamp"] + shift
+                shifted.append(rr)
+            return shifted
+
+    src = FixtureBackedSource(cache_dir=str(tmp_path))
+
+    # Window: Mar 11 - Mar 28 2024 (3 ISO weeks, 21 days). 3 fetches expected.
+    since = datetime(2024, 3, 11, tzinfo=timezone.utc)
+    until = datetime(2024, 3, 28, tzinfo=timezone.utc)
+    events = src.fetch_events_historical("EUR_USD", since, until)
+
+    # 3 weeks fetched on first call.
+    assert FixtureBackedSource.fetch_calls == 3
+
+    # All events must satisfy the contract.
+    for ev in events:
+        assert isinstance(ev, NewsEvent)
+        assert ev.timestamp.tzinfo is not None
+        assert since <= ev.timestamp < until
+        assert ev.pair == "EUR_USD"
+        assert ev.source == "forex_factory"
+        assert 0.0 <= ev.relevance_score <= 1.0
+    # Strictly ascending sort
+    for a, b in zip(events, events[1:]):
+        assert a.timestamp <= b.timestamp
+    # Currencies filtered to {EUR, USD} per pair contract.
+    # (Internal cache rows include all currencies; the public list is filtered.)
+    assert len(events) > 0
+    assert all(
+        ev.timestamp.tzinfo is not None for ev in events
+    )
+
+    # Cache file written.
+    cache_file = tmp_path / "EUR_USD_ff_events.parquet"
+    assert cache_file.exists()
+    one_run_size = cache_file.stat().st_size
+    assert one_run_size > 0
+
+    # Idempotency — second call must be near-instant (no new fetches),
+    # produce identical event count, leave the parquet untouched.
+    events2 = src.fetch_events_historical("EUR_USD", since, until)
+    # No additional HTTP calls — all 3 weeks already cached.
+    assert FixtureBackedSource.fetch_calls == 3
+    assert len(events2) == len(events)
+    # Order-insensitive equality: events sort is stable on timestamp but
+    # multiple events can share a minute (e.g., the simultaneous Mar
+    # release of Core PPI + Unemployment Claims at 12:30Z). Compare
+    # multisets keyed by (timestamp, text) to assert determinism.
+    multiset_a = sorted([(ev.timestamp, ev.text) for ev in events])
+    multiset_b = sorted([(ev.timestamp, ev.text) for ev in events2])
+    assert multiset_a == multiset_b
+
+
+def test_ff_fetch_events_historical_cache_grows_with_window(tmp_path) -> None:
+    """4-week window cache must contain strictly more rows than 1-week."""
+    import pandas as pd
+
+    from src.data.news import ForexFactoryNewsSource
+
+    html = _fixture_path().read_text(encoding="utf-8")
+    base_rows = ForexFactoryNewsSource._parse_ff_html_events(html)
+
+    class FixtureBackedSource(ForexFactoryNewsSource):
+        def _fetch_week_html(self, monday: datetime):
+            shift = monday - datetime(2024, 3, 11, tzinfo=timezone.utc)
+            return [
+                {**r, "timestamp": r["timestamp"] + shift} for r in base_rows
+            ]
+
+    src = FixtureBackedSource(cache_dir=str(tmp_path))
+
+    # 1-week run
+    src.fetch_events_historical(
+        "EUR_USD",
+        datetime(2024, 3, 11, tzinfo=timezone.utc),
+        datetime(2024, 3, 18, tzinfo=timezone.utc),
+    )
+    cache = tmp_path / "EUR_USD_ff_events.parquet"
+    rows_1wk = len(pd.read_parquet(cache))
+
+    # 4-week run (extends earlier cache by 3 more weeks)
+    src.fetch_events_historical(
+        "EUR_USD",
+        datetime(2024, 3, 11, tzinfo=timezone.utc),
+        datetime(2024, 4, 8, tzinfo=timezone.utc),
+    )
+    rows_4wk = len(pd.read_parquet(cache))
+
+    assert rows_4wk > rows_1wk, (
+        f"Cache must grow with window: 1wk={rows_1wk} vs 4wk={rows_4wk}"
+    )
+    # Roughly ~4x growth (each week contributes the same fixture-derived
+    # event count, allowing for the dedupe of the first week).
+    assert rows_4wk >= rows_1wk * 3, (
+        f"Cache growth too low: 1wk={rows_1wk} vs 4wk={rows_4wk}"
+    )
+
+
+def test_ff_dedupe_merge_preserves_unique_events(tmp_path) -> None:
+    """Merge-dedupe drops collisions on (minute_iso, currency, title)."""
+    from src.data.news import ForexFactoryNewsSource
+
+    base = datetime(2024, 3, 11, 13, 30, tzinfo=timezone.utc)
+    cache_rows = [
+        {
+            "timestamp": base,
+            "currency": "USD",
+            "title": "Non-Farm Employment Change",
+            "impact": "high",
+            "relevance_score": 1.0,
+            "category": "NFP",
+        },
+    ]
+    live_rows = [
+        # Same minute -> dedupes (cache wins)
+        {
+            "timestamp": base + timedelta(seconds=15),
+            "currency": "USD",
+            "title": "Non-Farm Employment Change",
+            "impact": "high",
+            "relevance_score": 1.0,
+            "category": "NFP",
+        },
+        # Different minute -> kept
+        {
+            "timestamp": base + timedelta(minutes=2),
+            "currency": "USD",
+            "title": "Non-Farm Employment Change",
+            "impact": "high",
+            "relevance_score": 1.0,
+            "category": "NFP",
+        },
+    ]
+    merged = ForexFactoryNewsSource._merge_dedupe(cache_rows, live_rows)
+    # 2 unique rows (collision on first one dropped).
+    assert len(merged) == 2
+    # Timestamps ascending.
+    assert merged[0]["timestamp"] < merged[1]["timestamp"]
+
+
+def test_ff_needs_historical_routing() -> None:
+    """``_needs_historical`` returns True iff window touches prior weeks."""
+    from src.data.news.source import ForexFactoryNewsSource
+
+    now = datetime.now(timezone.utc)
+    # Today-only window -> JSON path
+    assert ForexFactoryNewsSource._needs_historical(
+        now - timedelta(hours=2), now
+    ) is False
+    # Window crossing >6d -> HTML path
+    assert ForexFactoryNewsSource._needs_historical(
+        now - timedelta(days=30), now
+    ) is True
+
+
+@pytest.mark.integration
+def test_ff_historical_cross_validates_against_json_mirror(tmp_path) -> None:
+    """Live cross-validation: scrape the current ET week via HTML and compare
+    event count against the JSON mirror (which covers the same window).
+
+    Both paths should agree to within +/- 10% on the rolling current week.
+    Larger drift = HTML parser bug or JSON mirror lag.
+
+    Skipped when either upstream is unavailable. NO MOCKS.
+    """
+    from src.data.news import ForexFactoryNewsSource
+
+    src = ForexFactoryNewsSource(cache_dir=str(tmp_path))
+    # JSON path baseline — current week's events.
+    try:
+        json_rows = src._fetch_live_json()
+    except RuntimeError as e:
+        pytest.skip(f"FF JSON mirror unavailable: {e}")
+
+    if not json_rows:
+        pytest.skip("FF JSON mirror returned 0 rows — likely off-cycle week")
+
+    # Find Monday of the JSON-rows' week and HTML-fetch it.
+    sample_ts = json_rows[0]["timestamp"]
+    monday = sample_ts - timedelta(days=sample_ts.weekday())
+    monday = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    try:
+        html_rows = src._fetch_week_html(monday)
+    except RuntimeError as e:
+        pytest.skip(f"FF HTML page unavailable: {e}")
+
+    if not html_rows:
+        pytest.skip("FF HTML returned 0 rows — page format may have changed")
+
+    # Compare counts within +/- 10%.
+    json_n = len(json_rows)
+    html_n = len(html_rows)
+    rel_drift = abs(json_n - html_n) / max(json_n, html_n)
+    assert rel_drift < 0.10, (
+        f"Cross-validation failed: JSON={json_n} HTML={html_n} drift="
+        f"{rel_drift:.2%}; >10% drift suggests parsing bug or stale mirror"
+    )
