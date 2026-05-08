@@ -1926,6 +1926,13 @@ def _train_direction_or_regime_model(
             w_train=dir_data.get('w_train'),
             w_val=dir_data.get('w_val'),
             warm_start_path=str(warm_start_path) if warm_start_path else None,
+            # Phase 2.A: forward inference contract through orchestrator → trainer.
+            # Orchestrator must pass these as **kwargs to trainer_class.train();
+            # if it doesn't, this is a no-op for WFCV runs (and the gap will
+            # surface at inference as a regime-quantile contract gap).
+            regime_quantiles=dir_data.get('regime_quantiles'),
+            regime_atr_col=dir_data.get('regime_atr_col'),
+            feature_pipeline_version=dir_data.get('feature_pipeline_version'),
         )
         
         # Save the best model from WFCV
@@ -1951,6 +1958,15 @@ def _train_direction_or_regime_model(
                 w_val=dir_data.get('w_val'),
                 warm_start_path=str(warm_start_path) if warm_start_path else None,
                 instrument=training_instrument,
+                # Phase 2.A inference contract (2026-05-08): forward loader's
+                # regime quantiles + pipeline version to the trainer so save()
+                # embeds them in meta. Without this, train-buddy produces
+                # contract-incomplete artifacts that fail at inference for
+                # any feature_name starting with 'regime_'. See
+                # docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+                regime_quantiles=dir_data.get('regime_quantiles'),
+                regime_atr_col=dir_data.get('regime_atr_col'),
+                feature_pipeline_version=dir_data.get('feature_pipeline_version'),
             )
             dir_trainer.save(str(pair_paths['direction']), instrument=training_instrument)
             if training_instrument != "GENERIC":
