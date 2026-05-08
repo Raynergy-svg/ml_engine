@@ -721,7 +721,10 @@ def filter_by_regime(
 # INSTRUMENT-AGNOSTIC FEATURE COMPUTATION
 # =============================================================================
 
-def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_normalized_features(
+    df: pd.DataFrame,
+    news_features_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """
     Compute instrument-agnostic normalized features from OHLCV data.
 
@@ -1108,6 +1111,44 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
         logger.warning(f"⚠️ Remaining NaN: {nan_count}, Inf: {inf_count} after sanitization")
 
     logger.debug(f"Computed {len([c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'time']])} normalized features")
+
+    # Stage 4-A news/macro fusion (2026-05-08): optional left-outer join of
+    # pre-PCA-compressed news features. The caller (load_direction_data for
+    # training; gates.evaluate_transformer for inference) is responsible for
+    # PCA fit-on-train-only + PCA-transform discipline. This function is a
+    # join point only — no PCA logic, no fold awareness. Bars with no aligned
+    # news row get zero-filled to match align_news_to_bars's no-event branch.
+    # See docs/superpowers/specs/2026-05-08-mtf-news-fusion-stage-4a-spec.md §4.
+    if news_features_df is not None and len(news_features_df) > 0:
+        # Validate join key compatibility — both must use bar_timestamp UTC index.
+        if not isinstance(news_features_df.index, pd.DatetimeIndex):
+            logger.error(
+                "news_features_df must have a DatetimeIndex for the join; "
+                "got %s. Skipping news join.",
+                type(news_features_df.index).__name__,
+            )
+        else:
+            # Left-outer join: every price bar kept; missing news rows → zeros.
+            df_join_key = df.index if isinstance(df.index, pd.DatetimeIndex) else None
+            if df_join_key is None and "time" in df.columns:
+                df_join_key = pd.DatetimeIndex(pd.to_datetime(df["time"], utc=True))
+            if df_join_key is None:
+                logger.error(
+                    "Cannot determine bar timestamp for news join — "
+                    "df has no DatetimeIndex and no 'time' column. Skipping news join."
+                )
+            else:
+                news_aligned = news_features_df.reindex(df_join_key, fill_value=0.0)
+                # Single-shot concat avoids the per-column-insert fragmentation
+                # warning when news_aligned has dozens of columns (pca_0..63 + ec_0..7).
+                news_aligned.index = df.index  # preserve price df's index identity
+                df = pd.concat([df, news_aligned], axis=1)
+                logger.info(
+                    "News features joined: %d new columns added (%s, %s)",
+                    len(news_aligned.columns),
+                    news_aligned.columns[0] if len(news_aligned.columns) > 0 else "(none)",
+                    news_aligned.columns[-1] if len(news_aligned.columns) > 0 else "(none)",
+                )
 
     return df
 
