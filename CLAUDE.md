@@ -199,6 +199,23 @@ Buddy is a **student** doing supervised study of past trades. Closed trades beco
 
 Latest deep audit + upgrade roadmap: `docs/ml_architecture_audit_2026-04-30.md`.
 
+## News/macro pipeline (P1 — May 2026 modernization promotion)
+
+Promoted from P2 to P1 in the May 2026 modernization roadmap (see "Modernization stance" section above). The price-only direction-prediction holdout has plateaued at ~70.0% on M15 EUR_USD/GBP_USD across architectures (custom Transformer, Chronos-T5-small/base zero-shot). News/macro fusion is the remaining lever to break 70%.
+
+- **Design doc**: `docs/superpowers/plans/2026-05-08-news-macro-signal-design.md` (sections: data-source comparison, embedder comparison, fusion architecture, time-alignment, validation strategy, sequencing, open questions)
+- **Recommendations**: ForexFactory calendar (primary) + RSS headlines (secondary) for the prototype data source; FinBERT (`ProsusAI/finbert`, 768-dim, free, M1-friendly) for the embedder; concatenation fusion at the DataFrame level (lowest blast radius on existing trainer)
+- **Integration point**: `src/core/modular_data_loaders.py:compute_normalized_features` — Phase 3 will add an optional `news_df` arg and join per-bar news features (PCA-compressed FinBERT embedding + 8-dim event-class count) after the existing 186 price features
+- **Runtime path**: untouched in P1-P3. The existing `_evaluate_news_risk` agent in `src/scanner/agents/_team.py:2344` (uses `market_intelligence.EconomicCalendar` + RSS + VADER) stays as-is; Phase 4 may *augment* it with embedded-news features but does not replace it
+- **Scaffolding (this commit)**: `src/data/news/{__init__,source,embedder,feature_alignment}.py` — abstract bases + Phase-2/3 stubs that raise `NotImplementedError` with docstrings pointing back at the design doc. Tests at `tests/test_news_pipeline_stubs.py` (17 cases, no mocks) verify the contract
+- **Phase plan**:
+  - **P1 (done)**: design + scaffolding stubs, no data, no trainer change
+  - **P2 (next session)**: implement `ForexFactoryNewsSource.fetch_events` + `FinBERTEmbedder.embed`; produce sample artifact for EUR_USD; trainer untouched
+  - **P3**: implement `align_news_to_bars`; backfill 22mo EUR_USD; thread through `compute_normalized_features`; retrain M15 EUR_USD; compare holdout to 70.0% baseline. **Decision rule**: ≥73.0% ships; 70.5-72.9% disambiguates with `text-embedding-3-large`; ≤70.5% shelves
+  - **P4**: if P3 lift confirmed, expand to remaining majors (GBP_USD, USD_JPY, USD_CHF, AUD_USD, USD_CAD, NZD_USD)
+- **Validation hypothesis**: ≥3pp M15 holdout lift over the 70.0% price-only baseline confirms news-feature signal worth shipping
+- **Open questions blocking P2**: 6 operator decisions documented in design doc §7 (e.g., reuse `market_intelligence.EconomicCalendar` vs fresh historical scraper; PCA dimensionality 32 vs 64; lookback window 4h vs 24h vs both)
+
 ## Key Files
 - `main.py` — CLI entry point
 - `buddy_scanner.py` — library shim + `homework` subcommand only
