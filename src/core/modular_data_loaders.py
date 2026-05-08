@@ -1789,6 +1789,20 @@ def load_direction_data(
     locked_feature_names: Optional[List[str]] = None,
     gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
     apply_scaler: bool = True,  # When False, skip RobustScaler+clip; trainer must fit own scaler. See C1 fix at docs/superpowers/plans/2026-05-06-track-C1-findings.md
+    # === Stage 4-A news fusion kwargs (2026-05-08) ===
+    # All default None → backward-compat no-op. To enable Stage 4-A news fusion:
+    # caller passes a configured NewsSource + NewsEmbedder + pair name. Loader
+    # then fetches events for the data range, embeds via FinBERT, aligns to
+    # bars, fits PCA(64) on the train fold ONLY, applies frozen to val/test,
+    # appends 64+8=72 news cols to X, and returns the fitted PCA in the
+    # result dict so the trainer can persist it to model meta. Lookahead-bias
+    # is preserved by align_news_to_bars's strict open-interval window.
+    # See docs/superpowers/specs/2026-05-08-mtf-news-fusion-stage-4a-spec.md.
+    news_source: Optional[Any] = None,            # NewsSource instance (e.g. ForexFactoryNewsSource)
+    news_embedder: Optional[Any] = None,          # NewsEmbedder instance (e.g. FinBERTEmbedder)
+    pair: Optional[str] = None,                   # required for news_source.fetch_events
+    news_lookback_window_hours: int = 24,
+    news_pca_n_components: int = 64,
 ) -> Dict[str, np.ndarray]:
     """
     Load data for direction prediction model (TCN or Transformer).
@@ -2086,6 +2100,95 @@ def load_direction_data(
     train_idx, val_idx, test_idx = temporal_split(len(X), *split, gap=gap)
 
     # =========================================================================
+    # STAGE 4-A NEWS FUSION (2026-05-08, optional)
+    # =========================================================================
+    # Inserted between temporal_split and scaling so PCA fit-on-train uses the
+    # same train_idx that the rest of the pipeline uses (no fold leak). News
+    # is appended to X as additional columns (pca_0..pca_(k-1) + ec_0..ec_7).
+    # When news_source/embedder/pair are all None, this block is a no-op and
+    # backward-compat is preserved. See spec §4.
+    news_pca_obj = None
+    news_event_class_count_columns: List[str] = []
+    if news_source is not None and news_embedder is not None and pair is not None:
+        try:
+            from sklearn.decomposition import PCA  # noqa: WPS433 (deferred import OK; sklearn already a dep)
+            from src.data.news.feature_alignment import align_news_to_bars
+
+            # Bar timestamps aligned to X. df has DatetimeIndex (or 'time' col).
+            if isinstance(df.index, pd.DatetimeIndex):
+                _all_bar_ts = df.index.to_pydatetime().tolist()
+            elif "time" in df.columns:
+                _all_bar_ts = pd.to_datetime(df["time"], utc=True).dt.to_pydatetime().tolist()
+            else:
+                raise ValueError(
+                    "load_direction_data: news fusion requires df with "
+                    "DatetimeIndex or 'time' column."
+                )
+            # Drop the last `lookahead` bars to match X length (X = X[:-lookahead]).
+            _bar_ts_for_X = _all_bar_ts[:-lookahead] if lookahead > 0 else _all_bar_ts
+            assert len(_bar_ts_for_X) == len(X), (
+                f"news bar_ts length mismatch: {len(_bar_ts_for_X)} vs X={len(X)}"
+            )
+
+            # Fetch + embed.
+            _events = news_source.fetch_events(
+                pair, _bar_ts_for_X[0], _bar_ts_for_X[-1] + pd.Timedelta(hours=1)
+            )
+            if not _events:
+                logger.warning(
+                    "Stage 4-A news fusion: 0 events fetched for %s in window %s → %s. "
+                    "Adding zero-filled news columns (the pipeline still works "
+                    "but has no news signal in this window).",
+                    pair, _bar_ts_for_X[0], _bar_ts_for_X[-1],
+                )
+                _embeddings = np.empty((0, news_embedder.embedding_dim), dtype=np.float32)
+            else:
+                _embeddings = news_embedder.embed(_events)
+                logger.info(
+                    "Stage 4-A news fusion: fetched %d events, embedded to shape %s",
+                    len(_events), _embeddings.shape,
+                )
+
+            # Align (n_bars, embedding_dim + 8). Lookahead guard inside align fn.
+            _news_full = align_news_to_bars(
+                _events, _bar_ts_for_X, _embeddings, news_lookback_window_hours
+            )
+            assert _news_full.shape[0] == len(X), (
+                f"news_full length {_news_full.shape[0]} != X length {len(X)}"
+            )
+            _embed_block = _news_full[:, : news_embedder.embedding_dim]   # (n, 768)
+            _ec_block = _news_full[:, news_embedder.embedding_dim :]      # (n, 8)
+
+            # PCA fit-on-train-only.
+            news_pca_obj = PCA(n_components=news_pca_n_components, random_state=42)
+            news_pca_obj.fit(_embed_block[train_idx])
+            _embed_pca = news_pca_obj.transform(_embed_block)              # (n, 64)
+
+            _news_block_compressed = np.hstack([_embed_pca, _ec_block]).astype(np.float32)
+            assert _news_block_compressed.shape == (len(X), news_pca_n_components + 8)
+
+            # Append to X.
+            X = np.hstack([X, _news_block_compressed])
+            news_pca_cols = [f"pca_{i}" for i in range(news_pca_n_components)]
+            news_event_class_count_columns = [f"ec_{i}" for i in range(8)]
+            features = features + news_pca_cols + news_event_class_count_columns
+
+            logger.info(
+                "Stage 4-A news fusion: appended %d cols to X "
+                "(PCA explained variance: %.2f%%); features=%d",
+                news_pca_n_components + 8,
+                100.0 * float(np.sum(news_pca_obj.explained_variance_ratio_)),
+                len(features),
+            )
+        except Exception as _news_err:
+            logger.error(
+                "Stage 4-A news fusion FAILED — continuing without news features: %s",
+                _news_err, exc_info=True,
+            )
+            news_pca_obj = None
+            news_event_class_count_columns = []
+
+    # =========================================================================
     # FEATURE SCALING: Fit on train, apply to all (prevents data leakage)
     # =========================================================================
     # NOTE C1 fix (2026-05-07): when apply_scaler=False, this block is skipped
@@ -2201,6 +2304,18 @@ def load_direction_data(
         'regime_quantiles': regime_quantiles,  # {q25, q50, q75} or None if regime not appended
         'regime_atr_col': regime_atr_col,  # 'atr_pct_20' or 'atr_pct_14' or None
         'feature_pipeline_version': FEATURE_PIPELINE_VERSION,
+        # === Stage 4-A inference contract fields (2026-05-08) ===
+        # All None when news fusion not enabled. Trainer.train() consumes
+        # via **kwargs; trainer.save() embeds in meta. gates._load_transformer
+        # reads them at inference for PCA.transform of fresh news embeddings.
+        'news_pca': news_pca_obj,
+        'news_event_class_count_columns': news_event_class_count_columns,
+        'news_lookback_window_hours': (
+            news_lookback_window_hours if news_pca_obj is not None else None
+        ),
+        'news_pca_n_components': (
+            news_pca_n_components if news_pca_obj is not None else None
+        ),
     }
 
     logger.info(f"Direction data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
