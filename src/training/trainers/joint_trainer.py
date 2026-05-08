@@ -903,6 +903,33 @@ class JointMultiPairTrainer:
             except Exception as e:
                 logger.error(f"  Confidence fine-tune failed for {instrument}: {e}")
 
+        # Phase 7 fix (2026-05-08): save master's transformer + Phase 2.A
+        # inference contract to the target pair's dir. fine_tune_for_pair
+        # historically only fine-tuned LightGBM heads (Momentum/Risk/Confidence);
+        # the transformer for transferred pairs was never written, leaving
+        # per-pair gate routing to load STALE pre-Phase-2 transformer artifacts
+        # (no scaler, no regime_quantiles, no feature_pipeline_version).
+        # Saving master.direction_trainer here re-emits all transformer files
+        # (.keras, .meta.pkl with full contract, .weights.h5, .arch.json,
+        # .ema.pkl, .ewc.pkl) into the target dir so per-pair gate evaluators
+        # find the contract'd model. See docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
+        if self.direction_trainer is not None and self.direction_trainer.is_trained:
+            try:
+                target_transformer_path = pair_save_dir / TRANSFORMER_DIRECTION_FILENAME
+                self.direction_trainer.save(str(target_transformer_path), instrument=instrument)
+                logger.info(
+                    "  Direction transformer (master, contract-complete) "
+                    "saved to %s for transferred pair %s",
+                    target_transformer_path, instrument,
+                )
+            except Exception as e:
+                logger.error(
+                    "  Direction transformer save FAILED for transferred "
+                    "pair %s: %s — per-pair routing will load stale artifact "
+                    "and likely fail at inference.",
+                    instrument, e,
+                )
+
         logger.info(f"Fine-tuned models saved to: {pair_save_dir}")
         return results
 
