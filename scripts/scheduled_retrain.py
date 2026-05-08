@@ -816,10 +816,22 @@ def main():
             message = f"{message}\n\nValidation failed: {valid_msg}"
 
     # Hold-out validation across H1/M15/H4 — multi-timeframe coverage feeds
-    # Gate 5 of the promotion policy (catches H1-overfit models).
+    # Gate 5 of the promotion policy (catches TF-overfit models).
+    #
+    # Option G follow-up (2026-05-07): the multi-TF holdout uses
+    # granularities[0] as the primary-TF gate. Pre-fix the default order put
+    # H1 first regardless of what we trained at; this caused M15-trained
+    # models to be measured against an H1 holdout for promotion. Now we put
+    # the trained granularity FIRST so primary_tf == args.granularity. M15
+    # and H4 results remain in metadata for regime-fragility detection.
     holdout_metrics: Dict[str, Any] = {}
     if success:
-        holdout_ok, holdout_msg, holdout_metrics = validate_holdout_multi_timeframe(pairs)
+        all_tfs = ["H1", "M15", "H4"]
+        trained_tf = args.granularity if args.granularity in all_tfs else "H1"
+        ordered_tfs = [trained_tf] + [tf for tf in all_tfs if tf != trained_tf]
+        holdout_ok, holdout_msg, holdout_metrics = validate_holdout_multi_timeframe(
+            pairs, granularities=ordered_tfs
+        )
         message = f"{message}\n\n{holdout_msg}"
         if not holdout_ok:
             success = False
