@@ -1,0 +1,72 @@
+{
+  "candles": 5000,
+  "gate": 0.52,
+  "lookahead": 24,
+  "results": [
+    {
+      "accuracy": 0.5126666666666667,
+      "long_accuracy": 0.4351145038167939,
+      "n_correct": 769,
+      "n_predictions": 1500,
+      "pair": "EUR_USD",
+      "passed_gate": false,
+      "short_accuracy": 0.5727810650887574
+    },
+    {
+      "accuracy": 0.502,
+      "long_accuracy": 0.41294298921417566,
+      "n_correct": 753,
+      "n_predictions": 1500,
+      "pair": "GBP_USD",
+      "passed_gate": false,
+      "short_accuracy": 0.5699177438307873
+    },
+    {
+      "accuracy": 0.62,
+      "long_accuracy": 0.9763440860215054,
+      "n_correct": 930,
+      "n_predictions": 1500,
+      "pair": "USD_JPY",
+      "passed_gate": true,
+      "short_accuracy": 0.03859649122807018
+    },
+    {
+      "accuracy": 0.4786666666666667,
+      "long_accuracy": 0.3768472906403941,
+      "n_correct": 718,
+      "n_predictions": 1500,
+      "pair": "USD_CHF",
+      "passed_gate": false,
+      "short_accuracy": 0.5988372093023255
+    },
+    {
+      "accuracy": 0.472,
+      "long_accuracy": 0.36100131752305664,
+      "n_correct": 708,
+      "n_predictions": 1500,
+      "pair": "AUD_USD",
+      "passed_gate": false,
+      "short_accuracy": 0.5856950067476383
+    },
+    {
+      "accuracy": 0.5133333333333333,
+      "long_accuracy": 0.5830388692579506,
+      "n_correct": 770,
+      "n_predictions": 1500,
+      "pair": "USD_CAD",
+      "passed_gate": false,
+      "short_accuracy": 0.42242703533026116
+    },
+    {
+      "accuracy": 0.5613333333333334,
+      "long_accuracy": 0.4104803493449782,
+      "n_correct": 842,
+      "n_predictions": 1500,
+      "pair": "NZD_USD",
+      "passed_gate": true,
+      "short_accuracy": 0.6888068880688807
+    }
+  ],
+  "ts": "2026-05-08T11:37:28.217508+00:00",
+  "windows": 1500
+}
