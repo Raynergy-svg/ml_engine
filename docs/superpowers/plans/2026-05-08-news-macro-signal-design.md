@@ -157,7 +157,24 @@ Total wall time: ~10min. Total compute cost: $0. Total operator time to review: 
 
 ---
 
-## 7. Open questions for operator
+## 7. Decisions (resolved 2026-05-08 by Claude as partner)
+
+Operator delegated decisions on the open questions. Below are the calls + reasoning. Where I diverge from the agent's original recommendation, the divergence is called out explicitly.
+
+| # | Question | Decision | Reasoning |
+|---|---|---|---|
+| 1 | Calendar source | **Reuse `market_intelligence.EconomicCalendar`** | Same class of bug as Option G if training and runtime use different event tapes. Add `fetch_events_historical(since, until)` if missing. (Confirms agent.) |
+| 2 | FinBERT vs OpenAI ambiguous-band experiment | **Yes, $1 on `text-embedding-3-large` if Phase 3 lift is 70.5%-72.9%** | Cheapest disambiguation possible. Rules out "FinBERT was the wrong embedder" before shelving the workstream. (Confirms agent.) |
+| 3 | NewsAPI Business subscription | **DEFER** | $449/mo recurring is real cost. Prove signal on free FF+RSS first. (Confirms agent.) |
+| 4 | PCA dimensionality | **32 components** | ~95% variance retained; trivially expandable to 64 if Phase 3 holdout disambiguates. (Confirms agent.) |
+| 5 | Lookback window | **REVISED — `[4, 24]` for BOTH training AND runtime** | Agent recommended asymmetric (24h train, 4h prod). I disagree: that re-introduces the same train/eval mismatch class as Option G's lookahead bug. Symmetric is non-negotiable. The runtime path can adopt the [4,24] two-window block alongside the existing 4h-only path; 4h stays as fallback when 24h data is missing. |
+| 6 | Backfill rate-limit policy | **Accept; cache to `trained_data/news/{pair}_{date_range}.parquet`** | One-time cost per pair. Idempotent fetch wrapper that skips if cached. (Confirms agent.) |
+
+**Net:** 5 of 6 decisions match the agent's recommendation; Q5 is revised to enforce symmetric train/eval features as a hard project invariant.
+
+---
+
+## 7-original. Open questions for operator (preserved for history)
 
 1. **ForexFactory scrape vs market_intelligence.EconomicCalendar?** The existing runtime path uses `market_intelligence.EconomicCalendar`. Phase 2 can either reuse that module's `fetch_events()` (consistent with runtime) or write a fresh historical-backfill scraper (consistent with deterministic backfill). **Recommendation: reuse `market_intelligence.EconomicCalendar`; add a `fetch_events_historical(since, until)` method if not already present.** Reason: training and runtime should consume the same event tape.
 
