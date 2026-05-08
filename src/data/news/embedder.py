@@ -116,11 +116,115 @@ class FinBERTEmbedder(NewsEmbedder):
         self._model = None
         self._tokenizer = None
 
-    def embed(self, events: List[NewsEvent]) -> np.ndarray:
-        """Phase 2 implementation pending."""
-        raise NotImplementedError(
-            "FinBERTEmbedder.embed is a Phase 2 implementation. "
-            "See docs/superpowers/plans/2026-05-08-news-macro-signal-design.md "
-            "§2 (Embedding model comparison) and §6 (Sequencing) for phase "
-            "boundaries."
+    def _resolve_device(self) -> str:
+        """Resolve requested device against runtime availability.
+
+        Falls back to CPU with a logged warning if requested accelerator isn't
+        available. Honors .claude/rules/improvement.md "Silent Exception
+        Prevention" — never silently degrade without surfacing.
+        """
+        import logging
+        import torch
+
+        logger = logging.getLogger(__name__)
+        requested = self.device
+
+        if requested == "cuda":
+            if torch.cuda.is_available():
+                return "cuda"
+            logger.warning(
+                "FinBERTEmbedder: device='cuda' requested but torch.cuda.is_available()=False; falling back to cpu"
+            )
+            return "cpu"
+        if requested == "mps":
+            # PyTorch 2.x: backends.mps.is_available() returns True only when
+            # the build supports MPS AND the runtime can use it.
+            if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+                return "mps"
+            logger.warning(
+                "FinBERTEmbedder: device='mps' requested but unavailable; falling back to cpu"
+            )
+            return "cpu"
+        if requested == "cpu":
+            return "cpu"
+        logger.warning(
+            "FinBERTEmbedder: unknown device=%r; falling back to cpu", requested
         )
+        return "cpu"
+
+    def _ensure_loaded(self) -> None:
+        """Lazy-load tokenizer + model on first embed() call.
+
+        Why lazy: the constructor must stay cheap so tests / config-only paths
+        don't pay for a HuggingFace download. Phase 2 plan locked this contract.
+        """
+        if self._model is not None and self._tokenizer is not None:
+            return
+
+        # Lazy imports — heavy deps stay out of import-time cost.
+        from transformers import AutoModel, AutoTokenizer
+        import torch
+
+        resolved_device = self._resolve_device()
+        # Cache resolved device so embed() doesn't re-resolve every call.
+        self._resolved_device = resolved_device
+
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        model = AutoModel.from_pretrained(self.model_name)
+        model.train(False)  # PyTorch's training-flag toggle (NOT Python builtin)
+        model.to(torch.device(resolved_device))
+        self._model = model
+
+    def embed(self, events: List[NewsEvent]) -> np.ndarray:
+        """Embed a list of NewsEvents to a (n, 768) float32 matrix.
+
+        Mean-pools the last hidden state with attention-mask weighting; this
+        is more robust than CLS-token pooling for short headlines (CLS tokens
+        in BERT-family encoders carry less semantic signal without a [CLS]
+        classification objective during pretraining).
+
+        Empty input short-circuits to a zero-row matrix — callers iterating
+        over per-bar event windows hit this constantly.
+        """
+        # Empty input: skip the model entirely. Contract (NewsEmbedder ABC):
+        # shape (0, embedding_dim), dtype float32.
+        if not events:
+            return np.zeros((0, int(self.embedding_dim)), dtype=np.float32)
+
+        self._ensure_loaded()
+
+        import torch
+
+        device = torch.device(self._resolved_device)
+        texts: List[str] = [ev.text for ev in events]
+
+        out_chunks: List[np.ndarray] = []
+        with torch.no_grad():
+            for start in range(0, len(texts), self.batch_size):
+                batch_texts = texts[start : start + self.batch_size]
+                encoded = self._tokenizer(
+                    batch_texts,
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_length,
+                    return_tensors="pt",
+                )
+                input_ids = encoded["input_ids"].to(device)
+                attention_mask = encoded["attention_mask"].to(device)
+                outputs = self._model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                )
+                # last_hidden_state: (batch, seq_len, 768)
+                last_hidden = outputs.last_hidden_state
+                # Mean-pool with attention mask. Mask shape (batch, seq_len);
+                # broadcast to (batch, seq_len, 1) for multiplication.
+                mask = attention_mask.unsqueeze(-1).to(last_hidden.dtype)
+                summed = (last_hidden * mask).sum(dim=1)  # (batch, 768)
+                # Avoid div-by-zero on degenerate all-pad inputs (shouldn't
+                # happen post-tokenization but defensive).
+                token_counts = mask.sum(dim=1).clamp(min=1e-9)
+                pooled = summed / token_counts  # (batch, 768)
+                out_chunks.append(pooled.detach().to("cpu").numpy().astype(np.float32))
+
+        return np.concatenate(out_chunks, axis=0)

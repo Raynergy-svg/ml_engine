@@ -174,6 +174,20 @@ Operator delegated decisions on the open questions. Below are the calls + reason
 
 ---
 
+## 7-corrected. Baseline correction (2026-05-08, post-Phase-5.B)
+
+**The "70% M15 baseline" cited throughout sections 0, 5, and 11 of this doc is INVALID.** It was produced by the broken pre-Phase-2 pipeline (null scaler + lookahead mismatch + primary_tf misalignment). After end-to-end pipeline reconciliation, the corrected baseline is:
+
+- **H1, mean across 7 majors: 52.3%** (`docs/superpowers/plans/2026-05-08-phase5-h1-decision.md` §1)
+- **USD_JPY H1: 62.0%** (9.3σ, tradeable today)
+- **NZD_USD H1: 56.1%** (4.7σ, significant)
+- **5 weak majors at H1: 47.2% – 51.3%** — these are Stage 4-A's targets
+- **M15 mean: ~47.1%** (was claimed 70%)
+
+The Stage 4-A spec at `docs/superpowers/specs/2026-05-08-mtf-news-fusion-stage-4a-spec.md` formalizes the news-fusion validation protocol against these CORRECTED numbers and supersedes §5 ("Validation strategy") of this design doc. The 3pp lift threshold remains; the absolute number it's measured against changes from 70.0% to per-pair H1 baseline.
+
+---
+
 ## 7-original. Open questions for operator (preserved for history)
 
 1. **ForexFactory scrape vs market_intelligence.EconomicCalendar?** The existing runtime path uses `market_intelligence.EconomicCalendar`. Phase 2 can either reuse that module's `fetch_events()` (consistent with runtime) or write a fresh historical-backfill scraper (consistent with deterministic backfill). **Recommendation: reuse `market_intelligence.EconomicCalendar`; add a `fetch_events_historical(since, until)` method if not already present.** Reason: training and runtime should consume the same event tape.
