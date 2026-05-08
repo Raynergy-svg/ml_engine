@@ -1026,8 +1026,19 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
 
     if time_col is not None:
         try:
-            hours = time_col.hour.values.astype(np.float64)
-            dow = time_col.dayofweek.values.astype(np.float64)
+            # 2026-05-08 fix: pd.to_datetime(df['time']) returns a Series, which
+            # exposes .dt.hour, not .hour directly. DatetimeIndex exposes .hour.
+            # Pre-fix this `time_col.hour` raised AttributeError when df had a
+            # 'time' COLUMN (vs index), which was caught silently by line 1043's
+            # except Exception, leaving 7 features missing at inference: hour_sin,
+            # hour_cos, dow_sin, dow_cos, session_london, session_ny, session_overlap.
+            # This was Bug 1 of Bug 3 in docs/superpowers/plans/2026-05-08-ml-validation-broken.md.
+            if hasattr(time_col, "dt"):
+                hours = time_col.dt.hour.values.astype(np.float64)
+                dow = time_col.dt.dayofweek.values.astype(np.float64)
+            else:
+                hours = time_col.hour.values.astype(np.float64)
+                dow = time_col.dayofweek.values.astype(np.float64)
 
             # Cyclical encoding (sin/cos) - captures circular nature of time
             df['hour_sin'] = np.sin(2 * np.pi * hours / 24.0)
