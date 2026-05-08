@@ -28,6 +28,35 @@ Autonomous ML-powered forex trading system. Scans markets, evaluates setups thro
 - "Skipped Z because it's not on the critical path; queued in CHECKPOINT LOG" beats silently dropping it.
 - "The operator brief assumed Y, but disk shows Y'; here's the consequence" beats acting on the stale assumption.
 
+## Modernization stance — stay current with AI advances (May 2026 baseline)
+
+**Standing goal:** keep the ML stack within striking distance of May 2026 SOTA. The bot's competitive edge is the ML signal, not the heuristics. If we fall behind on time-series foundation models / news-fused embeddings / calibrated uncertainty, we're optimizing the wrong thing — like polishing a 19k-param scratch-trained Transformer when 60M-param pretrained foundation models exist that beat it zero-shot.
+
+**Active gap audit (refresh quarterly or when SOTA shifts):**
+
+| Layer | Current | May 2026 SOTA | Gap |
+|---|---|---|---|
+| Direction head | Custom Transformer, scratch-trained, 19k params | Chronos / TimesFM / Moirai (foundation models, 60M-700M params, pretrained on 100B time-series tokens) | LARGE — switch to FM |
+| Confidence | Ridge head + calibration JSON, ad-hoc | Conformal prediction (mapie, crepes) — statistically grounded | MEDIUM — drop-in wrapper |
+| Volatility regime | Heuristic bridge (was leaky TCN) | Heuristic acceptable; could use FM forecasted-vol if direction-head FM works | SMALL |
+| Macro/news signal | NONE | FinBERT / text-embedding-3 fused to price | LARGE — needs data plumbing |
+| Sequence length | 60-bar context | 1024+ via state-space models (Mamba) | SMALL — not the bottleneck |
+| Sizing/decision | Decoupled prediction + DynamicPositionSizer | Decision Transformer / offline RL on trade journal | DEFER — needs >5K trades first |
+
+**Investment priority (revisit as data accumulates):**
+1. **Foundation-model direction head** (drop-in for current Transformer; smallest blast radius, highest signal)
+2. **News/macro embedding pipeline** (only if P1 ceiling-bound)
+3. **Conformal prediction confidence layer** (replaces leaky head + calibration JSON in one shot)
+4. **State-space models** (defer — not the bottleneck)
+5. **Decision Transformer** (defer — needs trade journal volume)
+
+**Non-goals (explicitly):**
+- Don't optimize the existing custom Transformer architecture beyond bug fixes (C1.A and similar). It's the wrong horse.
+- Don't ship "we built our own" when pretrained alternatives exist. The market for ML-trading-bots is decided by edge size, not bespoke implementation.
+- Don't research-tour. Pick the highest-priority gap, wire the simplest version, measure, iterate. 1 session to first foundation-model holdout number, not 1 month to perfect.
+
+**Keep:** W&B control plane, walk-forward validation, EMA/SWA training tricks, the meta-pipeline / Tier 7 control loop, heuristic bridges as fallback, per-pair routing. These are good. Modernization replaces models, not infrastructure.
+
 ## Architecture
 ```
 Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py) → OANDA
