@@ -34,7 +34,8 @@ import pickle
 import sys
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from datetime import timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -304,6 +305,18 @@ class GateEvaluator:
         self._transformer_pipeline_version: Optional[str] = None
         # Dedup flag for inference-time feature mismatch warnings.
         self._warned_transformer_contract_mismatch = False
+
+        # Stage 4-A news fusion inference contract (2026-05-08). All None
+        # for price-only models (default); populated by _load_transformer_contract
+        # when meta has news_pca. The lazy-init NewsSource/Embedder are
+        # shared across pairs (singleton per GateEvaluator).
+        self._transformer_news_pca = None
+        self._transformer_news_event_class_count_columns: List[str] = []
+        self._transformer_news_lookback_window_hours: Optional[int] = None
+        self._transformer_news_pca_n_components: Optional[int] = None
+        self._news_source = None
+        self._news_embedder = None
+        self._warned_news_contract_gap = False
 
         # Track which model is active for momentum
         self._momentum_model_type: str = "none"
@@ -1103,6 +1116,14 @@ class GateEvaluator:
         self._transformer_regime_quantiles = meta.get("regime_quantiles")
         self._transformer_regime_atr_col = meta.get("regime_atr_col") or "atr_pct_20"
         self._transformer_pipeline_version = meta.get("feature_pipeline_version")
+        # Stage 4-A news fusion contract (2026-05-08). All four are None for
+        # price-only models (default); populated for news-fused models.
+        self._transformer_news_pca = meta.get("news_pca")
+        self._transformer_news_event_class_count_columns = (
+            meta.get("news_event_class_count_columns") or []
+        )
+        self._transformer_news_lookback_window_hours = meta.get("news_lookback_window_hours")
+        self._transformer_news_pca_n_components = meta.get("news_pca_n_components")
 
         if (
             self._transformer_pipeline_version is not None
@@ -1689,10 +1710,120 @@ class GateEvaluator:
             logger.debug(f"RF risk prediction failed: {e}")
             return 0.02, 0.5
 
+    def _get_news_source(self):
+        """Lazy-init the FF news source (singleton per evaluator)."""
+        if self._news_source is None:
+            try:
+                from src.data.news.source import ForexFactoryNewsSource
+                # Reuse the same parquet cache the trainer-side backfill wrote to.
+                self._news_source = ForexFactoryNewsSource(cache_dir="trained_data/news")
+            except Exception as e:
+                self._log_news_contract_gap(f"failed to init NewsSource: {e}")
+                return None
+        return self._news_source
+
+    def _get_news_embedder(self):
+        """Lazy-init the FinBERT embedder (singleton per evaluator)."""
+        if self._news_embedder is None:
+            try:
+                from src.data.news.embedder import FinBERTEmbedder
+                # device='cpu' by default for inference safety; users with M1
+                # Metal can pre-set self._news_embedder before scan to use 'mps'.
+                self._news_embedder = FinBERTEmbedder(device="cpu")
+            except Exception as e:
+                self._log_news_contract_gap(f"failed to init NewsEmbedder: {e}")
+                return None
+        return self._news_embedder
+
+    def _log_news_contract_gap(self, reason: str) -> None:
+        """Dedup-warn once per evaluator instance about an inference news contract gap."""
+        if not self._warned_news_contract_gap:
+            logger.warning(
+                "Transformer news-fusion contract gap: %s. Predictions for "
+                "news-enabled models will fall back to (None, 0.5). Fix by "
+                "ensuring trained_data/news/ has the parquet cache and "
+                "FinBERT model is downloadable.",
+                reason,
+            )
+            self._warned_news_contract_gap = True
+
+    def _compute_news_features_for_inference(
+        self,
+        norm_features: pd.DataFrame,
+        instrument: Optional[str],
+        seq_len: int,
+    ) -> Optional[np.ndarray]:
+        """Build the (n_rows, k_pca + 8) news block for ALL rows in norm_features.
+
+        Returns shape matching `norm_features` so the caller can column-stack
+        with price features and slice the last seq_len at the end. None on any
+        failure (logged via dedup helper).
+        """
+        if self._transformer_news_pca is None:
+            return None  # Price-only model, not a contract gap
+        if instrument is None:
+            self._log_news_contract_gap("instrument required for news fetch but not passed")
+            return None
+
+        # Bar timestamps for ALL rows in norm_features.
+        try:
+            if isinstance(norm_features.index, pd.DatetimeIndex):
+                bar_ts = norm_features.index.to_pydatetime().tolist()
+            elif "time" in norm_features.columns:
+                bar_ts = pd.to_datetime(norm_features["time"], utc=True).dt.to_pydatetime().tolist()
+            else:
+                self._log_news_contract_gap("no DatetimeIndex or 'time' col for news bar_ts")
+                return None
+        except Exception as e:
+            self._log_news_contract_gap(f"bar timestamp extraction failed: {e}")
+            return None
+
+        if len(bar_ts) < seq_len:
+            self._log_news_contract_gap(f"only {len(bar_ts)} bar timestamps; need {seq_len}")
+            return None
+
+        src = self._get_news_source()
+        emb = self._get_news_embedder()
+        if src is None or emb is None:
+            return None
+
+        # Fetch + embed
+        lookback_h = self._transformer_news_lookback_window_hours or 24
+        try:
+            since = bar_ts[0] - timedelta(hours=lookback_h)
+            until = bar_ts[-1] + timedelta(hours=1)
+            events = src.fetch_events(instrument, since, until)
+            embeddings = (
+                emb.embed(events) if events
+                else np.empty((0, emb.embedding_dim), dtype=np.float32)
+            )
+        except Exception as e:
+            self._log_news_contract_gap(f"news fetch/embed failed: {e}")
+            return None
+
+        try:
+            from src.data.news.feature_alignment import align_news_to_bars
+            aligned = align_news_to_bars(events, bar_ts, embeddings, lookback_h)
+        except Exception as e:
+            self._log_news_contract_gap(f"align_news_to_bars failed: {e}")
+            return None
+
+        # PCA-transform first 768 cols; concat with 8-dim event-class counts
+        try:
+            pca = self._transformer_news_pca
+            embed_block = aligned[:, : emb.embedding_dim]
+            ec_block = aligned[:, emb.embedding_dim :]
+            pca_block = pca.transform(embed_block)
+            return np.hstack([pca_block, ec_block]).astype(np.float32)
+        except Exception as e:
+            self._log_news_contract_gap(f"PCA.transform failed: {e}")
+            return None
+
     def evaluate_transformer(
         self,
         features: pd.DataFrame,
         seq_len: int = 60,
+        instrument: Optional[str] = None,
     ) -> Tuple[Optional[str], float]:
         """Evaluate Transformer direction gate.
 
@@ -1702,9 +1833,17 @@ class GateEvaluator:
         and apply the saved scaler. Pre-Phase-2.A artifacts (no contract) hit
         the legacy path which is known broken — see audit doc.
 
+        Stage 4-A (2026-05-08): for news-fused models (saved with `news_pca`
+        in meta), the inference matrix builder also fetches live news for
+        `instrument`, embeds via FinBERT, aligns to bars, and PCA-transforms
+        with the saved frozen PCA. Price-only models (news_pca=None) skip
+        this and behave exactly as Phase 2.B.
+
         Args:
             features: DataFrame with engineered features
             seq_len: Sequence length for Transformer input
+            instrument: Currency pair (e.g. "EUR_USD"); required for news-
+                fused models, ignored for price-only models.
 
         Returns:
             Tuple of (direction, probability):
@@ -1730,7 +1869,8 @@ class GateEvaluator:
             # that ordering and compute regime one-hots from saved quantiles.
             if self._transformer_feature_names is not None:
                 X = self._build_transformer_inference_matrix(
-                    norm_features, self._transformer_feature_names, seq_len
+                    norm_features, self._transformer_feature_names, seq_len,
+                    instrument=instrument,
                 )
                 if X is None:
                     return None, 0.5
@@ -1771,6 +1911,7 @@ class GateEvaluator:
         norm_features: pd.DataFrame,
         feature_names: list,
         seq_len: int,
+        instrument: Optional[str] = None,
     ) -> Optional[np.ndarray]:
         """Assemble the (seq_len, len(feature_names)) inference matrix.
 
@@ -1780,6 +1921,11 @@ class GateEvaluator:
         regime_atr_col. Refuses (returns None) on any required column that's
         unavailable — silent zero-fill is forbidden because it would hide
         contract drift.
+
+        Stage 4-A (2026-05-08): for pca_*/ec_* columns, fetches live news for
+        `instrument` and computes the news block via
+        `_compute_news_features_for_inference`. Computes once (lazily) on
+        first pca_/ec_ col seen and indexes into it for subsequent cols.
         """
         n_rows = len(norm_features)
         if n_rows < seq_len:
@@ -1788,8 +1934,45 @@ class GateEvaluator:
         regime_cols = ("regime_low", "regime_normal", "regime_high", "regime_extreme")
         regime_class_idx = {name: i for i, name in enumerate(regime_cols)}
 
+        # Lazy news block: computed once on first pca_/ec_ col encountered.
+        news_block: Optional[np.ndarray] = None
+        news_pca_count = self._transformer_news_pca_n_components or 0
+
         cols: list[np.ndarray] = []
         for name in feature_names:
+            # === Stage 4-A news features ===
+            if name.startswith("pca_") or name.startswith("ec_"):
+                if news_block is None:
+                    news_block = self._compute_news_features_for_inference(
+                        norm_features, instrument, seq_len
+                    )
+                    if news_block is None:
+                        # _compute_news_features_for_inference logged the gap.
+                        return None
+                try:
+                    idx = int(name.split("_", 1)[1])
+                except (IndexError, ValueError):
+                    self._log_news_contract_gap(f"malformed news col name '{name}'")
+                    return None
+                if name.startswith("pca_"):
+                    if idx >= news_pca_count or idx >= news_block.shape[1]:
+                        self._log_news_contract_gap(
+                            f"pca col '{name}' index {idx} out of range "
+                            f"(news_block shape {news_block.shape}, "
+                            f"news_pca_count {news_pca_count})"
+                        )
+                        return None
+                    cols.append(news_block[:, idx].astype(np.float32))
+                else:  # ec_*
+                    ec_offset = news_pca_count + idx
+                    if ec_offset >= news_block.shape[1]:
+                        self._log_news_contract_gap(
+                            f"ec col '{name}' offset {ec_offset} out of range "
+                            f"(news_block shape {news_block.shape})"
+                        )
+                        return None
+                    cols.append(news_block[:, ec_offset].astype(np.float32))
+                continue
             if name in norm_features.columns:
                 cols.append(norm_features[name].values.astype(np.float32))
             elif name in regime_class_idx:
@@ -1991,7 +2174,9 @@ class GateEvaluator:
         risk_passed = drawdown <= max_drawdown_pct
 
         # Evaluate advanced gates
-        transformer_direction, transformer_prob = self.evaluate_transformer(features)
+        transformer_direction, transformer_prob = self.evaluate_transformer(
+            features, instrument=instrument
+        )
         transformer_passed = transformer_prob >= min_transformer_prob if transformer_direction else True
 
         # Meta-labeler requires a direction from transformer or fallback
