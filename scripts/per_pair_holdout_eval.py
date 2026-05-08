@@ -42,10 +42,10 @@ DEFAULT_PAIRS = [
 
 
 def evaluate_one(evaluator, pair: str, oanda, candles: int, windows: int,
-                 lookahead: int) -> dict:
+                 lookahead: int, granularity: str = "M15") -> dict:
     """Fetch + predict + compare for one pair. Returns metrics dict."""
     try:
-        candles_raw = oanda.get_candles(pair, granularity="M15", count=candles)
+        candles_raw = oanda.get_candles(pair, granularity=granularity, count=candles)
         if isinstance(candles_raw, dict):
             rows = []
             for c in candles_raw.get("candles", []):
@@ -132,24 +132,32 @@ def evaluate_one(evaluator, pair: str, oanda, candles: int, windows: int,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pairs", default=",".join(DEFAULT_PAIRS))
+    ap.add_argument("--granularity", default="M15",
+                    help="OANDA candle granularity (default M15)")
     ap.add_argument("--candles", type=int, default=800,
-                    help="M15 candles to fetch per pair (default 800 = ~8 days)")
+                    help="Candles to fetch per pair (default 800)")
     ap.add_argument("--windows", type=int, default=300,
                     help="Test windows per pair (default 300; needs candles >= windows + lookahead)")
     ap.add_argument("--lookahead", type=int, default=24,
                     help="Bars forward for direction label (default 24, matches trainer)")
     ap.add_argument("--report", type=Path,
-                    default=REPO_ROOT / "trained_data" / "m15_per_pair_eval.json")
+                    default=REPO_ROOT / "trained_data" / "per_pair_eval.json")
     args = ap.parse_args()
 
     pairs = [p.strip() for p in args.pairs.split(",") if p.strip()]
-    log.info("Evaluating %d pairs at M15, lookahead=%d, windows=%d",
-             len(pairs), args.lookahead, args.windows)
+    log.info("Evaluating %d pairs at %s, lookahead=%d, windows=%d",
+             len(pairs), args.granularity, args.lookahead, args.windows)
 
     from src.scanner.gates import GateEvaluator
     from src.utils.oanda_practice import OandaPracticeClient
 
-    evaluator = GateEvaluator(model_dir=str(REPO_ROOT / "trained_data" / "models"))
+    # CRITICAL: use_per_pair_routing=True so the evaluator routes each pair
+    # to its own per-pair model (the C1.A scaler-valid ones). Default False
+    # falls back to the joint model which is scaler-null and predicts all-SHORT.
+    evaluator = GateEvaluator(
+        model_dir=str(REPO_ROOT / "trained_data" / "models"),
+        use_per_pair_routing=True,
+    )
     load_status = evaluator.load_models(require_tcn=False)
     log.info("GateEvaluator loaded: %s", load_status)
     oanda = OandaPracticeClient.from_env()
@@ -157,7 +165,8 @@ def main() -> int:
     results = []
     for pair in pairs:
         log.info("=== %s ===", pair)
-        res = evaluate_one(evaluator, pair, oanda, args.candles, args.windows, args.lookahead)
+        res = evaluate_one(evaluator, pair, oanda, args.candles, args.windows,
+                           args.lookahead, args.granularity)
         if "accuracy" in res:
             log.info("  acc=%.1f%% long=%.1f%% short=%.1f%% n=%d  %s",
                      100 * res["accuracy"], 100 * res["long_accuracy"],
