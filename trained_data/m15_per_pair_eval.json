@@ -1,0 +1,90 @@
+{
+  "candles": 5000,
+  "gate": 0.52,
+  "lookahead": 24,
+  "results": [
+    {
+      "accuracy": 0.44866666666666666,
+      "long_accuracy": 0.3036723163841808,
+      "n_correct": 673,
+      "n_predictions": 1500,
+      "pair": "EUR_USD",
+      "passed_gate": false,
+      "short_accuracy": 0.5782828282828283
+    },
+    {
+      "accuracy": 0.5113333333333333,
+      "long_accuracy": 0.89125,
+      "n_correct": 767,
+      "n_predictions": 1500,
+      "pair": "EUR_JPY",
+      "passed_gate": false,
+      "short_accuracy": 0.07714285714285714
+    },
+    {
+      "accuracy": 0.446,
+      "long_accuracy": 0.23418573351278602,
+      "n_correct": 669,
+      "n_predictions": 1500,
+      "pair": "GBP_USD",
+      "passed_gate": false,
+      "short_accuracy": 0.6538969616908851
+    },
+    {
+      "accuracy": 0.43666666666666665,
+      "long_accuracy": 0.04523809523809524,
+      "n_correct": 655,
+      "n_predictions": 1500,
+      "pair": "USD_JPY",
+      "passed_gate": false,
+      "short_accuracy": 0.9348484848484848
+    },
+    {
+      "accuracy": 0.49933333333333335,
+      "long_accuracy": 0.28475935828877,
+      "n_correct": 749,
+      "n_predictions": 1500,
+      "pair": "USD_CHF",
+      "passed_gate": false,
+      "short_accuracy": 0.7127659574468085
+    },
+    {
+      "accuracy": 0.416,
+      "long_accuracy": 0.35471204188481675,
+      "n_correct": 624,
+      "n_predictions": 1500,
+      "pair": "AUD_USD",
+      "passed_gate": false,
+      "short_accuracy": 0.4796195652173913
+    },
+    {
+      "accuracy": 0.5066666666666667,
+      "long_accuracy": 0.3797953964194373,
+      "n_correct": 760,
+      "n_predictions": 1500,
+      "pair": "USD_CAD",
+      "passed_gate": false,
+      "short_accuracy": 0.6448467966573816
+    },
+    {
+      "accuracy": 0.44666666666666666,
+      "long_accuracy": 0.3535762483130904,
+      "n_correct": 670,
+      "n_predictions": 1500,
+      "pair": "NZD_USD",
+      "passed_gate": false,
+      "short_accuracy": 0.5375494071146245
+    },
+    {
+      "accuracy": 0.5273333333333333,
+      "long_accuracy": 0.9095477386934674,
+      "n_correct": 791,
+      "n_predictions": 1500,
+      "pair": "GBP_JPY",
+      "passed_gate": true,
+      "short_accuracy": 0.09517045454545454
+    }
+  ],
+  "ts": "2026-05-08T10:05:07.259198+00:00",
+  "windows": 1500
+}
