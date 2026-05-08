@@ -79,12 +79,19 @@ def evaluate_one(evaluator, pair: str, oanda, candles: int, windows: int,
     if feat is None or len(feat) < lookahead + windows:
         return {"pair": pair, "error": "insufficient features"}
 
-    # Walk-forward eval at 24-bar lookahead
+    # Walk-forward eval at 24-bar lookahead.
+    # CRITICAL: pass seq_len=60 rolling-window DataFrames to evaluate_all_gates;
+    # passing single-row DataFrames bypasses the transformer (returns None) and
+    # falls back to momentum/SHORT — which is what was making every holdout
+    # number bogus.
+    SEQ_LEN = 60
     correct = 0
     total = 0
     long_correct, long_total, short_correct, short_total = 0, 0, 0, 0
-    for i in range(len(feat) - lookahead - windows, len(feat) - lookahead):
-        row = feat.iloc[i:i + 1]
+    start = max(SEQ_LEN, len(feat) - lookahead - windows)
+    end = len(feat) - lookahead
+    for i in range(start, end):
+        row = feat.iloc[i - SEQ_LEN + 1:i + 1]  # 60-bar context window
         future_close = df["close"].iloc[i + lookahead]
         current_close = df["close"].iloc[i]
         actual_dir = "LONG" if future_close > current_close else "SHORT"

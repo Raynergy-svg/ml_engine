@@ -449,15 +449,22 @@ def validate_holdout_accuracy(
                 # Check direction predictions against actual price movement
                 # C1 Option G fix (2026-05-07): HOLDOUT_LOOKAHEAD must match the
                 # trainer's lookahead default at src/training/buddy_training_helpers.py:536
-                # (currently 24). Pre-fix used hardcoded 5 which produced a 4.8x
-                # train/eval label-horizon mismatch and was the actual cause of
-                # the 44% holdout blocking promotion since Apr 16. See
-                # docs/superpowers/plans/2026-05-07-track-C1-h1-asymmetry.md
-                # for the full trace + Option H (architectural follow-up).
+                # (currently 24).
+                #
+                # CRITICAL fix (2026-05-08): the loop was passing single-row
+                # DataFrames to evaluate_all_gates → evaluate_transformer, which
+                # requires seq_len=60 rows of context. Single rows triggered the
+                # `len(features) < seq_len` early-return, the gate fell back to
+                # momentum/default SHORT, and ALL holdout numbers (since the
+                # script was written) were the fallback predictor's accuracy on
+                # whatever the test slice's LONG/SHORT class balance happened to
+                # be — NOT the trained model. We now pass proper rolling 60-bar
+                # windows so the transformer actually evaluates each prediction.
                 HOLDOUT_LOOKAHEAD = 24
+                HOLDOUT_SEQ_LEN = 60  # MUST match transformer_trainer's default
                 n_errors = 0
-                for i in range(min(len(features) - HOLDOUT_LOOKAHEAD, 200)):  # cap at 200 for speed
-                    row = features.iloc[i : i + 1]
+                for i in range(HOLDOUT_SEQ_LEN, min(len(features) - HOLDOUT_LOOKAHEAD, 200 + HOLDOUT_SEQ_LEN)):  # start after warmup
+                    row = features.iloc[i - HOLDOUT_SEQ_LEN + 1 : i + 1]  # 60-bar context window
                     future_close = test_df["close"].iloc[min(i + HOLDOUT_LOOKAHEAD, len(test_df) - 1)]
                     current_close = test_df["close"].iloc[i]
                     actual_dir = "LONG" if future_close > current_close else "SHORT"
