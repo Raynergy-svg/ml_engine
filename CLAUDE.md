@@ -199,6 +199,26 @@ Buddy is a **student** doing supervised study of past trades. Closed trades beco
 
 Latest deep audit + upgrade roadmap: `docs/ml_architecture_audit_2026-04-30.md`.
 
+## Inference contract (Phase 2.A+B — 2026-05-08)
+
+The trained model's saved meta sidecar (`transformer_direction.meta.pkl`) is a contract: it tells the inference path everything needed to reproduce the training-time feature distribution. Any drift between training and inference produces silent OOD predictions. Pre-Phase-2 the contract was implicit and broken; Phase 2.A+B made it explicit and enforced.
+
+**Required keys saved by trainer, read by `gates._load_transformer`:**
+
+| Key | Purpose |
+|---|---|
+| `feature_names` | Authoritative column order (50 named features). Inference builds X strictly via this order, not via `select_dtypes` of the compute output. |
+| `scaler` | Fitted `StandardScaler` with REAL per-column stats (not the identity-fingerprint `var_=1.0±1e-9` pattern). Subsetted from the full-feature fit via `_subset_scaler`, never refit on already-scaled data. |
+| `regime_quantiles` | `{q25, q50, q75}` from training-time ATR distribution. Inference uses these to compute `regime_low/normal/high/extreme` one-hots from the live `regime_atr_col`, reproducing the same per-row classification the model was trained on. |
+| `regime_atr_col` | Which atr feature (`atr_pct_20` or `atr_pct_14`) drove the quantiles. |
+| `feature_pipeline_version` | Semver string (`2026-05-08-v1` and onward). `gates` refuses to use models with a version that doesn't match the runtime constant in `src/core/modular_data_loaders.py`. Bump on any change to `compute_normalized_features` or `load_direction_data` feature columns. |
+
+**Inference path (post Phase 2.B):** `gates.evaluate_transformer` → `compute_normalized_features` → `_build_transformer_inference_matrix(feature_names)` → for each name, take from compute output OR compute regime one-hot from saved quantiles OR refuse (no silent zero-fill) → apply saved `scaler.transform()` → keras predict.
+
+**Tripwires:** `_assert_scaler_not_identity` fires ERROR if a fitted scaler has `var_=1.0±1e-9` for >50% of features (catches future regressions of the double-fit bug). At inference, any missing required column logs a contract gap warning and returns `(None, 0.5)`.
+
+Audit: `docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md`. Promoted gates: `.claude/rules/improvement.md` "Train↔Inference Contract Gates".
+
 ## News/macro pipeline (P1 — May 2026 modernization promotion)
 
 Promoted from P2 to P1 in the May 2026 modernization roadmap (see "Modernization stance" section above). The price-only direction-prediction holdout has plateaued at ~70.0% on M15 EUR_USD/GBP_USD across architectures (custom Transformer, Chronos-T5-small/base zero-shot). News/macro fusion is the remaining lever to break 70%.
