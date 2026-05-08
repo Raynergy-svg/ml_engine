@@ -472,7 +472,11 @@ class ScannerConfig:
 
     # Data fetching
     lookback_candles: int = 200
-    granularity: str = "H1"
+    # 2026-05-07: switched H1 → M15 default. M15 24-bar-forward direction
+    # holdout = 69.2% (validated 22-month window); H1 24-bar = ~49% across
+    # all architectures (custom Transformer + Chronos foundation models).
+    # The operative trading TF is M15; H1 was the noise floor.
+    granularity: str = "M15"
     profile: str = SCAN_PROFILE_BALANCED
 
     # Interactive mode

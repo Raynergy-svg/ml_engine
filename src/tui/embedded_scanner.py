@@ -186,7 +186,13 @@ class EmbeddedScanner:
             self._config = ScannerConfig.from_cli_args(
                 config_path=None,
                 pairs=None,         # uses profile defaults
-                granularity="H1",
+                # Switched H1 → M15 on 2026-05-07: M15-trained model holdout
+                # 69.2% validated over 22 months of data (vs ~50% on H1 across
+                # all architectures incl. Chronos foundation models). M15
+                # 24-bar-forward direction is the operative trading horizon.
+                # See docs/superpowers/plans/2026-05-05-...-roadmap.md
+                # CHECKPOINT LOG entry "2026-05-07 ~21:00".
+                granularity="M15",
                 top_n=5,
                 profile="smart",
                 force=True,         # skip session filter
