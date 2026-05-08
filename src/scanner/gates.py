@@ -2111,6 +2111,16 @@ class GateEvaluator:
         if instrument and getattr(self, "use_per_pair_routing", False):
             sub = self._get_pair_evaluator(instrument)
             if sub is not self:
+                # Stage 4-A fix (2026-05-08): pass instrument through to the
+                # sub so news-fused models can fetch their per-pair news for
+                # PCA.transform at inference. Recursion is safe because
+                # _get_pair_evaluator builds the sub with
+                # use_per_pair_routing=False (line 394-398), so the routing
+                # check above will short-circuit on the sub's call. Pre-fix
+                # we passed instrument=None which prevented news fetch and
+                # caused the contract-gap warning + (None, 0.5) fallback,
+                # which the gate then sometimes rubber-stamped via the
+                # all-SHORT momentum fallback (revival of the Phase 4 bug).
                 return sub.evaluate_all_gates(
                     features,
                     min_confidence=min_confidence,
@@ -2118,7 +2128,7 @@ class GateEvaluator:
                     max_drawdown_pct=max_drawdown_pct,
                     min_transformer_prob=min_transformer_prob,
                     min_meta_confidence=min_meta_confidence,
-                    instrument=None,
+                    instrument=instrument,
                     regime_name=regime_name,
                     regime_conditional_gates_enabled=regime_conditional_gates_enabled,
                 )

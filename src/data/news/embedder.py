@@ -165,6 +165,18 @@ class FinBERTEmbedder(NewsEmbedder):
         from transformers import AutoModel, AutoTokenizer
         import torch
 
+        # Stage 4-A inference fix (2026-05-08): pin torch to single-threaded.
+        # When TF is loaded in the same process (gates.py loads keras models
+        # via TF), the dual-libomp situation deadlocks PyTorch's index_select
+        # in the embedding layer — sample stack: __kmpc_fork_call → workers
+        # blocked on _pthread_cond_wait, never wake. Pinning threads to 1
+        # bypasses the parallel_for path that triggers the deadlock. Cost is
+        # ~2× single-call latency (still ~6ms/headline on CPU), but reliability
+        # absolutely matters here. Verified empirically: with this in place,
+        # FinBERT.embed runs to completion under TF coexistence; without it,
+        # the inference loop hangs indefinitely.
+        torch.set_num_threads(1)
+
         resolved_device = self._resolve_device()
         # Cache resolved device so embed() doesn't re-resolve every call.
         self._resolved_device = resolved_device
