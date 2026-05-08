@@ -36,19 +36,24 @@ Autonomous ML-powered forex trading system. Scans markets, evaluates setups thro
 
 | Layer | Current | May 2026 SOTA | Gap |
 |---|---|---|---|
-| Direction head | Custom Transformer, scratch-trained, 19k params | Chronos / TimesFM / Moirai (foundation models, 60M-700M params, pretrained on 100B time-series tokens) | LARGE — switch to FM |
+| Direction head | Custom Transformer, M15-trained (70.0% holdout, 22-month validated) | Chronos / TimesFM / Moirai (foundation models, 60M-700M params) | **SMALL — empirically tested, FM zero-shot underperforms by 20pp+ on this task at this timeframe** |
 | Confidence | Ridge head + calibration JSON, ad-hoc | Conformal prediction (mapie, crepes) — statistically grounded | MEDIUM — drop-in wrapper |
-| Volatility regime | Heuristic bridge (was leaky TCN) | Heuristic acceptable; could use FM forecasted-vol if direction-head FM works | SMALL |
-| Macro/news signal | NONE | FinBERT / text-embedding-3 fused to price | LARGE — needs data plumbing |
+| Volatility regime | Heuristic bridge (was leaky TCN) | Heuristic acceptable | SMALL |
+| Macro/news signal | NONE | FinBERT / text-embedding-3 fused to price | **LARGE — the actual remaining lever to push past 70% M15** |
+| Pair coverage | EUR_USD, GBP_USD M15-trained | All 16 majors+crosses at M15 | OPERATIONAL — retrain remaining pairs at `--granularity M15 --candles 65000` |
 | Sequence length | 60-bar context | 1024+ via state-space models (Mamba) | SMALL — not the bottleneck |
 | Sizing/decision | Decoupled prediction + DynamicPositionSizer | Decision Transformer / offline RL on trade journal | DEFER — needs >5K trades first |
 
-**Investment priority (revisit as data accumulates):**
-1. **Foundation-model direction head** (drop-in for current Transformer; smallest blast radius, highest signal)
-2. **News/macro embedding pipeline** (only if P1 ceiling-bound)
-3. **Conformal prediction confidence layer** (replaces leaky head + calibration JSON in one shot)
-4. **State-space models** (defer — not the bottleneck)
-5. **Decision Transformer** (defer — needs trade journal volume)
+**Investment priority (revised 2026-05-08 based on empirical evidence):**
+1. **News/macro embedding pipeline** — promoted from P2. The only remaining lever once data alignment is fixed; price-only ceiling appears to be ~70% on M15 EUR_USD/GBP_USD across all architectures we tested (custom Transformer, Chronos-T5-small zero-shot, Chronos-T5-base zero-shot at h=24 and h=5).
+2. **Pair expansion at M15** — operational, not architectural. Retrain remaining majors (USD_JPY, USD_CHF, AUD_USD, USD_CAD, NZD_USD) at `--granularity M15 --candles 65000`. Each adds a tradeable instrument; ~3 min per pair on M1 Metal.
+3. **Conformal prediction confidence layer** — replaces leaky confidence head + calibration JSON in one shot.
+4. ~~Foundation-model direction head~~ — **DEMOTED**. Chronos-T5-small (60M, zero-shot, h=24) = 44.5%; Chronos-T5-base (200M, zero-shot, h=24) = 46.0%; current custom Transformer (19k params, M15-trained, fixed) = 70.0%. 4× model scale produced +1.5pp. The bottleneck was 3 bugs in the data/training/holdout pipeline (scaler null, lookahead mismatch, primary_tf misalignment), not model class. Fine-tuning Chronos may add marginal signal but not the strategic unlock.
+5. **State-space models** (defer — not the bottleneck)
+6. **Decision Transformer** (defer — needs trade journal volume)
+
+**Key lesson from the May 2026 modernization audit:**
+We assumed the model architecture was the modernization gap. The data showed otherwise — three bugs in data alignment masqueraded as a model-quality problem. Always test the assumption that "we need a better model" against "we have the data wrong" first. A 19k-param model with correct data beats a 200M-param model with wrong data by 20+ percentage points.
 
 **Non-goals (explicitly):**
 - Don't optimize the existing custom Transformer architecture beyond bug fixes (C1.A and similar). It's the wrong horse.
