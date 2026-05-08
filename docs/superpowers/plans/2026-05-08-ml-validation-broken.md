@@ -38,11 +38,36 @@ ValueError: X has 58 features, but StandardScaler is expecting 50 features as in
 
 The trainer saved `feature_names` with 50 features. `compute_normalized_features` at inference produces 59 columns. The trainer's predict() at `src/training/trainers/transformer_trainer.py:2860-2877` tries feature selection via `self.selected_indices` but the indices are out-of-range.
 
-Likely cause: `compute_normalized_features` was modified between training and inference (extra features added), but the trained model's `selected_indices` references column indices that no longer exist in the feature matrix.
+**Diagnostic complete (2026-05-08 00:30):** verified via direct meta inspection. The model expects 50 features selected from a 64-column training matrix. Current `compute_normalized_features` produces 58 columns. `max(selected_indices)=63` is out-of-range for the 58-column inference matrix.
+
+**Schema drift breakdown:**
+
+11 features the trained model expects, NO LONGER in current pipeline:
+- Time-of-day: `dow_cos, dow_sin, hour_cos, hour_sin` (4 cyclical encodings)
+- Volatility regime: `regime_extreme, regime_high, regime_low, regime_normal` (4 one-hot from TCN)
+- FX session: `session_london, session_ny, session_overlap` (3 one-hot)
+
+19 features in current pipeline NOT in trained model:
+- Raw OHLCV: `open, high, low, close, volume` (5 — likely shouldn't be features at all)
+- Return variants: `returns_1, returns_2, returns_3, log_returns_1`
+- RSI variants: `rsi, rsi_norm, rsi_overbought, rsi_oversold`
+- Other: `body_pct, body_ratio, pct_rank_10, stoch_k, upper_wick_ratio, zscore_10`
+
+The trained model loses access to **session timing, time-of-day cycle, and TCN-derived regime context** — three feature classes that are EXTREMELY informative for FX direction (NFP-day vs Asian-quiet, London-NY overlap volatility, regime-conditional drift).
 
 Until fixed: every model.predict() call at runtime AND in eval throws an exception, gets caught by `evaluate_transformer`'s `except Exception`, returns `(None, 0.5)`, falls back to SHORT.
 
 **Implication:** the bot has been unable to actually use any of its trained transformer models since the feature-count drift occurred. Halt=true was the correct posture.
+
+**Three fix options:**
+
+| Option | What | Pros | Cons |
+|---|---|---|---|
+| **3.A — Restore the 11 missing features** in `compute_normalized_features` (re-add session/regime/time-of-day calculations) | Preserves trained model artifacts; recovers FX-critical features lost in some prior refactor | Requires understanding WHY those features were removed; may break other consumers that adapted to the leaner schema |
+| **3.B — Retrain everything** with the current 58-feature matrix; save proper `selected_indices` for the new schema | Simplest path; uses the schema we have | All currently-trained per-pair models are obsoleted; ~30 min retrain × 16 pairs = ~8 hours; loses the 11 information-rich features the architect originally chose |
+| **3.C — Use saved `feature_names` to align inference to training** — subset+reorder current features to match saved 50, fill missing with 0 | No retraining needed; quick fix | Model sees zeros for 11 features it was trained on; effective signal capacity drops; may degrade accuracy materially |
+
+**Recommended: 3.A.** The 11 missing features are not luxury — they're the kind of context FX direction prediction depends on. Restore them, document why they were removed (probably by mistake or in a refactor that didn't re-validate), keep the trained model artifacts.
 
 ---
 
