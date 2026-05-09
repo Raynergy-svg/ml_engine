@@ -523,6 +523,126 @@ def get_quick_sweep_config() -> SweepConfig:
     )
 
 
+def get_transformer_direction_sweep_config(
+    pair: str = "USD_JPY",
+    granularity: str = "H1",
+    candles: int = 25000,
+    lookahead: int = 24,
+) -> SweepConfig:
+    """Sweep config for the TransformerDirectionTrainer (master-pair tuning).
+
+    Phase 5.D Stage 4-A follow-up (2026-05-08): per-master-pair hyperparameter
+    tuning to push past the price-only ceiling without requiring news fusion.
+    Path 4 OOS validation already showed signal exists for the masters; this
+    sweep tries to push accuracy higher by tuning architecture + regularization.
+
+    Search space prioritizes the levers most likely to help small-data
+    direction prediction:
+      - depth/width (d_model, num_layers, dff) — capacity floor
+      - dropout — regularization knob (we saw overfitting at default 0.2)
+      - LR + batch_size — convergence quality
+      - top_k_features + ewc_lambda — feature selection + continual-learning
+        regularization
+      - patience — early-stop aggressiveness
+
+    Bayesian + Hyperband: ~30 trials reach near-optimal with early-termination
+    of underperformers. Per-trial cost ~5 min; total ~2.5h per pair on M1.
+
+    The runner is `scripts/run_transformer_direction_sweep.py`.
+    """
+    return SweepConfig(
+        name=f"buddy_transformer_{pair.lower()}_{granularity.lower()}",
+        project="buddy-master-tuning",
+        method="bayes",
+        description=(
+            f"Transformer direction-head Bayesian sweep on {pair}@{granularity}, "
+            f"{candles} candles, lookahead={lookahead}. Metric: val_balanced_accuracy."
+        ),
+        metric=SweepMetric(name="val_balanced_accuracy", goal="maximize"),
+        early_terminate={"type": "hyperband", "min_iter": 5, "eta": 3},
+        program="scripts/run_transformer_direction_sweep.py",
+        parameters=[
+            # Pair / data — fixed via the SweepConfig instance, but exposed
+            # so wandb config has them as constants per trial.
+            SweepParameter(name="pair", values=[pair], description="Currency pair (fixed per sweep)"),
+            SweepParameter(name="granularity", values=[granularity], description="OANDA TF (fixed)"),
+            SweepParameter(name="candles", values=[candles], description="Training candles (fixed)"),
+            SweepParameter(name="lookahead", values=[lookahead], description="Direction lookahead (fixed)"),
+
+            # Architecture — capacity knobs
+            SweepParameter(
+                name="transformer_d_model",
+                values=[8, 16, 32, 64],
+                description="Embedding dim (8-64; default 16)",
+            ),
+            SweepParameter(
+                name="transformer_num_heads",
+                values=[1, 2, 4],
+                description="Attention heads (1-4; default 2)",
+            ),
+            SweepParameter(
+                name="transformer_num_layers",
+                values=[1, 2, 3],
+                description="Transformer encoder layers (1-3; default 1)",
+            ),
+            SweepParameter(
+                name="transformer_dff",
+                values=[16, 32, 64, 128],
+                description="Feedforward width (16-128; default 32)",
+            ),
+
+            # Regularization
+            SweepParameter(
+                name="transformer_dropout",
+                distribution="uniform",
+                min_val=0.1,
+                max_val=0.5,
+                description="Dropout fraction (default 0.2; sweep 0.1-0.5)",
+            ),
+
+            # Optimization
+            SweepParameter(
+                name="learning_rate",
+                distribution="log_uniform_values",
+                min_val=0.00001,
+                max_val=0.005,
+                description="Learning rate, log-uniform 1e-5 to 5e-3",
+            ),
+            SweepParameter(
+                name="batch_size",
+                values=[32, 64, 128, 256],
+                description="Mini-batch size (M1 Metal sweet spot 64-128)",
+            ),
+
+            # Feature selection / continual learning
+            SweepParameter(
+                name="top_k_features",
+                values=[30, 50, 80],
+                description="RF-selected features kept (default 50)",
+            ),
+            SweepParameter(
+                name="ewc_lambda",
+                distribution="log_uniform_values",
+                min_val=0.01,
+                max_val=10.0,
+                description="EWC regularization weight (continual-learning anchor)",
+            ),
+
+            # Training discipline
+            SweepParameter(
+                name="patience",
+                values=[10, 15, 20, 30],
+                description="Early-stop patience (epochs without val improvement)",
+            ),
+            SweepParameter(
+                name="epochs",
+                values=[50, 100, 200],
+                description="Max epochs (early-stop usually fires before this)",
+            ),
+        ],
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Sweep Configuration Factory
 # ═══════════════════════════════════════════════════════════════════════════
