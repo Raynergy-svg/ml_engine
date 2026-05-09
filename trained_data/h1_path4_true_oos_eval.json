@@ -1,0 +1,62 @@
+{
+  "gate": 0.52,
+  "lookahead": 24,
+  "oos_bars": 700,
+  "results": [
+    {
+      "accuracy": 0.5488165680473372,
+      "long_accuracy": 0.3194444444444444,
+      "n_correct": 371,
+      "n_predictions": 676,
+      "oos_bars": 700,
+      "pair": "EUR_USD",
+      "passed_gate": true,
+      "short_accuracy": 0.810126582278481,
+      "train_candles": 25000,
+      "train_val_acc": 0.5754563894523327,
+      "train_val_balanced_acc": 0.5450562381684457
+    },
+    {
+      "accuracy": 0.5576923076923077,
+      "long_accuracy": 0.7188208616780045,
+      "n_correct": 377,
+      "n_predictions": 676,
+      "oos_bars": 700,
+      "pair": "EUR_JPY",
+      "passed_gate": true,
+      "short_accuracy": 0.2553191489361702,
+      "train_candles": 25000,
+      "train_val_acc": 0.5189616710606368,
+      "train_val_balanced_acc": 0.5074897688474287
+    },
+    {
+      "accuracy": 0.6020710059171598,
+      "long_accuracy": 0.9019138755980861,
+      "n_correct": 407,
+      "n_predictions": 676,
+      "oos_bars": 700,
+      "pair": "USD_JPY",
+      "passed_gate": true,
+      "short_accuracy": 0.11627906976744186,
+      "train_candles": 25000,
+      "train_val_acc": 0.5473342793431989,
+      "train_val_balanced_acc": 0.5372008021895831
+    },
+    {
+      "accuracy": 0.4630177514792899,
+      "long_accuracy": 1.0,
+      "n_correct": 313,
+      "n_predictions": 676,
+      "oos_bars": 700,
+      "pair": "USD_CAD",
+      "passed_gate": false,
+      "short_accuracy": 0.00819672131147541,
+      "train_candles": 25000,
+      "train_val_acc": 0.5532562385879489,
+      "train_val_balanced_acc": 0.5507450604366224
+    }
+  ],
+  "seq_len": 60,
+  "train_candles": 25000,
+  "ts": "2026-05-09T02:03:11.389665+00:00"
+}
