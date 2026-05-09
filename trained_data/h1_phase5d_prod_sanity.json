@@ -1,0 +1,27 @@
+{
+  "candles": 5000,
+  "gate": 0.52,
+  "lookahead": 24,
+  "results": [
+    {
+      "accuracy": 0.6106666666666667,
+      "long_accuracy": 0.9091880341880342,
+      "n_correct": 916,
+      "n_predictions": 1500,
+      "pair": "USD_JPY",
+      "passed_gate": true,
+      "short_accuracy": 0.11524822695035461
+    },
+    {
+      "accuracy": 0.5413333333333333,
+      "long_accuracy": 0.5799086757990868,
+      "n_correct": 812,
+      "n_predictions": 1500,
+      "pair": "EUR_USD",
+      "passed_gate": true,
+      "short_accuracy": 0.5112692763938316
+    }
+  ],
+  "ts": "2026-05-09T12:38:36.104258+00:00",
+  "windows": 1500
+}
