@@ -55,16 +55,38 @@ _TRAP_GATES = (
 
 @pytest.fixture
 def isolated_self_heal(tmp_path, monkeypatch):
-    """Point CONFIG_ADJUSTMENTS_PATH and DEBOUNCE_STATE_PATH into tmp_path
-    so production state is never touched by these tests."""
+    """Point CONFIG_ADJUSTMENTS_PATH, DEBOUNCE_STATE_PATH, and JOURNAL_PATH
+    into tmp_path so production state is never touched by these tests.
+
+    Seeds the journal with EVIDENCE_MIN_RECENT_TRADES + buffer recent
+    closed trades so the Angle A1 evidence-required gate (added 2026-05-10)
+    doesn't short-circuit handler-resolution tests with insufficient_evidence.
+    Tests that specifically verify the evidence gate live in
+    test_self_heal_evidence_required.py.
+    """
+    import json as _json
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
     cfg_adj = tmp_path / "config_adjustments.json"
     debounce = tmp_path / "self_heal_debounce.json"
     decision_log = tmp_path / "system_decisions.jsonl"
     error_log = tmp_path / "unhandled_errors.jsonl"
+    journal = tmp_path / "trade_journal_rl.json"
+
+    # Seed journal with 6 recent (1h ago) closed trades so the evidence
+    # gate passes and downstream handler logic gets exercised.
+    close_iso = (_dt.now(_tz.utc) - _td(hours=1.0)).isoformat()
+    journal.write_text(_json.dumps([
+        {"trade_id": f"t{i}", "pair": "EUR_USD", "direction": "LONG",
+         "close_time": close_iso, "outcome": {"trade_won": (i % 2 == 0)}}
+        for i in range(6)
+    ]))
+
     monkeypatch.setattr(SelfHeal, "CONFIG_ADJUSTMENTS_PATH", cfg_adj)
     monkeypatch.setattr(SelfHeal, "DEBOUNCE_STATE_PATH", debounce)
     monkeypatch.setattr(SelfHeal, "DECISION_LOG_PATH", decision_log)
     monkeypatch.setattr(SelfHeal, "ERROR_LOG_PATH", error_log)
+    monkeypatch.setattr(SelfHeal, "JOURNAL_PATH", journal)
     return cfg_adj
 
 

@@ -36,7 +36,7 @@ import logging
 import os
 import tempfile
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -98,12 +98,76 @@ class SelfHeal:
     # informational without converting it to a per-cycle treadmill.
     DEBOUNCE_WINDOW_S: float = 6.0 * 3600.0
 
+    # Evidence-required gating (Angle A1, 2026-05-10): refuse to propose
+    # gate-tightening or gate-reset proposals when the journal has < N
+    # closed trades in the last X hours. Prevents the runaway-on-stale-data
+    # pattern where archived journal triggers self-heal proposals based on
+    # historical context that no longer reflects current model performance.
+    # The 2026-04-16 14-loss-streak frozen tightenings (min_confidence
+    # 50→68, weighted_vote_threshold 0.45→0.85, etc.) would have been
+    # blocked by this gate had it existed then.
+    JOURNAL_PATH: Path = Path("trained_data/trade_journal_rl.json")
+    EVIDENCE_MIN_RECENT_TRADES: int = 5
+    EVIDENCE_WINDOW_HOURS: float = 6.0
+
+    # Tiered autonomy levels (Agent 2, 2026-05-10).
+    #
+    # Per arxiv 2504.20093 self-healing-systems literature: not every
+    # corrective action carries the same blast radius. A soft reset of
+    # an agent weight to 1.0 is trivially reversible (one journal entry,
+    # one atomic write); a gate threshold tighten compounds across cycles
+    # and requires a manual revert to undo; a full retrain is expensive
+    # and long-running. Tagging each handler with a level lets the
+    # operator dial the auto-apply ceiling via
+    # ``ScannerConfig.self_heal_max_autonomy_level`` without forking
+    # individual handler logic.
+    LEVEL_3_REVERSIBLE: int = 3   # auto-apply OK; trivially reversible
+    LEVEL_4_GUARDED: int = 4      # auto-apply only if config flag elevates max level
+    LEVEL_5_MANUAL: int = 5       # NEVER auto-apply — log only
+
+    # Action-type → level. Unknown action types fail-closed to LEVEL_5
+    # via ``_check_action_level``. Keep keys aligned with the verbs in
+    # ``_dispatch`` (see __init__) — drift triggers
+    # ``test_handler_level_map_complete``.
+    _HANDLER_LEVELS: Dict[str, int] = {
+        # Reversible: just restores baseline / dataclass default.
+        "soft_reset_agent_weight": LEVEL_3_REVERSIBLE,
+        "reset_gate_threshold_to_default": LEVEL_3_REVERSIBLE,
+        # Guarded: compounds across cycles or shifts the risk profile;
+        # manual revert is non-trivial.
+        "tighten_gate_threshold": LEVEL_4_GUARDED,
+        "reduce_risk_per_trade_pct": LEVEL_4_GUARDED,
+        # Manual only: expensive, long-running, hard to undo. Operator
+        # must explicitly elevate the autonomy ceiling to allow.
+        "retrain_gates": LEVEL_5_MANUAL,
+        "retrain_rl_position_sizer": LEVEL_5_MANUAL,
+    }
+
+    # Daily action budget (Agent 1, 2026-05-10): industry-standard circuit
+    # breaker per DZone self-healing pipelines + NeurIPS 2024 self-healing
+    # ML — cap total action APPLICATIONS in any rolling 24h window. Without
+    # this, the 2026-04-16 incident applied 5 config adjustments in ~10
+    # minutes; a budget would have stopped at action 3/4 and escalated to
+    # the operator. Per-action debounce (DEBOUNCE_WINDOW_S) protects
+    # against repeat-fire on the SAME action; the budget protects against
+    # runaway across DIFFERENT actions.
+    ACTION_BUDGET_PATH: Path = Path(".claude/self_heal_action_budget.json")
+    MAX_ACTIONS_PER_DAY: int = 10
+
     # ------------------------------------------------------------------ #
     # Init                                                               #
     # ------------------------------------------------------------------ #
-    def __init__(self, config_path: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        config_path: Optional[Path] = None,
+        config: Optional[Any] = None,
+    ) -> None:
         self._config_path = Path(config_path) if config_path else self.CONFIG_PATH
         self._yaml_cache: Optional[Dict[str, Any]] = None
+        # Optional ScannerConfig handle (Agent 2, 2026-05-10). Used by
+        # ``_check_action_level`` to read ``self_heal_max_autonomy_level``.
+        # None = fall back to LEVEL_3_REVERSIBLE (safest).
+        self.config = config
         self._dispatch: Dict[str, Callable[[str], HandlerResult]] = {
             "retrain_gates": self._handle_retrain_gates,
             "reset_gate_threshold_to_default": self._handle_reset_gate_threshold,
@@ -193,6 +257,55 @@ class SelfHeal:
                     "detail": "debounced (fired within {0:.0f}s window)".format(self.DEBOUNCE_WINDOW_S),
                 })
 
+            # AGENT 2 — tiered autonomy level check (runs first, before
+            # the daily action budget). Drops actions whose level exceeds
+            # the operator-configured ``self_heal_max_autonomy_level``
+            # ceiling (default 3). Records the skip in actions_taken so
+            # the operator still sees the diagnosis even though the
+            # action was suppressed.
+            level_filtered: List[str] = []
+            for action_str in ordered:
+                action_type, _, _ = action_str.partition(":")
+                allowed, reason, level = self._check_action_level(
+                    action_type.strip()
+                )
+                if not allowed:
+                    logger.info(
+                        "self_heal action skipped (level gate): %s — %s",
+                        action_str, reason,
+                    )
+                    actions_taken.append({
+                        "action": action_str,
+                        "success": False,
+                        "detail": "level_gate_skipped:{0}:level={1}".format(
+                            reason, level,
+                        ),
+                    })
+                    continue
+                level_filtered.append(action_str)
+            ordered = level_filtered
+
+            # AGENT 1 — daily action budget guard (industry-standard circuit
+            # breaker per DZone self-healing pipelines + NeurIPS 2024
+            # self-healing ML). Refuse the entire apply() call when total
+            # actions in the rolling 24h window have reached
+            # MAX_ACTIONS_PER_DAY. The 2026-04-16 incident applied 5 config
+            # adjustments in ~10 minutes; this guard would have stopped it.
+            budget_ok, budget_reason = self._check_action_budget()
+            if not budget_ok:
+                logger.warning(
+                    "self_heal action refused: %s", budget_reason,
+                )
+                # Brain-feed-style operator escalation log. Format kept
+                # grep-friendly: [SELF_HEAL_BUDGET_EXHAUSTED] N/MAX ...
+                logger.warning(
+                    "[SELF_HEAL_BUDGET_EXHAUSTED] %d/%d actions in 24h "
+                    "— escalating to operator",
+                    self.MAX_ACTIONS_PER_DAY,
+                    self.MAX_ACTIONS_PER_DAY,
+                )
+                return self._build_refuse_result(budget_reason)
+
             for action_str in ordered:
                 verb, arg = self._split_action(action_str)
                 handler = self._dispatch.get(verb)
@@ -226,6 +339,13 @@ class SelfHeal:
                 for m in modified:
                     if m and m not in files_modified:
                         files_modified.append(m)
+
+                # AGENT 1 — record successful actions against the daily
+                # budget. Only successes count: refusals/handler-failures
+                # don't burn budget so the next legit action can still
+                # proceed.
+                if success:
+                    self._record_action(action_str)
 
                 # One decision log record per action attempt (success or not).
                 self._log_decision(
@@ -300,6 +420,35 @@ class SelfHeal:
             verb, _, arg = action.partition(":")
             return verb.strip(), arg.strip()
         return action.strip(), ""
+
+    def _check_action_level(
+        self,
+        action_type: str,
+    ) -> Tuple[bool, str, int]:
+        """Tiered autonomy gate (Agent 2, 2026-05-10).
+
+        Returns ``(allowed, reason, level)``.
+
+        ``allowed`` is False when the action's level exceeds the
+        operator-configured ceiling
+        ``ScannerConfig.self_heal_max_autonomy_level`` (default 3 =
+        only fully-reversible actions auto-apply). Unknown action
+        types fail-closed to ``LEVEL_5_MANUAL`` so a typo or new
+        verb without an explicit entry never ends up auto-applied.
+        """
+        level = self._HANDLER_LEVELS.get(action_type, self.LEVEL_5_MANUAL)
+        max_level = int(
+            getattr(self.config, "self_heal_max_autonomy_level", 3)
+            if self.config is not None
+            else 3
+        )
+        if level > max_level:
+            return (
+                False,
+                "level_{0}_above_max_{1}".format(level, max_level),
+                level,
+            )
+        return (True, "", level)
 
     def _filter_debounced(self, ordered: List[str]) -> Tuple[List[str], List[str]]:
         """Split an action list into (still_active, suppressed) by debounce state.
@@ -487,6 +636,23 @@ class SelfHeal:
         """
         if not gate:
             return (False, "missing_gate_arg", [])
+
+        # Angle A1 (2026-05-10): refuse to propose against zero new evidence.
+        # Reset proposals must also pass the same evidence floor as tighten —
+        # otherwise self-heal flip-flops between tighten and reset on stale
+        # data, neither direction grounded in actual outcomes.
+        recent = self._count_recent_closed_trades()
+        if recent < self.EVIDENCE_MIN_RECENT_TRADES:
+            return (
+                False,
+                "insufficient_evidence:n={0}<{1}_in_{2}h".format(
+                    recent,
+                    self.EVIDENCE_MIN_RECENT_TRADES,
+                    int(self.EVIDENCE_WINDOW_HOURS),
+                ),
+                [],
+            )
+
         default = self._find_gate_default(gate)
         if default is None:
             return (False, "no_default_for_gate", [])
@@ -567,9 +733,185 @@ class SelfHeal:
     # ------------------------------------------------------------------ #
     # Handler: tighten_gate_threshold                                    #
     # ------------------------------------------------------------------ #
+    def _count_recent_closed_trades(self) -> int:
+        """Count closed trades in the journal within EVIDENCE_WINDOW_HOURS.
+
+        A 'closed trade' is a journal entry with a parseable `close_time`
+        (or `outcome.closed_at`) ISO timestamp >= now - EVIDENCE_WINDOW_HOURS.
+        Returns 0 on missing/corrupt journal, in which case the
+        evidence-required check refuses the proposal (fail-closed).
+        """
+        try:
+            with open(self.JOURNAL_PATH) as f:
+                trades = json.load(f)
+            if not isinstance(trades, list):
+                return 0
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return 0
+
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            hours=self.EVIDENCE_WINDOW_HOURS
+        )
+        recent = 0
+        for t in trades:
+            if not isinstance(t, dict):
+                continue
+            close_iso = t.get("close_time")
+            if not close_iso:
+                outcome = t.get("outcome") if isinstance(t.get("outcome"), dict) else {}
+                close_iso = outcome.get("closed_at") or outcome.get("close_time")
+            if not close_iso:
+                continue
+            try:
+                close_dt = datetime.fromisoformat(str(close_iso).replace("Z", "+00:00"))
+                if close_dt.tzinfo is None:
+                    close_dt = close_dt.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+            if close_dt >= cutoff:
+                recent += 1
+        return recent
+
+    # ------------------------------------------------------------------ #
+    # Daily action budget (Agent 1, 2026-05-10)                          #
+    # ------------------------------------------------------------------ #
+    def _load_action_budget(self) -> Dict[str, Any]:
+        """Load the action-budget state. Empty/corrupt → empty list.
+
+        Shape: {"actions_today": [iso_timestamp, ...]}.
+        """
+        path = self.ACTION_BUDGET_PATH
+        if not path.exists():
+            return {"actions_today": []}
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as err:
+            logger.warning(
+                "self_heal: action_budget load failed path=%s error=%r",
+                path, err,
+            )
+            return {"actions_today": []}
+        if not isinstance(data, dict):
+            return {"actions_today": []}
+        actions = data.get("actions_today")
+        if not isinstance(actions, list):
+            return {"actions_today": []}
+        # Coerce to strings; drop non-strings defensively.
+        return {"actions_today": [str(x) for x in actions if isinstance(x, str)]}
+
+    def _record_action(self, action_label: str) -> None:
+        """Append now_iso to actions_today and atomically persist."""
+        try:
+            state = self._load_action_budget()
+            actions = state.get("actions_today") or []
+            now_iso = datetime.now(timezone.utc).isoformat()
+            actions.append(now_iso)
+            state["actions_today"] = actions
+            state["last_action_label"] = action_label
+            state["last_action_at"] = now_iso
+            try:
+                self.ACTION_BUDGET_PATH.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as err:
+                logger.warning(
+                    "self_heal: action_budget mkdir failed error=%r", err,
+                )
+                return
+            ok, detail = self._atomic_write_json(self.ACTION_BUDGET_PATH, state)
+            if not ok:
+                logger.warning(
+                    "self_heal: action_budget write failed detail=%s", detail,
+                )
+        except Exception as err:  # noqa: BLE001 — recording is non-fatal
+            logger.warning(
+                "self_heal: _record_action raised error=%r action=%s",
+                err, action_label,
+            )
+
+    def _check_action_budget(self) -> Tuple[bool, str]:
+        """Return (ok, reason). If actions in last 24h >= MAX, refuse.
+
+        Self-prunes entries older than 24h on read so the budget file
+        doesn't grow unbounded across days. The 24h window is rolling,
+        not calendar-day, so a burst at 23:30 doesn't reset at midnight.
+        """
+        state = self._load_action_budget()
+        actions = state.get("actions_today") or []
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=24.0)
+        kept: List[str] = []
+        for ts in actions:
+            try:
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt >= cutoff:
+                    kept.append(ts)
+            except (ValueError, TypeError):
+                # Corrupt timestamp — drop it on prune.
+                continue
+
+        # Persist the prune so the file self-heals on each check.
+        if len(kept) != len(actions):
+            try:
+                state["actions_today"] = kept
+                self.ACTION_BUDGET_PATH.parent.mkdir(
+                    parents=True, exist_ok=True,
+                )
+                self._atomic_write_json(self.ACTION_BUDGET_PATH, state)
+            except Exception as err:  # noqa: BLE001 — prune is non-fatal
+                logger.warning(
+                    "self_heal: action_budget prune write failed error=%r",
+                    err,
+                )
+
+        n = len(kept)
+        if n >= self.MAX_ACTIONS_PER_DAY:
+            reason = "budget_exhausted:n={0}/{1}_in_24h".format(
+                n, self.MAX_ACTIONS_PER_DAY,
+            )
+            return (False, reason)
+        return (True, "")
+
+    def _build_refuse_result(self, reason: str) -> Dict[str, Any]:
+        """Build a top-level refuse result for the daily budget guard.
+
+        The status is "no_action" — refusing on budget grounds is not an
+        error condition; it's the safety circuit doing its job. We surface
+        the reason in actions_taken so the operator can grep
+        decision/brain logs for it.
+        """
+        return {
+            "status": "no_action",
+            "actions_taken": [{
+                "action": "budget_guard",
+                "success": False,
+                "detail": reason,
+            }],
+            "files_modified": [],
+            "degraded_mode": False,
+            "error": None,
+        }
+
     def _handle_tighten_gate_threshold(self, gate: str) -> HandlerResult:
         if not gate:
             return (False, "missing_gate_arg", [])
+
+        # Angle A1 (2026-05-10): refuse to propose against zero new evidence.
+        # Self-heal must be grounded in fresh closed-trade data, not stale
+        # historical memory. The 2026-04-16 runaway tightening fired against
+        # an archived journal; this gate would have blocked it.
+        recent = self._count_recent_closed_trades()
+        if recent < self.EVIDENCE_MIN_RECENT_TRADES:
+            return (
+                False,
+                "insufficient_evidence:n={0}<{1}_in_{2}h".format(
+                    recent,
+                    self.EVIDENCE_MIN_RECENT_TRADES,
+                    int(self.EVIDENCE_WINDOW_HOURS),
+                ),
+                [],
+            )
 
         adjustments = self._load_adjustments()
         key = "gate_threshold_{0}".format(gate)

@@ -497,6 +497,18 @@ class ScannerConfig:
     # un-halt (TUI 'k' or `state.json halted=false`). 0 disables.
     auto_halt_consecutive_loss_threshold: int = 5
 
+    # Self-heal tiered autonomy ceiling (Agent 2, 2026-05-10). Per the
+    # self-healing-systems literature (arxiv 2504.20093, DZone 2026):
+    # level 3 = fully-reversible actions auto-apply (e.g. soft_reset_agent_weight,
+    # reset_gate_threshold_to_default); level 4 = guarded actions that compound
+    # across cycles (tighten_gate_threshold, reduce_risk_per_trade_pct);
+    # level 5 = manual-only / expensive (retrain_gates, retrain_rl_position_sizer).
+    # Default 3 is the safest setting — only reversible auto-apply, everything
+    # else is logged + skipped. Set to 4 to allow guarded actions; 5 (NOT
+    # recommended) opens the gate to retrains. Consumed by
+    # ``SelfHeal._check_action_level`` in ``src/scanner/feedback/self_heal.py``.
+    self_heal_max_autonomy_level: int = 3
+
     # Meta-labeler threshold (configurable for 0.52-0.53 range)
     # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
     # achieving 70.8% accuracy. Lower threshold allows more high-quality signals
