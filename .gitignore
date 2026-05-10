@@ -152,3 +152,7 @@ training_report_*.md
 .claude/homework_pending.jsonl
 .claude/homework_history.jsonl
 .claude/rejected_heuristics_log.jsonl
+# Angle 2': counterfactual analysis output (sensitive — loss-only deeper
+# analysis). Note: .claude/learnings_outcomes.jsonl IS committed (ledger
+# continuity).
+.claude/counterfactuals.jsonl

@@ -1,17 +1,32 @@
 """Counterfactual learning from closed trades.
 
-Runs counterfactual analysis on closed trades and extracts structured learnings.
-Called by the RL feedback loop after each trade close.
+Runs counterfactual analysis on losing trades and persists structured insights.
 
 Generates insights like: "This trade would have won if volatility had been lower —
 consider tightening the ATR filter."
 
-Learnings are written to .claude/learnings.md (appended, date-stamped).
+Output redirected (Angle 2', 2026-05-10):
+    Previously this module appended human-readable prose to ``.claude/learnings.md``.
+    That created a coordination problem with the new outcomes JSONL ledger
+    (``learnings_outcomes.jsonl``), because both writers shared a file but
+    used different formats. Now CounterfactualLearner writes JSON-Lines to
+    a DEDICATED ``.claude/counterfactuals.jsonl`` (gitignored — counterfactual
+    analysis is sensitive). The outcomes ledger covers EVERY closed trade;
+    counterfactuals.jsonl covers loss-only deeper analysis.
+
+Backward compatibility:
+    The legacy ``learnings_path`` constructor argument is preserved for
+    existing call sites; if no ``output_path`` is supplied it is treated as
+    the JSONL output target. Existing tests in
+    ``tests/test_causal_counterfactual.py`` keep passing.
 """
 
 from __future__ import annotations
 
+import fcntl
+import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -19,17 +34,31 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_LEARNINGS_PATH = _PROJECT_ROOT / ".claude" / "learnings.md"
+_DEFAULT_COUNTERFACTUALS_PATH = _PROJECT_ROOT / ".claude" / "counterfactuals.jsonl"
 
 
 class CounterfactualLearner:
-    """Runs counterfactual analysis on closed trades and extracts learnings.
+    """Runs counterfactual analysis on closed trades and persists insights.
 
-    Integrates with the RL feedback loop to generate structured insights.
+    Integrates with the RL feedback loop. Output goes to
+    ``.claude/counterfactuals.jsonl`` (one JSON line per analysis), with
+    an exclusive fcntl lock so concurrent writers do not corrupt the file.
     """
 
-    def __init__(self, learnings_path: Optional[Path] = None):
-        self.learnings_path = learnings_path or _LEARNINGS_PATH
+    def __init__(
+        self,
+        learnings_path: Optional[Path] = None,
+        *,
+        output_path: Optional[Path] = None,
+    ):
+        # ``output_path`` (new, JSONL) takes precedence; ``learnings_path``
+        # (legacy) is the fallback for backward compatibility with existing
+        # call sites that already pass a custom path. Either is treated as
+        # the JSONL target — the file extension is informational.
+        chosen = output_path or learnings_path or _DEFAULT_COUNTERFACTUALS_PATH
+        self.output_path = Path(chosen)
+        # Keep the legacy attribute name so existing tests can still read it.
+        self.learnings_path = self.output_path
 
     def analyze_closed_trade(
         self,
@@ -49,7 +78,8 @@ class CounterfactualLearner:
                 - closed: bool
 
         Returns:
-            Learning string to append to learnings.md, or None if no insight.
+            Learning string to append (via ``append_learning``), or None if
+            no insight.
         """
         try:
             from src.scanner.automation.causal_counterfactual import CounterfactualEngine
@@ -127,21 +157,43 @@ class CounterfactualLearner:
         return f"**{timestamp}** — Counterfactual Insights (Trade {trade_id}):\n{learning_text}"
 
     def append_learning(self, learning_text: str) -> None:
-        """Append a learning to learnings.md.
+        """Append a counterfactual analysis as one JSONL line.
+
+        Schema:
+            {"ts_utc": "...", "kind": "counterfactual", "text": "..."}
+
+        Atomicity:
+            ``fcntl.LOCK_EX`` for the duration of the write, plus
+            ``flush`` + ``fsync`` before the lock is released. Multi-process
+            safe.
 
         Args:
-            learning_text: The learning string to append.
+            learning_text: The free-form analysis prose. (We DON'T re-parse
+                it into structured fields — the analysis is the canonical
+                payload, ``text`` field carries it verbatim.)
         """
         if not learning_text:
             return
 
         try:
-            self.learnings_path.parent.mkdir(parents=True, exist_ok=True)
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "kind": "counterfactual",
+                "text": learning_text,
+            }
+            line = json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n"
 
-            with open(self.learnings_path, "a", encoding="utf-8") as f:
-                f.write(learning_text + "\n\n")
+            with open(self.output_path, "a", encoding="utf-8") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    f.write(line)
+                    f.flush()
+                    os.fsync(f.fileno())
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
-            logger.debug(f"Appended learning to {self.learnings_path}")
+            logger.debug("Appended counterfactual to %s", self.output_path)
 
-        except Exception as e:
-            logger.warning(f"Failed to append learning: {e}")
+        except (OSError, IOError) as e:
+            logger.warning("Failed to append counterfactual: %s", e)
