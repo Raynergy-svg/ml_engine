@@ -102,6 +102,9 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_trader_readiness_agent": True,
         "enable_order_flow_agent": True,
         "enable_devil_advocate_agent": True,
+        # Reflection — deterministic snapshot.md (Angle 1')
+        "briefing_snapshot_every_n_cycles": 12,
+        "disable_briefing_snapshot": False,
         # Features & attention
         "enable_feature_attention": True,
         "enable_temporal_attention": True,
@@ -178,6 +181,9 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_devil_advocate_agent": True,
         "enable_order_flow_agent": True,
         "enable_trader_readiness_agent": True,
+        # Reflection — deterministic snapshot.md (Angle 1')
+        "briefing_snapshot_every_n_cycles": 12,
+        "disable_briefing_snapshot": False,
         "devil_advocate_block_threshold": 0.60,
         "devil_advocate_warn_threshold": 0.40,
         # Meta-cybernetic change pipeline (default OFF, see ScannerConfig)
@@ -703,6 +709,13 @@ class ScannerConfig:
     enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator (legacy flag — kept for backward compatibility)
     enable_devil_advocate_agent: bool = True  # Agent #14: Canonical _agent-suffixed toggle (supersedes enable_devil_advocate)
     enable_order_flow_agent: bool = True  # Agent #15: Order-flow / book-depth agent
+    # --- Reflection / observability surfaces ---
+    # BriefingSnapshotWriter (Angle 1') — deterministic per-cycle snapshot of
+    # runtime state to .claude/brain/snapshot.md (NEVER touches briefing.md).
+    # Cadence: write every N cycles + once at boot. Set N≤0 or
+    # disable_briefing_snapshot=True to silence. Env: BUDDY_DISABLE_BRIEFING_SNAPSHOT=1
+    briefing_snapshot_every_n_cycles: int = 12
+    disable_briefing_snapshot: bool = False
     enable_calendar_blackout: bool = True  # Economic calendar blackout gate (US-301)
     news_sentiment_fast_mode: bool = True  # Fast-path sentiment inference
     enable_news_sentiment: bool = True  # News sentiment integration

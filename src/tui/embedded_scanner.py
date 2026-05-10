@@ -149,6 +149,39 @@ class EmbeddedScanner:
         except ImportError:
             self._autonomy = None
 
+        # Deterministic briefing snapshot writer (Angle 1'). Emits
+        # .claude/brain/snapshot.md every N cycles + at boot. Pure
+        # pull-from-disk, no LLM, NEVER touches briefing.md. Honors
+        # ScannerConfig.disable_briefing_snapshot AND env
+        # BUDDY_DISABLE_BRIEFING_SNAPSHOT=1.
+        self._snapshot_writer = None
+        try:
+            from src.scanner.automation.briefing_snapshot import BriefingSnapshotWriter
+            self._snapshot_writer = BriefingSnapshotWriter(project_root=self._project_root)
+            # Boot-write fires immediately so the operator doesn't have to
+            # wait one cycle for the first snapshot.
+            if not self._briefing_snapshot_disabled():
+                try:
+                    self._snapshot_writer.write_now(trigger="boot")
+                except Exception as _bs_err:
+                    logger.debug("briefing_snapshot boot write error: %s", _bs_err)
+        except ImportError as _bs_err:
+            logger.debug("briefing_snapshot import skipped: %s", _bs_err)
+
+    def _briefing_snapshot_disabled(self) -> bool:
+        """True if snapshot writing should be skipped this cycle.
+
+        Two kill-switches: env var (operator override at process start) AND
+        ScannerConfig.disable_briefing_snapshot (per-profile/runtime toggle).
+        Either flips it off.
+        """
+        if os.environ.get("BUDDY_DISABLE_BRIEFING_SNAPSHOT") == "1":
+            return True
+        cfg = self._config
+        if cfg is not None and bool(getattr(cfg, "disable_briefing_snapshot", False)):
+            return True
+        return False
+
     @property
     def is_ready(self) -> bool:
         return self._scanner is not None and self._running
@@ -545,6 +578,30 @@ class EmbeddedScanner:
             # tuples on consecutive cycles don't create duplicate
             # ChangePackages.
             self._maybe_route_to_meta_per_cycle()
+
+            # ── Deterministic briefing snapshot (Angle 1') ────────
+            # Cadence-gated mirror of runtime state to
+            # .claude/brain/snapshot.md. Pure pull-from-disk, no LLM,
+            # diff-and-write so identical state doesn't churn the file.
+            # NEVER touches the human-curated briefing.md. Wired AFTER
+            # _maybe_route_to_meta_per_cycle so meta-pipeline state is
+            # captured in the snapshot.
+            if (
+                self._snapshot_writer is not None
+                and not self._briefing_snapshot_disabled()
+            ):
+                try:
+                    every_n = int(getattr(
+                        self._config,
+                        "briefing_snapshot_every_n_cycles",
+                        12,
+                    ) or 12)
+                    self._snapshot_writer.maybe_write(
+                        cycle_count=int(self._scan_count or 0),
+                        every_n=every_n,
+                    )
+                except Exception as _bs_err:
+                    logger.debug("briefing_snapshot per-cycle error: %s", _bs_err)
 
             # ── Build enrichment ───────────────────────────────────
             enrichment = self._build_enrichment(result, scan_ms)

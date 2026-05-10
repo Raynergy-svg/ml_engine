@@ -28,6 +28,11 @@ logs/autonomous_retrain/
 logs/ALERT_*.txt
 .claude/reflection_budget.json
 .claude/.reflection.lock
+# Reflection — deterministic snapshot.md (Angle 1'). Per-cycle programmatic
+# mirror of runtime state, NOT source. briefing.md is human-owned and stays
+# tracked; snapshot.md and its heartbeat are runtime-only.
+.claude/brain/snapshot.md
+.claude/snapshot_heartbeat.json
 .claude/proposed_weights.json
 .claude/proposed_weights_archive/
 .claude/pending_adjustments.json
