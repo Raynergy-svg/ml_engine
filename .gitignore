@@ -56,6 +56,8 @@ logs/ALERT_*.txt
 # rotated at 50MB / 3 backups, runtime observability only)
 logs/buddy_debug.log
 logs/buddy_debug.log.*
+# Null-diag reflection events (Angle 3', operator-readable JSONL sink)
+.claude/reflection_events.jsonl
 trained_data/.autonomous_retrain_state.json
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag

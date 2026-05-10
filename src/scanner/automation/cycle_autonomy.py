@@ -22,6 +22,19 @@ All three:
   - Honor the same daily budget cap + single-flight lock
   - Write to logs/reflection_log.jsonl so the TUI panel sees them
   - Can be disabled via env vars (BUDDY_DISABLE_PERIODIC_REFLECTION=1, etc.)
+
+Null-diag short-circuit (Angle 3', 2026-05-10):
+  Three of the four fire types (`periodic`, `rejection`, `losing_streak`)
+  routinely have NO structured diagnostic input — `_pending_diag` is None
+  or its `recommended_actions` list is empty. Without an actionable payload,
+  spawning a Claude reflection (or routing to the meta-pipeline in the
+  sister branch) produces audit-trail noise without actuation: the parent
+  ml_engine main branch saw 145 ChangePackages in 6h all stuck in
+  `kind=config, scorecard_failed, rejected`. To stop the noise we redirect
+  null-diag fires to a structured operator-readable JSONL sink (see
+  `reflection_events.py`) and skip the heavy reflection. Self-heal is
+  unchanged: it always populates `_pending_diag` so its fires always have
+  something to act on.
 """
 from __future__ import annotations
 
@@ -291,7 +304,6 @@ class CycleAutonomyTriggers:
         default. We do NOT instantiate the heavy ScannerConfig singleton on
         the autonomy hot path — the dataclass default is read directly.
         """
-        import os
         env_val = os.environ.get("BUDDY_META_USE_LLM", "").strip().lower()
         if env_val in ("1", "true", "yes", "on"):
             return True
@@ -304,30 +316,36 @@ class CycleAutonomyTriggers:
             logger.debug("cycle_autonomy.policy_resolve_failed err=%s", err)
             return False
 
-    def _invoke(self, prompt: str, trade_id: str, mode: str, timeout: int) -> None:
+    def _invoke(self, prompt: str, trade_id: str, mode: str, timeout: int) -> bool:
         """Dispatch the autonomy trigger.
 
         Routing priority:
+          0. BUDDY_REFLECTION_DRY_RUN env flag (Angle 3' addition) —
+             short-circuit before any side effects, used by Angle 3' tests
+             to verify routing decisions without spawning Claude.
           1. If meta-pipeline is enabled, route the incident into
-             MetaManager.intake (the cybernetic post-trade cognition layer).
-             route_incident returns True when meta accepts the signal.
+             MetaManager.intake (the cybernetic post-trade cognition
+             layer). route_incident returns True when meta accepts.
           2. If meta is disabled OR routing failed, fall back to direct
              Claude reflection — UNLESS the operator has explicitly
-             disabled LLM in the post-trade plane via the
-             meta_manager_use_llm=False policy. In that case the bot has
-             "removed the LLM and committed to the meta-layers" — the
-             orchestrator's deterministic SelfHeal path
-             (orchestrator._post_trade_diagnostics_dispatch, every cycle)
-             is the actuator and any cycle_autonomy reflection here would
-             be (a) duplicate work and (b) a policy violation. Log the
-             skip so the operator can see autonomy still triaged the
-             condition.
+             disabled LLM via meta_manager_use_llm=False. In that case
+             the bot has "committed to the meta-layers" — the
+             orchestrator's deterministic SelfHeal path is the actuator
+             and any cycle_autonomy reflection would be duplicate work
+             and a policy violation.
 
-        The 2026-04-28 reflection_log shows SELFHEAL-C1 at 23:30 hit
-        Claude API, got 529'd, ran up the budget, and produced no
-        artifacts — exactly the dead-air the no-LLM policy is meant to
-        prevent.
+        Returns True if a reflection was actually spawned, False if
+        skipped (dry-run, routed-to-meta, no-LLM-policy, budget exhausted,
+        single-flight lock held, import failed). Tests rely on this
+        return channel.
         """
+        # Angle 3' dry-run: verify wiring without spawning Claude.
+        if os.environ.get("BUDDY_REFLECTION_DRY_RUN", "").lower() in ("1", "true", "yes"):
+            self._brain(
+                f"[dim]  autonomy trigger dry-run — would invoke {trade_id} ({mode})[/]"
+            )
+            return False
+
         try:
             from src.scanner.automation.meta_manager import is_enabled as _meta_enabled, route_incident
             if _meta_enabled():
@@ -339,7 +357,7 @@ class CycleAutonomyTriggers:
                 })
                 if routed:
                     self._brain(f"[cyan]  ◆ autonomy trigger routed to meta-pipeline ({trade_id})[/]")
-                    return
+                    return False
         except Exception as _e:
             logger.debug("cycle_autonomy.meta_route_failed err=%s", _e)
 
@@ -355,7 +373,7 @@ class CycleAutonomyTriggers:
                 "trade_id=%s mode=%s",
                 trade_id, mode,
             )
-            return
+            return False
 
         try:
             from src.scanner.automation.claude_subprocess import (
@@ -365,20 +383,20 @@ class CycleAutonomyTriggers:
             )
         except ImportError as e:
             logger.warning("claude_subprocess_missing", error=str(e))
-            return
+            return False
 
         # Budget guard — same daily cap as the trade-close reflection
         budget = ReflectionBudget()
         if not budget.allows(mode):
             self._brain(f"[dim]  autonomy trigger skipped — budget exhausted ({mode})[/]")
-            return
+            return False
 
         # Single-flight — if another reflection is running (including the
         # trade-close one), skip rather than queue.
         lock = SingleFlightLock()
         if not lock.acquire():
             self._brain("[dim]  autonomy trigger skipped — reflection already in flight[/]")
-            return
+            return False
 
         try:
             result = invoke_claude_reflection(
@@ -403,14 +421,133 @@ class CycleAutonomyTriggers:
                 self._brain(f"[red]  ✗ autonomy reflection failed: {result.error}[/]")
         finally:
             lock.release()
+        return True
+
+    # ── Null-diag short-circuit (Angle 3', 2026-05-10) ────────────────
+
+    @staticmethod
+    def _diag_null_reason(diag: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Classify a `_pending_diag` payload as 'no actionable input'.
+
+        Returns one of the schema-defined reasons when the diag is null-
+        equivalent for downstream actuation, or None when the diag has
+        usable structure (i.e., a non-empty `recommended_actions`).
+
+        We treat both "diag is None" and "diag exists but
+        recommended_actions is empty/missing" as null because the
+        meta-pipeline's `DeterministicSurgeon` (sister branch) and the
+        Claude reflection prompts here both key off `recommended_actions`
+        — without it there is nothing to mutate or reason about.
+        """
+        if diag is None:
+            return "diag_is_none"
+        if not isinstance(diag, dict):
+            # Treat unexpected shapes as null — don't crash routing on
+            # malformed payloads.
+            return "diag_is_none"
+        actions = diag.get("recommended_actions")
+        if not actions:
+            return "empty_recommended_actions"
+        return None
+
+    def _emit_null_diag_event(
+        self,
+        *,
+        trigger: str,
+        cycle: int,
+        null_diag_reason: str,
+        context: Dict[str, Any],
+    ) -> bool:
+        """Append a null-diag event to the operator-readable JSONL sink.
+
+        Returns True on successful append (caller treats this as the
+        short-circuit signal: 'we wrote an event, do NOT route to the
+        heavy reflection path'). Returns False if the writer is missing
+        or the append raises — in which case the caller falls through to
+        the original heavy path so we never silently drop a fire.
+        """
+        try:
+            from src.scanner.automation.reflection_events import get_default_writer
+        except ImportError as exc:
+            logger.warning("reflection_events.import_failed", error=str(exc))
+            return False
+
+        try:
+            writer = get_default_writer()
+            mode = os.environ.get("BUDDY_MODE", "UNKNOWN")
+            event = writer.append(
+                trigger=trigger,
+                cycle=cycle,
+                mode=mode,
+                null_diag_reason=null_diag_reason,
+                context=context,
+            )
+        except (OSError, ValueError) as exc:
+            # OSError: disk full / locked file / permission denied. ValueError:
+            # bad input shape. Either way, fall through to the heavy path so
+            # we don't silently drop the fire.
+            logger.warning(
+                "reflection_events.append_failed",
+                trigger=trigger,
+                cycle=cycle,
+                error=str(exc),
+            )
+            return False
+
+        # Operator-visible breadcrumb on the brain feed so this is not
+        # invisible. The TUI panel that already shows reflection status
+        # will see this line.
+        self._brain(
+            f"[dim]  ◌ {trigger} fire skipped (null-diag: {null_diag_reason}) "
+            f"— logged to reflection_events.jsonl[/]"
+        )
+        logger.info(
+            "reflection_events.null_diag_short_circuit",
+            trigger=trigger,
+            cycle=cycle,
+            null_diag_reason=null_diag_reason,
+            event_record=event,
+        )
+        return True
 
     def _fire_periodic(
         self, scan_count: int, scan_result: Any, trades_executed: int
-    ) -> None:
-        """Every N cycles, ask Claude for a quick situational review."""
+    ) -> bool:
+        """Every N cycles, ask Claude for a quick situational review.
+
+        Returns True if short-circuited to the null-diag sink, False if
+        the heavy reflection path engaged (or attempted). The return
+        channel exists so tests / callers can verify which path ran
+        without test-doubling _invoke.
+        """
         self._last_periodic_cycle = scan_count
         tradeable_count = len(getattr(scan_result, "tradeable", []) or [])
         scanned_count = len(getattr(scan_result, "analyses", []) or [])
+
+        # Null-diag short-circuit. Periodic is the canonical "no diag"
+        # caller — it never sets `_pending_diag` — but we route through
+        # the same gate for backwards compatibility: if a future caller
+        # populates `_pending_diag` with `recommended_actions` BEFORE
+        # firing periodic, the heavy path engages.
+        diag = getattr(self, "_pending_diag", None)
+        null_reason = self._diag_null_reason(diag)
+        if null_reason is not None:
+            if self._emit_null_diag_event(
+                trigger="periodic",
+                cycle=scan_count,
+                null_diag_reason=null_reason,
+                context={
+                    "trades_executed": int(trades_executed),
+                    "tradeable_count": int(tradeable_count),
+                    "scanned_count": int(scanned_count),
+                    "rejection_streak": None,
+                    "losing_streak": None,
+                },
+            ):
+                return True
+            # Writer failed → fall through to heavy path so we never
+            # silently drop the fire. (Logged at WARN by emitter.)
+
         prompt = _build_periodic_prompt(
             scan_count=scan_count,
             scanned_count=scanned_count,
@@ -422,11 +559,33 @@ class CycleAutonomyTriggers:
         # 180s — real Claude needs tool-call + analysis time for a periodic
         # review. 90s was too aggressive; saw timeouts even in calm states.
         self._invoke(prompt, trade_id, mode="lightweight", timeout=180)
+        return False
 
-    def _fire_rejection(self, scan_count: int, tradeable_count: int) -> None:
-        """All tradeable setups rejected for N cycles in a row — diagnose."""
+    def _fire_rejection(self, scan_count: int, tradeable_count: int) -> bool:
+        """All tradeable setups rejected for N cycles in a row — diagnose.
+
+        Returns True on null-diag short-circuit, False on heavy-path
+        engagement. See `_fire_periodic` for rationale.
+        """
         streak = self._rejection_streak
         self._rejection_streak = 0  # Reset so we don't spam
+
+        diag = getattr(self, "_pending_diag", None)
+        null_reason = self._diag_null_reason(diag)
+        if null_reason is not None:
+            if self._emit_null_diag_event(
+                trigger="rejection",
+                cycle=scan_count,
+                null_diag_reason=null_reason,
+                context={
+                    "rejection_streak": int(streak),
+                    "tradeable_count": int(tradeable_count),
+                    "trades_executed": 0,
+                    "losing_streak": None,
+                    "scanned_count": None,
+                },
+            ):
+                return True
 
         prompt = _build_rejection_prompt(
             scan_count=scan_count,
@@ -439,11 +598,34 @@ class CycleAutonomyTriggers:
             f"({streak} consecutive no-trade cycles)...[/]"
         )
         self._invoke(prompt, trade_id, mode="lightweight", timeout=240)
+        return False
 
-    def _fire_losing_streak(self, scan_count: int) -> None:
+    def _fire_losing_streak(self, scan_count: int) -> bool:
         """Last N closed trades all losses → spawn deep Claude reflection
-        with full context (recent trades + model freshness + agent weights)."""
+        with full context (recent trades + model freshness + agent weights).
+
+        Returns True on null-diag short-circuit, False on heavy-path
+        engagement. See `_fire_periodic` for rationale.
+        """
         recent = getattr(self, "_pending_losing_streak", []) or []
+
+        diag = getattr(self, "_pending_diag", None)
+        null_reason = self._diag_null_reason(diag)
+        if null_reason is not None:
+            if self._emit_null_diag_event(
+                trigger="losing_streak",
+                cycle=scan_count,
+                null_diag_reason=null_reason,
+                context={
+                    "losing_streak": int(len(recent)),
+                    "trades_executed": int(len(recent)),
+                    "rejection_streak": None,
+                    "tradeable_count": None,
+                    "scanned_count": None,
+                },
+            ):
+                return True
+
         prompt = _build_losing_streak_prompt(
             scan_count=scan_count, recent_losses=recent,
         )
@@ -454,6 +636,7 @@ class CycleAutonomyTriggers:
         # Deep mode: full MCP access, 7min timeout (CLAUDE.md Refinement Protocol
         # eats ~60-90s before the actual reflection starts)
         self._invoke(prompt, trade_id, mode="deep", timeout=420)
+        return False
 
     def _fire_self_heal(self, scan_count: int) -> None:
         """PostTradeDiagnostics says DEGRADED/CRITICAL — spawn deep Claude."""

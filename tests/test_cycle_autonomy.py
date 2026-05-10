@@ -50,6 +50,12 @@ def test_periodic_fires_every_n_cycles():
     )
     # Force-skip the self-heal check so we isolate periodic behavior
     t._should_fire_self_heal = lambda: False
+    # 2026-05-10 (Angle 3'): periodic now short-circuits when _pending_diag
+    # is null. To exercise the heavy-path schedule (which is what this test
+    # is about), populate a structured diag so the short-circuit doesn't
+    # fire. Tests for the short-circuit itself live in
+    # test_cycle_autonomy_null_diag.py.
+    t._pending_diag = {"recommended_actions": ["noop_for_test"]}
 
     for cycle in range(1, 10):
         t.on_cycle_complete(
@@ -94,6 +100,10 @@ def test_rejection_fires_after_streak_threshold():
         (trade_id, mode)
     )
     t._should_fire_self_heal = lambda: False
+    # 2026-05-10 (Angle 3'): rejection now short-circuits when _pending_diag
+    # is null. Populate a structured diag so the heavy-path scheduling
+    # logic still runs; null-diag short-circuit is covered separately.
+    t._pending_diag = {"recommended_actions": ["noop_for_test"]}
 
     # 3 consecutive cycles with tradeable but zero executed → fires
     for cycle in range(1, 4):
