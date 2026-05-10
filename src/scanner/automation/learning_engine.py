@@ -211,7 +211,18 @@ class LearningEngine:
     # ------------------------------------------------------------------
 
     def check_promotions(self) -> List[str]:
-        """Read learnings.md, count patterns, promote those with 3+ occurrences."""
+        """Read learnings.md, count patterns, promote those with 3+ occurrences.
+
+        TODO (Angle 2', 2026-05-10): when the outcomes-ledger renderer
+        starts populating the ``<!-- BUDDY_OUTCOMES_BEGIN -->`` /
+        ``<!-- BUDDY_OUTCOMES_END -->`` fenced auto-section in learnings.md,
+        the regex below will scan rows of raw outcomes and treat them as
+        candidate "patterns". They are NOT patterns — they are raw
+        per-trade outcomes with ``kind="outcome"`` in the JSONL ledger.
+        Filter ``kind != "outcome"`` here when wired (or skip lines that
+        live between the two fence markers). See
+        ``src/scanner/automation/learnings_outcomes.py`` for the schema.
+        """
         if not self.learnings_path.exists():
             return []
 

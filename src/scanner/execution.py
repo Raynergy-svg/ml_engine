@@ -5157,6 +5157,37 @@ class ExecutionManager:
         except ImportError:
             journal_path.write_text(json.dumps(entries, indent=2, default=str))
 
+        # ── Angle 2': append every closed trade to the outcomes JSONL ledger ──
+        # CANONICAL HOOK. This is the single source of truth for closed trades:
+        # every trade outcome eventually flows here because OANDA's poll
+        # surfaces SL/TP/auto-trailing/manual closes alike. Halt-resilient:
+        # ``_run_smart_loop`` in src/tui/embedded_scanner.py calls
+        # ``sync_closed_trades_rl`` regardless of state.json::halted (verified
+        # 2026-05-10: ``grep -in "halt" src/tui/embedded_scanner.py`` = 0 matches).
+        #
+        # Singularity verification (per CLAUDE.md f070d39 lie-pattern discipline):
+        #     ``grep -n 'entry\\["outcome"\\]\\s*=' src/scanner/execution.py``
+        # returns exactly 2 sites — line 5089 (this method) and line 6147
+        # (``close_trade``, manual TUI path). The OutcomesLedger is idempotent
+        # by trade_id, so wiring both is safe; the load-bearing canonical
+        # writer is THIS one because the manual path always re-syncs through
+        # here on the next OANDA poll cycle.
+        if synced_entries:
+            try:
+                from src.scanner.automation.learnings_outcomes import (
+                    OutcomesLedger,
+                    emit_outcome_from_journal_entry,
+                )
+                _outcomes_ledger = OutcomesLedger()
+                for _se in synced_entries:
+                    emit_outcome_from_journal_entry(_se, ledger=_outcomes_ledger)
+            except Exception as _ol_err:
+                # Never let a learnings-ledger failure break the RL loop.
+                logger.warning(
+                    "Angle 2': outcomes ledger append failed (%d entries): %s",
+                    len(synced_entries), _ol_err,
+                )
+
         # Tier 7: Post-journal handlers (AccuracyRebuild, RetrainDrift, PredictorTraining,
         # PairAffinity, CausalCounterfactual, AdaptiveSizer) — all in event_handlers.py
 
@@ -6180,6 +6211,31 @@ class ExecutionManager:
             tmp.write_text(json.dumps(entries, indent=2, sort_keys=True), encoding="utf-8")
             tmp.replace(journal_path)
             logger.info("close_trade: journal updated for trade %s", trade_id)
+
+            # Angle 2': also append to outcomes ledger (idempotent by trade_id).
+            # The canonical batch path in ``sync_closed_trades_rl`` will append
+            # the same trade_id later; idempotence is enforced inside
+            # ``OutcomesLedger.append`` via a held-exclusive-lock TOCTOU-safe
+            # scan, so this manual-close hook produces zero duplicates.
+            try:
+                from src.scanner.automation.learnings_outcomes import (
+                    OutcomesLedger,
+                    emit_outcome_from_journal_entry,
+                )
+                # Find the entry we just updated and emit it.
+                _matched_entry = next(
+                    (e for e in entries if str(e.get("trade_id", "")) == str(trade_id)),
+                    None,
+                )
+                if _matched_entry is not None:
+                    emit_outcome_from_journal_entry(
+                        _matched_entry, ledger=OutcomesLedger(),
+                    )
+            except Exception as _ol_err:
+                logger.warning(
+                    "close_trade: outcomes ledger append failed for %s: %s",
+                    trade_id, _ol_err,
+                )
         except Exception as _je:
             logger.error("close_trade: journal update failed for %s: %s", trade_id, _je)
 
