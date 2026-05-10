@@ -687,8 +687,8 @@ class ConfidenceCalibrationSystem:
 
         where:
           agreement_factor = max(0.5, agent_agreement)
-          disagreement_factor = {LOW: 1.0, MODERATE: 0.9, HIGH: 0.8, CRITICAL: 0.6}
-          meta_weight = 0.5 + 0.5 * meta_confidence  # Range [0.5, 1.0]
+          disagreement_factor = {LOW: 1.0, MODERATE: 0.95, HIGH: 0.92, CRITICAL: 0.85}
+          meta_weight = 0.7 + 0.3 * meta_confidence  # Range [0.7, 1.0]
 
         Args:
             platt_calibrated: Platt-scaled probability (0-1)
@@ -709,14 +709,14 @@ class ConfidenceCalibrationSystem:
         # Disagreement factor by level
         disagreement_factors = {
             "LOW": 1.0,
-            "MODERATE": 0.9,
-            "HIGH": 0.8,
-            "CRITICAL": 0.6,
+            "MODERATE": 0.95,
+            "HIGH": 0.92,
+            "CRITICAL": 0.85,
         }
-        disagreement_factor = disagreement_factors.get(disagreement_level, 0.8)
+        disagreement_factor = disagreement_factors.get(disagreement_level, 0.92)
 
         # Meta-weight: confidence in the calibration itself
-        meta_weight = 0.5 + 0.5 * meta_confidence
+        meta_weight = 0.7 + 0.3 * meta_confidence
 
         # Combine
         final = platt_calibrated * agreement_factor * disagreement_factor * meta_weight

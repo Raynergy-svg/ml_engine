@@ -62,6 +62,81 @@ def _last_value(df: pd.DataFrame, column: str, default: float = 0.0) -> float:
     return _safe_float(df[column].iloc[-1], default)
 
 
+def _normalize_regime_name(regime: Any) -> str:
+    """Normalize scanner volatility regime values to canonical names."""
+    regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
+    if regime is not None and str(regime).isdigit():
+        regime_idx = int(str(regime))
+        if 0 <= regime_idx < len(regime_names):
+            return regime_names[regime_idx]
+    name = str(regime or "NORMAL").upper()
+    return name if name in regime_names else "NORMAL"
+
+
+def _oanda_candles_to_frame(raw: Any) -> Optional[pd.DataFrame]:
+    """Convert an OANDA candles response or DataFrame to canonical OHLCV."""
+    if isinstance(raw, pd.DataFrame):
+        df = raw.copy()
+        if "time" in df.columns:
+            df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+            df = df.set_index("time")
+        for column in ("open", "high", "low", "close"):
+            if column not in df.columns:
+                return None
+            df[column] = pd.to_numeric(df[column], errors="coerce")
+        if "volume" not in df.columns:
+            df["volume"] = 0
+        df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0)
+        return df.dropna(subset=["open", "high", "low", "close"])
+
+    candles = raw.get("candles", []) if isinstance(raw, dict) else []
+    rows: list[dict[str, Any]] = []
+    for candle in candles:
+        if not candle.get("complete", True):
+            continue
+        mid = candle.get("mid") or candle.get("bid") or candle.get("ask") or {}
+        try:
+            rows.append({
+                "time": candle.get("time"),
+                "open": float(mid.get("o")),
+                "high": float(mid.get("h")),
+                "low": float(mid.get("l")),
+                "close": float(mid.get("c")),
+                "volume": int(candle.get("volume", 0) or 0),
+            })
+        except (TypeError, ValueError):
+            continue
+    if not rows:
+        return None
+    df = pd.DataFrame(rows)
+    df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+    df = df.dropna(subset=["time"]).set_index("time")
+    return df
+
+
+def _resample_ohlcv(df: pd.DataFrame, rule: str, min_bars: int) -> Optional[pd.DataFrame]:
+    """Aggregate lower-timeframe candles using proper OHLCV semantics."""
+    if df is None or df.empty or not isinstance(df.index, pd.DatetimeIndex):
+        return None
+    source = df.sort_index()
+    required = {"open", "high", "low", "close"}
+    if not required.issubset(source.columns):
+        return None
+    agg = {
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+    }
+    if "volume" in source.columns:
+        agg["volume"] = "sum"
+    resampled = source.resample(rule, label="right", closed="right").agg(agg)
+    resampled = resampled.dropna(subset=["open", "high", "low", "close"])
+    if len(resampled) < min_bars:
+        return None
+    return resampled
+
+
 @dataclass
 class AgentDecisionContext:
     """Normalized context shared by specialist agents."""
@@ -143,6 +218,7 @@ class ScannerAgentTeam:
         self._accuracy_matrix = None  # Phase 25 (US-155): injected from Scanner
         self._confidence_calibrator = None  # Phase 44 (US-280): Confidence calibration system
         self._meta_overrides: Dict[str, Dict[str, float]] = {}  # Tier 6: MetaLearner hyperparameter overrides
+        self._active_weight_regime: Optional[str] = None
         self._migrate_legacy_weights()
 
         # Phase 44 (US-280): Confidence Calibration System initialization
@@ -362,7 +438,7 @@ class ScannerAgentTeam:
         """
         import math
 
-        valid_range = (0.05, 10.0)
+        valid_range = (0.1, 2.0)
         issues_found = False
 
         for regime in self._REGIME_NAMES + ["_global"]:
@@ -544,15 +620,7 @@ class ScannerAgentTeam:
             Dict of agent name -> weight for this regime (or _global fallback if insufficient data)
         """
         # Normalize regime name
-        if regime and regime.isdigit():
-            regime_idx = int(regime)
-            if 0 <= regime_idx < len(self._REGIME_NAMES):
-                regime = self._REGIME_NAMES[regime_idx]
-            else:
-                regime = "NORMAL"
-        regime = str(regime or "NORMAL").upper()
-        if regime not in self._REGIME_NAMES:
-            regime = "NORMAL"
+        regime = _normalize_regime_name(regime)
 
         # Return cached weights if available
         if regime in self._regime_weights:
@@ -637,11 +705,12 @@ class ScannerAgentTeam:
         blend_rate: float = 0.3,
         max_age_seconds: int = 7200,
     ) -> Dict[str, Any]:
-        """Apply LLM-proposed weight deltas from `.claude/proposed_weights.json`.
+        """Apply approved weight deltas from `.claude/proposed_weights.json`.
 
         This is the Tier-3 safety-gated path for autonomous self-improvement.
-        An LLM (via ClaudeReflectionHandler) writes proposals; this method
-        validates, clamps, and blends them with current weights before saving.
+        Proposals should arrive through the meta-cybernetic approval path; this
+        method validates, clamps, and blends them with current weights before
+        saving.
 
         Safety gates (all non-negotiable):
           - Proposal must be recent (default: ≤2h old) — rejects stale files
@@ -738,7 +807,7 @@ class ScannerAgentTeam:
         regime_weights = self._learned_weights.setdefault(regime, dict(self._BASE_WEIGHTS))
         changes: Dict[str, Dict[str, float]] = {}
 
-        valid_min, valid_max = 0.05, 10.0
+        valid_min, valid_max = 0.1, 2.0
 
         for agent_name, delta_spec in deltas.items():
             if agent_name not in known_agents:
@@ -926,15 +995,7 @@ class ScannerAgentTeam:
         max_w = _safe_float(getattr(self.config, "max_agent_weight", 2.0), 2.0)
 
         # Normalize regime
-        if regime and regime.isdigit():
-            regime_idx = int(regime)
-            if 0 <= regime_idx < len(self._REGIME_NAMES):
-                regime = self._REGIME_NAMES[regime_idx]
-        regime = str(regime or "NORMAL").upper()
-        if regime == "LOW":
-            regime = "NORMAL"
-        if regime not in self._REGIME_NAMES:
-            regime = "NORMAL"
+        regime = _normalize_regime_name(regime)
 
         # Ensure regime-aware structure
         if "_global" not in self._learned_weights:
@@ -1254,16 +1315,16 @@ class ScannerAgentTeam:
             _ep_regime = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper()
             try:
                 session = "london"  # TODO: derive session from UTC hour if available
-                news_risk = getattr(analysis, "news_risk_score", 0.0)
-                uncertainty = getattr(analysis, "uncertainty_score", 0.0)
+                news_risk = _safe_float(getattr(analysis, "news_risk_score", 0.0), 0.0)
+                uncertainty = _safe_float(getattr(analysis, "uncertainty_score", 0.0), 0.0)
 
                 suppression = self._episodic_memory.get_suppression_signal(
                     pair=_ep_pair,
                     direction=_ep_direction,
                     regime=_ep_regime,
                     session=session,
-                    news_risk_score=float(news_risk),
-                    uncertainty_score=float(uncertainty),
+                    news_risk_score=news_risk,
+                    uncertainty_score=uncertainty,
                 )
                 ctx.gate_details["episodic_suppression"] = suppression
 
@@ -1296,10 +1357,11 @@ class ScannerAgentTeam:
         verdicts: List[AgentVerdict] = []
 
         # US-069: Determine regime-disabled agents for current volatility
-        _regime_name = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper()
+        _regime_name = _normalize_regime_name(getattr(analysis, "volatility_regime", "UNKNOWN"))
         _regime_disabled = set(
             getattr(self.config, "regime_disabled_agents", {}).get(_regime_name, [])
         )
+        self._active_weight_regime = _regime_name
 
         if getattr(self.config, "enable_trend_agent", True):
             verdicts.append(self._evaluate_trend(ctx))
@@ -1385,9 +1447,7 @@ class ScannerAgentTeam:
             return analysis
 
         # Apply regime-aware weight adjustments BEFORE voting
-        regime_name = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper()
-        if regime_name == "LOW":
-            regime_name = "NORMAL"
+        regime_name = _regime_name
         verdicts = self._apply_regime_multipliers(verdicts, regime_name)
 
         # Agent memory — nudge each verdict's confidence_delta based on similar
@@ -1601,7 +1661,8 @@ class ScannerAgentTeam:
         analysis.weighted_vote_threshold = _clip01(weighted_vote_threshold)
 
         # Phase 44 (US-280): Apply confidence calibration if available
-        if self._confidence_calibrator is not None:
+        # Kill switch (2026-05-09): config.enable_phase44_calibration=False bypasses entirely.
+        if self._confidence_calibrator is not None and bool(getattr(self.config, "enable_phase44_calibration", True)):
             try:
                 _cal_verdicts = [
                     {"name": v.name, "score": _clip01(v.score), "weight": max(v.weight, 0.0), "passed": v.passed}
@@ -1853,6 +1914,8 @@ class ScannerAgentTeam:
         Returns:
             Weight value for this agent
         """
+        if regime is None:
+            regime = self._active_weight_regime
         if regime:
             regime_weights = self.get_weights_for_regime(regime)
             return _safe_float(regime_weights.get(name), self._BASE_WEIGHTS.get(name, 1.0))
@@ -1970,7 +2033,10 @@ class ScannerAgentTeam:
             and direction in ("LONG", "SHORT")
             and getattr(ctx.config, "enable_mean_reversion_veto", True)
         ):
-            disagree_floor = float(getattr(ctx.config, "mean_reversion_veto_disagree_floor", 0.25))
+            disagree_floor = _safe_float(
+                getattr(ctx.config, "mean_reversion_veto_disagree_floor", 0.25),
+                0.25,
+            )
             model_disagree = float(ctx.gate_details.get("model_disagreement", 0.0) or 0.0)
             if model_disagree > disagree_floor:
                 block_trade = True
@@ -2119,7 +2185,12 @@ class ScannerAgentTeam:
         stale_age_days = 0.0
         try:
             if get_model_freshness is not None:
-                _freshness = get_model_freshness()
+                _freshness = get_model_freshness(
+                    active_pairs=[getattr(ctx.analysis, "pair", "")],
+                    use_master_pair_models=bool(
+                        getattr(ctx.config, "use_master_pair_models", True)
+                    ),
+                )
                 _oldest = _freshness.get("oldest_age_days") or 0.0
                 _staleness_age = _safe_float(getattr(ctx.config, "staleness_age_threshold_days", 7.0), 7.0)
                 _staleness_thresh = _safe_float(getattr(ctx.config, "staleness_uncertainty_threshold", 0.35), 0.35)
@@ -2632,8 +2703,10 @@ class ScannerAgentTeam:
                 confidence_delta=0.0,
             )
 
-    # MTF data cache: {(pair, granularity): (timestamp, df)}
+    # MTF data cache: {(pair, granularity, count): (timestamp, df)}
     _mtf_cache: dict = {}
+    _MTF_CACHE_TTL_M15 = 15 * 60
+    _MTF_CACHE_TTL_H1 = 60 * 60
     _MTF_CACHE_TTL_H4 = 4 * 3600  # 4 hours
     _MTF_CACHE_TTL_D1 = 24 * 3600  # 24 hours
 
@@ -2644,8 +2717,16 @@ class ScannerAgentTeam:
         """
         import time as _time
 
-        cache_key = (pair, granularity)
-        ttl = self._MTF_CACHE_TTL_H4 if granularity == "H4" else self._MTF_CACHE_TTL_D1
+        granularity = str(granularity).upper()
+        cache_key = (pair, granularity, int(count))
+        ttl_by_granularity = {
+            "M15": self._MTF_CACHE_TTL_M15,
+            "H1": self._MTF_CACHE_TTL_H1,
+            "H4": self._MTF_CACHE_TTL_H4,
+            "D": self._MTF_CACHE_TTL_D1,
+            "D1": self._MTF_CACHE_TTL_D1,
+        }
+        ttl = ttl_by_granularity.get(granularity, self._MTF_CACHE_TTL_H1)
 
         # Check cache
         if cache_key in self._mtf_cache:
@@ -2654,8 +2735,16 @@ class ScannerAgentTeam:
                 return cached_df
 
         try:
-            from src.data.oanda_api import get_candles
-            df = get_candles(pair, granularity=granularity, count=count)
+            if self._oanda_client is None:
+                from src.utils.oanda_practice import OandaPracticeClient
+                self._oanda_client = OandaPracticeClient.from_env()
+            raw = self._oanda_client.get_candles(
+                pair,
+                granularity=granularity,
+                count=count,
+                price="M",
+            )
+            df = _oanda_candles_to_frame(raw)
             if df is not None and len(df) >= 5:
                 self._mtf_cache[cache_key] = (_time.time(), df)
                 return df
@@ -2663,6 +2752,14 @@ class ScannerAgentTeam:
             logger.debug(f"MTF fetch {pair}/{granularity} failed: {e}")
 
         return None
+
+    @staticmethod
+    def _mtf_direction_matches(direction: str, trend_direction: str) -> bool:
+        if direction == "LONG":
+            return trend_direction == "BULLISH"
+        if direction == "SHORT":
+            return trend_direction == "BEARISH"
+        return False
 
     def _evaluate_multi_timeframe(self, ctx: AgentDecisionContext) -> AgentVerdict:
         """Multi-timeframe confluence: uses real H4/D1 data from OANDA when available.
@@ -2683,15 +2780,33 @@ class ScannerAgentTeam:
         # Phase 47 (US-294): Try Elder's Triple Screen via MTF Confluence module
         if mtf_confluence_enabled and self._mtf_confluence is not None:
             try:
-                # Gather 15M, 1H, 4H data
-                data_15m = self._fetch_mtf_candles(pair, "M15", count=60) if pair else None
-                data_1h = ctx.df_raw.copy() if len(ctx.df_raw) >= 20 else None
-                data_4h = self._fetch_mtf_candles(pair, "H4", count=30) if pair else None
+                # Gather true 15M, 1H, 4H data. Scanner raw candles are not
+                # assumed to be H1; default scanner granularity is M15.
+                scanner_granularity = str(getattr(ctx.config, "granularity", "")).upper()
+                data_15m = (
+                    ctx.df_raw.copy()
+                    if scanner_granularity == "M15" and len(ctx.df_raw) >= 20
+                    else None
+                )
+                if data_15m is None and pair:
+                    data_15m = self._fetch_mtf_candles(pair, "M15", count=120)
+
+                data_1h = self._fetch_mtf_candles(pair, "H1", count=120) if pair else None
+                if data_1h is None:
+                    if scanner_granularity == "H1" and len(ctx.df_raw) >= 20:
+                        data_1h = ctx.df_raw.copy()
+                    else:
+                        data_1h = _resample_ohlcv(ctx.df_raw, "1h", min_bars=20)
+
+                h4_count = max(int(getattr(self._mtf_confluence.config, "sma_long_period", 200)), 220)
+                data_4h = self._fetch_mtf_candles(pair, "H4", count=h4_count) if pair else None
+                if data_4h is None and data_1h is not None:
+                    data_4h = _resample_ohlcv(data_1h, "4h", min_bars=h4_count)
 
                 # Only attempt confluence if we have reasonable data for all three screens
-                if data_15m is not None and data_1h is not None:
+                if data_15m is not None and data_1h is not None and data_4h is not None:
                     mtf_confluence_result = self._mtf_confluence.score_confluence(
-                        data_4h=data_4h if data_4h is not None else data_1h,
+                        data_4h=data_4h,
                         data_1h=data_1h,
                         data_15m=data_15m,
                     )
@@ -2702,8 +2817,21 @@ class ScannerAgentTeam:
                             f"recommendation={mtf_confluence_result.recommendation}, aligned={mtf_confluence_result.direction_aligned}"
                         )
 
+                        trend_direction = str(
+                            mtf_confluence_result.details.get("trend_direction", "")
+                        )
+                        if not trend_direction and mtf_confluence_result.screen_results:
+                            trend_direction = str(mtf_confluence_result.screen_results[0].direction)
+                        direction_matches = self._mtf_direction_matches(direction, trend_direction)
+
                         # Map recommendation to confluence_count override
-                        if mtf_confluence_result.recommendation == "PROCEED":
+                        if not direction_matches:
+                            confluence_count = 0
+                            score_override = min(
+                                0.40,
+                                0.25 + (mtf_confluence_result.confluence_score * 0.20),
+                            )
+                        elif mtf_confluence_result.recommendation == "PROCEED":
                             # High confidence confluenceence
                             confluence_count = 3
                             score_override = 0.75 + (mtf_confluence_result.confluence_score * 0.20)
@@ -2720,14 +2848,24 @@ class ScannerAgentTeam:
 
                         # Use confluence score if valid
                         score = _clip01(score_override)
-                        passed = mtf_confluence_result.recommendation in ("PROCEED", "CAUTION")
+                        passed = (
+                            direction_matches
+                            and mtf_confluence_result.recommendation in ("PROCEED", "CAUTION")
+                        )
                         confidence_delta = (confluence_count - 1.5) * 0.03
 
-                        reason = (
-                            f"MTF Confluence {mtf_confluence_result.recommendation} "
-                            f"(score {mtf_confluence_result.confluence_score:.2f}, aligned={mtf_confluence_result.direction_aligned})"
-                        )
-                        reason_code = f"mtf_confluence_{mtf_confluence_result.recommendation.lower()}"
+                        if direction_matches:
+                            reason = (
+                                f"MTF Confluence {mtf_confluence_result.recommendation} "
+                                f"(score {mtf_confluence_result.confluence_score:.2f}, aligned={mtf_confluence_result.direction_aligned})"
+                            )
+                            reason_code = f"mtf_confluence_{mtf_confluence_result.recommendation.lower()}"
+                        else:
+                            reason = (
+                                f"MTF Confluence trend {trend_direction.lower() or 'unknown'} "
+                                f"conflicts with {direction.lower()} setup"
+                            )
+                            reason_code = "mtf_confluence_direction_mismatch"
 
                         return AgentVerdict(
                             name="multi_timeframe",
@@ -2743,6 +2881,8 @@ class ScannerAgentTeam:
                                 "multi_timeframe_data_source": data_source,
                                 "mtf_confluence_score": mtf_confluence_result.confluence_score,
                                 "mtf_confluence_aligned": mtf_confluence_result.direction_aligned,
+                                "mtf_trend_direction": trend_direction,
+                                "mtf_direction_matches_trade": direction_matches,
                                 "mtf_screen_results": [s.to_dict() for s in mtf_confluence_result.screen_results],
                             },
                         )
@@ -2752,17 +2892,26 @@ class ScannerAgentTeam:
                 mtf_confluence_result = None
 
         # Legacy MTF evaluation (fallback when confluence module unavailable or disabled)
+        scanner_granularity = str(getattr(ctx.config, "granularity", "")).upper()
+        legacy_h1_df = None
+        if scanner_granularity == "H1" and len(df) >= 20:
+            legacy_h1_df = df.copy()
+        else:
+            legacy_h1_df = _resample_ohlcv(df, "1h", min_bars=20)
+        if legacy_h1_df is None and len(df) >= 20:
+            legacy_h1_df = df.copy()
+
         # H1 trend (primary): SMA crossover
-        if len(df) >= 20:
-            h1_close = float(df["close"].iloc[-1])
-            h1_sma20 = float(df["close"].iloc[-20:].mean())
+        if legacy_h1_df is not None and len(legacy_h1_df) >= 20:
+            h1_close = float(legacy_h1_df["close"].iloc[-1])
+            h1_sma20 = float(legacy_h1_df["close"].iloc[-20:].mean())
             if direction == "LONG" and h1_close > h1_sma20:
                 confluence_count += 1
             elif direction == "SHORT" and h1_close < h1_sma20:
                 confluence_count += 1
 
-        # H4 trend: try real data first, fallback to synthesis
-        h4_df = self._fetch_mtf_candles(pair, "H4", count=30) if pair else None
+        # H4 trend: try real data first, fallback to calendar-aware OHLCV resample
+        h4_df = self._fetch_mtf_candles(pair, "H4", count=60) if pair else None
         if h4_df is not None and len(h4_df) >= 10:
             data_source = "real"
             h4_close = float(h4_df["close"].iloc[-1])
@@ -2771,20 +2920,21 @@ class ScannerAgentTeam:
                 confluence_count += 1
             elif direction == "SHORT" and h4_close < h4_sma:
                 confluence_count += 1
-        elif len(df) >= 80:
-            # Fallback: synthesize H4 from H1
-            h4_closes = df["close"].iloc[-80:].values.reshape(-1, 4).mean(axis=1)
-            h4_last = float(h4_closes[-1])
-            h4_sma = float(h4_closes[-min(20, len(h4_closes)):].mean())
-            if direction == "LONG" and h4_last > h4_sma:
-                confluence_count += 1
-            elif direction == "SHORT" and h4_last < h4_sma:
-                confluence_count += 1
         else:
-            confluence_count += 1  # Neutral fallback
-            logger.debug("multi_timeframe: insufficient data for H4, treating as neutral")
+            h4_fallback = _resample_ohlcv(legacy_h1_df, "4h", min_bars=10) if legacy_h1_df is not None else None
+            if h4_fallback is not None and len(h4_fallback) >= 10:
+                data_source = "resampled"
+                h4_last = float(h4_fallback["close"].iloc[-1])
+                h4_sma = float(h4_fallback["close"].iloc[-min(10, len(h4_fallback)):].mean())
+                if direction == "LONG" and h4_last > h4_sma:
+                    confluence_count += 1
+                elif direction == "SHORT" and h4_last < h4_sma:
+                    confluence_count += 1
+            else:
+                confluence_count += 1  # Neutral fallback
+                logger.debug("multi_timeframe: insufficient data for H4, treating as neutral")
 
-        # D1 trend: try real data first, fallback to synthesis
+        # D1 trend: try real data first, fallback to calendar-aware OHLCV resample
         d1_df = self._fetch_mtf_candles(pair, "D", count=20) if pair else None
         if d1_df is not None and len(d1_df) >= 5:
             data_source = "real"
@@ -2794,21 +2944,19 @@ class ScannerAgentTeam:
                 confluence_count += 1
             elif direction == "SHORT" and d1_close < d1_sma:
                 confluence_count += 1
-        elif len(df) >= 120:
-            usable = len(df) - (len(df) % 24)
-            if usable >= 120:
-                d1_closes = df["close"].iloc[-usable:].values.reshape(-1, 24).mean(axis=1)
-                d1_last = float(d1_closes[-1])
-                d1_prev = float(d1_closes[-2]) if len(d1_closes) >= 2 else d1_last
-                if direction == "LONG" and d1_last > d1_prev:
+        else:
+            d1_fallback = _resample_ohlcv(legacy_h1_df, "1D", min_bars=5) if legacy_h1_df is not None else None
+            if d1_fallback is not None and len(d1_fallback) >= 5:
+                data_source = "resampled"
+                d1_last = float(d1_fallback["close"].iloc[-1])
+                d1_sma = float(d1_fallback["close"].iloc[-min(5, len(d1_fallback)):].mean())
+                if direction == "LONG" and d1_last > d1_sma:
                     confluence_count += 1
-                elif direction == "SHORT" and d1_last < d1_prev:
+                elif direction == "SHORT" and d1_last < d1_sma:
                     confluence_count += 1
             else:
                 confluence_count += 1
-        else:
-            confluence_count += 1
-            logger.debug("multi_timeframe: insufficient data for D1, treating as neutral")
+                logger.debug("multi_timeframe: insufficient data for D1, treating as neutral")
 
         # Score based on confluence
         score = 0.30 + confluence_count * 0.20

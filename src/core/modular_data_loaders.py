@@ -1239,6 +1239,7 @@ def align_features_to_model(
     df: pd.DataFrame,
     stored_feature_names: List[str],
     fill_value: float = 0.0,
+    instrument: Optional[str] = None,
 ) -> np.ndarray:
     """
     Align current DataFrame features to match stored model's expected features.
@@ -1247,11 +1248,23 @@ def align_features_to_model(
     1. Using exact feature names when available
     2. Mapping legacy names to current equivalents
     3. Filling truly missing features with fill_value
+    4. When ``instrument`` is provided, restoring training-time one-hot
+       semantics for an ``instrument_<PAIR>`` column. Without this, a model
+       whose training distribution had ``instrument_EUR_USD=1`` constantly
+       (per-pair model) ends up with the *scaled* one-hot column at -1 at
+       inference (raw=0 → (0-1)/1 = -1), feeding the tree splits an OOD
+       value the model never saw at training and producing constant /
+       wrong-leaf predictions. See bug 2026-05-09 (EUR_USD lgbm_momentum
+       stuck at ~0.087).
 
     Args:
         df: DataFrame with current features
         stored_feature_names: List of feature names from the stored model
         fill_value: Value to use for features that cannot be found
+        instrument: Live pair name (e.g. "EUR_USD"). When the stored model
+            expects an ``instrument_<INSTRUMENT>`` column AND that exact
+            instrument name matches, the column is set to 1.0 (matching
+            per-pair training) instead of the generic fill_value.
 
     Returns:
         numpy array of shape (n_rows, n_stored_features)
@@ -1260,6 +1273,12 @@ def align_features_to_model(
     n_rows = len(df)
     n_features = len(stored_feature_names)
     result = np.full((n_rows, n_features), fill_value, dtype=np.float32)
+    # Per-pair instrument one-hot fix (2026-05-09): if the model was
+    # trained per-pair with `instrument_<PAIR>` always=1, set it to 1 here
+    # so the saved scaler sees the same value it was fit on.
+    instrument_one_hot_target = (
+        f"instrument_{instrument}" if instrument else None
+    )
 
     found_count = 0
     missing_features = []
@@ -1303,7 +1322,20 @@ def align_features_to_model(
 
             # Use the first N features from the pool as the effective "stored" names.
             effective_feature_names = stable_pool[:n_features]
+            # Per-pair instrument one-hot fix: if the stored slot at this
+            # position is the model's matching instrument one-hot, set 1.0
+            # (training-time constant) instead of fill_value=0 — even though
+            # the effective_feature_names is built from the pool, the actual
+            # stored slot at index i is what the scaler was fit against.
             for i, fname in enumerate(effective_feature_names):
+                stored_slot = stored_feature_names[i] if i < len(stored_feature_names) else ""
+                if (
+                    instrument_one_hot_target is not None
+                    and stored_slot == instrument_one_hot_target
+                ):
+                    result[:, i] = 1.0
+                    found_count += 1
+                    continue
                 if fname in RF_EXCLUDED_FEATURES:
                     continue
 
@@ -1344,6 +1376,17 @@ def align_features_to_model(
             logger.warning(f"RF placeholder feature alignment fallback failed: {e}")
 
     for i, fname in enumerate(stored_feature_names):
+        # Per-pair instrument one-hot fix: training-time constant=1 must be
+        # reproduced at inference (otherwise raw=0 → scaled=-1 routes the
+        # model into OOD tree branches). See 2026-05-09 EUR_USD bug.
+        if (
+            instrument_one_hot_target is not None
+            and fname == instrument_one_hot_target
+        ):
+            result[:, i] = 1.0
+            found_count += 1
+            continue
+
         # Skip excluded features (fill with 0)
         if fname in RF_EXCLUDED_FEATURES:
             continue

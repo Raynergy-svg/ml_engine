@@ -1659,13 +1659,33 @@ class Scanner:
         rather than triggering a false hard-block.
         """
         try:
-            from .automation.model_freshness import get_model_freshness
-            f = get_model_freshness()
+            from .automation.model_freshness import get_model_freshness_for_pairs
+            f = get_model_freshness_for_pairs(
+                active_pairs=self._freshness_active_pairs(),
+                use_master_pair_models=bool(
+                    getattr(self.config, "use_master_pair_models", True)
+                ),
+            )
             oldest = f.get("oldest_age_days")
             return float(oldest) if oldest is not None else 0.0
         except Exception as exc:
             logger.debug("get_model_staleness_days failed: %s", exc)
             return 0.0
+
+    def _freshness_active_pairs(self) -> List[str]:
+        """Return the instrument set whose model freshness should affect this scanner."""
+        try:
+            pairs = list(getattr(self.config, "pairs", None) or [])
+            if not pairs:
+                pairs = list(getattr(self.config, "active_instruments", None) or [])
+            if not pairs:
+                pairs = list(getattr(self.config, "default_pairs", []) or [])
+            blocked = set(getattr(self.config, "blocked_pairs", []) or [])
+            if blocked:
+                pairs = [p for p in pairs if p not in blocked]
+            return [str(p).upper().replace("/", "_") for p in pairs]
+        except Exception:
+            return []
 
     def evaluate_staleness_uncertainty_block(
         self,
@@ -2305,10 +2325,40 @@ class Scanner:
         return vol_allowed, regime
 
     def _resolve_model_source_pair(self, pair: str) -> str:
-        """Resolve which pair's model artifacts should source inference."""
+        """Resolve which pair's model artifacts should source inference.
+
+        Routing precedence (per-pair-first, master fallback) — fixed 2026-05-09:
+        1. If trained_data/models/{PAIR}/transformer_direction.keras exists,
+           return PAIR. Phase 5.D shipped tuned per-pair transformers for the
+           majors; the historical correlation-group master alias would silently
+           shadow these with the (older, less-accurate) master pair's models
+           — e.g. EUR_USD→EUR_GBP redirect made the freshly-tuned EUR_USD
+           transformer dead code at runtime even though the file was on disk.
+        2. Otherwise honour `use_master_pair_models` and return the correlation
+           group master so legacy pairs without dedicated training (e.g.
+           EUR_AUD, EUR_CHF, AUD_NZD-grouped pairs) still get a useful model.
+        3. Disable both paths via `use_master_pair_models=False` to force
+           strict per-pair routing for every instrument.
+        """
         normalized_pair = str(pair).upper().replace("/", "_")
         if not bool(getattr(self.config, "use_master_pair_models", True)):
             return normalized_pair
+
+        # Per-pair-first: prefer dedicated per-pair models when present.
+        # We probe the transformer keras file because that's the canonical
+        # marker that a Phase 5.D-style per-pair training run completed.
+        # GateEvaluator's `_get_pair_evaluator` uses the same heuristic.
+        try:
+            pair_marker = (
+                Path("trained_data/models")
+                / normalized_pair
+                / "transformer_direction.keras"
+            )
+            if pair_marker.exists():
+                return normalized_pair
+        except Exception as e:  # pragma: no cover — defensive
+            logger.debug("pair %s: per-pair marker probe failed: %s", pair, e)
+
         try:
             from src.training.correlation_group_config import get_correlation_group
 
@@ -3201,6 +3251,60 @@ class Scanner:
         if not updates:
             return analyses
         return [updates.get(a.pair, a) for a in analyses]
+
+    def _log_virtual_trade_for_result(self, pair: str, result: PairAnalysis) -> None:
+        """Phase 56 (US-348): Log a rejected-but-promising setup as a virtual trade.
+
+        Called AFTER `_run_sub_inference_pass` so `agent_passed` reflects the
+        FINAL post-sub-inference verdict (not the pre-sub-inference default).
+        Pre-2026-05-09 this was inline in `_scan_pair`, which fired before
+        sub-inference and captured `agent_passed=False` even when sub-inference
+        subsequently passed.
+        """
+        if self._virtual_trade_logger is None:
+            return
+        if result is None or getattr(result, "error", None) is not None:
+            return
+        if result.direction not in {"LONG", "SHORT"}:
+            return
+        if result.is_tradeable:
+            return
+        if float(result.confidence) < self._virtual_trade_logger.min_confidence:
+            return
+
+        try:
+            _vtl_failures: List[str] = []
+            if not result.confidence_passed:
+                _vtl_failures.append(
+                    f"confidence={result.confidence:.3f} < min={self.config.min_confidence}"
+                )
+            if not result.momentum_passed:
+                _vtl_failures.append(f"momentum={result.momentum:.3f}")
+            if not result.risk_passed:
+                _vtl_failures.append("risk_passed=False")
+            if not result.volatility_gate_passed:
+                _vtl_failures.append("volatility_gate_passed=False")
+            if not getattr(result, "agent_passed", True):
+                _vtl_failures.append("agent_passed=False")
+
+            _vtl_agents: Dict[str, float] = {}
+            _agents_info = getattr(result, "agents", {}) or {}
+            for _ar in (_agents_info.get("agent_reasons") or []):
+                _name = _ar.get("name", "")
+                _score = float(_ar.get("score", _ar.get("confidence", 0.0)))
+                if _name:
+                    _vtl_agents[_name] = _score
+
+            self._virtual_trade_logger.log_virtual_trade(
+                pair=pair,
+                direction=result.direction,
+                confidence=float(result.confidence),
+                gate_failures=_vtl_failures,
+                features={},
+                agent_scores=_vtl_agents,
+            )
+        except Exception as _vtl_err:
+            logger.debug("%s: Phase 56 virtual trade log failed: %s", pair, _vtl_err)
 
     def _apply_specialist_agents(
         self,
@@ -4789,46 +4893,10 @@ class Scanner:
                         pair, _cpm_err,
                     )
 
-            # Phase 56 (US-348): Log rejected-but-promising setups as virtual trades
-            if (
-                self._virtual_trade_logger is not None
-                and not result.is_tradeable
-                and result.direction in {"LONG", "SHORT"}
-                and result.confidence >= self._virtual_trade_logger.min_confidence
-            ):
-                try:
-                    # Build gate failure list from result
-                    _vtl_failures = []
-                    if not result.confidence_passed:
-                        _vtl_failures.append(f"confidence={result.confidence:.3f} < min={self.config.min_confidence}")
-                    if not result.momentum_passed:
-                        _vtl_failures.append(f"momentum={result.momentum:.3f}")
-                    if not result.risk_passed:
-                        _vtl_failures.append(f"risk_passed=False")
-                    if not result.volatility_gate_passed:
-                        _vtl_failures.append(f"volatility_gate_passed=False")
-                    if not getattr(result, "agent_passed", True):
-                        _vtl_failures.append("agent_passed=False")
-
-                    # Build agent scores from result metadata
-                    _vtl_agents = {}
-                    _agents_info = getattr(result, "agents", {}) or {}
-                    for _ar in (_agents_info.get("agent_reasons") or []):
-                        _name = _ar.get("name", "")
-                        _score = float(_ar.get("score", _ar.get("confidence", 0.0)))
-                        if _name:
-                            _vtl_agents[_name] = _score
-
-                    self._virtual_trade_logger.log_virtual_trade(
-                        pair=pair,
-                        direction=result.direction,
-                        confidence=float(result.confidence),
-                        gate_failures=_vtl_failures,
-                        features={},
-                        agent_scores=_vtl_agents,
-                    )
-                except Exception as _vtl_err:
-                    logger.debug("%s: Phase 56 virtual trade log failed: %s", pair, _vtl_err)
+            # Phase 56 (US-348): Virtual-trade logging is deferred to AFTER
+            # _run_sub_inference_pass() so the recorded `agent_passed` reflects
+            # the FINAL post-sub-inference verdict, not the pre-sub-inference
+            # default. See _log_virtual_trade_for_result() called from scan().
 
             # Cache result
             self._cached_results[pair] = deepcopy(result)
@@ -4982,6 +5050,21 @@ class Scanner:
             analyses,
             on_pair_complete=on_pair_complete,
         )
+
+        # Phase 56 (US-348): Log virtual trades AFTER sub-inference so the
+        # captured `agent_passed` reflects the FINAL post-sub-inference verdict.
+        # Bug fix 2026-05-09: previously called inline in _scan_pair, which
+        # captured the pre-sub-inference default (agent_passed=False) even when
+        # sub-inference subsequently flipped it to True.
+        if self._virtual_trade_logger is not None:
+            for _vt_analysis in analyses:
+                try:
+                    self._log_virtual_trade_for_result(_vt_analysis.pair, _vt_analysis)
+                except Exception as _vt_loop_err:
+                    logger.debug(
+                        "%s: virtual trade post-sub-inference log failed: %s",
+                        getattr(_vt_analysis, "pair", "?"), _vt_loop_err,
+                    )
 
         # Update regime tracker with dominant regime from this scan cycle
         if self._regime_tracker and analyses:
@@ -6927,8 +7010,13 @@ class Scanner:
         # are a major cause of losing streaks; surface this in every snapshot
         # so Claude reflections (and TUI) can act on it.
         try:
-            from src.scanner.automation.model_freshness import get_model_freshness
-            freshness = get_model_freshness()
+            from src.scanner.automation.model_freshness import get_model_freshness_for_pairs
+            freshness = get_model_freshness_for_pairs(
+                active_pairs=self._freshness_active_pairs(),
+                use_master_pair_models=bool(
+                    getattr(self.config, "use_master_pair_models", True)
+                ),
+            )
         except Exception as _fr_err:
             logger.debug("model freshness lookup failed: %s", _fr_err)
             freshness = {"status": "UNKNOWN", "oldest_age_days": None, "groups": []}

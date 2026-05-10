@@ -26,12 +26,13 @@ Status thresholds:
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 
 # Threshold defaults — tuned for forex weekly retraining cadence.
@@ -45,6 +46,33 @@ STALE_DAYS = int(os.environ.get("BUDDY_FRESHNESS_STALE_DAYS", "5"))
 CRITICAL_DAYS = int(os.environ.get("BUDDY_FRESHNESS_CRITICAL_DAYS", "7"))
 
 MODELS_DIR = Path("trained_data/models")
+
+# Per-pair scan: dirs to ALWAYS exclude (not pair models at all).
+_PER_PAIR_EXCLUDE_NAMES = frozenset({"joint", "shadow", "weight_snapshots"})
+
+# Per-pair scan: glob patterns for workbench/experimental/scratch dirs that
+# share a pair prefix but are NOT the live per-pair routing target. The live
+# Tier 7 per-pair routing in src/scanner/gates.py looks up plain `{PAIR}/`
+# (e.g. `EUR_USD/`); anything with these suffixes is a side experiment and
+# would skew freshness reports if counted as the production model.
+_PER_PAIR_EXCLUDE_PATTERNS = (
+    "*_oos_train",
+    "*_tuned",
+    "*_news_*",
+    "*_pre_tuned_*",
+    "*_investigation",
+)
+
+# Anchor file used to age a per-pair dir. Matches the production inference
+# entry point (gates.evaluate_transformer loads transformer_direction.keras).
+_PER_PAIR_ANCHOR = "transformer_direction.keras"
+
+
+def _is_per_pair_workbench(name: str) -> bool:
+    """Return True if `name` is a workbench / scratch dir, not a live pair."""
+    if name in _PER_PAIR_EXCLUDE_NAMES:
+        return True
+    return any(fnmatch.fnmatchcase(name, pat) for pat in _PER_PAIR_EXCLUDE_PATTERNS)
 
 
 @dataclass
@@ -105,11 +133,70 @@ def _age_days(dt: datetime) -> float:
     return (datetime.now(timezone.utc) - dt).total_seconds() / 86400.0
 
 
-def get_model_freshness(models_dir: Path = MODELS_DIR) -> Dict[str, Any]:
+def _normalize_pair(pair: Any) -> str:
+    return str(pair or "").upper().replace("/", "_").strip()
+
+
+def _resolve_model_source_pair(
+    pair: Any,
+    models_dir: Path,
+    *,
+    use_master_pair_models: bool = True,
+) -> str:
+    """Mirror Scanner._resolve_model_source_pair for freshness reporting."""
+    normalized = _normalize_pair(pair)
+    if not normalized:
+        return ""
+    if not use_master_pair_models:
+        return normalized
+    marker = models_dir / normalized / _PER_PAIR_ANCHOR
+    try:
+        if marker.exists():
+            return normalized
+    except OSError:
+        return normalized
+    try:
+        from src.training.correlation_group_config import get_correlation_group
+
+        group = get_correlation_group(normalized)
+        if group is None:
+            return normalized
+        master = _normalize_pair(group.master_pair)
+        return master or normalized
+    except Exception:
+        return normalized
+
+
+def get_model_freshness(
+    models_dir: Path = MODELS_DIR,
+    *,
+    active_pairs: Sequence[str] | None = None,
+    use_master_pair_models: bool = True,
+) -> Dict[str, Any]:
     """Compute training freshness for every model group buddy uses.
 
     Returns a structured dict suitable for inclusion in a Claude reflection
     prompt and for use by PostTradeDiagnostics. Never raises.
+    """
+    return get_model_freshness_for_pairs(
+        models_dir=models_dir,
+        active_pairs=active_pairs,
+        use_master_pair_models=use_master_pair_models,
+    )
+
+
+def get_model_freshness_for_pairs(
+    models_dir: Path = MODELS_DIR,
+    *,
+    active_pairs: Sequence[str] | None = None,
+    use_master_pair_models: bool = True,
+) -> Dict[str, Any]:
+    """Compute model freshness, optionally scoped to active inference sources.
+
+    When ``active_pairs`` is provided, the per-pair freshness group mirrors the
+    scanner's runtime model routing: dedicated pair model first, then
+    correlation-group master fallback. Global callers still get the full-disk
+    audit by omitting ``active_pairs``.
     """
     groups: List[ModelGroup] = []
 
@@ -198,33 +285,129 @@ def get_model_freshness(models_dir: Path = MODELS_DIR) -> Dict[str, Any]:
             source=rl_source,
         ))
 
-    # ── Per-pair models (just the oldest, they should be co-trained) ───
-    pair_dirs = [d for d in models_dir.iterdir() if d.is_dir() and d.name not in ("joint", "shadow")]
+    # ── Per-pair models ────────────────────────────────────────────────
+    # Tier 7 per-pair routing (src/scanner/gates.py:_get_pair_evaluator)
+    # picks `trained_data/models/{PAIR}/` over the joint dir whenever the
+    # pair subdir exists. When per-pair routing is active, those are the
+    # ACTIVE models — joint becomes fallback only.
+    #
+    # We age each pair by the mtime of its `transformer_direction.keras`
+    # because that is the file gates.evaluate_transformer actually loads.
+    # Anchoring on this single file avoids two failure modes:
+    #   1. dirs that have stray *.meta.json files but no real model (would
+    #      otherwise look "fresh" because the meta was touched recently)
+    #   2. workbench dirs (`*_tuned`, `*_oos_train`, etc.) that share a
+    #      pair prefix but aren't on the per-pair routing path
+    #
+    # Reported `age_days` on the group is the OLDEST among scanned pairs
+    # (most conservative — never under-report staleness, same principle as
+    # the rl_position_sizer fix on 2026-04-28).
+    active_pair_list = [_normalize_pair(p) for p in (active_pairs or [])]
+    active_pair_list = [p for p in active_pair_list if p]
+    active_source_pairs: List[str] = []
+    if active_pair_list:
+        seen_sources: set[str] = set()
+        for pair in active_pair_list:
+            source_pair = _resolve_model_source_pair(
+                pair,
+                models_dir,
+                use_master_pair_models=use_master_pair_models,
+            )
+            if source_pair and source_pair not in seen_sources:
+                active_source_pairs.append(source_pair)
+                seen_sources.add(source_pair)
+
+    try:
+        if active_source_pairs:
+            pair_dirs = [
+                models_dir / source_pair
+                for source_pair in active_source_pairs
+                if not _is_per_pair_workbench(source_pair)
+            ]
+        else:
+            pair_dirs = [
+                d for d in models_dir.iterdir()
+                if d.is_dir() and not _is_per_pair_workbench(d.name)
+            ]
+    except (OSError, FileNotFoundError):
+        pair_dirs = []
+
+    pairs_with_transformer: List[Dict[str, Any]] = []
+    oldest_dt: Optional[datetime] = None
+    oldest_pair: Optional[str] = None
+    excluded_workbench: List[str] = []
+    excluded_no_transformer: List[str] = []
+
     if pair_dirs:
-        # Find oldest meta among per-pair dirs
-        per_pair_dt: Optional[datetime] = None
-        oldest_pair: Optional[str] = None
-        for pdir in pair_dirs:
-            for meta_file in pdir.glob("*.meta.json"):
-                dt = _read_meta_trained_at(meta_file, "trained_at")
-                if dt is None:
-                    dt = _file_mtime(meta_file)
-                if dt and (per_pair_dt is None or dt < per_pair_dt):
-                    per_pair_dt = dt
-                    oldest_pair = pdir.name
-        groups.append(ModelGroup(
-            name="per_pair_models",
-            path=models_dir,
-            trained_at=per_pair_dt,
-            age_days=_age_days(per_pair_dt) if per_pair_dt else None,
-            source="meta_json" if per_pair_dt else "missing",
-            extra={"oldest_pair": oldest_pair} if oldest_pair else {},
-        ))
+        for pdir in sorted(pair_dirs, key=lambda p: p.name):
+            anchor = pdir / _PER_PAIR_ANCHOR
+            if not anchor.exists():
+                excluded_no_transformer.append(pdir.name)
+                continue
+            dt = _file_mtime(anchor)
+            if dt is None:
+                excluded_no_transformer.append(pdir.name)
+                continue
+            pairs_with_transformer.append({
+                "pair": pdir.name,
+                "trained_at": dt.isoformat(),
+                "age_days": round(_age_days(dt), 1),
+            })
+            if oldest_dt is None or dt < oldest_dt:
+                oldest_dt = dt
+                oldest_pair = pdir.name
+
+    # Track workbench exclusions (informational; helps audit-trail readers
+    # see WHY a known-recent dir like `EUR_USD_tuned` isn't in the count).
+    try:
+        for d in models_dir.iterdir():
+            if d.is_dir() and _is_per_pair_workbench(d.name):
+                # Skip the catch-all utility dirs from the noisy excluded list.
+                if d.name not in _PER_PAIR_EXCLUDE_NAMES:
+                    excluded_workbench.append(d.name)
+    except (OSError, FileNotFoundError):
+        pass
+
+    pair_names = [p["pair"] for p in pairs_with_transformer]
+    extra: Dict[str, Any] = {
+        "pairs": pair_names,
+        "pair_count": len(pair_names),
+        "per_pair_ages": pairs_with_transformer,
+    }
+    if active_pair_list:
+        extra["scope"] = "active_pairs"
+        extra["requested_pairs"] = active_pair_list
+        extra["model_source_pairs"] = active_source_pairs
+    else:
+        extra["scope"] = "all_pairs"
+    if oldest_pair:
+        extra["oldest_pair"] = oldest_pair
+    if excluded_workbench:
+        extra["excluded_workbench"] = sorted(excluded_workbench)
+    if excluded_no_transformer:
+        extra["excluded_no_transformer"] = sorted(excluded_no_transformer)
+
+    groups.append(ModelGroup(
+        name="per_pair_models",
+        path=models_dir,
+        trained_at=oldest_dt,
+        age_days=_age_days(oldest_dt) if oldest_dt else None,
+        source="file_mtime" if oldest_dt else "missing",
+        extra=extra,
+    ))
 
     # ── Roll up ────────────────────────────────────────────────────────
     # Exclude agent_weights from "training freshness" — those update via
     # RL feedback, not retraining. Use them as a separate signal.
     train_groups = [g for g in groups if g.name != "agent_weights"]
+    active_pair_sources_have_models = (
+        bool(active_source_pairs)
+        and set(pair_names) == set(active_source_pairs)
+    )
+    if active_pair_sources_have_models:
+        # Active scanner calls use per-pair gate evaluators for these sources;
+        # joint_gates is fallback/audit context, not a live freshness blocker.
+        train_groups = [g for g in train_groups if g.name != "joint_gates"]
     ages = [g.age_days for g in train_groups if g.age_days is not None]
     oldest = max(ages) if ages else None
 
@@ -251,6 +434,10 @@ def get_model_freshness(models_dir: Path = MODELS_DIR) -> Dict[str, Any]:
         "oldest_age_days": round(oldest, 1) if oldest is not None else None,
         "stale_models": stale_list,
         "status": status,
+        "rollup_scope": (
+            "active_pair_models" if active_pair_sources_have_models
+            else ("active_pairs" if active_pair_list else "all_models")
+        ),
         "thresholds": {
             "aging_days": AGING_DAYS,
             "stale_days": STALE_DAYS,
@@ -280,6 +467,7 @@ def format_freshness_for_prompt(freshness: Dict[str, Any]) -> str:
 
 __all__ = [
     "get_model_freshness",
+    "get_model_freshness_for_pairs",
     "format_freshness_for_prompt",
     "AGING_DAYS",
     "STALE_DAYS",

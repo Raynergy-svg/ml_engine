@@ -3146,7 +3146,22 @@ class ModularEnsembleInference:
 
         # If we have saved feature names, use the alignment system
         if feature_names:
-            return align_features_to_model(df, feature_names, fill_value=0.0)
+            aligned = align_features_to_model(
+                df, feature_names, fill_value=0.0, instrument=self.instrument,
+            )
+            # Bug-trace 2026-05-09 (EUR_USD constant momentum). Logs the
+            # raw (pre-scaler) features fed into the momentum head.
+            if logger.isEnabledFor(logging.DEBUG) and aligned.size:
+                _last = aligned[-1]
+                logger.debug(
+                    "momentum.features pair=%s shape=%s first3=%s mean=%.6f std=%.6f",
+                    self.instrument,
+                    aligned.shape,
+                    _last[:3].tolist(),
+                    float(_last.mean()),
+                    float(_last.std()),
+                )
+            return aligned
 
         # Fallback to pattern-based extraction
         normalized_features = get_normalized_feature_names()['momentum']
@@ -3176,7 +3191,9 @@ class ModularEnsembleInference:
         # If we have saved feature names, use the alignment system
         if feature_names:
             # Use align_features_to_model for proper legacy feature mapping
-            result = align_features_to_model(df, feature_names, fill_value=0.0)
+            result = align_features_to_model(
+                df, feature_names, fill_value=0.0, instrument=self.instrument,
+            )
 
             # Validate shape matches scaler expectations (if available)
             if hasattr(self.rf, 'scaler') and self.rf.scaler is not None:

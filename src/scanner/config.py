@@ -751,6 +751,13 @@ class ScannerConfig:
     enable_confidence_calibration: bool = True  # Platt scaling for raw confidence scores
     calibration_min_trades: int = 30  # Minimum trades before calibration activates
 
+    # --- Phase 44 Confidence Calibration kill switch (2026-05-09) ---
+    # When False, bypasses the Phase 44 ConfidenceCalibrator entirely (no override of
+    # weighted_vote_score, no calibration_details writes). Default True preserves
+    # current behavior. Added to investigate over-aggressive compression observed
+    # in production (raw=0.582 → calibrated=0.099, ~5.9× compression).
+    enable_phase44_calibration: bool = True
+
     # --- Dynamic SL/TP Optimization (US-080) ---
     # Phase 29 (US-179): Enabled by default — stable and tested in smart profile
     enable_dynamic_sl_tp: bool = True  # Regime-conditioned SL/TP adaptation
