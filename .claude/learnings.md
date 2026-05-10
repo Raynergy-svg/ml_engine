@@ -333,3 +333,29 @@ Key closures this session:
 - [2026-04-16] **PATTERN/trend_agent_misreads_strong_adx_as_neutral**: Trade 1261 trend agent reason: trend neutral (ADX 54) -- ADX 54 is a STRONG trend reading (Wilder threshold for very strong is 50+). Trade 1255 also got trend neutral (ADX 56). Trade 1243 got trend neutral (ADX 64). The trend agent neutral threshold is mis-set: it should classify ADX>=40 as trending and provide directional confirmation, but it returns neutral through ADX 64. This systematically masks counter-trend entries from the gate. Source: 3 consecutive trades 1243, 1255, 1261 -- meets the 3+ promotion threshold.
 
 - [2026-04-16] **PATTERN/self_heal_cycle1_levers_maxed**: Cycle 1 history applied all 5 supported config keys to their safe ceilings (atr_sl_multiplier 1.0->1.2, max_model_disagreement 0.65->0.25, min_confidence 50->68, weighted_vote_threshold 0.45->0.85, risk_per_trade_pct 0.02->0.025). Pending block is empty. Further config tightening will freeze trading without addressing the directional-model root cause. The actionable corrective is OUTSIDE the config plane: per-pair retrain coverage + RL sizer retrain + trend agent ADX threshold fix. This reflection deliberately skips stacking a 6th config adjustment.
+
+<!-- BUDDY_OUTCOMES_BEGIN -->
+## Recent Trade Outcomes (auto-rendered)
+
+_This section is machine-managed — do not edit. Source: `.claude/learnings_outcomes.jsonl`._
+
+| ts_utc | trade_id | pair | dir | conf | pnl_pips | exit | regime | wvs | dissent |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-04-03T20:10:35.490907987Z | 1124 | EUR_GBP | SHORT | 0.69 | -11.5 | sl_hit | LOW | 0.82 |  |
+| 2026-04-06T15:10:54.795532270Z | 1132 | NZD_USD | LONG | 0.69 | -11.6 | sl_hit | LOW | 0.79 |  |
+| 2026-04-07T01:39:03.200109448Z | 1136 | AUD_JPY | LONG | 0.63 | -17.7 | sl_hit | LOW | 0.82 |  |
+| 2026-04-09T00:07:27.312160245Z | 1149 | EUR_AUD | SHORT | 0.59 | -27.6 | sl_hit | NORMAL | 0.84 |  |
+| 2026-04-09T13:33:56.560058146Z | 1145 | USD_CHF | LONG | 0.65 | -16.8 | sl_hit | HIGH | 0.83 |  |
+| 2026-04-09T19:26:33.512391421Z | 1157 | EUR_JPY | SHORT | 0.55 | -20.8 | sl_hit | NORMAL | 0.90 |  |
+| 2026-04-13T23:51:19.772609364Z | 1189 | AUD_JPY | LONG | 0.68 | -15.5 | sl_hit | NORMAL | 0.87 |  |
+| 2026-04-14T12:26:39.900044035Z | 1195 | USD_CHF | LONG | 0.70 | -11.3 | sl_hit | NORMAL | 0.90 |  |
+| 2026-04-14T15:00:02.492657245Z | 1199 | EUR_JPY | SHORT | 0.64 | -16.5 | sl_hit | NORMAL | 0.90 |  |
+| 2026-04-15T02:46:03.058288459Z | 1220 | EUR_AUD | LONG | 0.64 | -19.7 | sl_hit | LOW | 0.76 |  |
+| 2026-04-15T21:04:55.052696780Z | 1236 | EUR_GBP | SHORT | 0.65 | -11.6 | manual_close | LOW | 0.83 |  |
+| 2026-04-15T21:37:17.465167825Z | 1232 | USD_JPY | LONG | 0.67 | -17.9 | sl_hit | LOW | 0.83 |  |
+| 2026-04-16T02:35:27.612125000Z | 1249 | USD_CAD | LONG | 0.65 | -12.7 | sl_hit | LOW | 0.83 |  |
+| 2026-04-16T03:00:14.749581093Z | 1255 | USD_CHF | LONG | 0.67 | -8.0 | sl_hit | LOW | 0.80 |  |
+| 2026-04-16T14:05:58.109694358Z | 1261 | USD_CAD | LONG | 0.64 | -7.4 | sl_hit | LOW | 0.83 |  |
+| 2026-04-16T14:22:10.529471256Z | 1243 | EUR_GBP | SHORT | 0.68 | -11.8 | sl_hit | LOW | 0.83 |  |
+
+<!-- BUDDY_OUTCOMES_END -->
