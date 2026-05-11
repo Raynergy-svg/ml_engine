@@ -158,3 +158,9 @@ training_report_*.md
 # analysis). Note: .claude/learnings_outcomes.jsonl IS committed (ledger
 # continuity).
 .claude/counterfactuals.jsonl
+
+# Coverage outputs
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
