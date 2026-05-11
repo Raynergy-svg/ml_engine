@@ -470,24 +470,24 @@ class ReflectionLogReader:
         import time as _time
         while not self._stop.is_set():
             try:
-	                if not self._log_path.exists():
-	                    if not self._announced_waiting:
-	                        self._announced_waiting = True
-	                        self._callback(
-	                            "[dim]  waiting for first reflection… (fires on trade close)[/]"
-	                        )
-	                    self._poll_aux_sources()
-	                    self._stop.wait(self._poll_interval)
-	                    continue
+                if not self._log_path.exists():
+                    if not self._announced_waiting:
+                        self._announced_waiting = True
+                        self._callback(
+                            "[dim]  waiting for first reflection… (fires on trade close)[/]"
+                        )
+                    self._poll_aux_sources()
+                    self._stop.wait(self._poll_interval)
+                    continue
 
-	                size = self._log_path.stat().st_size
-	                if size < self._offset:
-	                    # File was truncated/rotated — reset
-	                    self._offset = 0
-	                if size == self._offset:
-	                    self._poll_aux_sources()
-	                    self._stop.wait(self._poll_interval)
-	                    continue
+                size = self._log_path.stat().st_size
+                if size < self._offset:
+                    # File was truncated/rotated — reset
+                    self._offset = 0
+                if size == self._offset:
+                    self._poll_aux_sources()
+                    self._stop.wait(self._poll_interval)
+                    continue
 
                 # Once we have a real file, clear the waiting flag so a later
                 # deletion + recreation re-announces.
@@ -560,53 +560,53 @@ class ReflectionLogReader:
             except Exception as e:
                 logger.debug("ReflectionLogReader error: %s", e)
 
-	            self._poll_aux_sources()
+            self._poll_aux_sources()
 
-	            self._stop.wait(self._poll_interval)
+            self._stop.wait(self._poll_interval)
 
-	    def _poll_aux_sources(self) -> None:
-	        """Poll meta/autotrain side streams even when Claude log is idle."""
-	        # Multiplex aux sources (meta + autotrainer). Each reuses the
-	        # primary's day-separator state for chronological coherence.
-	        # readline() loop keeps f.tell() valid (see primary loop note).
-	        for src in self._aux_sources:
-	            try:
-	                p = src["path"]
-	                if not p.exists():
-	                    continue
-	                size = p.stat().st_size
-	                if size < src["offset"]:
-	                    src["offset"] = 0
-	                if size == src["offset"]:
-	                    continue
-	                with open(p, "r") as f:
-	                    f.seek(src["offset"])
-	                    while True:
-	                        raw = f.readline()
-	                        if not raw:
-	                            break
-	                        if not raw.strip():
-	                            continue
-	                        try:
-	                            entry = json.loads(raw)
-	                        except json.JSONDecodeError:
-	                            continue
-	                        try:
-	                            sep = self._maybe_day_separator(entry)
-	                            if sep:
-	                                self._callback(sep)
-	                        except Exception:
-	                            pass
-	                        try:
-	                            self._callback(src["formatter"](entry))
-	                        except Exception:
-	                            pass
-	                    src["offset"] = f.tell()
-	            except Exception as e:
-	                logger.debug(
-	                    "ReflectionLogReader aux source %s error: %s",
-	                    src.get("tag", "?"), e,
-	                )
+    def _poll_aux_sources(self) -> None:
+        """Poll meta/autotrain side streams even when Claude log is idle."""
+        # Multiplex aux sources (meta + autotrainer). Each reuses the
+        # primary's day-separator state for chronological coherence.
+        # readline() loop keeps f.tell() valid (see primary loop note).
+        for src in self._aux_sources:
+            try:
+                p = src["path"]
+                if not p.exists():
+                    continue
+                size = p.stat().st_size
+                if size < src["offset"]:
+                    src["offset"] = 0
+                if size == src["offset"]:
+                    continue
+                with open(p, "r") as f:
+                    f.seek(src["offset"])
+                    while True:
+                        raw = f.readline()
+                        if not raw:
+                            break
+                        if not raw.strip():
+                            continue
+                        try:
+                            entry = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+                        try:
+                            sep = self._maybe_day_separator(entry)
+                            if sep:
+                                self._callback(sep)
+                        except Exception:
+                            pass
+                        try:
+                            self._callback(src["formatter"](entry))
+                        except Exception:
+                            pass
+                    src["offset"] = f.tell()
+            except Exception as e:
+                logger.debug(
+                    "ReflectionLogReader aux source %s error: %s",
+                    src.get("tag", "?"), e,
+                )
 
 
 class RiskPanel(Static):
