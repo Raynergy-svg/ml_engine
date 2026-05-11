@@ -138,6 +138,18 @@ class PairAnalysis:
     # above threshold, apply penalty instead of hard-blocking.
     agent_soft_penalty_applied: bool = False
 
+    # 2026-05-10 (Agent B observability fix): override flag honored by the
+    # `is_tradeable` setter. Pre-fix `is_tradeable` was a read-only @property,
+    # yet engine.py:4693/4745/4778 did `result.is_tradeable = True` — which
+    # raised AttributeError. The two wrapped sites (US-127, US-132) swallowed
+    # the error under `except Exception` and logged at debug only, so the
+    # `logger.info("re-qualified")` lines NEVER fired (log-format dishonesty).
+    # The third site (US-142 fast-track) raised an uncaught AttributeError
+    # caught only by the outer scan-level handler, dropping the pair silently.
+    # The setter (see below) now sets this flag and the property short-circuits
+    # to True when it is set — making the three `logger.info` lines honest.
+    _force_tradeable_override: bool = False
+
     # Gate kill reason (Phase 90 US-403): set at each gate rejection site.
     # None when pair is tradeable. Values: 'confidence_gate', 'momentum_gate',
     # 'disagreement_gate', 'drawdown_gate', 'accuracy_gate', 'other'.
@@ -179,7 +191,23 @@ class PairAnalysis:
         confidence > _agent_soft_min (default 0.40), apply 0.80x penalty instead
         of hard-blocking. The pair is tradeable if penalized confidence still
         exceeds the minimum threshold.
+
+        2026-05-10 (Agent B observability fix): honors `_force_tradeable_override`
+        flag set by the `is_tradeable` setter. Required by engine.py re-qualify
+        sites (US-127 ThresholdOptimizer, US-132 EXTREME regime, US-142 fast-track)
+        that need to override the base computation. Pre-fix those sites silently
+        AttributeError'd because `is_tradeable` had no setter.
         """
+        # 2026-05-10: explicit override takes precedence over base computation.
+        # Still requires direction in {LONG, SHORT} and no error — those are
+        # invariants no override can violate.
+        if (
+            getattr(self, "_force_tradeable_override", False)
+            and self.direction in {"LONG", "SHORT"}
+            and self.error is None
+        ):
+            return True
+
         _max_disagree = float(getattr(self, "_max_model_disagreement", 0.50))
 
         # Phase 98: Soft agent gate — penalty instead of hard block
@@ -209,6 +237,27 @@ class PairAnalysis:
             and self.model_disagreement <= _max_disagree
             and self.volatility_regime.upper() != "UNKNOWN"
         )
+
+    @is_tradeable.setter
+    def is_tradeable(self, value: bool) -> None:
+        """Override the computed `is_tradeable` verdict.
+
+        Added 2026-05-10 (Agent B observability fix). Pre-existing engine.py
+        re-qualification sites (US-127 ThresholdOptimizer, US-132 EXTREME
+        regime, US-142 fast-track) do `result.is_tradeable = True` to re-admit
+        a pair that the base computation rejected. Without this setter, the
+        assignment raises AttributeError — silently swallowed by two of the
+        three sites (the `logger.info("...re-qualified")` lines never fired).
+
+        Setting `True` flips `_force_tradeable_override` so the property
+        returns True (provided direction is LONG/SHORT and no error). Setting
+        `False` clears the override, restoring the base computation.
+
+        Note: this is a one-way override for re-qualification — it does NOT
+        force `gates_passed=True`. Callers that need the gate fields aligned
+        should set those explicitly (engine.py:4694/4746/4779 already do).
+        """
+        self._force_tradeable_override = bool(value)
 
     @property
     def overall_score(self) -> float:

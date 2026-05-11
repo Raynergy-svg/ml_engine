@@ -38,6 +38,29 @@ _DEFAULT_LOG_PATH = _PROJECT_ROOT / "trained_data" / "virtual_trades.jsonl"
 # Minimum confidence to log as virtual trade (very low signals not worth capturing)
 MIN_CONFIDENCE_TO_LOG = 0.10
 
+# 2026-05-10 (Agent B observability fix): canonical gate-name tags for
+# `gate_failures_detail` entries. Pre-fix, `gate_failures` was a list of
+# free-form strings where two different gates could parse to the same name:
+#   "risk_passed=False"          → counter key "risk_passed"
+#   "volatility_gate_passed=False" → counter key "volatility_gate_passed"
+#   "confidence=0.42 < min=0.60" → counter key "confidence"
+#   "momentum=0.300"             → counter key "momentum"
+#   "agent_passed=False"         → counter key "agent_passed"
+# Five gates produced five inconsistent counter buckets. Worse, the same
+# rejection reason logged from engine.py:4812-4836 ("drawdown=...") and
+# 3276-3288 ("risk_passed=False") both meant "risk gate failed" but landed
+# in different stats buckets — leaving "did the risk gate veto?" unanswerable
+# from `top_gate_failures`. The canonical tag set below normalizes all five
+# under one taxonomy. The string `gate_failures` list is preserved for
+# backwards compatibility with existing tests/consumers.
+CANONICAL_GATES = {
+    "confidence",   # confidence_passed=False (engine.py:3277)
+    "momentum",     # momentum_passed=False (engine.py:3281)
+    "risk",         # risk_passed=False or drawdown failure (engine.py:3283)
+    "volatility",   # volatility_gate_passed=False (engine.py:3285)
+    "agent",        # agent_passed=False (engine.py:3287)
+}
+
 
 class VirtualTradeLogger:
     """Log rejected trade setups for offline RL analysis.
@@ -78,6 +101,7 @@ class VirtualTradeLogger:
         gate_failures: Optional[List[str]] = None,
         features: Optional[Dict[str, float]] = None,
         agent_scores: Optional[Dict[str, float]] = None,
+        gate_failures_detail: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
         """Log a rejected setup as a virtual trade.
 
@@ -85,9 +109,16 @@ class VirtualTradeLogger:
             pair: Currency pair (e.g. "EUR_USD")
             direction: Signal direction ("LONG" or "SHORT")
             confidence: Raw confidence score at time of rejection
-            gate_failures: List of gate failure reason strings
+            gate_failures: List of gate failure reason strings (preserved for
+                backwards compatibility with existing tests/consumers).
             features: Feature snapshot dict at scan time
             agent_scores: Agent scores dict (agent_name → score)
+            gate_failures_detail: 2026-05-10 (Agent B observability fix) —
+                optional list of structured `{gate, observed, threshold, reason}`
+                dicts. `gate` MUST be one of `CANONICAL_GATES` so downstream
+                aggregation can answer "did the risk gate veto?" unambiguously.
+                When supplied, the counter is updated using `gate` (canonical),
+                NOT the free-form prefix of `gate_failures` strings.
 
         Returns:
             True if entry was written, False if skipped (confidence too low).
@@ -98,12 +129,34 @@ class VirtualTradeLogger:
         if direction not in {"LONG", "SHORT"}:
             return False
 
+        # 2026-05-10: normalize the detail list. Drop entries whose gate name
+        # is not in CANONICAL_GATES — silently corrupting the taxonomy is
+        # worse than a missing entry; surface via debug log instead.
+        detail_clean: List[Dict[str, Any]] = []
+        for d in (gate_failures_detail or []):
+            if not isinstance(d, dict):
+                continue
+            gate = str(d.get("gate", "")).lower().strip()
+            if gate not in CANONICAL_GATES:
+                logger.debug(
+                    "VirtualTradeLogger: dropping non-canonical gate=%r "
+                    "(allowed: %s)", gate, sorted(CANONICAL_GATES),
+                )
+                continue
+            detail_clean.append({
+                "gate": gate,
+                "observed": d.get("observed"),
+                "threshold": d.get("threshold"),
+                "reason": str(d.get("reason", "")),
+            })
+
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "pair": pair,
             "direction": direction,
             "raw_confidence": round(float(confidence), 4),
             "gate_failures": list(gate_failures or []),
+            "gate_failures_detail": detail_clean,
             "features": {k: round(float(v), 4) for k, v in (features or {}).items()},
             "agent_scores": {k: round(float(v), 4) for k, v in (agent_scores or {}).items()},
         }
@@ -116,14 +169,21 @@ class VirtualTradeLogger:
             # Update in-memory counters
             self._total_logged += 1
             self._pair_counts[pair] += 1
-            for failure in gate_failures or []:
-                # Extract gate name prefix before '=' or first space
-                gate_name = failure.split("=")[0].strip().split(" ")[0].lower()
-                self._gate_failure_counts[gate_name] += 1
+            # 2026-05-10: prefer canonical detail when available — exact gate
+            # identity, no string-parse ambiguity. Fall back to prefix parse
+            # only when caller did not supply detail (legacy path).
+            if detail_clean:
+                for d in detail_clean:
+                    self._gate_failure_counts[d["gate"]] += 1
+            else:
+                for failure in gate_failures or []:
+                    # Extract gate name prefix before '=' or first space
+                    gate_name = failure.split("=")[0].strip().split(" ")[0].lower()
+                    self._gate_failure_counts[gate_name] += 1
 
             logger.debug(
-                "VirtualTradeLogger: Logged %s %s conf=%.3f failures=%s",
-                pair, direction, confidence, gate_failures,
+                "VirtualTradeLogger: Logged %s %s conf=%.3f failures=%s detail=%s",
+                pair, direction, confidence, gate_failures, detail_clean,
             )
             return True
 
@@ -187,7 +247,14 @@ class VirtualTradeLogger:
     # ── Internal ─────────────────────────────────────────────────────────────
 
     def _load_counts(self) -> None:
-        """Rebuild in-memory counters from existing log file on startup."""
+        """Rebuild in-memory counters from existing log file on startup.
+
+        2026-05-10 (Agent B observability fix): prefer canonical
+        `gate_failures_detail[*].gate` over free-form `gate_failures` prefix
+        parsing when the new field is present in the entry. Pre-fix entries
+        (and any future entries logged without `detail`) still fall back to
+        prefix parsing.
+        """
         if not self.log_path.exists():
             return
         try:
@@ -199,9 +266,16 @@ class VirtualTradeLogger:
                     pair = entry.get("pair", "")
                     if pair:
                         self._pair_counts[pair] += 1
-                    for failure in entry.get("gate_failures", []):
-                        gate_name = failure.split("=")[0].strip().split(" ")[0].lower()
-                        self._gate_failure_counts[gate_name] += 1
+                    detail = entry.get("gate_failures_detail") or []
+                    if detail:
+                        for d in detail:
+                            gate = str(d.get("gate", "")).lower().strip()
+                            if gate in CANONICAL_GATES:
+                                self._gate_failure_counts[gate] += 1
+                    else:
+                        for failure in entry.get("gate_failures", []):
+                            gate_name = failure.split("=")[0].strip().split(" ")[0].lower()
+                            self._gate_failure_counts[gate_name] += 1
                 except Exception:
                     continue
             logger.debug(

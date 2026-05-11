@@ -3273,19 +3273,59 @@ class Scanner:
             return
 
         try:
+            # 2026-05-10 (Agent B observability fix): emit BOTH the legacy
+            # string list `_vtl_failures` (preserved for backwards-compat with
+            # existing tests/consumers) AND a canonical structured list
+            # `_vtl_failures_detail` keyed by `CANONICAL_GATES`. The detail
+            # list disambiguates `confidence_passed=False` vs
+            # `momentum_passed=False` vs `risk_passed=False` vs
+            # `volatility_gate_passed=False` vs `agent_passed=False` — pre-fix
+            # all five parsed to different free-form bucket names in
+            # get_stats(), leaving "did the risk gate veto?" unanswerable.
             _vtl_failures: List[str] = []
+            _vtl_failures_detail: List[Dict[str, Any]] = []
             if not result.confidence_passed:
                 _vtl_failures.append(
                     f"confidence={result.confidence:.3f} < min={self.config.min_confidence}"
                 )
+                _vtl_failures_detail.append({
+                    "gate": "confidence",
+                    "observed": round(float(result.confidence), 4),
+                    "threshold": float(self.config.min_confidence),
+                    "reason": "confidence_passed=False",
+                })
             if not result.momentum_passed:
                 _vtl_failures.append(f"momentum={result.momentum:.3f}")
+                _vtl_failures_detail.append({
+                    "gate": "momentum",
+                    "observed": round(float(result.momentum), 4),
+                    "threshold": float(getattr(self.config, "min_momentum", 0.0)),
+                    "reason": "momentum_passed=False",
+                })
             if not result.risk_passed:
                 _vtl_failures.append("risk_passed=False")
+                _vtl_failures_detail.append({
+                    "gate": "risk",
+                    "observed": round(float(result.drawdown), 4),
+                    "threshold": float(getattr(self.config, "max_drawdown_pct", 0.0)),
+                    "reason": "risk_passed=False",
+                })
             if not result.volatility_gate_passed:
                 _vtl_failures.append("volatility_gate_passed=False")
+                _vtl_failures_detail.append({
+                    "gate": "volatility",
+                    "observed": str(getattr(result, "volatility_regime", "UNKNOWN")),
+                    "threshold": None,
+                    "reason": "volatility_gate_passed=False",
+                })
             if not getattr(result, "agent_passed", True):
                 _vtl_failures.append("agent_passed=False")
+                _vtl_failures_detail.append({
+                    "gate": "agent",
+                    "observed": round(float(getattr(result, "weighted_vote_score", 0.0)), 4),
+                    "threshold": float(getattr(result, "weighted_vote_threshold", 0.0)),
+                    "reason": "agent_passed=False",
+                })
 
             _vtl_agents: Dict[str, float] = {}
             _agents_info = getattr(result, "agents", {}) or {}
@@ -3302,6 +3342,7 @@ class Scanner:
                 gate_failures=_vtl_failures,
                 features={},
                 agent_scores=_vtl_agents,
+                gate_failures_detail=_vtl_failures_detail,
             )
         except Exception as _vtl_err:
             logger.debug("%s: Phase 56 virtual trade log failed: %s", pair, _vtl_err)
