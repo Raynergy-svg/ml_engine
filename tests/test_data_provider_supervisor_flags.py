@@ -102,3 +102,77 @@ def test_supervisor_flags_roundtrip_paused_then_unpaused(tmp_path: Path) -> None
     StateEngine(state_path=tmp_path / ".claude" / "state.json").set_paused(False)
     snap2 = provider._refresh_system(provider.snapshot)
     assert snap2.scanner_paused is False
+
+
+# ── Risk-cache fallback (refresh() previous-snapshot preservation) ───────
+# When ScanEnrichment fields portfolio_risk_pct / drawdown_pct / max_drawdown_pct
+# carry the -1.0 sentinel ("scanner couldn't compute"), refresh() must preserve
+# the last valid value from self._snapshot instead of overwriting with 0.0/NaN.
+
+
+def test_refresh_preserves_prior_risk_when_enrichment_sentinel(tmp_path: Path) -> None:
+    """Invalid (-1.0 sentinel) enrichment risk fields keep prior snapshot values."""
+    from src.tui.embedded_scanner import ScanEnrichment
+
+    provider = DataProvider(project_root=str(tmp_path))
+    # Seed last-good values into the live snapshot the way a prior refresh would
+    with provider._lock:
+        provider._snapshot.portfolio_risk_pct = 5.20
+        provider._snapshot.drawdown_pct = 1.30
+        provider._snapshot.max_drawdown_pct = 3.70
+
+    # Scanner couldn't compute risk this cycle — sentinel -1.0 for all three
+    provider.apply_scan_enrichment(ScanEnrichment(
+        portfolio_risk_pct=-1.0,
+        drawdown_pct=-1.0,
+        max_drawdown_pct=-1.0,
+    ))
+    snap = provider.refresh()
+
+    assert snap.portfolio_risk_pct == 5.20
+    assert snap.drawdown_pct == 1.30
+    assert snap.max_drawdown_pct == 3.70
+
+
+def test_refresh_overwrites_prior_risk_when_enrichment_valid(tmp_path: Path) -> None:
+    """Valid enrichment risk fields replace prior snapshot values (no stickiness)."""
+    from src.tui.embedded_scanner import ScanEnrichment
+
+    provider = DataProvider(project_root=str(tmp_path))
+    with provider._lock:
+        provider._snapshot.portfolio_risk_pct = 5.20
+        provider._snapshot.drawdown_pct = 1.30
+        provider._snapshot.max_drawdown_pct = 3.70
+
+    provider.apply_scan_enrichment(ScanEnrichment(
+        portfolio_risk_pct=7.10,
+        drawdown_pct=2.40,
+        max_drawdown_pct=4.50,
+    ))
+    snap = provider.refresh()
+
+    assert snap.portfolio_risk_pct == 7.10
+    assert snap.drawdown_pct == 2.40
+    assert snap.max_drawdown_pct == 4.50
+
+
+def test_refresh_first_call_with_sentinel_uses_dataclass_defaults(tmp_path: Path) -> None:
+    """First refresh() with sentinel enrichment falls back to DashboardSnapshot defaults (0.0)."""
+    from src.tui.embedded_scanner import ScanEnrichment
+
+    provider = DataProvider(project_root=str(tmp_path))
+    # No prior values seeded — _snapshot is fresh DashboardSnapshot() from __init__
+
+    provider.apply_scan_enrichment(ScanEnrichment(
+        portfolio_risk_pct=-1.0,
+        drawdown_pct=-1.0,
+        max_drawdown_pct=-1.0,
+    ))
+    snap = provider.refresh()
+
+    # Honest: no data yet, so 0.0 default (NOT misleading because there IS no
+    # prior valid value to lie about preserving). This is the correct semantics
+    # on cold boot.
+    assert snap.portfolio_risk_pct == 0.0
+    assert snap.drawdown_pct == 0.0
+    assert snap.max_drawdown_pct == 0.0

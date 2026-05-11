@@ -215,6 +215,9 @@ class DataProvider:
 
         Returns the new snapshot.
         """
+        with self._lock:
+            previous = self._snapshot
+
         snap = DashboardSnapshot()
         snap.oanda_connected = self._connected
 
@@ -252,10 +255,16 @@ class DataProvider:
             # instead of overwriting with a misleading 0.0 or NaN.
             if _is_valid_risk(enrichment.portfolio_risk_pct):
                 snap.portfolio_risk_pct = _safe_float(enrichment.portfolio_risk_pct)
+            else:
+                snap.portfolio_risk_pct = previous.portfolio_risk_pct
             if _is_valid_risk(enrichment.drawdown_pct):
                 snap.drawdown_pct = _safe_float(enrichment.drawdown_pct)
+            else:
+                snap.drawdown_pct = previous.drawdown_pct
             if _is_valid_risk(enrichment.max_drawdown_pct):
                 snap.max_drawdown_pct = _safe_float(enrichment.max_drawdown_pct)
+            else:
+                snap.max_drawdown_pct = previous.max_drawdown_pct
             snap.correlation_ok = enrichment.correlation_ok
             if enrichment.agents:
                 snap.agents = enrichment.agents
