@@ -1,0 +1,36 @@
+name: Skills Lock
+
+on:
+  push:
+    branches: [main, develop, "copilot/**", "claude/**"]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: skills-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift-check:
+    name: Verify .claude/skills-lock.json matches .claude/skills/
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Run lock_skills --check
+      run: |
+        python scripts/lock_skills.py --check
+
+    - name: Report
+      if: failure()
+      run: |
+        echo "::error::Skill drift detected — .claude/skills/ changed without refreshing .claude/skills-lock.json."
+        echo "Run 'python scripts/lock_skills.py' locally and commit the updated lockfile."
