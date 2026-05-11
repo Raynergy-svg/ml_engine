@@ -349,7 +349,10 @@ class TradesScreen(Container):
       - Recent closed trades DataTable (bottom)
     """
 
-    BINDINGS = [Binding("c", "close_selected_trade", "Close Trade", show=True)]
+    BINDINGS = [
+        Binding("c", "close_selected_trade", "Close Trade", show=True),
+        Binding("slash", "open_search", "Search", show=True),
+    ]
 
     DEFAULT_CSS = """
     TradesScreen {
@@ -600,6 +603,59 @@ class TradesScreen(Container):
     # ------------------------------------------------------------------
     # US-510: Per-trade close action
     # ------------------------------------------------------------------
+
+    def action_open_search(self) -> None:
+        """Hotkey /: open FTS5 trade-journal search modal.
+
+        Rebuilds the index from disk each time so newly-closed trades are
+        searchable without a TUI restart. Selection from the modal scrolls
+        the closed-trades panel to the picked trade and surfaces an info
+        notification if the trade lies outside the last-20 window.
+        """
+        from src.tui.screens.trade_search_modal import TradeSearchModal
+        from src.tui.trade_search_index import TradeSearchIndex
+
+        journal_path = self._project_root / "trained_data" / "trade_journal_rl.json"
+        index = TradeSearchIndex.from_journal_file(journal_path)
+        if len(index) == 0:
+            self.app.notify(
+                "Trade journal empty or unreadable.",
+                title="Trade Search",
+                severity="warning",
+            )
+            index.close()
+            return
+
+        def _on_pick(trade_id: str | None) -> None:
+            try:
+                if trade_id is None:
+                    return
+                self._jump_to_closed_trade(trade_id)
+            finally:
+                index.close()
+
+        self.app.push_screen(TradeSearchModal(index), _on_pick)
+
+    def _jump_to_closed_trade(self, trade_id: str) -> None:
+        """Scroll the closed-trades table to the row matching `trade_id`.
+
+        If the trade isn't in the last-20 window currently rendered, surface
+        a hint to the operator rather than silently doing nothing.
+        """
+        for idx, entry in enumerate(self._closed_trades):
+            if str(entry.get("trade_id")) == str(trade_id):
+                try:
+                    table = self.query_one("#trades-closed-table", DataTable)
+                    table.move_cursor(row=idx)
+                    table.focus()
+                except Exception as exc:
+                    logger.debug("Trade jump scroll failed for %s: %s", trade_id, exc)
+                return
+        self.app.notify(
+            f"Trade {trade_id} is older than the last 20 closed shown here.",
+            title="Trade Search",
+            severity="information",
+        )
 
     def action_close_selected_trade(self) -> None:
         """Hotkey C: push TradeCloseModal for the currently selected open trade."""
