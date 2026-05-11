@@ -390,8 +390,34 @@ def validate_holdout_accuracy(
         from src.core.modular_data_loaders import compute_normalized_features
         from src.scanner.gates import GateEvaluator
 
+        # 2026-05-11 deploy-gate harness/runtime mismatch fix.
+        #
+        # PRIOR BUG: GateEvaluator() with default kwargs binds to
+        # use_joint_only=True, use_per_pair_routing=False — i.e. the parent
+        # evaluator's only loaded models came from trained_data/models/joint/
+        # which still holds a pre-Phase-2.A artifact (no scaler / no
+        # regime_quantiles / no feature_pipeline_version). gates._load_transformer
+        # refuses contract-incomplete artifacts → transformer returns (None, 0.5)
+        # → gate falls back to momentum/default SHORT, and the M15 holdout
+        # accuracy reflects the all-SHORT predictor's score on a SHORT-heavy
+        # test slice (today's 25.8% was this fallback predictor, not the real
+        # per-pair EUR_USD model trained at trained_data/models/EUR_USD/).
+        #
+        # FIX: mirror Scanner runtime construction (src/scanner/engine.py:1677):
+        #   - use_per_pair_routing=True so evaluate_all_gates(instrument=pair)
+        #     dispatches via _get_pair_evaluator → per-pair sub-evaluator
+        #     loading trained_data/models/{PAIR}/ (the contract-complete
+        #     Phase-2.A+B artifact).
+        #   - use_joint_only=False so joint stays as the FALLBACK layer for
+        #     pairs without per-pair training (CLAUDE.md: USD_JPY, EUR_GBP,
+        #     EUR_JPY were correlation-threshold-dropped). Per-pair primary,
+        #     joint fallback.
+        #
+        # CLAUDE.md ref: "Tier 7 per-pair gate routing".
         evaluator = GateEvaluator(
             model_dir=str(PROJECT_ROOT / "trained_data" / "models"),
+            use_joint_only=False,
+            use_per_pair_routing=True,
         )
         # GateEvaluator requires explicit load_models() before evaluate_all_gates()
         load_status = evaluator.load_models(require_tcn=False)
