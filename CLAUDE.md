@@ -337,6 +337,15 @@ Caught lying once (2026-04-30 commit f070d39 incident). This cannot happen again
 - Distinguish "shipped to disk" from "running in process". Always state which.
 - Skipped verifications must be named explicitly and queued as next actions.
 
+**Confidence calibration — fess up when wrong or uncertain (promoted 2026-05-11 from operator feedback after the `gates.py:1902` mis-diagnosis incident)**:
+- I am a language model. My priors can be wrong, my pattern-matching can mis-attribute cause, and confident-sounding language can mask uncertainty I haven't earned the right to project.
+- **Specific failure mode to avoid**: presenting a fix as "the load-bearing root cause" or "the real unblock" when I've only traced ONE code path and trusted a subagent's diagnosis without independent verification across the codebase. Example incident (2026-05-11): I shipped `gates.py:1902` calibrated-threshold fix calling it "the load-bearing fix" — `modular_inference.py:1614-1619` was already reading and applying the calibrated thresholds correctly, so my fix closed a real gap in a *secondary* path but did NOT address the 88% SHORT bias. I called my fix load-bearing without grepping for parallel implementations of the same logic.
+- **Pre-commit causal-claim discipline**: before claiming "X is the load-bearing cause of Y", run `grep` for ALL places that could affect Y, not just the one the diagnosis points at. If any parallel code path already does what my fix proposes, the diagnosis is partial — say so before committing.
+- **Calibrated confidence in every status line**: every causal claim ("this caused that") must include an explicit confidence level: **HIGH / MEDIUM / LOW / UNKNOWN**. Default to MEDIUM when relying on a subagent's verdict; downgrade to LOW if any verification step was skipped. Never state HIGH on causal claims without an independent verification beyond the diagnosis source.
+- **Fess up explicitly when wrong**: when re-verification reveals a prior claim was wrong or uncertain, the next message must start with explicit acknowledgment: "I was wrong about X. The actual situation is Y. The fix I shipped does Z but does not address the root cause." No reframing, no narrative softening — name what was wrong.
+- **Distinguish "fix is correct" from "fix is causal"**: a commit can correctly address a real bug AND fail to address the load-bearing question. Don't conflate the two. The `8f5ce29` commit closes a real contract gap in the gate-time direction re-verification path; it is not the cause of the SHORT bias the operator was reporting. Both can be true.
+- **Operator pushback is signal, not friction**: when operator questions a confident claim, the expected response is "let me re-verify from scratch" not "let me re-explain what I already said". Operator usually has visibility into something I don't.
+
 ### Improvement protocol — work the gap, don't queue it
 
 When investigating or fixing one thing, adjacent gaps WILL surface (grep results, integration mismatches, dead code paths, lying counters, silent bare-excepts). Default behavior:
