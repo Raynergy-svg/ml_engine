@@ -611,6 +611,85 @@ def verify_ensemble_refreshed(
     }
 
 
+def _decide_deploy_from_per_tf_results(
+    per_tf: Dict[str, Any],
+    min_accuracy: float,
+    granularities: List[str],
+) -> tuple[bool, str]:
+    """Decide whether to deploy based on per-TF holdout results.
+
+    Pure function — no I/O, no globals. Takes the per-TF result dict that
+    `validate_holdout_multi_timeframe` builds and returns (deploy_ok,
+    explanation_string).
+
+    Rule (2026-05-11 — see incident in `validate_holdout_multi_timeframe`):
+    M15 is the production trading timeframe per CLAUDE.md. The deploy gate
+    requires M15 to pass on its own merits:
+      * M15 missing from results → REFUSE (fail-closed).
+      * M15 acc=None with all-soft-pass on other TFs → ALLOW (validator
+        explicitly chose not to block when no real samples available).
+      * M15 acc=None while other TFs had real results → REFUSE.
+      * M15 acc >= min_accuracy AND passed=True → ALLOW.
+      * M15 acc < min_accuracy → REFUSE regardless of H1/H4.
+
+    Args:
+        per_tf: {tf: {"passed": bool, "accuracy": float | None,
+                      "samples": int | None}, ...}
+        min_accuracy: Threshold every TF was tested against.
+        granularities: Original ordered list of TFs requested (used to
+            detect soft-pass scenarios).
+
+    Returns:
+        (deploy_ok, explanation) — explanation is the operator-readable
+        reason string that callers can log.
+    """
+    PRODUCTION_TIMEFRAME = "M15"
+    all_soft_pass = (
+        all(per_tf.get(g, {}).get("passed") for g in granularities)
+        and not any(
+            per_tf.get(g, {}).get("accuracy") is not None
+            and per_tf[g]["accuracy"] >= min_accuracy
+            for g in granularities
+        )
+    )
+
+    if PRODUCTION_TIMEFRAME not in per_tf:
+        return False, (
+            f"{PRODUCTION_TIMEFRAME} holdout result MISSING "
+            f"(granularities={list(granularities)}) — "
+            f"refusing deploy (fail-closed; production TF must be validated)."
+        )
+
+    m15_entry = per_tf[PRODUCTION_TIMEFRAME]
+    m15_acc = m15_entry.get("accuracy")
+    m15_passed_flag = bool(m15_entry.get("passed"))
+
+    if m15_acc is None:
+        if all_soft_pass:
+            return True, (
+                f"{PRODUCTION_TIMEFRAME} holdout returned insufficient samples — "
+                f"soft-pass (validator did not block; no real validation occurred)."
+            )
+        return False, (
+            f"{PRODUCTION_TIMEFRAME} holdout returned insufficient samples but "
+            f"other TFs had real results — refusing deploy (production TF must "
+            f"be validated when validation is possible)."
+        )
+
+    if m15_passed_flag and m15_acc >= min_accuracy:
+        return True, (
+            f"{PRODUCTION_TIMEFRAME}=PASS at {m15_acc * 100.0:.1f}% "
+            f"(threshold {min_accuracy * 100.0:.0f}%) — proceeding."
+        )
+
+    return False, (
+        f"{PRODUCTION_TIMEFRAME} FAILED at {m15_acc * 100.0:.1f}% "
+        f"(need {min_accuracy * 100.0:.0f}%) — refusing deploy regardless of "
+        f"other timeframes (per CLAUDE.md modernization stance: "
+        f"{PRODUCTION_TIMEFRAME} is the production trading TF)."
+    )
+
+
 def validate_holdout_multi_timeframe(
     pairs: List[str],
     min_accuracy: float = 0.52,
@@ -647,18 +726,26 @@ def validate_holdout_multi_timeframe(
             passed_count += 1
         messages.append(msg)
 
-    # If at least one TF has real accuracy data AND passes, we're good.
-    # If ALL TFs returned ok=True but with insufficient samples (acc=None),
-    # treat as a soft pass — the holdout validator couldn't test but explicitly
-    # chose not to block.
-    all_soft_pass = all(per_tf[g]["passed"] for g in granularities) and passed_count == 0
-    overall_passed = passed_count >= 1 or all_soft_pass
-    if all_soft_pass:
-        logger.warning(
-            "Multi-TF holdout: all %d timeframes returned insufficient samples — "
-            "soft-passing. Holdout validation did NOT actually run.",
-            len(granularities),
-        )
+    # Deploy gate: M15 MUST pass.
+    #
+    # 2026-05-11 incident — autonomous retrain (08:07 EDT) shipped EUR_USD
+    # direction model with M15=35.7% (FAILED) but H1=55.2% + H4=55.2% (PASSED);
+    # the prior `overall_passed = passed_count >= 1` rule majority-voted the
+    # deploy through despite a below-chance score on the production trading TF.
+    #
+    # M15 is the live production granularity per CLAUDE.md "Modernization
+    # stance" + "ML Stack" sections. H1/H4 are informational regime-fragility
+    # checks — never the deploy gate.
+    #
+    # Decision logic extracted into `_decide_deploy_from_per_tf_results` so
+    # tests can drive it with real dicts without external dependencies.
+    overall_passed, _deploy_explanation = _decide_deploy_from_per_tf_results(
+        per_tf=per_tf,
+        min_accuracy=min_accuracy,
+        granularities=granularities,
+    )
+    _deploy_log = (logger.info if overall_passed else logger.error)
+    _deploy_log("Deploy gate: %s", _deploy_explanation)
 
     # PRIMARY TF ACCURACY: use the first granularity (the trading TF, typically
     # H1) as the promotion gate's accuracy metric. M15/H4 are informational —
