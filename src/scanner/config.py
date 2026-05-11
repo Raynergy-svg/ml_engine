@@ -338,7 +338,12 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         # confidence output to the 0.4–0.7 range the original 62.0
         # was calibrated against.
         "min_confidence": 35.0,
-        "min_momentum": 0.12,  # Old: 0.05. Require real directional momentum.
+        # 2026-05-10: 0.12 → 0.06 (dataclass default). Empirical: momentum head
+        # output median 0.088 / max 0.097 on rejected high-conf trades; 0.12
+        # locked out 88.7 % of high-confidence rejections (EUR_USD 85/86,
+        # EUR_GBP 26/26). threshold_optimizer proposing 0.3 is moving the wrong
+        # way — separate inverted-comparator bug.
+        "min_momentum": 0.06,
         "min_tcn_probability": 0.62,  # Old: 0.58. Ensemble must agree.
         "max_drawdown_pct": 0.025,  # Old: 0.030. Tighter drawdown leash.
         "final_score_threshold": 0.52,  # Old: 0.44. Raise the floor.
@@ -346,9 +351,13 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_atr_pips": 5.0,  # Old: 4.0. Skip dead-vol pairs.
         "min_volatility_regime": 0,
         # ── Agent Consensus (tighter WVS, hard uncertainty blocking) ──
-        # Old WVS: 0.45. Trade 1220 passed at 0.76 despite trend=False.
-        # Source: trading.md rule 2026-04-15 + config_adjustments.json CRITICAL.
-        "weighted_vote_threshold": 0.72,
+        # 2026-04-15: raised 0.45 → 0.72 after Trade 1220 (passed at 0.76 despite trend=False).
+        # 2026-05-10: 0.72 → 0.60 — empirical evidence shows 0.72 is the secondary
+        # blocker (22.6 % of high-conf rejections via agent_passed=False); trend
+        # hard-veto + MR composite veto + uncertainty hard-block already cover
+        # the Trade 1220 failure mode. 0.60 is compromise between default 0.45
+        # and the post-1220 0.72.
+        "weighted_vote_threshold": 0.60,
         "sub_inference_tradeable_only": False,
         "sub_inference_min_confidence": 0.45,  # Old: 0.30.
         "sub_inference_vote_threshold": 0.42,  # Old: 0.34.
@@ -357,9 +366,13 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         # Old: 0.52 soft. Soft penalty docked only 0.074 from confidence —
         # trades at 0.60 uncertainty sailed through (source: trade 1199).
         "max_uncertainty_score": 0.38,
-        # Old: 0.60. At 0.50 disagreement models are guessing. Source:
-        # config_adjustments.json CRITICAL — 2/3 losses had disagreement=0.5.
-        "max_model_disagreement": 0.28,
+        # 2026-05-10: 0.28 → 0.40 — Phase 44 calibrator routinely outputs
+        # disagreement=HIGH (std≈0.33) on live scans; 0.28 is firing the
+        # uncertainty agent's disagreement_hard_block circuit breaker
+        # continuously (see brain feed 2026-05-11T02:24:15Z onward). 0.40 still
+        # well below original 0.60 default but gives the Phase 44 disable
+        # (commit 57023dd) room to take effect after restart.
+        "max_model_disagreement": 0.40,
         # ── RL Adaptive Systems ───────────────────────────────────────
         "use_rl_sizer": True,
         "use_rl_gates": True,
@@ -383,8 +396,13 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_multi_timeframe_agent": True,
         "enable_pair_performance_agent": True,
         # Old: 1.2. Barely above cost. Hedge funds target 2:1+ asymmetry.
-        # At 1.8:1 min, even 40% win rate is profitable (expectancy > 0).
-        "min_risk_reward_ratio": 1.8,
+        # 2026-05-10: 1.8 → 1.5 — silent post-filter cull (fires after the
+        # virtual-trade ledger write, invisible in gate_failures). With
+        # atr_tp_mult=2.8 / atr_sl_mult=1.3 the baseline R:R is ~2.15:1 but
+        # high-vol regimes compress TP toward max_tp_pips=80 and bleed below
+        # 1.8. 1.5 keeps positive expectancy at 40% win rate while not silently
+        # dropping high-vol setups.
+        "min_risk_reward_ratio": 1.5,
         "enable_llm_trade_analysis": True,
         "enable_trend_agent_hard_veto": True,
         "enable_mean_reversion_veto": True,  # H2 (Phase 93)
