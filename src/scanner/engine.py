@@ -4624,8 +4624,13 @@ class Scanner:
                     logger.debug(f"{pair}: Pair-regime-agent matrix skipped: {_matrix_err}")
 
             # Apply pre-trade backtest validation (soft gate: adjusts confidence, never hard-blocks)
+            # Kill switch (2026-05-10): config.enable_backtest_gate=False skips entirely.
             self._init_analysis_tools()
-            if self._backtest_gate and result.direction != "HOLD":
+            if (
+                self._backtest_gate
+                and result.direction != "HOLD"
+                and bool(getattr(self.config, "enable_backtest_gate", True))
+            ):
                 backtest_result = self._backtest_gate.validate(
                     pair=pair,
                     direction=result.direction,

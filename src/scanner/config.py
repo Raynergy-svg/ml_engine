@@ -408,6 +408,19 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "meta_manager_use_llm": False,
         "staged_deploy_shadow_cycles": 20,
         "staged_deploy_canary_trades": 10,
+        # 4-agent TUI audit (2026-05-10): trade-flow unblock ──────────────
+        # BacktestGate disabled in smart: -15% confidence penalty on as few
+        # as 3 simulated trades (backtest_gate.py:210) was treating noise as
+        # signal. The 19-bar next-candle SL/TP simulation is too crude to
+        # produce statistically meaningful win-rate estimates; trade journal
+        # + RL feedback already provide grounded signal-quality filtering.
+        "enable_backtest_gate": False,
+        # Phase 44 ConfidenceCalibrator disabled in smart: was compressing
+        # raw model confidence by -52.7% (raw=0.582 → calibrated=0.099 in
+        # production). With model-output confidence already in the 0.10–0.25
+        # range post-retrain, further calibration drove every signal below
+        # min_confidence (35.0) and produced zero trades for 12 days.
+        "enable_phase44_calibration": False,
     },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
@@ -782,6 +795,15 @@ class ScannerConfig:
     # current behavior. Added to investigate over-aggressive compression observed
     # in production (raw=0.582 → calibrated=0.099, ~5.9× compression).
     enable_phase44_calibration: bool = True
+
+    # --- BacktestGate kill switch (2026-05-10) ---
+    # When False, the engine skips the pre-trade BacktestGate validation entirely
+    # (no candle simulation, no -15% confidence penalty). Default True preserves
+    # legacy behavior in non-smart profiles. Added because the gate's 19-bar
+    # next-candle SL/TP simulation is statistically noisy — fired -15% penalties
+    # on as few as 3 simulated trades (the floor in backtest_gate.py:210),
+    # producing false-negative blocks on otherwise viable signals.
+    enable_backtest_gate: bool = True
 
     # --- Dynamic SL/TP Optimization (US-080) ---
     # Phase 29 (US-179): Enabled by default — stable and tested in smart profile
