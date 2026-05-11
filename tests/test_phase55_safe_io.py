@@ -79,6 +79,31 @@ class TestSafeJsonWrite:
         loaded = json.loads(open(path).read())
         assert len(loaded["items"]) == 1000
 
+    def test_sort_keys_default_false(self, tmp_dir):
+        """Default behavior preserves insertion order (no key sorting)."""
+        path = os.path.join(tmp_dir, "unsorted.json")
+        data = {"zebra": 1, "apple": 2, "mango": 3}
+        safe_json_write(path, data)
+        # Keys appear in insertion order in the raw file
+        raw = open(path).read()
+        assert raw.index('"zebra"') < raw.index('"apple"') < raw.index('"mango"')
+
+    def test_sort_keys_true_sorts_alphabetically(self, tmp_dir):
+        """sort_keys=True produces deterministic alphabetical key order on disk."""
+        path = os.path.join(tmp_dir, "sorted.json")
+        data = {"zebra": 1, "apple": 2, "mango": 3}
+        safe_json_write(path, data, sort_keys=True)
+        raw = open(path).read()
+        assert raw.index('"apple"') < raw.index('"mango"') < raw.index('"zebra"')
+
+    def test_sort_keys_round_trip(self, tmp_dir):
+        """sort_keys preserves values exactly, only reorders keys on disk."""
+        path = os.path.join(tmp_dir, "rt.json")
+        data = {"b": [3, 1, 2], "a": {"y": 1, "x": 2}}
+        safe_json_write(path, data, sort_keys=True)
+        loaded = safe_json_read(path)
+        assert loaded == data
+
 
 class TestSafeJsonRead:
 

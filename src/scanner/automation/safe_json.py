@@ -197,6 +197,7 @@ def safe_json_write(
     data: Any,
     indent: int = 2,
     create_backup: bool = True,
+    sort_keys: bool = False,
 ) -> bool:
     """Write JSON data atomically with locking.
 
@@ -208,7 +209,8 @@ def safe_json_write(
         path: Path to JSON file.
         data: Data to serialize as JSON.
         indent: JSON indentation level.
-        create_backup: Whether to create .bak of previous version (default False).
+        create_backup: Whether to create .bak of previous version (default True).
+        sort_keys: Sort object keys for deterministic output (default False).
 
     Returns:
         True if write succeeded, False otherwise.
@@ -221,7 +223,7 @@ def safe_json_write(
     with _FileLock(path, exclusive=True):
         try:
             # Serialize first to catch errors before touching files
-            json_str = json.dumps(data, indent=indent, default=str)
+            json_str = json.dumps(data, indent=indent, sort_keys=sort_keys, default=str)
 
             # Create backup of current file
             if create_backup and path.exists():

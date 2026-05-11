@@ -22,11 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    from src.scanner.automation.safe_json import safe_json_write
-    _HAS_SAFE_JSON = True
-except ImportError:
-    _HAS_SAFE_JSON = False
+from src.scanner.automation.safe_json import safe_json_write
 
 logger = logging.getLogger(__name__)
 
@@ -137,35 +133,11 @@ class WeightLearner:
             return dict(self.base_weights)
 
     def _persist_weights(self) -> None:
-        self.weights_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            data = {
-                "domain": self.domain,
-                "weights": self._weights,
-                "update_count": self._update_count,
-                "last_updated": datetime.now(timezone.utc).isoformat(),
-            }
-            if _HAS_SAFE_JSON:
-                success = safe_json_write(self.weights_path, data)
-                if not success:
-                    logger.error(f"[{self.domain}] safe_json_write failed for weights")
-            else:
-                # Fallback: atomic temp+rename without locking
-                import os
-                import tempfile
-                json_str = json.dumps(data, indent=2, default=str)
-                fd, tmp = tempfile.mkstemp(dir=str(self.weights_path.parent))
-                try:
-                    os.write(fd, json_str.encode("utf-8"))
-                    os.fsync(fd)
-                    os.close(fd)
-                    os.rename(tmp, str(self.weights_path))
-                except Exception:
-                    os.close(fd)
-                    try:
-                        os.unlink(tmp)
-                    except OSError:
-                        pass
-                    raise
-        except Exception as e:
-            logger.error(f"[{self.domain}] Failed to persist weights: {e}")
+        data = {
+            "domain": self.domain,
+            "weights": self._weights,
+            "update_count": self._update_count,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+        if not safe_json_write(self.weights_path, data):
+            logger.error(f"[{self.domain}] safe_json_write failed for weights")

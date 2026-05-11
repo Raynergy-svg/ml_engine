@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from src.scanner.automation.safe_json import safe_json_write
 
 
 HEARTBEAT_RELPATH = ".claude/heartbeat.json"
@@ -60,7 +61,7 @@ def write_heartbeat(
     last_error_ts: Optional[str] = None,
     pid: Optional[int] = None,
 ) -> Path:
-    """Atomically write heartbeat.json — tmp file + os.replace to avoid torn reads."""
+    """Atomically write heartbeat.json via safe_json_write to avoid torn reads."""
     target = heartbeat_path(repo_root)
     target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -73,21 +74,9 @@ def write_heartbeat(
         last_error_ts=last_error_ts,
     )
 
-    fd, tmp_path = tempfile.mkstemp(
-        prefix=".heartbeat.", suffix=".tmp", dir=str(target.parent)
-    )
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(payload.to_dict(), f, indent=2, sort_keys=True)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, target)
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
+    # High-frequency write (every 10s) — disable .bak to avoid extra fsync per beat.
+    if not safe_json_write(target, payload.to_dict(), sort_keys=True, create_backup=False):
+        raise IOError(f"heartbeat: safe_json_write failed for {target}")
     return target
 
 

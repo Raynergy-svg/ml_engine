@@ -16,14 +16,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import tempfile
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+from src.scanner.automation.safe_json import safe_json_write
 
 logger = logging.getLogger(__name__)
 
@@ -152,19 +152,9 @@ class MetaParametersRegistry:
             if not regime_data:
                 continue
             path = self._meta_dir / f"agent_meta_params_{regime}.json"
-            payload = json.dumps(
-                {"version": "1.0", "regime": regime, "agents": regime_data},
-                indent=2,
-                sort_keys=True
-            )
-            try:
-                fd, tmp = tempfile.mkstemp(dir=str(self._meta_dir), suffix=".tmp")
-                os.write(fd, payload.encode())
-                os.fsync(fd)
-                os.close(fd)
-                os.rename(tmp, str(path))
-            except Exception as e:
-                logger.error("MetaParams: save failed for regime %s: %s", regime, e)
+            payload = {"version": "1.0", "regime": regime, "agents": regime_data}
+            if not safe_json_write(path, payload, sort_keys=True):
+                logger.error("MetaParams: save failed for regime %s", regime)
 
     def _load_all(self) -> None:
         """Load all regime files on startup. Missing files → defaults (no crash)."""

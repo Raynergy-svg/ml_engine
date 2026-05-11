@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from collections import deque
 from collections import defaultdict
@@ -45,6 +44,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+from src.scanner.automation.safe_json import safe_json_write
 
 logger = logging.getLogger(__name__)
 
@@ -1515,9 +1516,9 @@ class MAMLBenchmark:
             }
 
             path = _BENCHMARK_DIR / "benchmark_state.json"
-            tmp_path = path.with_suffix(".tmp")
-            tmp_path.write_text(json.dumps(state, indent=2, sort_keys=True))
-            os.replace(str(tmp_path), str(path))
+            if not safe_json_write(path, state, sort_keys=True):
+                logger.warning("MAML Benchmark: save failed")
+                return
 
             logger.debug(
                 "MAML Benchmark: saved (outcomes=%d, predictions=%d)",

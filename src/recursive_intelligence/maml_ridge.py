@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -42,6 +41,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+from src.scanner.automation.safe_json import safe_json_write
 
 logger = logging.getLogger(__name__)
 
@@ -698,9 +699,8 @@ class MAMLRidge:
                     {"features": f.tolist(), "target": t}
                     for f, t in buf[-self.config.max_buffer_per_regime:]
                 ]
-            tmp_path = buffer_path.with_suffix(".tmp")
-            tmp_path.write_text(json.dumps(buffer_data, indent=2))
-            os.replace(str(tmp_path), str(buffer_path))
+            if not safe_json_write(buffer_path, buffer_data):
+                logger.warning("MAML Ridge: buffer save failed")
 
             logger.debug("MAML Ridge: state saved (trains=%d)", self._total_meta_trains)
         except Exception as e:

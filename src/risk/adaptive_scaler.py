@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from src.scanner.automation.safe_json import safe_json_write
 
 logger = logging.getLogger(__name__)
 
@@ -161,21 +162,16 @@ class AdaptiveRiskScaler:
 
     def _save_state(self) -> None:
         """Persist scaler state to disk."""
-        try:
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            data = {
-                "scale_factor": round(self._scale_factor, 4),
-                "consecutive_wins": self._consecutive_wins,
-                "consecutive_losses": self._consecutive_losses,
-                "last_trade_time": self._last_trade_time,
-                "total_trades": self._total_trades,
-            }
-            # H-2: atomic write — prevents loss of drawdown state on crash
-            _tmp = self.state_path.with_suffix(".tmp")
-            _tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-            os.replace(str(_tmp), str(self.state_path))
-        except Exception as e:
-            logger.error(f"Scaler state save failed: {e}")
+        data = {
+            "scale_factor": round(self._scale_factor, 4),
+            "consecutive_wins": self._consecutive_wins,
+            "consecutive_losses": self._consecutive_losses,
+            "last_trade_time": self._last_trade_time,
+            "total_trades": self._total_trades,
+        }
+        # H-2: atomic write — prevents loss of drawdown state on crash
+        if not safe_json_write(self.state_path, data):
+            logger.error("Scaler state save failed")
 
     def _log_change(self) -> None:
         """Log scale factor change to observations."""
