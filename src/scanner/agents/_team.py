@@ -234,11 +234,9 @@ class ScannerAgentTeam:
         try:
             from src.scanner.isotonic_calibrator import IsotonicCalibrator
             self._isotonic_calibrator = IsotonicCalibrator()
-            _iso_loaded = self._isotonic_calibrator.load_model()
-            if _iso_loaded:
-                logger.info("Phase 52 (US-323): Isotonic calibrator initialized (model loaded)")
-            else:
-                logger.info("Phase 52 (US-323): Isotonic calibrator initialized (no model — will use fallback)")
+            # No persisted-model convention exists; calibrator falls back to
+            # raw confidence until fit_from_journal() is invoked.
+            logger.info("Phase 52 (US-323): Isotonic calibrator initialized (no model — will use fallback)")
         except Exception as e:
             logger.debug(f"Phase 52: Isotonic calibrator init deferred: {e}")
 

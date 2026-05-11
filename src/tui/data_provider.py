@@ -400,21 +400,24 @@ class DataProvider:
             # Real total gets set from scanner.get_model_health() on first cycle
             snap.models_total = len(model_files)
 
-        # Check supervisor flags. Scanner readiness is intentionally NOT
-        # inferred from this file: state.json can outlive the embedded scanner
-        # process, so the App overlays readiness from the in-process scanner.
+        # Check supervisor flags via StateEngine — the canonical source of
+        # truth (handles schema migration + atomic read). Reading state.json
+        # directly bypassed migration and risked stale/partial reads during
+        # in-flight writes. Scanner readiness stays in-process (state.json
+        # can outlive the embedded scanner).
         state_path = self._project_root / ".claude" / "state.json"
-        if state_path.exists():
-            try:
-                state = json.loads(state_path.read_text())
-                snap.scan_cycle_count = int(
-                    state.get("scan_cycle_count", state.get("scan_cycles", 0)) or 0
-                )
-                snap.scanner_paused = bool(state.get("scanner_paused", False))
-                snap.halted = bool(state.get("halted", False))
-                snap.mode = str(state.get("mode", "dry_run"))
-            except Exception:
-                pass
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            _se = StateEngine(state_path=state_path)
+            _state = _se.load_state()
+            snap.scan_cycle_count = int(
+                _state.get("scan_cycle_count", _state.get("scan_cycles", 0)) or 0
+            )
+            snap.scanner_paused = _se.get_paused()
+            snap.halted = _se.get_halted()
+            snap.mode = _se.get_mode()
+        except Exception:
+            pass
 
         return snap
 
