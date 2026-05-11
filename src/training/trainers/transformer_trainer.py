@@ -3515,6 +3515,19 @@ class TransformerDirectionTrainer(BaseTrainer):
         self._use_ewc = meta.get("ewc_enabled", True)
         self._use_replay = meta.get("replay_enabled", True)
 
+        # === Phase 2.A inference contract fields (2026-05-08, load-side fix 2026-05-11) ===
+        # Sibling bug to c0530b5 (Bug A): trainer SAVES these (lines 3211-3213) but
+        # load() never read them back. Consumer self.tcn._regime_quantiles /
+        # self.tcn._regime_atr_col is getattr()'d by
+        # modular_inference._apply_scaler_and_regime — without these reads the
+        # helper sees None and degrades to the unscaled legacy path on every
+        # contract-complete artifact, silently neutralising Bug A's fix.
+        # Backwards-compat: older artifacts lacking these keys load as None,
+        # which the helper handles by falling through to the legacy path.
+        self._regime_quantiles = meta.get("regime_quantiles")
+        self._regime_atr_col = meta.get("regime_atr_col")
+        self._feature_pipeline_version = meta.get("feature_pipeline_version")
+
         # === Load both pre-selection and post-selection scalers (Fix 2.3) ===
         try:
             self._load_scalers(path.parent)
