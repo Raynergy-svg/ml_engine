@@ -2590,19 +2590,183 @@ class ModularEnsembleInference:
             logger.warning(f"Calibration failed, using raw probability: {e}")
             return raw_probability, False
 
-    def _predict_with_uncertainty(self, features: np.ndarray, n_samples: int = 20) -> tuple[float, float, int]:
+    def _apply_scaler_and_regime(
+        self,
+        df: pd.DataFrame,
+        feature_names: List[str],
+        scaler: Any,
+        regime_quantiles: Optional[Dict[str, float]],
+        regime_atr_col: Optional[str],
+        selected_indices: Optional[List[int]] = None,
+    ) -> Optional[np.ndarray]:
+        """Build the contract-compliant inference matrix and apply the trained scaler.
+
+        Phase 2.B parity for the MC-dropout path (2026-05-11). Mirrors
+        ``gates.GateEvaluator._build_transformer_inference_matrix`` plus the
+        ``selected_indices`` + ``scaler.transform`` steps that
+        ``transformer_trainer.TransformerDirectionTrainer.predict`` performs
+        before invoking the keras model. The bug this closes: the pre-fix
+        MC-dropout branch fed raw (unscaled) features with regime one-hots
+        silently zero-filled directly into ``self.tcn.model(...)`` — the
+        model saw inputs ~91× the training-time magnitude (e.g. stoch_k
+        mean=51 vs trained ~0), which on the EUR_USD M15 model produced
+        prob_long=0.170 on a bar whose contract-compliant prediction was
+        0.681.  This is the load-bearing cause of the 88% SHORT bias in
+        the live brain feed.
+
+        Args:
+            df: DataFrame already through ``compute_normalized_features``.
+                Must contain every column in ``feature_names`` OR provide an
+                ``atr_pct_*`` column for regime one-hot derivation.
+            feature_names: Authoritative training-time column order.
+            scaler: Fitted ``StandardScaler`` saved alongside the model.
+                Must be non-None; missing scaler is a contract gap.
+            regime_quantiles: ``{q25,q50,q75}`` from training-time ATR
+                distribution. Required if any of ``regime_{low,normal,
+                high,extreme}`` appear in feature_names. If None AND the
+                feature_names contain regime cols, the method refuses
+                (returns None) — silent zero-fill would hide contract drift.
+            regime_atr_col: Which ``atr_pct_*`` column drove the quantiles
+                at training time (e.g. ``atr_pct_20``). Defaults to
+                ``atr_pct_20`` if None.
+            selected_indices: Feature selection indices saved by the trainer.
+                Only consulted when the column count of the assembled
+                matrix exceeds ``self.tcn.model.input_shape[-1]``; mirrors
+                the trainer's predict()-side guard.
+
+        Returns:
+            Scaled ``(n_rows, n_features)`` matrix ready for sequence
+            reshape, OR ``None`` if any contract gap is detected (missing
+            scaler, missing column, missing regime quantiles when needed,
+            etc.). The MC-dropout caller treats None as "fall back to
+            self.tcn.predict()" so we never crash live trading.
+        """
+        if scaler is None:
+            logger.warning(
+                "_apply_scaler_and_regime: saved scaler is None — "
+                "pre-Phase-2.A artifact. MC-dropout will fall back to "
+                "the trainer's predict() path instead of unsafe MC."
+            )
+            return None
+        if not feature_names:
+            logger.warning(
+                "_apply_scaler_and_regime: feature_names is empty — no "
+                "training-time contract. Refusing to scale."
+            )
+            return None
+
+        regime_cols = ("regime_low", "regime_normal", "regime_high", "regime_extreme")
+        regime_class_idx = {name: i for i, name in enumerate(regime_cols)}
+
+        cols: List[np.ndarray] = []
+        for name in feature_names:
+            if name in df.columns:
+                cols.append(df[name].values.astype(np.float32))
+            elif name in regime_class_idx:
+                if regime_quantiles is None:
+                    logger.warning(
+                        "_apply_scaler_and_regime: column '%s' required by "
+                        "feature_names but regime_quantiles missing from "
+                        "contract. Refusing (no silent zero-fill).",
+                        name,
+                    )
+                    return None
+                atr_col = regime_atr_col or "atr_pct_20"
+                if atr_col not in df.columns:
+                    logger.warning(
+                        "_apply_scaler_and_regime: regime col '%s' requires "
+                        "'%s' which is missing from df. Refusing.",
+                        name, atr_col,
+                    )
+                    return None
+                atr = df[atr_col].values.astype(np.float32)
+                q25 = regime_quantiles["q25"]
+                q50 = regime_quantiles["q50"]
+                q75 = regime_quantiles["q75"]
+                # Per-row class: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
+                cls = np.where(
+                    atr <= q25, 0,
+                    np.where(atr <= q50, 1,
+                             np.where(atr <= q75, 2, 3)),
+                )
+                cls = np.where(np.isfinite(atr), cls, 1)
+                target = regime_class_idx[name]
+                cols.append((cls == target).astype(np.float32))
+            else:
+                logger.warning(
+                    "_apply_scaler_and_regime: feature '%s' required by "
+                    "trained model unavailable in df. Refusing (no silent "
+                    "zero-fill).",
+                    name,
+                )
+                return None
+
+        X = np.column_stack(cols)  # (n_rows, n_features)
+
+        # Apply selected_indices ONLY when count mismatches model input (mirrors
+        # trainer's predict() guard at transformer_trainer.py:3005-3020).
+        model_n_features = None
+        try:
+            if self.tcn is not None and hasattr(self.tcn, "model") and self.tcn.model is not None:
+                model_n_features = self.tcn.model.input_shape[-1]
+        except Exception:
+            model_n_features = None
+        if (
+            model_n_features is not None
+            and X.shape[-1] > model_n_features
+            and selected_indices is not None
+            and len(selected_indices) == model_n_features
+        ):
+            try:
+                X = X[:, selected_indices]
+            except (IndexError, ValueError) as e:
+                logger.warning(f"_apply_scaler_and_regime: selected_indices subset failed: {e}")
+                return None
+
+        # Apply the trained scaler — THE step the legacy MC-dropout path missed.
+        try:
+            X_scaled = scaler.transform(X)
+        except Exception as e:
+            logger.warning(f"_apply_scaler_and_regime: scaler.transform failed: {e}")
+            return None
+
+        # Guard against NaN/Inf leaking into the keras model.
+        X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
+        return X_scaled.astype(np.float32)
+
+    def _predict_with_uncertainty(
+        self,
+        features: np.ndarray,
+        n_samples: int = 20,
+        df: Optional[pd.DataFrame] = None,
+    ) -> tuple[float, float, int]:
         """
         Monte Carlo Dropout for uncertainty estimation.
 
         Runs the model N times with dropout enabled (training=True) to get
         a distribution of predictions. High std indicates model uncertainty.
 
+        2026-05-11 fix: when ``df`` is provided AND the trainer's inference
+        contract (scaler + feature_names + regime_quantiles for regime cols)
+        is present on ``self.tcn``, rebuild the input through
+        ``_apply_scaler_and_regime`` so the model sees scaled features in
+        the training-time order. The legacy unscaled path (df=None or
+        contract missing) is preserved for backward-compat but flagged.
+        See ``docs/superpowers/specs/2026-05-11-disagreement-hard-block-diagnosis-design.md``.
+
         Args:
-            features: Input features array (seq_len, n_features)
+            features: Input features array (seq_len, n_features). Used only
+                when the contract-aware path can't run.
             n_samples: Number of forward passes (default: 20)
+            df: Optional source DataFrame (already through
+                ``compute_normalized_features``). When provided AND the
+                contract is loaded, takes precedence over ``features`` and
+                produces scaled inputs that match the training distribution.
 
         Returns:
-            Tuple of (mean_probability, std_probability, predicted_direction)
+            Tuple of (mean_probability, std_probability, predicted_direction).
+            On any failure, returns (0.5, 0.0, None) which the caller treats
+            as "MC unavailable, use the standard prediction path".
         """
         if self.tcn is None or not hasattr(self.tcn, 'model'):
             return 0.5, 0.0, None
@@ -2610,14 +2774,54 @@ class ModularEnsembleInference:
         try:
             import tensorflow as tf  # noqa: F401
 
-            # Ensure features have batch dimension
-            if features.ndim == 2:
-                features = np.expand_dims(features, axis=0)
-
-            # Extract only the last seq_len timesteps
             seq_len = getattr(self.tcn, 'seq_len', 60)
-            if features.shape[1] > seq_len:
-                features = features[:, -seq_len:, :]  # Take last 60 timesteps
+
+            # === 2026-05-11 contract-aware path ===
+            # When df is supplied AND the trainer's saved scaler is present,
+            # rebuild scaled features in feature_names order (matches the
+            # gates.py:1931-1939 + transformer_trainer.py:3023 reference paths).
+            scaled_input: Optional[np.ndarray] = None
+            if df is not None:
+                feature_names = getattr(self.tcn, "feature_names", None)
+                scaler = getattr(self.tcn, "scaler", None)
+                regime_quantiles = getattr(self.tcn, "_regime_quantiles", None)
+                regime_atr_col = getattr(self.tcn, "_regime_atr_col", None)
+                selected_indices = getattr(self.tcn, "selected_indices", None)
+                if scaler is not None and feature_names:
+                    X_scaled = self._apply_scaler_and_regime(
+                        df=df,
+                        feature_names=feature_names,
+                        scaler=scaler,
+                        regime_quantiles=regime_quantiles,
+                        regime_atr_col=regime_atr_col,
+                        selected_indices=selected_indices,
+                    )
+                    if X_scaled is not None and len(X_scaled) >= seq_len:
+                        # (1, seq_len, n_features) for the keras model.
+                        scaled_input = X_scaled[-seq_len:].reshape(1, seq_len, -1).astype(np.float32)
+
+            if scaled_input is not None:
+                features = scaled_input
+            else:
+                # Legacy path: features came in raw/unscaled. This path is
+                # known broken when the model was trained with a real
+                # scaler — log once per process so the gap is auditable.
+                if not getattr(self, "_mc_unscaled_warned", False):
+                    logger.warning(
+                        "MC-dropout falling back to LEGACY unscaled path "
+                        "(df=%s, scaler=%s, feature_names=%s). Predictions "
+                        "may be OOD; the trainer's predict() path handles "
+                        "scaling correctly.",
+                        "provided" if df is not None else "missing",
+                        "loaded" if getattr(self.tcn, "scaler", None) is not None else "missing",
+                        "loaded" if getattr(self.tcn, "feature_names", None) else "missing",
+                    )
+                    self._mc_unscaled_warned = True
+                # Preserve the original legacy shaping for backward compat.
+                if features.ndim == 2:
+                    features = np.expand_dims(features, axis=0)
+                if features.shape[1] > seq_len:
+                    features = features[:, -seq_len:, :]
 
             # Run N forward passes with dropout enabled
             predictions = []
@@ -4018,9 +4222,17 @@ class ModularEnsembleInference:
 
                 # === MONTE CARLO DROPOUT (if enabled) ===
                 if self.config.mc_dropout_samples > 0:
+                    # 2026-05-11: thread `df` through so the MC path can
+                    # rebuild contract-compliant scaled inputs (mirrors
+                    # gates.evaluate_transformer + trainer.predict). Pre-fix
+                    # the unscaled `tcn_features` were fed directly to the
+                    # keras model at ~91× training magnitude → 88% SHORT
+                    # bias on EUR_USD. See
+                    # docs/superpowers/specs/2026-05-11-disagreement-hard-block-diagnosis-design.md.
                     mc_prob, mc_std, mc_dir = self._predict_with_uncertainty(
                         tcn_features,
-                        n_samples=self.config.mc_dropout_samples
+                        n_samples=self.config.mc_dropout_samples,
+                        df=df,
                     )
 
                     # Flag high uncertainty (soft context penalty in robust mode)
