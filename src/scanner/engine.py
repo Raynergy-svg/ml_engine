@@ -41,6 +41,56 @@ STALENESS_AGE_THRESHOLD_DAYS: float = 7.0
 STALENESS_UNCERTAINTY_THRESHOLD: float = 0.35
 
 
+_MOMENTUM_CASCADE_KEYS = ("momentum_catboost", "momentum_xgboost", "momentum_lightgbm")
+
+
+def _normalize_momentum_health(
+    health: Dict[str, Any],
+    *,
+    active_backend: str,
+) -> Dict[str, Any]:
+    """Collapse the momentum cascade's unused alternatives.
+
+    GateEvaluator's cascade design (catboost → xgboost → lightgbm) is a
+    SEQUENTIAL FALLBACK: only one backend is ever loaded. Reporting the other
+    two as ``False`` to the TUI's model-health panel renders them as red
+    "MISSING" rows even though the active backend is healthy — the lying-
+    counter pattern (operator-visible 2026-05-10).
+
+    Returned dict has at most one momentum entry:
+      - When a backend is active: keep only ``momentum_{active}`` (= True)
+        and drop the other two cascade keys entirely.
+      - When no backend is active: drop all three cascade keys and emit a
+        single ``momentum`` entry (= False) so the panel still surfaces the
+        outage but does not multiply it by three.
+
+    All non-momentum keys pass through unchanged.
+
+    Pure function — no side effects, no logging. Returns a new dict so the
+    caller's count math (which runs BEFORE normalization) stays correct.
+    """
+    out = {k: v for k, v in health.items() if k not in _MOMENTUM_CASCADE_KEYS}
+    cascade_values = {k: health[k] for k in _MOMENTUM_CASCADE_KEYS if k in health}
+    any_loaded = any(cascade_values.values())
+
+    if any_loaded:
+        # Preserve the active backend's True entry; drop the silent False
+        # alternatives. If the active_backend label disagrees with the
+        # cascade booleans (defensive: e.g. label says "lightgbm" but
+        # `momentum_lightgbm=False` and `momentum_xgboost=True`), trust the
+        # boolean — that's the actual loaded state.
+        winning_key = next(
+            (k for k, v in cascade_values.items() if v),
+            f"momentum_{active_backend}" if active_backend != "none" else "momentum",
+        )
+        out[winning_key] = True
+    elif cascade_values:
+        # No backend loaded but the cascade keys were present — collapse to
+        # a single honest "momentum: False" row.
+        out["momentum"] = False
+    return out
+
+
 def _evaluate_staleness_uncertainty_block(
     uncertainty_score: float,
     staleness_days: float,
@@ -7051,6 +7101,19 @@ class Scanner:
         else:
             adjusted_total = total - (momentum_total_slots - 1)
             adjusted_loaded = loaded_count
+
+        # 2026-05-11: collapse the unused cascade alternatives in the detail
+        # dict before the TUI renders them. Pre-fix, `momentum_catboost=False`
+        # and `momentum_xgboost=False` rendered as MISSING rows when LightGBM
+        # was the active backend — operator-visible lying counter ("both
+        # momentum models missing"). Cascade design is sequential fallback
+        # (catboost → xgb → lgbm), not parallel ensemble: only one backend is
+        # ever loaded by design, so reporting the other two as "missing"
+        # claims a state the code never intends to reach.
+        health = _normalize_momentum_health(
+            health,
+            active_backend=getattr(ge, "_momentum_model_type", "none") if ge else "none",
+        )
 
         # Model freshness — when was each group last trained? Stale models
         # are a major cause of losing streaks; surface this in every snapshot
