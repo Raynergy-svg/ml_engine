@@ -39,11 +39,11 @@
 - **Fix-it-next**: Inspect `metrics.val_up_accuracy` vs `metrics.val_down_accuracy` for collapsed signal. Trace class weight logic in trainer.
 - **Confidence**: HIGH (200-sample run with verified bytes-identical production artifact)
 
-### Bug #3: Meta sidecar doesn't save `scaler` / `regime_quantiles` / `feature_pipeline_version` for new artifacts
-- **Evidence**: Production EUR_USD + USD_JPY both have `scaler=None`, `feature_pipeline_version=N/A` in their meta sidecars. Bug A's fix (`c0530b5`) requires these to activate; with them None, the helper falls back to legacy unscaled inference path.
-- **Why**: Trainer's `save()` method either doesn't save these OR `trainer.load()` (fixed in `19676e0`) was the wrong layer.
-- **Fix-it-next**: Read `transformer_trainer.py:save()` and verify the contract-complete keys (`scaler`, `regime_quantiles`, `regime_atr_col`, `feature_pipeline_version`, `feature_names`) are written to the meta dict before pickling.
-- **Confidence**: HIGH (verified via `joblib.load` on both artifacts)
+### Bug #3: ~~Meta sidecar doesn't save contract keys~~ **FALSIFIED 2026-05-11 17:36 EDT**
+- **Original claim**: "Production EUR_USD + USD_JPY both have `scaler=None`, `feature_pipeline_version=N/A`. Trainer save() must be broken."
+- **What was actually true**: Team 2's reading hours ago was on the OLD May 4 EUR_USD artifact (threshold=0.5399, pre-Phase 2.A). Today's 16:07 retrain produced a NEW artifact (threshold=0.4077, lineage checkpoint_id=`20260511_160727_0e46d9d5`) that IS contract-complete: `scaler=StandardScaler`, `feature_names=[50]`, `selected_indices=populated`, `output_calibration={...}`, `regime_quantiles={q25,q50,q75}`, `regime_atr_col='atr_pct_20'`, `feature_pipeline_version='2026-05-08-v1'`.
+- **Why it didn't apply at runtime anyway**: Bug A's helper requires the TRAINER INSTANCE to have these attributes loaded (not just present in meta). Team 5's load fix (`19676e0`) added this, but the running scanner started before `19676e0` landed AND uses USD_JPY which is still the May 4 artifact (still contract-incomplete). So Bug A's runtime is dormant for USD_JPY but would activate for EUR_USD after a scanner restart.
+- **Resolution**: Don't fix what isn't broken. `save()` at `src/training/trainers/transformer_trainer.py:3181-3221` correctly writes all 13 contract fields. Team 5's round-trip test (commit `19676e0`) validates save+load. The bug never existed.
 
 ### Bug #4: Meta sidecar doesn't save `lookahead`
 - **Evidence**: Team B — no `lookahead`/`horizon`/`forward_bars` key anywhere in the saved meta. Must be inferred from `DIRECTION_DEFAULTS['lookahead']` constant.
@@ -69,12 +69,12 @@
 
 CLAUDE.md confidence-calibration rule promoted this session (`b8d229b`) was operator-driven feedback after my third wrong-causal-claim incident.
 
-## 4. Next-session priority order
+## 4. Next-session priority order (REVISED after Bug #3 falsification)
 
-1. **Bug #3 (meta contract gap on save)** — quickest single-line audit. Open `transformer_trainer.py:save()`, verify what's written. ~15 min.
-2. **Bug #1 (granularity ignored)** — trace joint trainer code paths for where `granularity` should be passed but isn't. ~30-60 min.
+1. ~~Bug #3~~ — FALSIFIED, skip.
+2. **Bug #1 (granularity ignored)** — trace joint trainer code paths for where `granularity` should be passed but isn't. ~30-60 min. **Highest ROI — without this, no M15 model can be produced.**
 3. **Bug #2 (model collapse)** — inspect per-class accuracy + class-weight logic. May be the load-bearing fix if class weights aren't applying. ~30-60 min.
-4. **Bug #4 + #5 (lookahead)** — pair these; save `lookahead` to meta in save(), read it in holdout. ~15 min.
+4. **Bug #4 + #5 (lookahead)** — pair these; save `lookahead` to meta in save(), parametrize HOLDOUT_LOOKAHEAD by granularity. ~15 min.
 5. **Retrain USD_JPY at H1** with fixed trainer (NOT M15 — H1 is where 62% was). ~5 min.
 6. **Validate via fixed harness** — should reproduce 60%+ on H1 holdout. Confirms fix worked.
 7. **Forward-test USD_JPY on demo** for 1-2 weeks per Phase 5.C Path B recommendation.
