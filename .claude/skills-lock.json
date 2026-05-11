@@ -1,0 +1,35 @@
+{
+  "skills": {
+    "code-repair": {
+      "computedHash": "78dd7da38639506818855a40601da455bd2d05e867ed1cfce6bd757f69c3c31a",
+      "source": ".claude/skills/code-repair",
+      "sourceType": "local"
+    },
+    "feedback_loop": {
+      "computedHash": "7359026af888f31c095a30bd372e4682a6370820a98c4be8f121c3996eb41653",
+      "source": ".claude/skills/feedback_loop",
+      "sourceType": "local"
+    },
+    "mcp_tools": {
+      "computedHash": "b3f05c5748b0363196821eee279f9acc05b9a43b001f79562934fb4685ed0988",
+      "source": ".claude/skills/mcp_tools",
+      "sourceType": "local"
+    },
+    "prd": {
+      "computedHash": "f655d34a672f704f2cfa13cde43d5ed14be44441731c71884de000422c684034",
+      "source": ".claude/skills/prd",
+      "sourceType": "local"
+    },
+    "ralph": {
+      "computedHash": "fd3687a3786e4a637996d5d47f80c34e8bbb2e0511758b03b2b74d93a1e253cf",
+      "source": ".claude/skills/ralph",
+      "sourceType": "local"
+    },
+    "trade-reflection": {
+      "computedHash": "5e63310cf8b96611599142b8f8b20678dc1a403b31c1f165bf70a4d3060ab37c",
+      "source": ".claude/skills/trade-reflection",
+      "sourceType": "local"
+    }
+  },
+  "version": 1
+}
