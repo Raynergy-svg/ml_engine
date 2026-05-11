@@ -59,6 +59,9 @@ tensorboard/
 .claude/settings.json
 .claude/state.json.bak
 .claude/state.json.lock
+.claude/heartbeat.json
+.claude/heartbeat.json.lock
+.claude/heartbeat.json.bak
 .aura/
 
 # Local runtime artifacts
