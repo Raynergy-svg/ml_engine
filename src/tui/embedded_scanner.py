@@ -218,13 +218,12 @@ class EmbeddedScanner:
             # Changed from "balanced" on 2026-04-16 to match hedge-fund-grade selectivity.
             self._config = ScannerConfig.from_cli_args(
                 config_path=None,
-                # 2026-05-07: constrained to the 2 pairs retrained at M15
-                # 24-bar with C1.A scaler-valid models (EUR_USD/GBP_USD).
-                # Other pairs' per-pair models were trained at H1
-                # lookahead=24 → horizon mismatch when scanned at M15.
-                # Expand back to profile defaults after retraining each
-                # pair at --granularity M15.
-                pairs=["EUR_USD", "GBP_USD"],
+                # 2026-05-10: 2-pair constraint LIFTED. Per Phase 5.D + Phase 7,
+                # USD_JPY/EUR_USD/EUR_JPY/USD_CAD/AUD_USD/GBP_USD/USD_CHF/NZD_USD
+                # all M15-retrained with valid scalers. Falling through to
+                # ScannerConfig default (15 majors+crosses). Use
+                # blocked_pairs in the profile to opt out of any pair that
+                # still has issues.
                 # Switched H1 → M15 on 2026-05-07: M15-trained model holdout
                 # 70.0% validated over 22 months of data (vs ~50% on H1 across
                 # all architectures incl. Chronos foundation models). M15
