@@ -2241,12 +2241,51 @@ class ScannerAgentTeam:
 
         if ensemble_conflict_enabled and self._ensemble_conflict is not None:
             try:
-                # Extract TCN, Ridge, RF scores from analysis if available
-                tcn_score = _safe_float(getattr(ctx.analysis, "tcn_score", 0.0), 0.0)
-                ridge_score = _safe_float(getattr(ctx.analysis, "ridge_score", 0.0), 0.0)
-                rf_score = _safe_float(getattr(ctx.analysis, "rf_score", 0.0), 0.0)
+                # 2026-05-11 (Team C fix): Read the MODERN inference attributes
+                # populated by engine.py:4533-4566. The pre-fix reads against
+                # `tcn_score / ridge_score / rf_score` were legacy from the
+                # pre-Transformer / pre-LightGBM era and have not been populated
+                # on PairAnalysis for at least one full release cycle — every
+                # scan logged `scores=[0. 0. 0.], disagreement=0.000`, rendering
+                # the ensemble_conflict layer dead code (observability rot, no
+                # blocks fired, no useful disagreement signal).
+                #
+                # Modern attribute mapping (each is a non-directional magnitude;
+                # we sign it with `ctx.analysis.direction` to produce a signed
+                # score in [-1, +1] that matches the resolver's >0.1 / <-0.1
+                # BUY / SELL / HOLD thresholds):
+                #   TCN slot    ← tcn_confidence    (Transformer direction, 0-100 → /100)
+                #   Ridge slot  ← confidence_score  (LightGBM confidence head, 0-100 → /100)
+                #   RF slot     ← momentum          (LightGBM momentum head, already 0-1)
+                # The "RF" label is retained for log-stability; the underlying
+                # head is now LightGBM-momentum (per CLAUDE.md ML Stack table,
+                # RF was demoted to fallback-only). The risk-head (drawdown) is
+                # non-directional and intentionally excluded — signing a risk
+                # magnitude by trade direction would corrupt the disagreement
+                # math (low drawdown is good regardless of direction).
+                _direction = str(getattr(ctx.analysis, "direction", "HOLD") or "HOLD").upper()
+                _sign = 1.0 if _direction == "LONG" else (-1.0 if _direction == "SHORT" else 0.0)
 
-                # Create model predictions for ensemble conflict analysis
+                # Normalize each magnitude into [0, 1] before signing.
+                # tcn_confidence and confidence_score are produced on a 0-100
+                # scale by engine.py:2505 (`abs(p-0.5)*200`) and 2508 (from
+                # gate_details["confidence_score"] which inherits ridge_conf
+                # also 0-100). momentum is already 0-1 (engine.py:4504,
+                # falling back to `confidence` which itself is renormalized
+                # to 0-1 at engine.py:2521-2522).
+                _tcn_mag = _clip01(_safe_float(getattr(ctx.analysis, "tcn_confidence", 0.0), 0.0) / 100.0)
+                _conf_mag = _clip01(_safe_float(getattr(ctx.analysis, "confidence_score", 0.0), 0.0) / 100.0)
+                _mom_mag = _clip01(_safe_float(getattr(ctx.analysis, "momentum", 0.0), 0.0))
+
+                tcn_score = _sign * _tcn_mag
+                ridge_score = _sign * _conf_mag
+                rf_score = _sign * _mom_mag
+
+                # Create model predictions for ensemble conflict analysis.
+                # Sign convention: score in [-1, +1], where +1=full-strength LONG,
+                # -1=full-strength SHORT, 0=HOLD. The resolver's BUY/SELL/HOLD
+                # thresholding (default direction_threshold=0.1) maps this back
+                # to discrete votes for the disagreement std/mean calculation.
                 from src.scanner.ensemble_conflict import ModelPrediction
                 predictions = [
                     ModelPrediction(
