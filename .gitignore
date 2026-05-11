@@ -164,3 +164,78 @@ training_report_*.md
 .coverage.*
 coverage.xml
 htmlcov/
+
+# ===========================================
+# Runtime state — written by scanner, should never be committed
+# (2026-05-11 cleanup: autonomous retrain failed with [Errno 28] No space
+# left on device because disk was 98% full. Root cause: tracked runtime
+# state files accumulated 79 dirty entries in git status, masking real
+# changes and burning index churn. These files are runtime telemetry,
+# not source. Existing-tracked copies stop showing in `git status` via
+# `git update-index --skip-worktree <path>` (local-only, not committed).)
+# ===========================================
+.claude/state.json
+.claude/heartbeat.json
+.claude/alert_state.json
+.claude/last_tx_id.json
+.claude/state_drift_log.jsonl
+.claude/ralph/memory.json
+.claude/scheduled_tasks.lock
+
+# trained_data runtime telemetry (logs, matrices, registries written every cycle)
+trained_data/agent_accuracy_matrix.json
+trained_data/agent_lifecycle_log.json
+trained_data/alerts.jsonl
+trained_data/attention_feedback_log.json
+trained_data/causal_graph.json
+trained_data/counterfactual_log.jsonl
+trained_data/dry_run_validation.jsonl
+trained_data/dynamic_risk_allocator_log.json
+trained_data/episodic_memory.json
+trained_data/ewma_correlation_state.json
+trained_data/execution_quality_optimizer_log.json
+trained_data/expectancy_tracker.json
+trained_data/gate_attribution.json
+trained_data/health_registry_log.json
+trained_data/memory_manager_log.json
+trained_data/microstructure_regime.json
+trained_data/model_bandit.json
+trained_data/model_calibration_log.json
+trained_data/model_routing_log.json
+trained_data/module_activation_log.json
+trained_data/observation_consumer_log.json
+trained_data/observations.jsonl
+trained_data/pair_accuracy.json
+trained_data/pair_regime_agent_matrix_log.json
+trained_data/regime_reward_log.json
+trained_data/regime_transitions.json
+trained_data/replay_validator_log.json
+trained_data/rl_replay_buffer.jsonl
+trained_data/signal_timing_log.json
+trained_data/threshold_optimizer_log.json
+trained_data/trade_attributions.json
+trained_data/trade_journal_rl.json
+trained_data/trading_events.jsonl
+trained_data/tranche_state.json
+trained_data/virtual_trades.jsonl
+trained_data/bayesian_weights.json
+trained_data/meta/agent_meta_params_NORMAL.json
+
+# trained_data/models/ runtime side-files (registry/tracker/affinity matrices —
+# the actual model artifacts (.pkl, .npz, .h5) stay tracked)
+trained_data/models/agent_weights.json
+trained_data/models/pair_affinity_matrix.json
+trained_data/models/pair_model_registry.json
+trained_data/models/pair_performance.json
+trained_data/models/pair_tracker.json
+trained_data/models/weight_history.jsonl
+
+# Vector store (Chroma sqlite + binary indexes — runtime, not source)
+trained_data/agent_memory/
+trained_data/checkpoints/
+trained_data/.scanner_state.json
+trained_data/.memory/
+
+# Additional rotated log patterns
+logs/*.log.*
+logs/*.stderr.log*
