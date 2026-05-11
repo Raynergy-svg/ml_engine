@@ -812,8 +812,13 @@ def check_drift_retrain_request() -> Optional[list]:
         return None
 
 
-def main():
-    """Main entry point for scheduled retraining."""
+def _build_parser() -> argparse.ArgumentParser:
+    """Construct the CLI argument parser.
+
+    Extracted from ``main()`` so tests can verify defaults (especially
+    ``--granularity``) without invoking the full training pipeline. See
+    ``tests/test_scheduled_retrain_default_granularity_2026_05_11.py``.
+    """
     parser = argparse.ArgumentParser(
         description="Scheduled model retraining for ML Engine scanner",
     )
@@ -823,11 +828,25 @@ def main():
         default="",
         help="Comma-separated list of pairs to train (overrides drift request)",
     )
+    # M15 is the production trading timeframe per CLAUDE.md "Modernization
+    # stance" (line 64-66) and the May 2026 ML stack docs. The Team-3
+    # deploy gate (commit d93e37f, 2026-05-11) HARD-REQUIRES M15 holdout
+    # >=52% to ship a model — an H1-trained transformer evaluated on M15
+    # holdout scores ~35% (Bug C, 2026-05-11 incident) so the gate
+    # correctly refuses and the system stays halted indefinitely on stale
+    # models. Default must match the gate's mandatory TF, not H1. Callers
+    # that need legacy H1 behaviour pass ``--granularity H1`` explicitly
+    # (e.g. backwards-compat experiments).
     parser.add_argument(
         "--granularity",
         type=str,
-        default="H1",
-        help="Timeframe (default: H1)",
+        default="M15",
+        help=(
+            "Trading timeframe to train (default: M15 — production TF per "
+            "CLAUDE.md modernization stance; mandatory for the M15 holdout "
+            "deploy gate at d93e37f). Pass H1/H4 explicitly for legacy or "
+            "diagnostic runs."
+        ),
     )
     parser.add_argument(
         "--candles",
@@ -849,6 +868,12 @@ def main():
             "(autonomous retrainer sets this by default)."
         ),
     )
+    return parser
+
+
+def main():
+    """Main entry point for scheduled retraining."""
+    parser = _build_parser()
     args = parser.parse_args()
     use_joint_legacy = os.environ.get("BUDDY_USE_JOINT_TRAINING", "0").lower() in ("1", "true", "yes")
     training_surface = "legacy joint" if use_joint_legacy else "per-pair correlation transfer"
