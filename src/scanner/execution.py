@@ -18,7 +18,7 @@ import logging
 import os
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.brokers.base import BrokerClient
 from src.brokers.registry import get_registry
@@ -69,6 +69,119 @@ def _get_pip_value(pair: str, fallback: float = 0.0001) -> float:
         return get_registry().get(pair).pip_value
     except KeyError:
         return fallback
+
+
+def _normalize_direction(direction: Any) -> str:
+    """Normalize broker/scan direction strings to "LONG"/"SHORT".
+
+    Open-position broker statuses report "BUY"/"SELL" (PositionInfo.direction);
+    scanner candidates report "LONG"/"SHORT". The correlation filter needs a
+    single convention to align sign math.
+    """
+    d = str(direction or "LONG").strip().upper()
+    if d in {"BUY", "LONG", "L"}:
+        return "LONG"
+    if d in {"SELL", "SHORT", "S"}:
+        return "SHORT"
+    return "LONG"
+
+
+def _estimate_pre_sizing_lots(
+    nav: float,
+    sl_pips: float,
+    pip_value: float,
+    risk_per_trade_pct: float,
+) -> float:
+    """Conservative pre-sizing lot estimate for correlation pre-check.
+
+    The correlation gate fires BEFORE final position sizing (see
+    `execute_trade` flow at execution.py:~2495). When `lots` is not yet
+    available, this estimates the lot count the sizer is likely to
+    produce so the gate can reason about the candidate's projected risk %.
+
+    Formula: lots = (nav * risk_per_trade_pct) / (sl_pips * pip_value * 100_000).
+
+    Always returns a finite, positive number (clamped to 0.01 minimum to
+    avoid pathological zero-exposure passes when inputs are degenerate).
+    """
+    try:
+        denom = max(1e-9, float(sl_pips) * float(pip_value) * 100_000.0)
+        lots = max(0.01, (float(nav) * float(risk_per_trade_pct)) / denom)
+        return lots
+    except (TypeError, ValueError, ZeroDivisionError):
+        return 0.01
+
+
+def compute_net_correlated_exposure(
+    open_positions: List[Dict[str, Any]],
+    candidate: Dict[str, Any],
+    correlation_lookup: Callable[[str, str], float],
+    correlation_threshold: float = 0.70,
+) -> Tuple[float, List[Dict[str, Any]]]:
+    """Compute the projected net correlated exposure % of NAV.
+
+    Pure function — no I/O, no broker, no config access. The
+    `_check_correlation_exposure` method drives this with real disk/broker
+    data; tests drive this with constructed dicts.
+
+    Sign convention: the candidate's own ``size_pct`` is the seed (always
+    positive — it's projected exposure on the candidate's instrument). For
+    every open position whose |ρ(candidate, position)| >= threshold, add
+    ``sign * pos.size_pct * |ρ|`` to the net, where ``sign`` is:
+      +1 if (same direction AND ρ > 0) OR (opposite direction AND ρ < 0)
+      -1 otherwise (opposite direction with positive ρ, or same direction
+      with negative ρ — both reduce net risk on the candidate's leg).
+
+    Args:
+        open_positions: List of dicts with keys ``pair`` (str),
+            ``direction`` (normalized "LONG"/"SHORT"), ``size_pct`` (float,
+            risk fraction of NAV, e.g. 0.02 for 2%).
+        candidate: Dict with same keys for the candidate trade.
+        correlation_lookup: ``(pair_a, pair_b) -> float in [-1, 1]``.
+        correlation_threshold: Minimum |ρ| to consider correlated.
+
+    Returns:
+        Tuple of (net_exposure_pct, contributing_positions). The second
+        element is a list of dicts (pair/direction/rho/contribution) for
+        the open positions that actually contributed to the net — useful
+        for the block reason string.
+    """
+    cand_pair = str(candidate.get("pair", "")).upper().replace("/", "_")
+    cand_dir = _normalize_direction(candidate.get("direction", "LONG"))
+    cand_size = float(candidate.get("size_pct", 0.0) or 0.0)
+
+    net = max(0.0, cand_size)
+    contributing: List[Dict[str, Any]] = []
+
+    for pos in open_positions:
+        open_pair = str(pos.get("pair", "")).upper().replace("/", "_")
+        if not open_pair or open_pair == cand_pair:
+            continue
+        open_dir = _normalize_direction(pos.get("direction", "LONG"))
+        open_size = float(pos.get("size_pct", 0.0) or 0.0)
+        if open_size <= 0:
+            continue
+        try:
+            rho = float(correlation_lookup(cand_pair, open_pair))
+        except Exception:
+            rho = 0.0
+        if abs(rho) < correlation_threshold:
+            continue
+
+        same_dir = (open_dir == cand_dir)
+        # sign = +1 if directions reinforce (long+long with ρ>0, or long+short with ρ<0)
+        # sign = -1 if directions hedge   (long+short with ρ>0, or long+long with ρ<0)
+        sign = 1.0 if ((same_dir and rho > 0) or (not same_dir and rho < 0)) else -1.0
+        contribution = sign * open_size * abs(rho)
+        net += contribution
+        contributing.append({
+            "pair": open_pair,
+            "direction": open_dir,
+            "rho": rho,
+            "contribution": contribution,
+        })
+
+    return max(0.0, net), contributing
 
 
 @dataclass
@@ -1053,20 +1166,190 @@ class ExecutionManager:
             logger.warning(f"Risk limit check failed (fail-safe BLOCK): {e}")
             return False, "risk check error — blocking trade (fail-safe)"
 
-    def _check_correlation_exposure(self, pair: str) -> Tuple[bool, str]:
-        """Check if opening a trade on this pair would breach correlation exposure limits.
+    def _check_correlation_exposure(
+        self,
+        pair: str,
+        direction: Optional[str] = None,
+        sl_pips: Optional[float] = None,
+        lots: Optional[float] = None,
+    ) -> Tuple[bool, str]:
+        """Check if opening a trade would breach correlated-exposure limits.
 
-        Uses correlation group config to determine if the pair belongs to a
-        correlated group, then counts how many open trades already exist in
-        that group.  If the count >= max_correlated_exposure, the trade is blocked.
+        2026-05-11: replaces binary "any correlated open ⇒ block" with a
+        risk-budget cap. The new policy computes the NET correlated risk
+        across open positions (signed by direction × correlation sign),
+        adds the candidate's projected risk, and blocks only if the total
+        exceeds ``config.max_correlated_exposure_pct`` of NAV.
+
+        Opposite-direction correlated trades REDUCE net exposure (partial
+        hedge) and generally pass. Uncorrelated pairs (|ρ| below
+        ``config.correlation_filter_threshold``) are ignored.
+
+        Backward compat: if ``max_correlated_exposure_pct`` is missing or
+        <= 0 (and the legacy ``max_correlated_exposure`` count is > 0),
+        falls back to the previous group-count behavior.
+
+        Args:
+            pair: Candidate instrument (e.g. "EUR_USD").
+            direction: Candidate direction ("LONG"/"SHORT"). If None,
+                falls back to legacy count-based behavior (no sign info).
+            sl_pips: Candidate stop-loss in pips. If None, uses
+                ``config.max_sl_pips`` as a conservative estimate.
+            lots: Candidate position size in lots. If None, uses
+                ``config.risk_per_trade_pct * nav / (sl_pips * pip_value * 100000)``
+                as a conservative pre-sizing estimate.
 
         Returns:
-            Tuple of (allowed, reason)
+            Tuple of (allowed, reason).
         """
-        max_corr = getattr(self.config, "max_correlated_exposure", 2)
-        if max_corr <= 0:
+        pct_cap = float(getattr(self.config, "max_correlated_exposure_pct", 0.0) or 0.0)
+        legacy_max_corr = int(getattr(self.config, "max_correlated_exposure", 2) or 0)
+
+        # If both new and legacy caps are disabled, allow.
+        if pct_cap <= 0.0 and legacy_max_corr <= 0:
             return True, "correlation limit disabled"
 
+        # Path 1: legacy count-based behavior (only when new cap is OFF).
+        if pct_cap <= 0.0:
+            return self._check_correlation_exposure_legacy(pair, legacy_max_corr)
+
+        # Path 2: net-exposure cap.
+        try:
+            from src.training.correlation_group_config import (
+                get_correlation_group,
+                get_pair_correlation,
+            )
+
+            corr_threshold = float(
+                getattr(self.config, "correlation_filter_threshold", 0.70) or 0.70
+            )
+
+            # Read NAV once for size_pct computations.
+            nav = self.fetch_live_nav() or self.config.account_equity or 100000.0
+            if nav <= 0:
+                logger.warning("Correlation check: NAV <= 0 — blocking trade (fail-safe)")
+                return False, "correlation check: NAV unavailable"
+
+            # Read open positions (no exit side effects).
+            statuses = self.monitor_open_trades(evaluate_exits=False) or []
+
+            # Compute the candidate's projected risk %.
+            candidate_dir = _normalize_direction(direction) if direction else "LONG"
+            cand_pip_value = _get_pip_value(pair)
+            cand_sl_pips = float(sl_pips) if sl_pips and sl_pips > 0 else float(
+                getattr(self.config, "max_sl_pips", 25.0)
+            )
+            cand_lots = float(lots) if lots and lots > 0 else _estimate_pre_sizing_lots(
+                nav=nav,
+                sl_pips=cand_sl_pips,
+                pip_value=cand_pip_value,
+                risk_per_trade_pct=float(getattr(self.config, "risk_per_trade_pct", 0.05) or 0.05),
+            )
+            cand_risk_amount = cand_sl_pips * cand_pip_value * cand_lots * 100_000
+            cand_risk_pct = cand_risk_amount / nav if nav > 0 else 0.0
+
+            candidate = {
+                "pair": pair,
+                "direction": candidate_dir,
+                "size_pct": cand_risk_pct,
+            }
+
+            # Walk open positions and build their risk_pct view.
+            open_view: List[Dict[str, Any]] = []
+            for s in statuses:
+                open_pair = s.get("pair", "")
+                if not open_pair:
+                    continue
+                sl_dist = float(s.get("sl_dist_pips", 0) or 0)
+                units = abs(int(s.get("units", 0) or 0))
+                if sl_dist <= 0 or units <= 0:
+                    continue
+                pip_val = _get_pip_value(open_pair)
+                pos_risk_amount = sl_dist * pip_val * units
+                pos_risk_pct = pos_risk_amount / nav if nav > 0 else 0.0
+                open_view.append({
+                    "pair": open_pair,
+                    "direction": _normalize_direction(s.get("direction", "LONG")),
+                    "size_pct": pos_risk_pct,
+                })
+
+            net_exposure_pct, contributing = compute_net_correlated_exposure(
+                open_positions=open_view,
+                candidate=candidate,
+                correlation_lookup=get_pair_correlation,
+                correlation_threshold=corr_threshold,
+            )
+
+            # Missing-data fail-safe: candidate pair has no group AND any open
+            # position is in a known group → block (we can't reason about it).
+            cand_group = get_correlation_group(pair)
+            any_open_in_group = any(get_correlation_group(p["pair"]) for p in open_view)
+            if cand_group is None and any_open_in_group:
+                reason = (
+                    f"Correlation data missing for {pair} (unknown group) "
+                    f"while {len(open_view)} open position(s) exist in known groups — "
+                    "blocking conservatively"
+                )
+                logger.warning(
+                    "Correlation check fail-safe BLOCK: %s no group, %d open in known groups",
+                    pair, len(open_view),
+                )
+                return False, reason
+
+            if net_exposure_pct > pct_cap:
+                contrib_str = ", ".join(
+                    f"{c['pair']}({c['direction']}, ρ={c['rho']:+.2f}, +{c['contribution']*100:.2f}%)"
+                    for c in contributing
+                )
+                reason = (
+                    f"Net correlated exposure cap breached: {net_exposure_pct*100:.2f}% > "
+                    f"{pct_cap*100:.2f}% (cap). Candidate {pair} {candidate_dir} "
+                    f"@ {cand_risk_pct*100:.2f}% NAV; contributing: [{contrib_str or 'none'}]"
+                )
+                logger.info(
+                    "Correlation block: %s %s — net=%.4f cap=%.4f cand=%.4f",
+                    pair, candidate_dir, net_exposure_pct, pct_cap, cand_risk_pct,
+                )
+                try:
+                    obs = self._get_observer()
+                    obs.log(
+                        category="correlation_block",
+                        detail=reason,
+                        data={
+                            "pair": pair,
+                            "direction": candidate_dir,
+                            "net_correlated_exposure_pct": net_exposure_pct,
+                            "cap_pct": pct_cap,
+                            "candidate_risk_pct": cand_risk_pct,
+                            "contributing": contributing,
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"Execution correlation block obs skipped: {e}")
+                return False, reason
+
+            return True, (
+                f"correlation ok (net {net_exposure_pct*100:.2f}% <= cap {pct_cap*100:.2f}%)"
+            )
+
+        except ImportError:
+            logger.debug("correlation_group_config not available — skipping (no groups defined)")
+            return True, "correlation check unavailable (no config)"
+        except Exception as e:
+            logger.warning(f"Correlation check failed (fail-safe BLOCK): {e}")
+            return False, "correlation check error — blocking trade (fail-safe)"
+
+    def _check_correlation_exposure_legacy(
+        self,
+        pair: str,
+        max_corr: int,
+    ) -> Tuple[bool, str]:
+        """Legacy binary group-count correlation gate.
+
+        Retained for backward compat when ``max_correlated_exposure_pct``
+        is disabled (<= 0). Blocks if the count of open trades in the
+        candidate's correlation group reaches ``max_corr``.
+        """
         try:
             from src.training.correlation_group_config import get_correlation_group
 
@@ -1074,14 +1357,12 @@ class ExecutionManager:
             if not group:
                 return True, "no correlation group"
 
-            # Get open trades (read-only — no exit side effects)
             statuses = self.monitor_open_trades(evaluate_exits=False)
             if not statuses:
                 return True, "no open trades"
 
-            # Count how many open trades are in the same correlation group
             corr_count = 0
-            corr_pairs = []
+            corr_pairs: List[str] = []
             for s in statuses:
                 open_pair = s.get("pair", "")
                 open_group = get_correlation_group(open_pair)
@@ -1091,12 +1372,10 @@ class ExecutionManager:
 
             if corr_count >= max_corr:
                 reason = (
-                    f"Correlated pair blocked: {pair} in group '{group.name}' "
+                    f"Correlated pair blocked (legacy): {pair} in group '{group.name}' "
                     f"({corr_count}/{max_corr} already open: {', '.join(corr_pairs)})"
                 )
-                # Log to observations
                 try:
-                    # Phase 30 (US-183): Use shared observer
                     obs = self._get_observer()
                     obs.log(
                         category="correlation_block",
@@ -1105,6 +1384,7 @@ class ExecutionManager:
                             "pair": pair, "group": group.name,
                             "open_correlated": corr_pairs,
                             "max_allowed": max_corr,
+                            "policy": "legacy_count",
                         },
                     )
                 except Exception as e:
@@ -1114,10 +1394,9 @@ class ExecutionManager:
             return True, f"correlation ok ({corr_count}/{max_corr} in {group.name})"
 
         except ImportError:
-            logger.debug("correlation_group_config not available — skipping (no groups defined)")
             return True, "correlation check unavailable (no config)"
         except Exception as e:
-            logger.warning(f"Correlation check failed (fail-safe BLOCK): {e}")
+            logger.warning(f"Correlation check (legacy) failed (fail-safe BLOCK): {e}")
             return False, "correlation check error — blocking trade (fail-safe)"
 
     def _check_projected_portfolio_risk(
@@ -2491,8 +2770,14 @@ class ExecutionManager:
                 logger.debug(f"Execution pair operation skipped: {e}")
             return ExecutionResult(success=False, error=risk_reason)
 
-        # Check correlation exposure limit
-        corr_ok, corr_reason = self._check_correlation_exposure(pair)
+        # Check correlation exposure limit (net-exposure cap; opposite-direction
+        # correlated trades partially hedge and generally pass).
+        corr_ok, corr_reason = self._check_correlation_exposure(
+            pair,
+            direction=direction,
+            sl_pips=sl_pips,
+            lots=lots,
+        )
         if not corr_ok:
             return ExecutionResult(success=False, error=corr_reason)
 
@@ -2716,11 +3001,17 @@ class ExecutionManager:
         ctx["spread_pips"] = spread_pips
 
         # ── Phase 25 (US-152): Real-time correlation enforcement ──────────
+        # 2026-05-11: Demoted from BLOCK to TELEMETRY-ONLY. The upstream
+        # ``_check_correlation_exposure`` (called at ~line 2495) now enforces
+        # a net-exposure cap that correctly handles same-direction additivity
+        # AND opposite-direction hedging. This stub keeps the conflict-frequency
+        # counter alive for downstream dashboards / observation logging but
+        # never returns ExecutionResult(success=False) — that decision belongs
+        # solely to the upstream gate.
         try:
             open_trades = self.monitor_open_trades(evaluate_exits=False)
             if open_trades:
                 _CORR_THRESHOLD = 0.80
-                # Known high-correlation pairs (static fallback)
                 _CORR_PAIRS = {
                     "EUR_USD": {"GBP_USD", "EUR_GBP", "EUR_CHF"},
                     "GBP_USD": {"EUR_USD", "EUR_GBP", "GBP_JPY"},
@@ -2734,53 +3025,19 @@ class ExecutionManager:
                     "GBP_JPY": {"GBP_USD", "USD_JPY"},
                 }
                 _open_pairs = {t["pair"] for t in open_trades if t.get("pair")}
-                _corr_set = _CORR_PAIRS.get(pair, set())
-                _conflicting = _open_pairs & _corr_set
+                _conflicting = _open_pairs & _CORR_PAIRS.get(pair, set())
                 if _conflicting:
-                    _block_msg = (
-                        f"US-152: Correlation block — {pair} has >{_CORR_THRESHOLD:.0%} "
-                        f"correlation with open position(s): {', '.join(_conflicting)}"
-                    )
-                    logger.info(_block_msg)
-                    # Phase 26 (US-162): Enrich with blocking pair P/L and duration
-                    _blocking_detail = []
-                    for _ot in open_trades:
-                        _ot_pair = _ot.get("pair", "")
-                        if _ot_pair in _conflicting:
-                            _blocking_detail.append({
-                                "pair": _ot_pair,
-                                "unrealized_pl": _ot.get("unrealizedPL", _ot.get("unrealized_pl", 0)),
-                                "units": _ot.get("units", 0),
-                                "open_time": _ot.get("openTime", _ot.get("open_time", "")),
-                            })
-                    # Track conflict frequency
-
                     _conflict_key = f"{pair}_vs_{'|'.join(sorted(_conflicting))}"
                     self._correlation_block_counts[_conflict_key] = (
                         self._correlation_block_counts.get(_conflict_key, 0) + 1
                     )
-                    try:
-                        # Phase 30 (US-183): Use shared observer
-                        self._get_observer().log_observation(
-                            pair=pair,
-                            category="correlation_block",
-                            description=_block_msg,
-                            metadata={
-                                "blocked_pair": pair,
-                                "conflicting_open": list(_conflicting),
-                                "threshold": _CORR_THRESHOLD,
-                                "blocking_pair_detail": _blocking_detail,
-                                "conflict_frequency": self._correlation_block_counts.get(_conflict_key, 1),
-                            },
-                        )
-                    except Exception as e:
-                        logger.debug(f"Execution correlation check skipped: {e}")
-                    return ExecutionResult(
-                        success=False,
-                        error=_block_msg,
+                    logger.debug(
+                        "US-152 telemetry: %s correlated with open %s "
+                        "(net-exposure gate already passed; not blocking here)",
+                        pair, sorted(_conflicting),
                     )
         except Exception as _corr_err:
-            logger.debug(f"US-152: Correlation check skipped: {_corr_err}")
+            logger.debug(f"US-152: Correlation telemetry skipped: {_corr_err}")
 
         # US-075: Smart execution planning (log execution plan for larger positions)
         _smart_plan = None

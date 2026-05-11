@@ -439,6 +439,13 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         # range post-retrain, further calibration drove every signal below
         # min_confidence (35.0) and produced zero trades for 12 days.
         "enable_phase44_calibration": False,
+        # 2026-05-11: net-correlated-exposure cap (replaces binary "any
+        # correlated open ⇒ block"). Smart inherits dataclass defaults —
+        # 10% NAV cap, 0.70 |ρ| threshold. Net same-direction correlated
+        # risk + candidate's projected risk must stay under the cap;
+        # opposite-direction correlated trades reduce net exposure.
+        "max_correlated_exposure_pct": 0.10,
+        "correlation_filter_threshold": 0.70,
     },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
@@ -1018,7 +1025,18 @@ class ScannerConfig:
     # --- Circuit-Breaker Config ---
     enable_circuit_breakers: bool = True
     max_concurrent_trades: int = 10  # Phase 29 (US-178): Max open trades before blocking new ones
-    max_correlated_exposure: int = 2  # Max trades in correlated pairs
+    max_correlated_exposure: int = 2  # Legacy count cap (kept for backward compat; superseded by max_correlated_exposure_pct when > 0)
+    # 2026-05-11: replace binary "any-correlated-open ⇒ block" with a risk-budget cap.
+    # Net same-direction correlated risk (sum over open positions of size_pct * ρ,
+    # signed by direction) PLUS the candidate's projected risk must stay under
+    # this fraction of NAV. Opposite-direction correlated trades subtract from
+    # net exposure (partial hedge). 0.0 disables the cap and reverts to legacy
+    # group-count behavior.
+    max_correlated_exposure_pct: float = 0.10
+    # Minimum |ρ| below which two pairs are treated as independent. Lower values
+    # pull more pairs into the cap; higher values restrict the cap to the most
+    # tightly-coupled clusters only.
+    correlation_filter_threshold: float = 0.70
     loss_streak_pause_count: int = 3  # Pause after N consecutive losses
     loss_streak_pause_minutes: int = 60  # Pause duration in minutes
     news_blackout_minutes: int = 30  # Block trades around news events
