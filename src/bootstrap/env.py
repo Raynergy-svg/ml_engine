@@ -193,7 +193,7 @@ def _configure_unified_debug_log(project_root: Path) -> None:
         handler = RotatingFileHandler(
             str(log_path),
             maxBytes=50 * 1024 * 1024,  # 50MB per file
-            backupCount=3,              # 200MB ceiling total
+            backupCount=1,              # 100MB ceiling total (reduced from 3 — disk pressure 2026-05-11)
             encoding="utf-8",
         )
     except OSError:
