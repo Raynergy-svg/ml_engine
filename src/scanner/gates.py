@@ -186,6 +186,48 @@ def _load_pickle_quietly(handle: Any) -> Any:
             return pickle.load(handle)
 
 
+def _apply_calibrated_threshold(
+    prob_long: float,
+    output_calibration: Optional[Dict[str, Any]],
+) -> str:
+    """Map a raw transformer LONG probability to a direction using the
+    per-pair calibrated threshold the trainer saved.
+
+    The Transformer direction head is trained with binary-cross-entropy, so
+    its raw output is a probability in [0, 1] but NOT centered at 0.5 — the
+    sigmoid's empirical median depends on the class balance + features of
+    each pair's training set. The trainer (transformer_trainer.py:3061-3071)
+    records that empirical median as ``output_calibration.threshold`` in
+    the meta sidecar; using it at predict time reproduces the trainer's
+    own decision boundary.
+
+    Pre-fix, ``gates.py:1902`` hardcoded a 0.5 cut. For pairs where the
+    saved threshold is above 0.5 (USD_JPY=0.536, USD_CHF=0.565, etc.) the
+    runtime declared LONG when the trainer would have declared SHORT, and
+    vice versa for thresholds below 0.5. With EUR_USD raw model mean=0.486
+    and threshold=0.4955, the 0.5 cut produced 83.5% SHORT on the live
+    virtual_trades ledger (2026-05-11 incident).
+
+    Fallback semantics:
+      * No calibration loaded (``None``) → 0.5 cut.
+      * ``enabled: False`` in calibration → 0.5 cut (the trainer
+        respects this flag; the inference path must too).
+      * ``threshold`` key missing from a partial meta → 0.5 cut.
+      * Non-numeric or NaN threshold → 0.5 cut (defensive).
+    """
+    threshold = 0.5
+    if isinstance(output_calibration, dict) and output_calibration.get("enabled", False):
+        raw = output_calibration.get("threshold")
+        if isinstance(raw, (int, float)):
+            try:
+                cand = float(raw)
+                if 0.0 < cand < 1.0:  # NaN, +inf, -inf, 0, 1 all rejected
+                    threshold = cand
+            except (TypeError, ValueError):
+                pass
+    return "LONG" if prob_long > threshold else "SHORT"
+
+
 class GateEvaluator:
     """Evaluates trading gates using CatBoost primary + XGBoost fallback.
 
@@ -303,6 +345,15 @@ class GateEvaluator:
         self._transformer_regime_quantiles: Optional[Dict[str, float]] = None
         self._transformer_regime_atr_col: Optional[str] = None
         self._transformer_pipeline_version: Optional[str] = None
+        # 2026-05-11: per-pair calibrated direction threshold. The trainer
+        # saves {'threshold','mean','std','enabled'} as the median of validation
+        # raw predictions — the empirically correct decision boundary for this
+        # model. Pre-fix, the runtime cut prob_long at hardcoded 0.5 and
+        # produced 83.5% SHORT on the live virtual_trades ledger because raw
+        # model means for several pairs sit below 0.5 (EUR_USD mean=0.486,
+        # threshold=0.4955; USD_CHF threshold=0.565). See spec
+        # docs/superpowers/specs/2026-05-11-disagreement-hard-block-diagnosis-design.md
+        self._transformer_output_calibration: Optional[Dict[str, Any]] = None
         # Dedup flag for inference-time feature mismatch warnings.
         self._warned_transformer_contract_mismatch = False
 
@@ -1116,6 +1167,9 @@ class GateEvaluator:
         self._transformer_regime_quantiles = meta.get("regime_quantiles")
         self._transformer_regime_atr_col = meta.get("regime_atr_col") or "atr_pct_20"
         self._transformer_pipeline_version = meta.get("feature_pipeline_version")
+        # 2026-05-11: per-pair calibrated direction threshold. Soft-required
+        # (missing on pre-Phase-2 artifacts → fall back to 0.5 at predict time).
+        self._transformer_output_calibration = meta.get("output_calibration")
         # Stage 4-A news fusion contract (2026-05-08). All four are None for
         # price-only models (default); populated for news-fused models.
         self._transformer_news_pca = meta.get("news_pca")
@@ -1148,13 +1202,20 @@ class GateEvaluator:
                 meta_path,
             )
 
+        # Per-pair direction threshold for live observability — surfaces the
+        # decision boundary the runtime will actually use for this artifact.
+        cal = self._transformer_output_calibration or {}
+        cal_threshold = cal.get("threshold")
+        cal_enabled = cal.get("enabled")
         logger.info(
             "✓ Transformer contract loaded: %d features, scaler=%s, "
-            "regime_q=%s, version=%s",
+            "regime_q=%s, version=%s, direction_threshold=%s (enabled=%s)",
             len(self._transformer_feature_names) if self._transformer_feature_names else 0,
             "yes" if self._transformer_scaler is not None else "no",
             "yes" if self._transformer_regime_quantiles is not None else "no",
             self._transformer_pipeline_version,
+            f"{cal_threshold:.4f}" if isinstance(cal_threshold, (int, float)) else "0.5(fallback)",
+            cal_enabled if cal_enabled is not None else "n/a",
         )
 
     def _load_meta_labeler(self) -> bool:
@@ -1899,7 +1960,14 @@ class GateEvaluator:
             else:
                 prob_long = float(proba[0])
 
-            direction = "LONG" if prob_long > 0.5 else "SHORT"
+            # 2026-05-11: honor the per-pair calibrated decision threshold the
+            # trainer saved (median of validation raw predictions). Pre-fix the
+            # cut was hardcoded at 0.5; for EUR_USD raw model mean = 0.486 and
+            # saved threshold = 0.4955, so a 0.5 cut produced systematic SHORT
+            # on ~83.5% of scans even when training class balance was 50/50.
+            direction = _apply_calibrated_threshold(
+                prob_long, self._transformer_output_calibration,
+            )
             return direction, prob_long
 
         except Exception as e:
