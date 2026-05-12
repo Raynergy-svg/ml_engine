@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _PENDING_PATH = _PROJECT_ROOT / ".claude" / "pending_adjustments.json"
 _APPROVED_PATH = _PROJECT_ROOT / ".claude" / "config_adjustments.json"
+_STATE_PATH = _PROJECT_ROOT / ".claude" / "state.json"
 
 
 class AdjustmentApprover:
@@ -32,15 +33,25 @@ class AdjustmentApprover:
         approver.approve("proposal-uuid")       # → lands in config_adjustments.json
         approver.reject("proposal-uuid", "bad key")
         approver.snooze("proposal-uuid", hours=24)
+
+    Tier 2 T8: every successful `_save_approved` write flips
+    `state.json:config_dirty=true`. The TUI scanner consumes the flag at
+    the top of each cycle and reloads the ConfigAdjuster cache so newly
+    approved adjustments take effect within ~1 cycle (vs the previous
+    "wait for the next ConfigAdjuster apply tick" delay).
     """
 
     def __init__(
         self,
         pending_path: Optional[Path] = None,
         approved_path: Optional[Path] = None,
+        state_path: Optional[Path] = None,
     ):
         self.pending_path = pending_path or _PENDING_PATH
         self.approved_path = approved_path or _APPROVED_PATH
+        # Tier 2 T8: dirty-flag sink. Tests pass tmp_path/"state.json"; the
+        # default points at the real .claude/state.json the TUI reads.
+        self.state_path = state_path or _STATE_PATH
 
     # ------------------------------------------------------------------
     # Public API
@@ -346,6 +357,53 @@ class AdjustmentApprover:
         tmp = self.approved_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
         tmp.rename(self.approved_path)
+
+        # Tier 2 T8: signal that the scanner should reload the
+        # ConfigAdjuster cache on its next cycle. Best-effort —
+        # a dirty-flag write failure should not crash an otherwise
+        # successful approval.
+        self._mark_config_dirty()
+
+    def _mark_config_dirty(self) -> None:
+        """Set `state.json:config_dirty=true` atomically.
+
+        Read existing state (graceful fallback to empty dict on
+        corrupt/missing), merge `config_dirty=true`, write via
+        tmp+rename. Specific exceptions only — never bare-except.
+
+        Failure here is non-fatal: the next cycle will just miss the
+        immediate-reload optimization and the regular ConfigAdjuster
+        apply tick will pick up the new adjustments later.
+        """
+        try:
+            if self.state_path.exists():
+                data = json.loads(self.state_path.read_text())
+                if not isinstance(data, dict):
+                    data = {}
+            else:
+                data = {}
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(
+                "AdjustmentApprover._mark_config_dirty: state read failed "
+                "path=%s err=%r — starting from empty state for the dirty flag",
+                self.state_path, e,
+            )
+            data = {}
+
+        data["config_dirty"] = True
+
+        try:
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.state_path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+            tmp.replace(self.state_path)
+        except OSError as e:
+            logger.warning(
+                "AdjustmentApprover._mark_config_dirty: state write failed "
+                "path=%s err=%r — scanner will pick up the change on the "
+                "next ConfigAdjuster apply tick instead of immediately",
+                self.state_path, e,
+            )
 
     def _history_has_duplicate(
         self,

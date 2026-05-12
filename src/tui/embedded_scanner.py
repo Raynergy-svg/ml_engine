@@ -16,6 +16,7 @@ Architecture:
 from __future__ import annotations
 
 import gc
+import json
 import logging
 import os
 import platform
@@ -27,6 +28,50 @@ from pathlib import Path
 from typing import Any, Callable, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _consume_config_dirty_flag(state_path: Path) -> bool:
+    """Read `state.json:config_dirty`; if true, clear atomically and return True.
+
+    Tier 2 T8: paired with `AdjustmentApprover._mark_config_dirty`. Called at
+    the top of every `EmbeddedScanner.run_one_cycle` before any scan work
+    — if true, the scanner reloads the `ConfigAdjuster` cache so newly
+    approved adjustments take effect this cycle, not next-tick.
+
+    Returns True iff the flag was true on entry. Best-effort: any read/write
+    failure returns the safest answer (False = "don't trigger a reload this
+    cycle"). The next ConfigAdjuster apply tick is the fallback consumer.
+
+    Atomicity: clear-write uses tmp+rename so a concurrent reader cannot
+    observe a half-written state file. If the clear-write itself fails after
+    a successful read, we still return True so the caller reloads — better
+    to reload twice than to miss the new approval entirely.
+    """
+    try:
+        if not state_path.exists():
+            return False
+        data = json.loads(state_path.read_text())
+        if not isinstance(data, dict):
+            return False
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    if not data.get("config_dirty"):
+        return False
+
+    data["config_dirty"] = False
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = state_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+        tmp.replace(state_path)
+    except OSError as e:
+        logger.warning(
+            "_consume_config_dirty_flag: clear-write failed path=%s err=%r — "
+            "returning True anyway (reload once more is safer than missing "
+            "the new approval)", state_path, e,
+        )
+    return True
 
 
 def _format_init_error(exc: Exception) -> str:
@@ -543,6 +588,24 @@ class EmbeddedScanner:
         if not self._running or self._scanner is None:
             return None
 
+        # Tier 2 T8: top-of-cycle config-dirty consume. Runs BEFORE any
+        # scan/gate/execute work so the reload is atomic with respect to
+        # the rest of the cycle — we never trade on half-applied config.
+        # Pair with `AdjustmentApprover._mark_config_dirty` which sets the
+        # flag whenever a new approved adjustment lands on disk.
+        try:
+            state_path = self._project_root / ".claude" / "state.json"
+            if _consume_config_dirty_flag(state_path):
+                self._reload_config_now()
+                self._brain("[cyan]▸ config reloaded mid-session[/]")
+        except Exception as _reload_err:
+            # Reload is best-effort. A failure here must NOT block the
+            # cycle — the next ConfigAdjuster apply tick will still pick
+            # up the new approved entries. Log so the gap is observable.
+            logger.warning(
+                "T8 config-dirty reload error (non-blocking): %s", _reload_err,
+            )
+
         # Keep the meta-cybernetic pipeline owned by the TUI runtime too.
         # This must run before the trading halt gate: an auto-halt should
         # stop scans/execution, not leave approved packages or post-deploy
@@ -808,6 +871,34 @@ class EmbeddedScanner:
             )
         except Exception as e:
             logger.debug("embedded_scanner.meta_route_failed err=%r", e)
+
+    def _reload_config_now(self) -> None:
+        """Invalidate the ConfigAdjuster cache and re-apply pending adjustments.
+
+        Tier 2 T8: triggered when `_consume_config_dirty_flag` returns True
+        at the top of `run_one_cycle`. Pair with `AdjustmentApprover._save_approved`
+        which sets the flag on every successful approval write.
+
+        Uses Tier 1 T5's `ConfigAdjuster._invalidate_cache` so the next
+        `apply_adjustments` call re-reads `config_adjustments.json` from disk
+        instead of serving stale in-memory state. Best-effort — adjuster /
+        config may be None during tests or early init.
+        """
+        if self._config_adjuster is None or self._config is None:
+            return
+        try:
+            self._config_adjuster._invalidate_cache()
+            applied = self._config_adjuster.apply_adjustments(
+                self._config, current_cycle=self._scan_count,
+            )
+            if applied:
+                names = [a.get("key", "?") for a in applied]
+                logger.info(
+                    "T8 reload applied %d adjustment(s): %s",
+                    len(applied), ", ".join(names),
+                )
+        except Exception as e:
+            logger.warning("T8 _reload_config_now apply error: %s", e)
 
     def _maybe_drain_meta_pipeline(self) -> None:
         """Advance approved/deployed meta ChangePackages from the TUI path.
