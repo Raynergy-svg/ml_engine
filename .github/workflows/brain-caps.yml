@@ -1,0 +1,36 @@
+name: Brain Caps
+
+on:
+  push:
+    branches: [main, develop, "copilot/**", "claude/**"]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: brain-caps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cap-check:
+    name: Warn on bloated .claude/brain/*.md
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Run brain-cap check (informational)
+      run: |
+        python scripts/check_brain_caps.py
+
+    - name: Report
+      if: failure()
+      run: |
+        echo "::warning::One or more .claude/brain/*.md files exceeded their soft cap."
+        echo "Trim the listed sections or archive into .claude/brain/.archive/ and re-commit."
