@@ -35,6 +35,10 @@ trained_data/.autonomous_retrain_state.json
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag
 trained_data/retrain_requests/
+# Runtime-mutated state files — kept untracked so CI hooks don't see them as
+# "modified by the hook" after test runs (root cause of P0 gate flake on every PR).
+trained_data/adaptive_sizer_state.json
+trained_data/observations.jsonl
 # Bucket D1 — weight version history runtime artifacts (source: weights_history.py)
 trained_data/weight_history.jsonl
 trained_data/weight_history.jsonl.*.gz
