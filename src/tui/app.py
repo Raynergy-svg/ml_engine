@@ -847,6 +847,10 @@ class BuddyApp(App):
         Binding("q", "quit", "Quit", show=True),
         Binding("colon", "open_command_palette", "Commands", show=False),
         Binding("ctrl+l", "open_log_viewer", "Logs", show=False),
+        # Tier 2 T7 — brain section editor (briefing.md CRUD with brain_caps
+        # pre-write validation + reset-to-template). show=False to keep the
+        # footer uncluttered; surfaces via command palette.
+        Binding("ctrl+e", "edit_briefing", "Edit Briefing", show=False),
     ]
 
     # Asset class modes — F7 cycles through them
@@ -1586,6 +1590,17 @@ class BuddyApp(App):
             return
         repo_root = Path(__file__).resolve().parents[2]
         self.push_screen(LogViewerModal(repo_root))
+
+    def action_edit_briefing(self) -> None:
+        """Ctrl+E: pop the brain section editor for ``.claude/brain/briefing.md``.
+
+        Tier 2 T7. Lazy-imports the screen module to keep app startup lean —
+        the editor only loads when the operator actually invokes it.
+        """
+        if self._kill_in_progress:
+            return
+        from src.tui.screens.brain_editor_screen import BrainEditorScreen
+        self.push_screen(BrainEditorScreen())
 
     def action_cycle_asset_class(self) -> None:
         """F7: cycle through FX → Futures → Hybrid → FX.  Blocked during kill.
