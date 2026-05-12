@@ -32,6 +32,7 @@ _DEFAULT_CAPS: dict[str, tuple[int, float]] = {
     "open_questions.md":   (1_500, 1.20),
     "strategic_log.md":    (8_000, 1.15),
     "trade_narrative.md":  (5_000, 1.15),
+    "hermes_watchdog.md":  (8_000, 1.15),  # Hermes watchdog digest — same shape as strategic_log
 }
 
 # Severity bands above warn threshold.
