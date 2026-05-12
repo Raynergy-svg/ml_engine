@@ -126,6 +126,7 @@ class Orchestrator:
         self._drift_remediator = None   # Drift auto-remediation loop
         self._perf_prd_gen = None       # Autonomous performance-driven PRD generator
         self._policy_engine = None      # Tier 7: Policy engine for action gates
+        self._scheduled_jobs = None     # Pick #5: cron-style job registry
         atexit.register(self.close)
 
     def _init_modules(self):
@@ -335,6 +336,21 @@ class Orchestrator:
             logger.info("Tier 7: PolicyEngine initialized in orchestrator")
         except Exception as e:
             logger.debug("Tier 7: PolicyEngine not available: %s", e)
+
+        # Scheduled jobs registry (pick #5): cron-style operator scheduling.
+        # Disabled by default — operator opts in by editing .claude/jobs.json.
+        try:
+            from src.scanner.automation.scheduled_jobs import ScheduledJobsRegistry
+            self._scheduled_jobs = ScheduledJobsRegistry()
+            self._scheduled_jobs.load()
+            logger.info(
+                "ScheduledJobs initialized: %d job(s), %d enabled",
+                len(self._scheduled_jobs.jobs()),
+                sum(1 for j in self._scheduled_jobs.jobs() if j.enabled),
+            )
+        except Exception as e:
+            logger.debug("ScheduledJobs init failed: %s", e)
+            self._scheduled_jobs = None
 
         # Build dispatch table from initialized modules
 
@@ -582,6 +598,17 @@ class Orchestrator:
             callable=lambda: self._policy_engine_audit_dispatch(),
             condition=lambda: self._policy_engine is not None,
             interval=5,
+            critical=False,
+        ))
+
+        # Pick #5: scheduled jobs tick (every cycle, non-critical).
+        # The tick itself is cheap (date math + maybe a thread spawn); job
+        # execution always happens off the scan thread.
+        self._dispatch_table.append(DispatchStep(
+            name="scheduled_jobs_tick",
+            callable=lambda: self._scheduled_jobs_tick_dispatch(),
+            condition=lambda: self._scheduled_jobs is not None,
+            interval=1,
             critical=False,
         ))
 
@@ -1238,6 +1265,16 @@ class Orchestrator:
                 logger.debug("Tier 7: Policy audit clean (env=%s)", env.get("account_mode", "unknown"))
         except Exception as e:
             logger.debug("Tier 7: Policy audit failed: %s", e)
+
+    def _scheduled_jobs_tick_dispatch(self) -> None:
+        """Pick #5: fire any due scheduled jobs (off-thread)."""
+        try:
+            fired = self._scheduled_jobs.tick()
+            if fired:
+                logger.info("ScheduledJobs: fired %s", fired)
+        except Exception as e:
+            # Tick must never crash the scan loop — log and move on.
+            logger.warning("ScheduledJobs tick failed: %s", e)
 
     def _model_freshness_check_dispatch(self) -> None:
         """Check model freshness and warn/trigger retrain on staleness.
