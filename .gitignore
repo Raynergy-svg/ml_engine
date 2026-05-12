@@ -35,6 +35,9 @@ trained_data/.autonomous_retrain_state.json
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag
 trained_data/retrain_requests/
+# Bucket D1 — weight version history runtime artifacts (source: weights_history.py)
+trained_data/weight_history.jsonl
+trained_data/weight_history.jsonl.*.gz
 
 # d3rlpy training logs
 d3rlpy_logs/

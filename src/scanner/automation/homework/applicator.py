@@ -145,6 +145,17 @@ class TrainingSignalApplicator:
                 return result
 
             self._write_weights_atomic(weights)
+            # Bucket D1: record version under the already-held flock.
+            try:
+                from src.scanner.weights_history import record_weight_version
+                record_weight_version(
+                    weights,
+                    source=f"training_signal:{signal.homework_id}",
+                    reason=getattr(signal, "notes", "") or "",
+                    _under_lock=True,
+                )
+            except (ImportError, OSError) as _hist_err:
+                logger.debug("weight_history record skipped: %s", _hist_err)
             logger.info(
                 "TrainingSignalApplicator: applied %d agent updates to regime=%s for %s "
                 "(other regimes=%s, clipped=%s)",

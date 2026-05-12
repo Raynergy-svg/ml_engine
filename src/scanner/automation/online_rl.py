@@ -246,6 +246,7 @@ class OnlineWeightUpdater:
 
     def _save_weights(self, weights: Dict[str, Any]) -> None:
         """Save updated weights to disk."""
+        save_ok = False
         try:
             try:
                 from src.scanner.automation.safe_json import safe_json_write
@@ -255,8 +256,16 @@ class OnlineWeightUpdater:
                 self.weights_path.write_text(
                     json.dumps(weights, indent=2), encoding="utf-8"
                 )
+            save_ok = True
         except Exception as e:
             logger.warning("Online RL: failed to save weights: %s", e)
+
+        if save_ok:
+            try:
+                from src.scanner.weights_history import record_weight_version
+                record_weight_version(weights, source="online_rl")
+            except (ImportError, OSError) as _hist_err:
+                logger.debug("weight_history record skipped: %s", _hist_err)
 
     def _apply_adjustments(
         self,
