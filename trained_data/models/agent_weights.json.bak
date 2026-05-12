@@ -51,38 +51,40 @@
     "order_flow": 0.95
   },
   "NORMAL": {
-    "mean_reversion": 0.8993,
-    "risk_sentinel": 1.2493,
-    "trend": 1.1493,
-    "uncertainty": 1.0993,
+    "mean_reversion": 0.8996,
+    "risk_sentinel": 1.2496,
+    "trend": 1.2896,
+    "uncertainty": 1.0996,
     "volatility": 0.9999,
-    "execution_quality": 1.0493,
+    "execution_quality": 1.0496,
     "news_risk": 0.95,
     "multi_timeframe": 1.1,
     "pair_performance": 0.85,
-    "momentum": 1.05,
+    "momentum": 1.085,
     "session_timing": 0.8,
     "support_resistance": 1.0,
     "trader_readiness": 0.5,
     "devil_advocate": 1.3,
-    "order_flow": 0.95
+    "order_flow": 0.95,
+    "invalid_agent_xyz": 0.965
   },
   "_global": {
-    "mean_reversion": 0.8994,
-    "risk_sentinel": 1.2494,
-    "trend": 1.1494,
-    "uncertainty": 1.0994,
+    "mean_reversion": 0.8996,
+    "risk_sentinel": 1.2496,
+    "trend": 1.2543,
+    "uncertainty": 1.0996,
     "volatility": 0.9998,
-    "execution_quality": 1.0494,
+    "execution_quality": 1.0496,
     "news_risk": 0.95,
     "multi_timeframe": 1.1,
     "pair_performance": 0.85,
-    "momentum": 1.05,
+    "momentum": 1.0762,
     "session_timing": 0.8,
     "support_resistance": 1.0,
     "trader_readiness": 0.5,
     "devil_advocate": 1.3,
-    "order_flow": 0.95
+    "order_flow": 0.95,
+    "invalid_agent_xyz": 0.9738
   },
   "_history": {
     "execution_quality": [],
@@ -99,30 +101,30 @@
     "volatility": []
   },
   "_meta": {
-    "last_updated": "2026-04-16T15:21:07.068682+00:00",
-    "total_trades": 31,
+    "last_updated": "2026-05-12T02:39:42.235718+00:00",
+    "total_trades": 49,
     "version": 2,
     "weight_history_trend": [
-      0.9666,
-      1.25,
-      0.9986,
-      0.9994,
-      0.8941,
-      0.9993,
-      0.9945,
-      0.9996,
-      0.9856,
-      0.8819,
-      0.9984,
-      0.8934,
-      0.7869,
-      0.9076,
-      0.9992,
-      0.9699,
-      0.9991,
       0.989,
       0.999,
-      0.8931
+      0.8931,
+      1.2496,
+      1.0696,
+      1.2146,
+      1.0346,
+      1.1796,
+      0.9996,
+      1.1446,
+      0.9646,
+      1.1096,
+      0.9296,
+      1.0746,
+      1.1446,
+      1.2146,
+      1.2846,
+      1.3546,
+      1.4246,
+      1.2446
     ],
     "weight_history_mean_reversion": [
       0.7166,
@@ -205,14 +207,15 @@
       0.899,
       0.7931
     ],
-    "trades_NORMAL": 25.0,
+    "trades_NORMAL": 43.0,
     "last_trade_per_agent": {
-      "trend": 31,
+      "trend": 49,
       "mean_reversion": 31,
       "risk_sentinel": 31,
       "uncertainty": 31,
       "execution_quality": 31,
-      "volatility": 24
+      "volatility": 24,
+      "momentum": 46
     },
     "weight_history_volatility": [
       0.8495,
@@ -235,13 +238,20 @@
       0.6369
     ],
     "trades_HIGH": 6.0,
-    "weight_variance_trend": 0.007455,
+    "weight_variance_trend": 0.019968,
     "weight_variance_mean_reversion": 0.014714,
     "weight_variance_risk_sentinel": 0.011287,
     "weight_variance_uncertainty": 0.011287,
     "weight_variance_volatility": 0.011185,
     "auto_fixed": true,
     "min_trades_per_regime": 10,
-    "weight_variance_execution_quality": 0.002541
+    "weight_variance_execution_quality": 0.002541,
+    "weight_history_invalid_agent_xyz": [
+      0.95
+    ],
+    "weight_history_momentum": [
+      1.0,
+      1.115
+    ]
   }
 }

@@ -1,60 +1,126 @@
 {
-  "version": 1,
-  "total_adjustments": 5,
   "history": [
     {
-      "key": "atr_sl_multiplier",
-      "old_value": 1.0,
-      "new_value": 1.2,
-      "source": "self_heal_reflection",
-      "reason": "Self-heal #3: LOW regime sl_mult=0.8 tightens SL in ranging markets (confirmed 5+ observations). Raise base to 1.2. Per trading.md rule: LOW regime sl_mult >= 1.2.",
       "cycle": 1,
+      "key": "atr_sl_multiplier",
+      "new_value": 1.2,
+      "old_value": 1.0,
+      "reason": "Self-heal #3: LOW regime sl_mult=0.8 tightens SL in ranging markets (confirmed 5+ observations). Raise base to 1.2. Per trading.md rule: LOW regime sl_mult >= 1.2.",
+      "source": "self_heal_reflection",
       "timestamp": "2026-04-16T16:03:12.478330+00:00"
     },
     {
-      "key": "max_model_disagreement",
-      "old_value": 0.65,
-      "new_value": 0.25,
-      "source": "self_heal_reflection",
-      "reason": "ESCALATED: Still pending from cycle 1. 2/3 new losses had disagreement=0.5 (trades 1195, 1189). 0% win rate persists. Lower from 0.30 to 0.25 to hard-block when models split.",
       "cycle": 1,
+      "key": "max_model_disagreement",
+      "new_value": 0.25,
+      "old_value": 0.65,
+      "reason": "ESCALATED: Still pending from cycle 1. 2/3 new losses had disagreement=0.5 (trades 1195, 1189). 0% win rate persists. Lower from 0.30 to 0.25 to hard-block when models split.",
+      "source": "self_heal_reflection",
       "timestamp": "2026-04-16T16:03:12.478383+00:00"
     },
     {
-      "key": "min_confidence",
-      "old_value": 50.0,
-      "new_value": 68.0,
-      "source": "self_heal_reflection",
-      "reason": "Self-heal #3: 0/14 win rate. All trades had confidence 0.55-0.70 (55-70 on 0-100 scale). Current min_confidence=42.0 lets everything through. Raise to 68.0 to filter low-conviction entries until models prove directional edge.",
       "cycle": 1,
+      "key": "min_confidence",
+      "new_value": 68.0,
+      "old_value": 50.0,
+      "reason": "Self-heal #3: 0/14 win rate. All trades had confidence 0.55-0.70 (55-70 on 0-100 scale). Current min_confidence=42.0 lets everything through. Raise to 68.0 to filter low-conviction entries until models prove directional edge.",
+      "source": "self_heal_reflection",
       "timestamp": "2026-04-16T16:03:12.478413+00:00"
     },
     {
-      "key": "weighted_vote_threshold",
-      "old_value": 0.45,
-      "new_value": 0.85,
-      "source": "self_heal_reflection",
-      "reason": "ESCALATED: Still pending from cycle 1. Trade 1220 passed with WVS=0.76 despite trend agent failing. Raise from 0.65 to 0.85.",
       "cycle": 1,
+      "key": "weighted_vote_threshold",
+      "new_value": 0.85,
+      "old_value": 0.45,
+      "reason": "ESCALATED: Still pending from cycle 1. Trade 1220 passed with WVS=0.76 despite trend agent failing. Raise from 0.65 to 0.85.",
+      "source": "self_heal_reflection",
       "timestamp": "2026-04-16T16:03:12.478443+00:00"
     },
     {
-      "key": "risk_per_trade_pct",
-      "old_value": 0.02,
-      "new_value": 0.025,
-      "source": "self_heal_reflection",
-      "reason": "Self-heal #4: 14 consecutive losses ($-3,527, 0% win rate). Halve risk from 0.05 (5%) to 0.025 (2.5%) during cold-start on fresh models (val_accuracy=0.556). Restore to 0.05 after 5+ winning trades on fresh models.",
       "cycle": 1,
+      "key": "risk_per_trade_pct",
+      "new_value": 0.025,
+      "old_value": 0.02,
+      "reason": "Self-heal #4: 14 consecutive losses ($-3,527, 0% win rate). Halve risk from 0.05 (5%) to 0.025 (2.5%) during cold-start on fresh models (val_accuracy=0.556). Restore to 0.05 after 5+ winning trades on fresh models.",
+      "source": "self_heal_reflection",
       "timestamp": "2026-04-16T16:03:12.478468+00:00"
     }
   ],
-  "pending": {},
   "last_applied": {
     "atr_sl_multiplier": 1,
     "max_model_disagreement": 1,
     "min_confidence": 1,
-    "weighted_vote_threshold": 1,
-    "risk_per_trade_pct": 1
+    "risk_per_trade_pct": 1,
+    "weighted_vote_threshold": 1
   },
-  "last_updated": "2026-04-16T16:23:33.042854+00:00"
+  "last_updated": "2026-04-16T16:23:33.042854+00:00",
+  "pending": {},
+  "total_adjustments": 5,
+  "version": 1,
+  "walkforward_recommendations": [
+    {
+      "best_params": {
+        "atr_sl_multiplier": 1.0,
+        "atr_tp_multiplier": 1.5,
+        "confidence_threshold": 0.4,
+        "momentum_threshold": 0.4
+      },
+      "is_overfitting": false,
+      "is_profit_factor": 3.0,
+      "is_trade_count": 20,
+      "oos_profit_factor": 3.0,
+      "oos_trade_count": 5,
+      "recommendation": "APPLY",
+      "timestamp": 1778554008.9111416,
+      "wfe": 1.0
+    },
+    {
+      "best_params": {
+        "atr_sl_multiplier": 1.0,
+        "atr_tp_multiplier": 1.5,
+        "confidence_threshold": 0.4,
+        "momentum_threshold": 0.4
+      },
+      "is_overfitting": true,
+      "is_profit_factor": 0.167,
+      "is_trade_count": 20,
+      "oos_profit_factor": 0.0,
+      "oos_trade_count": 5,
+      "recommendation": "REJECT",
+      "timestamp": 1778554008.9123762,
+      "wfe": 0.0
+    },
+    {
+      "best_params": {
+        "atr_sl_multiplier": 1.0,
+        "atr_tp_multiplier": 1.5,
+        "confidence_threshold": 0.4,
+        "momentum_threshold": 0.4
+      },
+      "is_overfitting": true,
+      "is_profit_factor": 3.0,
+      "is_trade_count": 20,
+      "oos_profit_factor": 0.0,
+      "oos_trade_count": 5,
+      "recommendation": "REJECT",
+      "timestamp": 1778554008.914022,
+      "wfe": 0.0
+    },
+    {
+      "best_params": {
+        "atr_sl_multiplier": 1.0,
+        "atr_tp_multiplier": 1.5,
+        "confidence_threshold": 0.4,
+        "momentum_threshold": 0.4
+      },
+      "is_overfitting": false,
+      "is_profit_factor": 3.0,
+      "is_trade_count": 20,
+      "oos_profit_factor": 3.0,
+      "oos_trade_count": 5,
+      "recommendation": "APPLY",
+      "timestamp": 1778554008.915212,
+      "wfe": 1.0
+    }
+  ]
 }
