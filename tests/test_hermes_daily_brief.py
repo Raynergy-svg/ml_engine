@@ -81,12 +81,17 @@ def test_brief_persists_cycle_count_for_next_run(tmp_path: Path):
 
 def test_trades_24h_counts_only_today_closes(tmp_path: Path):
     _seed_minimal(tmp_path)
+    # safe_json_read's US-160 validator for trade_journal_rl.json requires
+    # {pair, direction, timestamp} on the first 5 spot-checked entries.
     trades = [
         {"pair": "EUR_USD", "direction": "LONG", "pnl": 50.0,
+         "timestamp": (MIDNIGHT_TODAY - timedelta(hours=2)).isoformat(),
          "close_time": (MIDNIGHT_TODAY - timedelta(hours=2)).isoformat()},
         {"pair": "GBP_USD", "direction": "SHORT", "pnl": -23.0,
+         "timestamp": (MIDNIGHT_TODAY + timedelta(hours=3)).isoformat(),
          "close_time": (MIDNIGHT_TODAY + timedelta(hours=3)).isoformat()},
         {"pair": "USD_JPY", "direction": "LONG", "pnl": 12.5,
+         "timestamp": (MIDNIGHT_TODAY + timedelta(hours=5)).isoformat(),
          "close_time": (MIDNIGHT_TODAY + timedelta(hours=5)).isoformat()},
     ]
     (tmp_path / "trained_data" / "trade_journal_rl.json").write_text(json.dumps(trades))
