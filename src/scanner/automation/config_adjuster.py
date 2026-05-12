@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,6 +55,7 @@ class ConfigAdjuster:
         self,
         persistence_path: Optional[Path] = None,
         pending_path: Optional[Path] = None,
+        ttl_seconds: float = 5.0,
     ):
         self.persistence_path = persistence_path or _ADJUSTMENTS_PATH
         self._pending_path = pending_path or _PENDING_PATH
@@ -70,6 +72,13 @@ class ConfigAdjuster:
 
         # Applied proposal IDs — prevents double-application across restarts
         self._applied_ids: set[str] = set()
+
+        # Tier 1 T5: TTL cache around _load_state — skips redundant disk reads
+        # within a short window. Invalidated on every persistent write so the
+        # cache stays consistent with disk. See _load_state / _invalidate_cache.
+        self._ttl_seconds: float = float(ttl_seconds)
+        self._last_load_ts: float = 0.0
+        self._load_count: int = 0
 
         self._load_state()
 
@@ -300,6 +309,9 @@ class ConfigAdjuster:
                 safe_json_write(self.persistence_path, existing)
             except ImportError:
                 self.persistence_path.write_text(json.dumps(existing, indent=2))
+            # Tier 1 T5: invalidate _load_state cache so the next read sees the
+            # bytes we just wrote (not a stale copy from within the TTL window).
+            self._invalidate_cache()
         except Exception as e:
             logger.debug("ConfigAdjuster: Failed to save: %s", e)
 
@@ -308,8 +320,21 @@ class ConfigAdjuster:
     # ------------------------------------------------------------------
 
     def _load_state(self) -> None:
-        """Load previous state from disk."""
+        """Load previous state from disk.
+
+        Tier 1 T5: cached for `self._ttl_seconds` to skip redundant disk reads
+        on hot paths (e.g. multiple status queries per cycle). The cache is
+        invalidated by `_invalidate_cache()`, which fires after every write to
+        `self.persistence_path` so the in-memory view stays consistent with disk.
+        """
+        now = time.monotonic()
+        if self._last_load_ts > 0.0 and (now - self._last_load_ts) < self._ttl_seconds:
+            return
         if not self.persistence_path.exists():
+            # Still bump the cache stamp so we don't re-stat a missing file
+            # on every call within the TTL window.
+            self._last_load_ts = now
+            self._load_count += 1
             return
         try:
             try:
@@ -328,6 +353,19 @@ class ConfigAdjuster:
                 self._applied_ids = set(data.get("applied_ids", []))
         except Exception as e:
             logger.debug("ConfigAdjuster: Failed to load: %s", e)
+        finally:
+            self._last_load_ts = now
+            self._load_count += 1
+
+    def _invalidate_cache(self) -> None:
+        """Force the next `_load_state()` to re-read from disk.
+
+        Called after every persistent write to `self.persistence_path` so the
+        in-memory cache stays consistent with on-disk state. External writers
+        (e.g. AdjustmentApprover) that modify the same file can also call this
+        if they hold a reference to the adjuster instance.
+        """
+        self._last_load_ts = 0.0
 
     def _load_approved_history(self) -> List[Dict[str, Any]]:
         """Read approved adjustments from config_adjustments.json."""
