@@ -108,13 +108,39 @@ def test_veto_fires_on_stretched_rsi_plus_high_disagreement():
 # ---------------------------------------------------------------------------
 
 def test_veto_not_fires_when_disagreement_below_floor():
-    """MR fails but disagreement=0.20 <= 0.25 floor → no block (soft case)."""
+    """MR fails but disagreement=0.20 <= 0.25 floor → no block (soft case).
+
+    Note: the explicit 0.25 floor is passed in; the new default floor is 0.15
+    (2026-05-12 audit). See test_audit_lower_floor_fires_in_018_023_band below.
+    """
     team = _make_team()
     ctx = _make_ctx(direction="LONG", rsi=50.0, model_disagreement=0.20)
     verdict = team._evaluate_mean_reversion(ctx)
 
     assert verdict.passed is False
     assert verdict.block_trade is False
+
+
+def test_audit_lower_floor_fires_in_018_023_band():
+    """2026-05-12 audit: with new 0.15 floor, MR-fails + disagreement=0.18 fires.
+
+    The previous 0.25 floor missed this band; three audit losses sat at 0.18-0.23.
+    Asserts the new default floor catches them.
+    """
+    team = _make_team()
+    ctx = _make_ctx(direction="LONG", rsi=50.0, model_disagreement=0.18, disagree_floor=0.15)
+    verdict = team._evaluate_mean_reversion(ctx)
+
+    assert verdict.passed is False
+    assert verdict.block_trade is True
+
+
+def test_audit_defaults_floor_at_015():
+    """Config defaults: dataclass default + smart profile entry both at 0.15."""
+    from src.scanner.config import SCAN_PROFILES, ScannerConfig
+
+    assert ScannerConfig().mean_reversion_veto_disagree_floor == 0.15
+    assert SCAN_PROFILES["smart"]["mean_reversion_veto_disagree_floor"] == 0.15
 
 
 def test_veto_not_fires_when_mr_passes():
@@ -189,17 +215,20 @@ def test_missing_gate_details_falls_back_safely():
 # ---------------------------------------------------------------------------
 
 def test_config_has_mean_reversion_veto_fields():
-    """ScannerConfig exposes both fields with correct defaults."""
+    """ScannerConfig exposes both fields with correct defaults.
+
+    Default floor lowered 0.25 -> 0.15 by the 2026-05-12 audit (3 losses sat in 0.18-0.23 band).
+    """
     config = ScannerConfig()
     assert hasattr(config, "enable_mean_reversion_veto")
     assert config.enable_mean_reversion_veto is True
     assert hasattr(config, "mean_reversion_veto_disagree_floor")
-    assert config.mean_reversion_veto_disagree_floor == pytest.approx(0.25)
+    assert config.mean_reversion_veto_disagree_floor == pytest.approx(0.15)
 
 
 def test_smart_profile_enables_mean_reversion_veto():
-    """Smart profile enables the veto with floor=0.25."""
+    """Smart profile enables the veto with floor=0.15 (audit-lowered 2026-05-12)."""
     from src.scanner.config import SCAN_PROFILES
     profile = SCAN_PROFILES["smart"]
     assert profile.get("enable_mean_reversion_veto") is True
-    assert profile.get("mean_reversion_veto_disagree_floor") == pytest.approx(0.25)
+    assert profile.get("mean_reversion_veto_disagree_floor") == pytest.approx(0.15)
