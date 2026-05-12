@@ -1400,8 +1400,9 @@ class ScannerAgentTeam:
                 verdicts.append(of_verdict)
 
         # Agent #13: Trader Readiness (Aura human-side intelligence)
-        # Default True — backward compatible with configs/YAML dicts that omit the key.
-        if getattr(self.config, "enable_trader_readiness_agent", True):
+        # 2026-05-12: default False — Aura writer not yet implemented; agent reads a file no one writes.
+        # Code path retained so re-enable is a one-flag flip once the writer ships.
+        if getattr(self.config, "enable_trader_readiness_agent", False):
             readiness_verdict = self._evaluate_trader_readiness(ctx)
             if readiness_verdict is not None:
                 verdicts.append(readiness_verdict)
@@ -1512,7 +1513,8 @@ class ScannerAgentTeam:
                 logger.debug("agent memory nudge failed: %s", _mem_err)
 
         # US-076: Graph-attention heterogeneous agent consensus
-        if getattr(self.config, "enable_graph_attention", False):
+        # 2026-05-12: default flipped False -> True to match dataclass default (was masking the flag for Mock configs).
+        if getattr(self.config, "enable_graph_attention", True):
             try:
                 _ga = GraphAttentionConsensus(temperature=1.0)
                 verdicts = _ga.reweight_verdicts(
@@ -2066,11 +2068,17 @@ class ScannerAgentTeam:
         atr_score = _clip01(atr_pips / (min_atr * 1.5))
         score = _clip01(0.20 + atr_score * 0.45 + vol_pct * 0.20 + regime_score * 0.15)
 
-        block_trade = bool(getattr(ctx.analysis, "volatility_gate_passed", True) is False) or atr_pips < (min_atr * 0.50)
+        extreme_low_atr = atr_pips <= (min_atr * 0.50)
+        block_trade = bool(getattr(ctx.analysis, "volatility_gate_passed", True) is False) or extreme_low_atr
         if block_trade:
-            reason = f"volatility too weak ({atr_pips:.1f} pips)"
-            reason_code = "volatility_block"
-            confidence_delta = -0.07
+            if extreme_low_atr:
+                reason = f"volatility DEAD ({atr_pips:.1f} <= 0.5x {min_atr:.1f} pips) [HARD BLOCK]"
+                reason_code = "volatility_dead"
+                confidence_delta = -0.10
+            else:
+                reason = f"volatility too weak ({atr_pips:.1f} pips)"
+                reason_code = "volatility_block"
+                confidence_delta = -0.07
         elif score >= 0.60:
             reason = f"volatility supportive ({regime.lower()}, {atr_pips:.1f} pips)"
             reason_code = "volatility_support"
@@ -2418,12 +2426,18 @@ class ScannerAgentTeam:
         execution_quality_score = _clip01(spread_score * 0.35 + slippage_score * 0.30 + liquidity_score * 0.35)
 
         passed = spread_pips <= max_spread and slippage_pips <= max_slippage and liquidity_score >= min_liquidity
-        block_trade = spread_pips > (max_spread * 1.25) or slippage_pips > (max_slippage * 1.25)
+        extreme_spread = spread_pips >= (max_spread * 2.0)
+        block_trade = extreme_spread or spread_pips > (max_spread * 1.25) or slippage_pips > (max_slippage * 1.25)
 
         if block_trade:
-            reason = f"execution quality poor (spread {spread_pips:.1f} pips)"
-            reason_code = "execution_block"
-            confidence_delta = -0.08
+            if extreme_spread:
+                reason = f"execution spread EXTREME ({spread_pips:.1f} >= 2x {max_spread:.1f} pips) [HARD BLOCK]"
+                reason_code = "execution_spread_extreme"
+                confidence_delta = -0.12
+            else:
+                reason = f"execution quality poor (spread {spread_pips:.1f} pips)"
+                reason_code = "execution_block"
+                confidence_delta = -0.08
         elif passed:
             reason = f"execution quality solid (liq {liquidity_score:.2f})"
             reason_code = "execution_ok"
@@ -3522,6 +3536,16 @@ class ScannerAgentTeam:
         Reads the readiness signal JSON written by Aura's ReadinessComputer.
         This is the primary bridge point where human intelligence modulates
         market intelligence.
+
+        DORMANT (2026-05-12 audit, Bucket A): No live writer for
+        ``.aura/bridge/readiness_signal.json`` exists in this repo —
+        ``BuddyAuraBridge.read_readiness`` has no ``write_readiness``
+        counterpart, and the on-disk file is stale. Default toggle flipped
+        OFF (``enable_trader_readiness_agent=False`` in ScannerConfig + all
+        four profile dicts). This method's None-fallback path handles the
+        missing-file case gracefully, so the agent does NOT silently
+        neutral-vote on every trade — it simply abstains.
+        Re-enable once Aura ships a writer for the signal file.
 
         Score mapping:
             readiness 80-100 → score 0.80-0.95 (full capacity)
