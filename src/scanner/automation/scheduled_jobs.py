@@ -192,8 +192,8 @@ def _validate_clock(hh: int, mm: int) -> None:
 def default_jobs() -> list[JobConfig]:
     """Built-in jobs surfaced when `.claude/jobs.json` is missing.
 
-    All disabled by default — operator opts in by editing the JSON (or, in
-    a future TUI iteration, toggling from the Config screen).
+    Operator can disable via `.claude/jobs.json` or pause at runtime via
+    the F9 Jobs screen (Tier 1 T1).
     """
     return [
         JobConfig(
@@ -203,6 +203,30 @@ def default_jobs() -> list[JobConfig]:
             command="python buddy_scanner.py homework --generate-batch --last 100",
             enabled=False,
             description="Regenerate the last 100 trade homework entries every Sunday 02:00 UTC.",
+        ),
+        JobConfig(
+            job_id="hermes_watchdog",
+            name="Hermes Watchdog — anomaly detection",
+            schedule="every_30_minutes",
+            command="python -m src.scanner.automation.hermes_watchdog",
+            enabled=True,
+            description=(
+                "Reads scanner state files every 30 min; writes structured "
+                "observations to .claude/brain/hermes_watchdog.md when "
+                "anomalies (active alerts, heartbeat staleness, job failures) "
+                "detected."
+            ),
+        ),
+        JobConfig(
+            job_id="hermes_daily_brief",
+            name="Hermes Daily Brief — 24h structured summary",
+            schedule="daily_07:00",
+            command="python -m src.scanner.automation.hermes_daily_brief",
+            enabled=True,
+            description=(
+                "Composes daily fixed-schema summary; appends to "
+                ".claude/brain/hermes_watchdog.md at 07:00 UTC."
+            ),
         ),
     ]
 
