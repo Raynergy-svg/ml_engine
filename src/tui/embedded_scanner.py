@@ -105,7 +105,7 @@ class EmbeddedScanner:
     bits (signal handlers, blocking loop, Rich console output).
 
     Usage:
-        scanner = EmbeddedScanner(project_root, brain_callback)
+        scanner = EmbeddedScanner(brain_callback, project_root=root)
         scanner.initialize()          # heavy imports, call from thread
         enrichment = scanner.run_one_cycle()  # one scan, call from thread
         scanner.shutdown()
@@ -113,16 +113,29 @@ class EmbeddedScanner:
 
     def __init__(
         self,
-        project_root: str,
         brain_callback: Callable[[str], None],
+        project_root: Optional[str] = None,
         auto_execute: bool = True,
         interval_minutes: int = 5,
         counters: Optional["ScanCounters"] = None,
     ) -> None:
-        self._project_root = Path(project_root)
+        # Tier 1 T6: `project_root` is optional so test harnesses can
+        # construct the scanner without wiring a real workspace path.
+        # Production callers in src/tui/app.py still pass
+        # `project_root=str(PROJECT_ROOT)` as a kwarg.
+        self._project_root = Path(project_root) if project_root else Path.cwd()
         self._brain = brain_callback
         self._auto_execute = auto_execute
         self._interval_minutes = interval_minutes
+
+        # Tier 1 T6: inline error banner. Non-gate exception paths (genuine
+        # errors like FileNotFoundError, model load failures, OANDA
+        # timeouts, generic Exception fallbacks) set this to a one-line
+        # message. The TUI app.py watches the field on each periodic
+        # refresh and surfaces it via Textual `notify(...)` with a
+        # "Ctrl+L to view full log" hint. Gate-rejection paths leave
+        # this untouched (gate failures are expected outcomes).
+        self.error_banner: Optional[str] = None
 
         # Tier 1 T3: lifetime work-unit counters (cycles, pairs, gates, trades).
         # Shared ref handed to the TUI StatsBar; bumped inline in run_one_cycle
@@ -323,8 +336,13 @@ class EmbeddedScanner:
             return True
 
         except Exception as e:
+            msg = f"Scanner init failed: {_format_init_error(e)}"
             logger.error("EmbeddedScanner init failed: %s", e, exc_info=True)
-            self._brain(f"[red]✗ Scanner init failed: {_format_init_error(e)}[/]")
+            self._brain(f"[red]✗ {msg}[/]")
+            # Tier 1 T6: surface init failure as inline banner so the
+            # operator sees the dependency / model-load error in the
+            # TUI without tailing logs.
+            self.error_banner = msg
             return False
 
     def get_config(self) -> Any:
@@ -479,6 +497,28 @@ class EmbeddedScanner:
         t.start()
         self._reconciler_thread = t
 
+    def _init_scanner(self) -> None:
+        """Lazy-ensure seam called at the top of run_one_cycle (Tier 1 T6).
+
+        The heavy init still lives in `initialize()` — callers are
+        expected to run that from a worker thread before cycling. This
+        method exists as a stable hook so genuine init errors
+        (FileNotFoundError, ModuleNotFoundError, model load failures)
+        can be raised from a single, monkeypatch-friendly entry point
+        and caught by `run_one_cycle` to populate `error_banner`.
+        Default behavior is a no-op.
+        """
+        return None
+
+    def dismiss_error_banner(self) -> None:
+        """Clear the inline error banner (Tier 1 T6).
+
+        Called by the TUI after the operator dismisses the toast or
+        opens the log viewer via Ctrl+L. The next non-gate exception
+        re-arms the banner with a fresh message.
+        """
+        self.error_banner = None
+
     def run_one_cycle(self) -> Optional[ScanEnrichment]:
         """Run ONE scan cycle synchronously. CALL FROM A THREAD.
 
@@ -489,6 +529,17 @@ class EmbeddedScanner:
 
         Returns None if scanner not ready or scan failed.
         """
+        # Tier 1 T6: surface init-time errors via `error_banner`. Re-raises
+        # so callers and tests still observe the original failure type.
+        try:
+            self._init_scanner()
+        except Exception as e:
+            msg = f"Scanner init failed: {e}"
+            self._brain(f"[red]✗ {msg}[/]")
+            self.error_banner = msg
+            logger.error("Scanner init failed: %s", e, exc_info=True)
+            raise
+
         if not self._running or self._scanner is None:
             return None
 
@@ -651,8 +702,11 @@ class EmbeddedScanner:
             return enrichment
 
         except Exception as e:
+            msg = f"Scan #{self._scan_count} failed: {e}"
             logger.error("Scan cycle %d failed: %s", self._scan_count, e, exc_info=True)
-            self._brain(f"[red]✗ Scan #{self._scan_count} failed: {e}[/]")
+            self._brain(f"[red]✗ {msg}[/]")
+            # Tier 1 T6: surface non-gate cycle failures as inline banner.
+            self.error_banner = msg
             self._memory_guard()
             # Tier 1 T4: clear on failure so the indicator doesn't get
             # stuck mid-phase forever.
