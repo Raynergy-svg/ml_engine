@@ -29,6 +29,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Button, DataTable, Label, RichLog, Select, Static
 
 from src.tui.data_provider import DashboardSnapshot
+from src.tui.widgets.model_inventory import ModelInventory
 
 logger = logging.getLogger(__name__)
 
@@ -438,6 +439,11 @@ class DiagnosticsScreen(Container):
             yield Label("  MAINTENANCE TASKS", classes="panel-title")
             yield DataTable(id="diag-maint-table", cursor_type="row")
 
+        # Row 3: Per-Pair Model Inventory (T10 — full width)
+        with Vertical(id="diag-model-inv-panel", classes="panel"):
+            yield Label("  PER-PAIR MODEL INVENTORY", classes="panel-title")
+            yield DataTable(id="diag-model-inv-table", cursor_type="row")
+
     def on_mount(self) -> None:
         # Set up model health table
         model_table = self.query_one("#diag-models-table", DataTable)
@@ -449,10 +455,21 @@ class DiagnosticsScreen(Container):
         maint_table.add_columns("Task", "Schedule", "Last Run", "Next Due", "Status")
         maint_table.zebra_stripes = True
 
+        # Set up per-pair model inventory table (T10)
+        inv_table = self.query_one("#diag-model-inv-table", DataTable)
+        inv_table.add_columns(
+            "Pair", "Status", "Granularity", "Holdout %", "Age (days)", "Pipeline Ver"
+        )
+        inv_table.zebra_stripes = True
+        self._model_inventory = ModelInventory(
+            models_root=self._project_root / "trained_data" / "models"
+        )
+
         # Initial data load
         self._refresh_vitals()
         self._refresh_models()
         self._refresh_maintenance()
+        self._refresh_inventory()
         if self._live:
             self._refresh_error_log()
         else:
@@ -460,6 +477,8 @@ class DiagnosticsScreen(Container):
 
         # Start auto-refresh every 5 seconds
         self._refresh_timer = self.set_interval(5.0, self._on_refresh_tick)
+        # Per-pair inventory refreshes on its own slower cadence (30s).
+        self._inventory_timer = self.set_interval(30.0, self._refresh_inventory)
 
     # ------------------------------------------------------------------
     # Event handlers
@@ -1250,3 +1269,29 @@ class DiagnosticsScreen(Container):
             self._error_log_entries.append(entry)
             if self._severity_filter in ("All", "ERR"):
                 self._write_log_entry(entry)
+
+    # ------------------------------------------------------------------
+    # T10: Per-pair model inventory
+    # ------------------------------------------------------------------
+
+    def _refresh_inventory(self) -> None:
+        """Rescan trained_data/models/ and rebuild the per-pair inventory table.
+
+        Called once on mount and every 30s thereafter. Safe to call when the
+        models dir is missing (ModelInventory.scan() handles that).
+        """
+        try:
+            self._model_inventory.scan()
+            table = self.query_one("#diag-model-inv-table", DataTable)
+            table.clear()
+            for c in self._model_inventory.cards():
+                table.add_row(
+                    c.pair,
+                    c.status,
+                    c.granularity or "—",
+                    f"{c.holdout_accuracy:.1%}" if c.holdout_accuracy is not None else "—",
+                    f"{c.age_days:.1f}" if c.age_days is not None else "—",
+                    c.pipeline_version or "—",
+                )
+        except Exception as exc:  # noqa: BLE001 — refresh tick must never crash
+            logger.warning("Per-pair model inventory refresh failed: %s", exc)
