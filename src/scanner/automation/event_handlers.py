@@ -860,6 +860,37 @@ class AccuracyRebuildHandler:
         return True
 
 
+class AgentVoteIndexHandler:
+    """Bucket D2: keep the agent-vote audit index warm post-sync.
+
+    Reads trade_journal_rl.json incrementally via watermark and upserts rows
+    into trained_data/agent_vote_index.db. Cheap (~ms per added trade) and
+    swallows DB errors so it never blocks the post-sync pipeline.
+    """
+    name = "agent_vote_index"
+    priority = 95
+
+    def handle(self, event: Dict[str, Any], context: SyncContext) -> bool:
+        import sqlite3
+        try:
+            from src.tui.agent_vote_index import AgentVoteIndex
+        except ImportError as e:
+            logger.debug("AgentVoteIndexHandler: import failed: %s", e)
+            return False
+        try:
+            with AgentVoteIndex.open() as idx:
+                stats = idx.sync_from_journal()
+            if stats.get("added"):
+                logger.info(
+                    "agent_vote_index: synced added=%d updated=%d skipped=%d",
+                    stats.get("added", 0), stats.get("updated", 0), stats.get("skipped", 0),
+                )
+            return True
+        except (sqlite3.DatabaseError, OSError) as e:
+            logger.warning("AgentVoteIndexHandler: DB error: %s", e)
+            return False
+
+
 class RetrainDriftCheckHandler:
     """Check drift and spawn background retrain if needed."""
     name = "retrain_drift_check"
@@ -1274,6 +1305,7 @@ POST_SYNC_HANDLERS: List[type] = [
     CounterfactualHandler,
     WalkForwardPipelineHandler,
     StatePersistenceHandler,
+    AgentVoteIndexHandler,
 ]
 
 
