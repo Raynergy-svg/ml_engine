@@ -50,6 +50,7 @@ from src.tui.screens.inbox_screen import InboxScreen
 from src.tui.screens.rules_screen import RulesScreen
 from src.tui.widgets.state_strip import StateStrip
 from src.tui.widgets.staleness_banner import StalenessBanner
+from src.tui.widgets.liveness_badge import LivenessBadge
 
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -935,6 +936,10 @@ class BuddyApp(App):
                 )
 
         yield SystemHealthBar(id="system-health")
+        yield LivenessBadge(
+            claude_dir=Path(__file__).resolve().parent.parent.parent / ".claude",
+            id="liveness-badge",
+        )
         yield Footer()
 
     def on_mount(self) -> None:
