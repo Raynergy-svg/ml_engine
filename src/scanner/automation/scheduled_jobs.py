@@ -77,6 +77,10 @@ class JobRuntimeState:
     last_status: str = "pending"          # "pending" | "success" | "failure"
     last_error: Optional[str] = None
     run_count: int = 0
+    # T1 additions:
+    state: str = "active"                 # "active" | "paused"
+    next_run_at_iso: Optional[str] = None  # ISO 8601 UTC of next scheduled run
+    last_status_at: Optional[str] = None   # ISO 8601 UTC of last status update
 
     @classmethod
     def from_dict(cls, raw: dict) -> "JobRuntimeState":
@@ -85,6 +89,9 @@ class JobRuntimeState:
             last_status=str(raw.get("last_status", "pending")),
             last_error=raw.get("last_error"),
             run_count=int(raw.get("run_count", 0)),
+            state=str(raw.get("state", "active")),
+            next_run_at_iso=raw.get("next_run_at_iso"),
+            last_status_at=raw.get("last_status_at"),
         )
 
     def to_dict(self) -> dict:
@@ -93,6 +100,9 @@ class JobRuntimeState:
             "last_status": self.last_status,
             "last_error": self.last_error,
             "run_count": self.run_count,
+            "state": self.state,
+            "next_run_at_iso": self.next_run_at_iso,
+            "last_status_at": self.last_status_at,
         }
 
 
@@ -300,6 +310,8 @@ class ScheduledJobsRegistry:
                 if not cfg.enabled:
                     continue
                 state = self._state.get(jid, JobRuntimeState())
+                if state.state == "paused":
+                    continue
                 try:
                     last = _parse_iso(state.last_run_at)
                     nxt = compute_next_run(cfg.schedule, last_run=last, now=now)
@@ -355,8 +367,50 @@ class ScheduledJobsRegistry:
             state.last_run_at = started_at.replace(microsecond=0).isoformat()
             state.last_status = status
             state.last_error = error
+            state.last_status_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
             state.run_count += 1
+            try:
+                nxt = compute_next_run(job.schedule, last_run=started_at)
+                state.next_run_at_iso = nxt.replace(microsecond=0).isoformat()
+            except ValueError:
+                state.next_run_at_iso = None
             self._persist_state()
+
+    # ── T1: pause / resume / trigger / next_run_at persistence ─────────
+
+    def pause_job(self, job_id: str) -> bool:
+        """Mark a job paused. Returns True if changed; False if unknown id."""
+        with self._lock:
+            if job_id not in self._jobs:
+                return False
+            s = self._state.setdefault(job_id, JobRuntimeState())
+            s.state = "paused"
+            self._persist_state()
+            return True
+
+    def resume_job(self, job_id: str) -> bool:
+        """Mark a job active. Returns True if changed; False if unknown id."""
+        with self._lock:
+            if job_id not in self._jobs:
+                return False
+            s = self._state.setdefault(job_id, JobRuntimeState())
+            s.state = "active"
+            self._persist_state()
+            return True
+
+    def trigger_now(self, job_id: str) -> bool:
+        """Run a job immediately in a daemon thread. Returns True if started."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+        if job is None:
+            return False
+        now = datetime.now(timezone.utc)
+        t = threading.Thread(
+            target=self._run_job, args=(job, now),
+            daemon=True, name=f"job_{job.job_id}_manual",
+        )
+        t.start()
+        return True
 
 
 # ────────────────────────────────────────────────────────────────────────
