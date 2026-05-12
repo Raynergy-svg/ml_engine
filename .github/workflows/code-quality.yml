@@ -77,7 +77,8 @@ jobs:
     - name: Install test dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest numpy pandas rich PyYAML structlog scikit-learn joblib
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest pytest-asyncio
 
     - name: Run integration tests
       run: |
@@ -136,9 +137,10 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         # pre-commit drives the three hooks below.
-        # pytest + numpy/pandas/... are required by the circuit-breaker
-        # regression tests (same set used in the `test` job above).
-        pip install pre-commit pytest numpy pandas rich PyYAML structlog scikit-learn
+        # requirements.txt installs the full src/ runtime so the circuit-breaker
+        # regression tests can import everything they touch.
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pre-commit pytest pytest-asyncio
 
     - name: Run P0 safety gates (pre-commit, all files)
       run: |
