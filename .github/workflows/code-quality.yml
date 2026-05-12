@@ -78,7 +78,12 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install pytest pytest-asyncio
+        # pytest itself + pytest-asyncio for async test support.
+        # httpretty is imported by tests/conftest.py:27 (oanda_mock fixture)
+        # which pytest evaluates during fixture collection across the entire
+        # tests/ tree — even though only e2e/ tests actually use the fixture.
+        # Without it, `pytest tests/ -x` errors at fixture-setup and bails.
+        pip install pytest pytest-asyncio pytest-timeout httpretty
 
     - name: Run integration tests
       run: |
@@ -144,11 +149,13 @@ jobs:
 
     - name: Run P0 safety gates (pre-commit, all files)
       run: |
-        pre-commit run --all-files \
-          --hook-stage manual \
-          config-adjustments-orphans \
-          p0-py-compile \
-          circuit-breaker-regression
+        # pre-commit 4.x only accepts ONE hook ID per invocation — passing
+        # multiple makes it exit 2 with "unrecognized arguments". Run each
+        # hook separately and fail the step if any returns non-zero.
+        set -e
+        pre-commit run --all-files --hook-stage manual config-adjustments-orphans
+        pre-commit run --all-files --hook-stage manual p0-py-compile
+        pre-commit run --all-files --hook-stage manual circuit-breaker-regression
 
     - name: Report
       if: failure()
