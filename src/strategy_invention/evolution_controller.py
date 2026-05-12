@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+from src.scanner.automation.safe_json import safe_json_write
 
 from .blocks import StrategyBlock, BlockType
 from .template import StrategyTemplate, BacktestStats
@@ -77,45 +77,15 @@ class EvolutionController:
             manifest_entries = []
             for strategy in self._registry.values():
                 path = self._dir / f"{strategy.id}.json"
-                payload = json.dumps(strategy.to_dict(), indent=2, sort_keys=True)
-                fd, tmp = tempfile.mkstemp(dir=str(self._dir), suffix=".tmp")
-                try:
-                    os.write(fd, payload.encode())
-                    os.fsync(fd)
-                    os.close(fd)
-                    os.rename(tmp, str(path))
-                except Exception as e:
-                    try:
-                        os.close(fd)
-                    except Exception:
-                        pass
-                    try:
-                        os.remove(tmp)
-                    except Exception:
-                        pass
-                    logger.error("EvolutionController: failed to save strategy %s: %s", strategy.id, e)
-                    raise
+                if not safe_json_write(path, strategy.to_dict(), sort_keys=True):
+                    logger.error("EvolutionController: failed to save strategy %s", strategy.id)
+                    raise IOError(f"safe_json_write failed for strategy {strategy.id}")
                 manifest_entries.append({"id": strategy.id, "status": strategy.status, "fitness": strategy.fitness})
 
-            manifest_payload = json.dumps({"version": "1.0", "strategies": manifest_entries}, indent=2, sort_keys=True)
             mpath = self._dir / "manifest.json"
-            fd, tmp = tempfile.mkstemp(dir=str(self._dir), suffix=".tmp")
-            try:
-                os.write(fd, manifest_payload.encode())
-                os.fsync(fd)
-                os.close(fd)
-                os.rename(tmp, str(mpath))
-            except Exception as e:
-                try:
-                    os.close(fd)
-                except Exception:
-                    pass
-                try:
-                    os.remove(tmp)
-                except Exception:
-                    pass
-                logger.error("EvolutionController: failed to save manifest: %s", e)
-                raise
+            if not safe_json_write(mpath, {"version": "1.0", "strategies": manifest_entries}, sort_keys=True):
+                logger.error("EvolutionController: failed to save manifest")
+                raise IOError("safe_json_write failed for manifest")
             logger.info("EvolutionController: saved %d strategies", len(self._registry))
         except Exception as e:
             logger.error("EvolutionController: save failed: %s", e)

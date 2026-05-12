@@ -18,6 +18,8 @@ import json
 import logging
 import os
 import threading
+
+from src.scanner.automation.safe_json import safe_json_write
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -455,7 +457,7 @@ class EWMACorrelationEngine:
         )
 
     def save_state(self, path: str) -> None:
-        """Save state atomically (.tmp + os.rename).
+        """Save state atomically via safe_json_write (fcntl + tmp + fsync + rename).
 
         Args:
             path: File path to save to
@@ -467,27 +469,11 @@ class EWMACorrelationEngine:
             # Add version field for forward compatibility
             data["_version"] = "1.0"
 
-            try:
-                path_obj = Path(path)
-                path_obj.parent.mkdir(parents=True, exist_ok=True)
-
-                # Write to temp file first
-                tmp_path = f"{path}.tmp"
-                with open(tmp_path, "w") as f:
-                    json.dump(data, f, indent=2, sort_keys=True)
-
-                # Atomic rename
-                os.replace(tmp_path, path)
-                logger.debug(f"Saved EWMA correlation state to {path}")
-
-            except Exception as e:
-                logger.error(f"Failed to save EWMA correlation state: {e}")
-                # Clean up temp file if it exists
-                try:
-                    os.unlink(f"{path}.tmp")
-                except Exception:
-                    pass
-                raise
+            if not safe_json_write(path, data, sort_keys=True):
+                msg = f"Failed to save EWMA correlation state to {path}"
+                logger.error(msg)
+                raise IOError(msg)
+            logger.debug(f"Saved EWMA correlation state to {path}")
 
     def load_state(self, path: str) -> None:
         """Load state from JSON file.

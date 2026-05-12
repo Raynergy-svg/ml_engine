@@ -20,11 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    from src.scanner.automation.safe_json import safe_json_write
-    _HAS_SAFE_JSON = True
-except ImportError:
-    _HAS_SAFE_JSON = False
+from src.scanner.automation.safe_json import safe_json_write
 
 logger = logging.getLogger(__name__)
 
@@ -73,27 +69,8 @@ class SessionPersistence:
         state["domain"] = self.domain
         state.setdefault("version", 1)  # forward-compatibility per improvement.md
 
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            if _HAS_SAFE_JSON:
-                success = safe_json_write(self.state_path, state)
-                if not success:
-                    logger.error(f"[{self.domain}] safe_json_write failed for state")
-            else:
-                import os, tempfile
-                json_str = json.dumps(state, indent=2, default=str)
-                fd, tmp = tempfile.mkstemp(dir=str(self.state_path.parent))
-                try:
-                    os.write(fd, json_str.encode("utf-8"))
-                    os.fsync(fd); os.close(fd); fd = -1
-                    os.rename(tmp, str(self.state_path))
-                except Exception:
-                    if fd >= 0: os.close(fd)
-                    try: os.unlink(tmp)
-                    except OSError: pass
-                    raise
-        except Exception as e:
-            logger.error(f"[{self.domain}] Failed to save state: {e}")
+        if not safe_json_write(self.state_path, state):
+            logger.error(f"[{self.domain}] safe_json_write failed for state")
 
     def update(self, **kwargs: Any) -> Dict[str, Any]:
         """Load state, update specific fields, save back."""

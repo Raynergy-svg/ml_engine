@@ -37,7 +37,9 @@ from textual.widgets import (
 
 from src.tui.data_provider import DataProvider, DashboardSnapshot
 from src.tui.heartbeat import write_heartbeat
+from src.tui.screens.command_palette_modal import CommandPaletteModal
 from src.tui.screens.kill_modal import KillModal
+from src.tui.screens.log_viewer_modal import LogViewerModal
 from src.tui.screens.mode_modal import ModeConfirmModal, check_oanda_credentials
 from src.tui.screens.trades_screen import TradesScreen
 from src.tui.screens.agents_screen import AgentsScreen
@@ -839,6 +841,8 @@ class BuddyApp(App):
         Binding("u", "unhalt", "Unhalt", show=True),
         Binding("c", "copy_snapshot", "Copy", show=True),
         Binding("q", "quit", "Quit", show=True),
+        Binding("colon", "open_command_palette", "Commands", show=False),
+        Binding("ctrl+l", "open_log_viewer", "Logs", show=False),
     ]
 
     # Asset class modes — F7 cycles through them
@@ -1477,6 +1481,47 @@ class BuddyApp(App):
             return
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab_id
+
+    def action_open_command_palette(self) -> None:
+        """`:` opens the Vim-style palette over any screen.
+
+        Modal returns the chosen command id; we route it here so the modal
+        stays decoupled from the rest of the app surface.
+        """
+        if self._kill_in_progress:
+            return
+
+        def _route(cmd_id: str | None) -> None:
+            if cmd_id is None:
+                return
+            # Navigation maps to switch_tab(<tab_id>).
+            if cmd_id.startswith("nav."):
+                self.action_switch_tab(cmd_id.split(".", 1)[1])
+                return
+            # Everything else maps 1:1 to an action_* method.
+            mapping = {
+                "supervisor.pause": self.action_supervisor_pause,
+                "supervisor.kill": self.action_supervisor_kill,
+                "supervisor.mode": self.action_supervisor_mode,
+                "supervisor.abort": self.action_supervisor_abort,
+                "broker.cycle": self.action_cycle_asset_class,
+                "app.quit": self.action_quit,
+                "log.view": self.action_open_log_viewer,
+            }
+            handler = mapping.get(cmd_id)
+            if handler is not None:
+                handler()
+            else:
+                logger.warning("CommandPalette: unknown command id %s", cmd_id)
+
+        self.push_screen(CommandPaletteModal(), _route)
+
+    def action_open_log_viewer(self) -> None:
+        """Ctrl+L (or command palette → 'Live logs'): pop the log-tail modal."""
+        if self._kill_in_progress:
+            return
+        repo_root = Path(__file__).resolve().parents[2]
+        self.push_screen(LogViewerModal(repo_root))
 
     def action_cycle_asset_class(self) -> None:
         """F7: cycle through FX → Futures → Hybrid → FX.  Blocked during kill.
@@ -2268,6 +2313,15 @@ def run():
     parser.add_argument("--demo", action="store_true",
                         help="Run with simulated data instead of live OANDA feed")
     args = parser.parse_args()
+
+    # Pick #6: surface brain-file cap overages before Textual takes over
+    # stderr. Non-blocking — never raises, never delays startup more than
+    # ~5ms for the file reads.
+    try:
+        from src.tui.boot_trace import emit_brain_cap_warnings
+        emit_brain_cap_warnings()
+    except Exception:
+        pass
 
     # Default: LIVE always. Only demo when explicitly requested.
     live = not args.demo

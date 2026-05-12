@@ -18,7 +18,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import json
 import logging
-import os
+
+from src.scanner.automation.safe_json import safe_json_write
 
 logger = logging.getLogger(__name__)
 
@@ -344,9 +345,8 @@ def save_state(cfg: Dict[str, Any], *args) -> Path:
         "last_updated_at": state.last_updated_at,
     }
     # H-3: atomic write — prevents guardrail state corruption on crash
-    _tmp = path.with_suffix(".tmp")
-    _tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(str(_tmp), str(path))
+    if not safe_json_write(path, payload, sort_keys=True):
+        raise IOError(f"fx_guardrails: failed to persist state to {path}")
     return path
 
 

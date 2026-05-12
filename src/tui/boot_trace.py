@@ -66,3 +66,31 @@ def trace(msg: str) -> None:
                     pass
         except OSError:
             pass
+
+
+def emit_brain_cap_warnings() -> int:
+    """Surface any `.claude/brain/*.md` cap overages to the boot trace + stderr.
+
+    Returns the number of warnings emitted. Safe to call at any time during
+    boot (no-op when the brain dir is empty or absent). Catches every
+    exception so a cap-check bug can never block TUI startup.
+    """
+    try:
+        from src.scanner.automation.brain_caps import check_brain_caps, format_warnings
+
+        warnings = check_brain_caps()
+        if not warnings:
+            return 0
+        summary = format_warnings(warnings)
+        trace(f"brain_caps: {len(warnings)} over cap")
+        for w in warnings:
+            trace(f"  [{w.severity}] {w.filename}: {w.char_count}/{w.hard_cap} ({w.pct}%)")
+        # Best-effort stderr banner — operators running ./buddy with
+        # BUDDY_DEBUG=1 see this in the terminal; otherwise it lands in
+        # logs/buddy_tui.stderr.log.
+        import sys as _sys
+        print(f"⚠  {summary}", file=_sys.stderr)
+        return len(warnings)
+    except Exception as e:
+        trace(f"brain_caps: check failed ({type(e).__name__}: {e})")
+        return 0

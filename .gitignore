@@ -86,6 +86,9 @@ tensorboard/
 .claude/settings.json
 .claude/state.json.bak
 .claude/state.json.lock
+.claude/heartbeat.json
+.claude/heartbeat.json.lock
+.claude/heartbeat.json.bak
 .aura/
 
 # Meta-cybernetic change pipeline runtime state
