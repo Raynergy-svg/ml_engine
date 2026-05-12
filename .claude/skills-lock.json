@@ -1,7 +1,7 @@
 {
   "skills": {
     "code-repair": {
-      "computedHash": "78dd7da38639506818855a40601da455bd2d05e867ed1cfce6bd757f69c3c31a",
+      "computedHash": "6631e0cc9434a1739a4fca35a842d46dc56502c37a0aac94d366c8e6b64d0b28",
       "source": ".claude/skills/code-repair",
       "sourceType": "local"
     },
