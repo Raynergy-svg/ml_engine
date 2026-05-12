@@ -127,5 +127,6 @@ class TestCapsTable:
 
     def test_all_expected_files_present(self):
         expected = {"briefing.md", "session_handoff.md", "open_questions.md",
-                    "strategic_log.md", "trade_narrative.md"}
+                    "strategic_log.md", "trade_narrative.md",
+                    "hermes_watchdog.md"}
         assert set(caps().keys()) == expected

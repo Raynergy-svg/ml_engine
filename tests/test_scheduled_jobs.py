@@ -155,9 +155,15 @@ class TestRegistryLoad:
         cfg, state = tmp_paths
         r = ScheduledJobsRegistry(config_path=cfg, state_path=state, executor=fake_executor)
         r.load()
-        assert {j.job_id for j in r.jobs()} == {j.job_id for j in default_jobs()}
-        # Defaults are disabled — operator must opt in.
-        assert all(j.enabled is False for j in r.jobs())
+        loaded_ids = {j.job_id for j in r.jobs()}
+        default_ids = {j.job_id for j in default_jobs()}
+        assert loaded_ids == default_ids
+        # Per-default enabled state matches what default_jobs() ships
+        # (homework_weekly: disabled; hermes_watchdog + hermes_daily_brief:
+        # enabled — they're the always-on observability layer).
+        loaded_by_id = {j.job_id: j for j in r.jobs()}
+        for default in default_jobs():
+            assert loaded_by_id[default.job_id].enabled == default.enabled
 
     def test_loads_from_config_file(self, tmp_paths, fake_executor):
         cfg, state = tmp_paths
