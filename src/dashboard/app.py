@@ -432,6 +432,11 @@ async def update_agent_weights(request: Request):
     weights = body.get("weights", {})
     if weights:
         _save_json("trained_data/models/agent_weights.json", weights)
+        try:
+            from src.scanner.weights_history import record_weight_version
+            record_weight_version(weights, source="dashboard:manual")
+        except (ImportError, OSError):
+            pass  # history is best-effort; dashboard save already succeeded
     return JSONResponse({"status": "saved"})
 
 

@@ -219,10 +219,16 @@ class WalkForwardRetrainer:
             with open(tmp, "w") as f:
                 json.dump(data, f, indent=2, sort_keys=True)
             os.rename(tmp, path)
-            return True
         except Exception as e:
             logger.error("Phase 51: Failed to save retrained weights: %s", e)
             return False
+
+        try:
+            from src.scanner.weights_history import record_weight_version
+            record_weight_version(data, source="walkforward_retrainer")
+        except (ImportError, OSError) as _hist_err:
+            logger.debug("weight_history record skipped: %s", _hist_err)
+        return True
 
     # ── Private methods ──────────────────────────────────────────────
 

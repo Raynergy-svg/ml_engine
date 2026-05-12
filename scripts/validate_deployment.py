@@ -1474,6 +1474,11 @@ class DeploymentValidator:
             weights_path.parent.mkdir(parents=True, exist_ok=True)
             with open(weights_path, "w") as f:
                 json.dump(weights, f, indent=2)
+            try:
+                from src.scanner.weights_history import record_weight_version
+                record_weight_version(weights, source="bootstrap", reason="auto_fix_baseline")
+            except (ImportError, OSError):
+                pass
             print(f"  {Colors.GREEN}✓ Created agent_weights.json from baseline{Colors.RESET}")
             return 1
 

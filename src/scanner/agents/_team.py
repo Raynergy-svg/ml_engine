@@ -668,32 +668,50 @@ class ScannerAgentTeam:
         self._regime_weights[regime] = selected_weights
         return dict(selected_weights)
 
-    def _save_learned_weights(self) -> None:
+    def _save_learned_weights(self, *, history_source: str = "team:learned") -> None:
         """Persist learned agent weights to disk with retry + atomic write.
 
         Phase 55 (US-342): Uses resilient_save for retry with exponential
         backoff and async fallback queue on total failure.
+
+        Bucket D1: emits a versioned history entry to ``weight_history.jsonl``
+        after a successful save. Callers can override ``history_source`` to
+        differentiate writers (e.g. ``"team:rl_update"`` or ``"team:meta_overrides"``).
         """
         from pathlib import Path
 
         path = Path(self._WEIGHTS_FILE)
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        save_ok = False
         try:
             from src.scanner.safe_io import resilient_save
             resilient_save(str(path), self._learned_weights, context="agent_weights")
+            save_ok = True
         except ImportError:
             # Fallback if safe_io not available
             try:
                 from src.scanner.automation.safe_json import safe_json_write
                 safe_json_write(path, self._learned_weights)
+                save_ok = True
             except ImportError:
                 import json
                 try:
                     with open(path, "w") as f:
                         json.dump(self._learned_weights, f, indent=2, default=str)
+                    save_ok = True
                 except Exception as e:
                     logger.error(f"Agent weights save failed completely: {e}")
+
+        if save_ok:
+            try:
+                from src.scanner.weights_history import record_weight_version
+                record_weight_version(
+                    self._learned_weights,
+                    source=history_source,
+                )
+            except (ImportError, OSError) as _hist_err:
+                logger.debug("weight_history record skipped: %s", _hist_err)
 
     def apply_proposed_weights(
         self,
