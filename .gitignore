@@ -114,6 +114,7 @@ tensorboard/
 
 # Local runtime artifacts
 cache/
+!src/tui/cache/
 output/
 .pytest_cache/
 .ruff_cache/

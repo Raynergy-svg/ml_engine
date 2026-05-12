@@ -10,7 +10,6 @@ Drop-in replacement for PlaceholderContent in the Trades TabPane.
 """
 from __future__ import annotations
 
-import json
 import logging
 import random
 from datetime import datetime, timezone
@@ -370,6 +369,14 @@ class TradesScreen(Container):
         self._selected_index: int | None = None
         self._project_root: Path = Path(__file__).resolve().parents[3]
 
+        # Tier 2 T9: precomputed trade-summary index. Avoids re-parsing the
+        # full journal on every refresh; only rebuilds when the journal grows.
+        from src.tui.cache.trades_cache import TradesCache as _TradesCache
+        self._trades_cache = _TradesCache(
+            journal_path=self._project_root / "trained_data" / "trade_journal_rl.json",
+            cache_path=self._project_root / ".claude" / "ui_cache" / "trades_index.json",
+        )
+
     def compose(self) -> ComposeResult:
         with Vertical(id="trades-open-panel", classes="panel"):
             yield Label("  OPEN POSITIONS", classes="panel-title")
@@ -534,7 +541,14 @@ class TradesScreen(Container):
     # ------------------------------------------------------------------
 
     def _load_closed_trades(self) -> None:
-        """Load recently closed trades from trade_journal_rl.json."""
+        """Load recently closed trades through the precomputed cache.
+
+        Tier 2 T9: instead of re-parsing ``trade_journal_rl.json`` on every
+        refresh, we drive ``TradesCache.sync()``. The cache only re-reads
+        the journal when its byte-size has grown (or on first hit / after
+        corruption). Rich rendering still uses raw entries which the cache
+        also exposes via ``raw_entries()``.
+        """
         try:
             closed_table = self.query_one("#trades-closed-table", DataTable)
         except Exception:
@@ -542,16 +556,12 @@ class TradesScreen(Container):
 
         closed_table.clear()
 
-        journal_path = self._project_root / "trained_data" / "trade_journal_rl.json"
-        entries: list[dict[str, Any]] = []
-
-        if journal_path.exists():
-            try:
-                raw = json.loads(journal_path.read_text(encoding="utf-8"))
-                if isinstance(raw, list):
-                    entries = raw
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.debug("Failed to read trade journal: %s", exc)
+        try:
+            self._trades_cache.sync()
+            entries = self._trades_cache.raw_entries()
+        except OSError as exc:
+            logger.debug("Trades cache sync failed: %s", exc)
+            entries = []
 
         # Filter to closed trades (those with outcome.realized_pl)
         closed = [
