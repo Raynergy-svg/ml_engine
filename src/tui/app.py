@@ -52,6 +52,7 @@ from src.tui.widgets.state_strip import StateStrip
 from src.tui.widgets.staleness_banner import StalenessBanner
 from src.tui.widgets.liveness_badge import LivenessBadge
 from src.tui.widgets.stats_bar import ScanCounters, StatsBar
+from src.tui.widgets.phase_indicator import PhaseIndicator, PhaseState
 
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -867,6 +868,11 @@ class BuddyApp(App):
         # so the F1 StatsBar can take a stable reference at compose time; the
         # EmbeddedScanner receives the same instance and bumps it inline.
         self._counters = ScanCounters()
+        # Tier 1 T4: shared PhaseState reference. Created here so the
+        # PhaseIndicator widget in compose() has a stable target even
+        # before _start_scanner instantiates the EmbeddedScanner. The
+        # scanner adopts this same instance (see _start_scanner).
+        self._phase_state = PhaseState()
 
     def compose(self) -> ComposeResult:
         yield HeaderBar(id="header-bar")
@@ -907,6 +913,15 @@ class BuddyApp(App):
                         with Vertical(id="brain-stream"):
                             yield Label("⟨ BUDDY'S BRAIN ⟩  [stream of consciousness]",
                                        classes="panel-title")
+                            # Tier 1 T4: transient phase indicator — tells the
+                            # operator what the scanner is doing RIGHT NOW
+                            # (scanning / gate-check / executing / idle). Sits
+                            # above the cumulative counter and brain log so it's
+                            # visible without scrolling.
+                            yield PhaseIndicator(
+                                state=self._phase_state,
+                                id="phase-indicator",
+                            )
                             # T3: cumulative work-unit counter (cycles · pairs · gates · trades).
                             # Shares ScanCounters instance with EmbeddedScanner.counters.
                             yield StatsBar(counters=self._counters, id="stats-bar")
@@ -1176,6 +1191,11 @@ class BuddyApp(App):
             interval_minutes=5,
             counters=self._counters,  # T3: shared with F1 StatsBar
         )
+        # Tier 1 T4: adopt the App's PhaseState so the F1 PhaseIndicator
+        # (mounted in compose()) and the scanner thread share the same
+        # mutable instance. Otherwise the widget polls the App's
+        # default-idle state forever while the scanner mutates its own.
+        self._scanner.phase_state = self._phase_state
         self._init_scanner_worker()
 
     def _scanner_brain_bridge(self, markup: str) -> None:

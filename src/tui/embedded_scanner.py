@@ -149,6 +149,14 @@ class EmbeddedScanner:
         self._peak_nav = 0.0
         self._lock = threading.Lock()
 
+        # Tier 1 T4: transient phase indicator shared with the F1 TUI
+        # widget. Scanner thread writes via .set / .clear at phase
+        # boundaries in run_one_cycle; PhaseIndicator widget polls
+        # .format() every 0.5s. Plain attribute writes are atomic in
+        # CPython — no lock needed for str reads.
+        from src.tui.widgets.phase_indicator import PhaseState
+        self.phase_state = PhaseState()
+
         # Cycle-level autonomy triggers (periodic / self-heal / rejection).
         # Fires Claude on schedule regardless of whether trades closed,
         # so buddy isn't dormant just because OANDA is quiet.
@@ -521,6 +529,8 @@ class EmbeddedScanner:
 
         now = datetime.now(timezone.utc).strftime("%H:%M:%S")
         self._brain(f"[cyan]▸ Scan #{self._scan_count} starting at {now}...[/]")
+        # Tier 1 T4: phase=scanning at cycle start.
+        self.phase_state.set("scanning", f"cycle #{self._scan_count}")
 
         try:
             # ── Get instruments to scan ─────────────────────────────
@@ -547,16 +557,25 @@ class EmbeddedScanner:
                 f"[dim]  Scan complete — {scan_ms:.0f}ms — "
                 f"{len(tradeable)}/{len(result.analyses)} tradeable[/]"
             )
+            # Tier 1 T4: phase=gate-check after per-pair scan completes.
+            self.phase_state.set(
+                "gate-check",
+                f"{len(tradeable)}/{len(result.analyses)} pairs",
+            )
 
             # ── Auto-execute ───────────────────────────────────────
             trades_executed = 0
             tradeable_before_filters = len(tradeable)
             if self._auto_execute and tradeable:
+                # Tier 1 T4: phase=executing once we know we're going to
+                # try execution. Detail updates again after trades close.
+                self.phase_state.set("executing", f"{len(tradeable)} candidates")
                 tradeable = self._filter_correlated_exposure(tradeable)
                 if tradeable:
                     tradeable = self._check_policy(tradeable)
                 if tradeable:
                     trades_executed = self._execute_trades(tradeable)
+                    self.phase_state.set("executing", f"{trades_executed} trades")
             # T3: execution boundary — record cumulative successful trades.
             if trades_executed:
                 self.counters.bump_trade(int(trades_executed))
@@ -626,6 +645,8 @@ class EmbeddedScanner:
 
             next_min = self._interval_minutes
             self._brain(f"[cyan]▸ Next scan in {next_min}m...[/]")
+            # Tier 1 T4: clear back to idle at cycle end.
+            self.phase_state.clear()
 
             return enrichment
 
@@ -633,6 +654,9 @@ class EmbeddedScanner:
             logger.error("Scan cycle %d failed: %s", self._scan_count, e, exc_info=True)
             self._brain(f"[red]✗ Scan #{self._scan_count} failed: {e}[/]")
             self._memory_guard()
+            # Tier 1 T4: clear on failure so the indicator doesn't get
+            # stuck mid-phase forever.
+            self.phase_state.clear()
             return None
 
     def _on_pair_complete(self, analysis) -> None:
