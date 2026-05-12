@@ -54,6 +54,8 @@ def default_commands() -> list[Command]:
         Command("supervisor.abort", "Abort pending signal", "Veto last pending signal", ("veto", "cancel")),
         # Broker
         Command("broker.cycle", "Cycle asset class", "FX → Futures → Hybrid", ("fx", "futures", "hybrid", "broker")),
+        # Diagnostics
+        Command("log.view", "Live logs", "Tail logs/buddy_tui.stderr.log with filter", ("logs", "tail", "stderr", "diag")),
         # App
         Command("app.quit", "Quit Buddy", "Clean shutdown", ("exit", "close")),
     ]

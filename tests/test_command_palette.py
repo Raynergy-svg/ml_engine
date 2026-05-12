@@ -92,6 +92,7 @@ class TestRegistry:
             "supervisor.mode",
             "supervisor.abort",
             "broker.cycle",
+            "log.view",
             "app.quit",
         }
         for cmd in default_commands():
