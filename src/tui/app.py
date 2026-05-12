@@ -51,6 +51,7 @@ from src.tui.screens.rules_screen import RulesScreen
 from src.tui.widgets.state_strip import StateStrip
 from src.tui.widgets.staleness_banner import StalenessBanner
 from src.tui.widgets.liveness_badge import LivenessBadge
+from src.tui.widgets.stats_bar import ScanCounters, StatsBar
 
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -861,6 +862,10 @@ class BuddyApp(App):
         # Plan C (2026-04-29) — file position into .claude/meta/changes.jsonl;
         # _tick_brain reads forward from here on each 0.8s tick.
         self._brain_ledger_pos: int = 0
+        # T3: shared cumulative work-unit counters. Pre-built at app construct
+        # so the F1 StatsBar can take a stable reference at compose time; the
+        # EmbeddedScanner receives the same instance and bumps it inline.
+        self._counters = ScanCounters()
 
     def compose(self) -> ComposeResult:
         yield HeaderBar(id="header-bar")
@@ -901,6 +906,9 @@ class BuddyApp(App):
                         with Vertical(id="brain-stream"):
                             yield Label("⟨ BUDDY'S BRAIN ⟩  [stream of consciousness]",
                                        classes="panel-title")
+                            # T3: cumulative work-unit counter (cycles · pairs · gates · trades).
+                            # Shares ScanCounters instance with EmbeddedScanner.counters.
+                            yield StatsBar(counters=self._counters, id="stats-bar")
                             yield RichLog(id="brain-log", highlight=True, markup=True,
                                          max_lines=500, auto_scroll=True)
 
@@ -1165,6 +1173,7 @@ class BuddyApp(App):
             brain_callback=self._scanner_brain_bridge,
             auto_execute=True,
             interval_minutes=5,
+            counters=self._counters,  # T3: shared with F1 StatsBar
         )
         self._init_scanner_worker()
 

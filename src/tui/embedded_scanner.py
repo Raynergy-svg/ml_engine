@@ -117,11 +117,20 @@ class EmbeddedScanner:
         brain_callback: Callable[[str], None],
         auto_execute: bool = True,
         interval_minutes: int = 5,
+        counters: Optional["ScanCounters"] = None,
     ) -> None:
         self._project_root = Path(project_root)
         self._brain = brain_callback
         self._auto_execute = auto_execute
         self._interval_minutes = interval_minutes
+
+        # Tier 1 T3: lifetime work-unit counters (cycles, pairs, gates, trades).
+        # Shared ref handed to the TUI StatsBar; bumped inline in run_one_cycle
+        # at the natural phase boundaries. The caller (BuddyApp) may inject a
+        # pre-built ScanCounters so the same instance backs the F1 widget; if
+        # omitted (tests, headless harnesses), a fresh one is created.
+        from src.tui.widgets.stats_bar import ScanCounters
+        self.counters = counters if counters is not None else ScanCounters()
 
         # Lazily initialized in initialize()
         self._scanner = None  # Scanner instance
@@ -506,6 +515,8 @@ class EmbeddedScanner:
             logger.debug("Halted check error (non-blocking): %s", _halt_err)
 
         self._persist_next_scan_count()
+        # T3: cycle boundary — increment cumulative cycles counter.
+        self.counters.bump_cycle()
         cycle_start = time.monotonic()
 
         now = datetime.now(timezone.utc).strftime("%H:%M:%S")
@@ -527,6 +538,11 @@ class EmbeddedScanner:
 
             scan_ms = (time.monotonic() - cycle_start) * 1000
             tradeable = result.tradeable
+            # T3: per-pair / per-gate phase boundary — every analysis went
+            # through the scan pipeline and the gate evaluator.
+            analyses_count = len(result.analyses)
+            self.counters.bump_pair(analyses_count)
+            self.counters.bump_gates_checked(analyses_count)
             self._brain(
                 f"[dim]  Scan complete — {scan_ms:.0f}ms — "
                 f"{len(tradeable)}/{len(result.analyses)} tradeable[/]"
@@ -541,6 +557,9 @@ class EmbeddedScanner:
                     tradeable = self._check_policy(tradeable)
                 if tradeable:
                     trades_executed = self._execute_trades(tradeable)
+            # T3: execution boundary — record cumulative successful trades.
+            if trades_executed:
+                self.counters.bump_trade(int(trades_executed))
 
             # ── Post-scan automation ───────────────────────────────
             self._post_scan_automation(result)
