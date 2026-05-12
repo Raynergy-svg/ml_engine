@@ -135,7 +135,7 @@ def test_stage1_handler_chain_with_mocked_claude(iso_workspace):
     call_kwargs = mock_invoker.call_args.kwargs
     assert call_kwargs["trade_id"] == "T-E2E-001"
     assert call_kwargs["mode"] == "deep"
-    assert call_kwargs["timeout_seconds"] == 300  # deep mode
+    assert call_kwargs["timeout_seconds"] == 420  # deep mode (event_handlers.py:1204)
 
     # Verify lock path cleaned up
     assert not (iso_workspace / ".claude" / ".reflection.lock").exists()
