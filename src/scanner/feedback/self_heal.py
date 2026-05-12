@@ -994,6 +994,15 @@ class SelfHeal:
         ok, detail = self._atomic_write_json(self.AGENT_WEIGHTS_PATH, data)
         if not ok:
             return (False, detail, [])
+        try:
+            from src.scanner.weights_history import record_weight_version
+            record_weight_version(
+                data,
+                source=f"self_heal:soft_reset:{agent}",
+                reason=f"buckets={','.join(buckets_touched)}",
+            )
+        except (ImportError, OSError) as _hist_err:
+            logger.debug("weight_history record skipped: %s", _hist_err)
         return (
             True,
             "reset:{0}:buckets={1}".format(agent, ",".join(buckets_touched)),

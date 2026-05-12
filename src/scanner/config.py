@@ -99,7 +99,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_support_resistance_agent": True,
         "enable_news_risk_agent": True,
         "enable_momentum_agent": True,
-        "enable_trader_readiness_agent": True,
+        "enable_trader_readiness_agent": False,  # 2026-05-12 audit: DORMANT, no Aura writer yet
         "enable_order_flow_agent": True,
         "enable_devil_advocate_agent": True,
         # Reflection — deterministic snapshot.md (Angle 1')
@@ -180,7 +180,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_devil_advocate": True,
         "enable_devil_advocate_agent": True,
         "enable_order_flow_agent": True,
-        "enable_trader_readiness_agent": True,
+        "enable_trader_readiness_agent": False,  # 2026-05-12 audit: DORMANT, no Aura writer yet
         # Reflection — deterministic snapshot.md (Angle 1')
         "briefing_snapshot_every_n_cycles": 12,
         "disable_briefing_snapshot": False,
@@ -225,7 +225,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_pair_performance_agent": True,
         "enable_session_timing_agent": True,
         "enable_support_resistance_agent": True,
-        "enable_trader_readiness_agent": True,  # Aura Phase 1 (US-200)
+        "enable_trader_readiness_agent": False,  # 2026-05-12 audit: DORMANT — Aura Phase 1 writer not shipped
         "enable_news_risk_agent": True,  # Phase 33 (US-214)
         "enable_session_filter": True,  # Phase 33 (US-214)
         # --- LLM & model features ---
@@ -406,13 +406,15 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_llm_trade_analysis": True,
         "enable_trend_agent_hard_veto": True,
         "enable_mean_reversion_veto": True,  # H2 (Phase 93)
-        "mean_reversion_veto_disagree_floor": 0.25,
+        # 2026-05-12 audit: lowered from 0.25 after 3 losses in 0.18-0.23 band slipped the composite.
+        "mean_reversion_veto_disagree_floor": 0.15,
+        "enable_graph_attention": True,  # 2026-05-12: explicit for visibility; matches dataclass default
         "staleness_uncertainty_threshold": 0.35,
         "staleness_age_threshold_days": 7.0,
         "veto_window_ms_default": 0,  # US-511: operator veto window (0=disabled by default in smart)
         "veto_window_ms_per_pair": {},
-        # Extended agents 13/14/15 — always on for smart profile; operators can disable via YAML override
-        "enable_trader_readiness_agent": True,
+        # Extended agents 14/15 always on for smart profile; 13 (trader_readiness) is DORMANT (2026-05-12 audit).
+        "enable_trader_readiness_agent": False,  # DORMANT until Aura writer ships
         "enable_order_flow_agent": True,
         "enable_devil_advocate_agent": True,
         # Meta-cybernetic change pipeline — enabled in `smart` (live profile)
@@ -743,7 +745,10 @@ class ScannerConfig:
     enable_momentum_agent: bool = True
     enable_session_timing_agent: bool = True
     enable_support_resistance_agent: bool = True
-    enable_trader_readiness_agent: bool = True  # Agent #13: Aura human-side readiness signal
+    # 2026-05-12 audit: Aura readiness writer not yet implemented (no write_readiness in BuddyAuraBridge).
+    # Default flipped True->False until Aura ships a writer; readiness_signal.json file exists but is stale.
+    # Re-enable in all four profile dicts AND here once the writer ships.
+    enable_trader_readiness_agent: bool = False  # Agent #13: DORMANT — see audit note above
     enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator (legacy flag — kept for backward compatibility)
     enable_devil_advocate_agent: bool = True  # Agent #14: Canonical _agent-suffixed toggle (supersedes enable_devil_advocate)
     enable_order_flow_agent: bool = True  # Agent #15: Order-flow / book-depth agent
@@ -764,7 +769,8 @@ class ScannerConfig:
     # MR weight is 0.90 (lowest of core agents) so its NO vote gets drowned in WVS arithmetic.
     # This gives MR real authority only when paired with model disagreement evidence.
     enable_mean_reversion_veto: bool = True
-    mean_reversion_veto_disagree_floor: float = 0.25  # Fires when model_disagreement > this value
+    # 2026-05-12 audit: lowered from 0.25 after 3 audit losses in 0.18-0.23 band slipped the composite.
+    mean_reversion_veto_disagree_floor: float = 0.15  # Fires when model_disagreement > this value
 
     # --- Graph-Attention Agent Consensus (US-076) ---
     use_heterogeneous_agents: bool = False  # Enable agent specialization categories
