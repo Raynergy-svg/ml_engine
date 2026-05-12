@@ -824,6 +824,7 @@ class BuddyApp(App):
         Binding("f6", "switch_tab('config')", "Config", show=True),
         Binding("f7", "switch_tab('rules')", "Rules", show=True),
         Binding("f8", "switch_tab('diag')", "Diagnostics", show=True),
+        Binding("f9", "switch_tab('jobs')", "Jobs", show=True),
         Binding("ctrl+f", "cycle_asset_class", "FX⇄Futures", show=True),
         Binding("space", "supervisor_pause", "Pause", show=True),
         Binding("k", "supervisor_kill", "Kill", show=True),
@@ -1493,8 +1494,37 @@ class BuddyApp(App):
     def action_switch_tab(self, tab_id: str) -> None:
         if self._kill_in_progress:
             return
+        # T1 (Tier 1): F9 "Jobs" pushes a modal Screen rather than switching a
+        # tab pane. JobsScreen owns its own pause/resume/trigger actions and
+        # pops back to whatever tab was active when the operator pressed F9.
+        if tab_id == "jobs":
+            self._open_jobs_screen()
+            return
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab_id
+
+    def _open_jobs_screen(self) -> None:
+        """Lazily build a ScheduledJobsRegistry and push the Jobs screen.
+
+        We don't keep a persistent reference on the app — the TUI runtime
+        path uses EmbeddedScanner, not Orchestrator, so the registry isn't
+        cached anywhere else. Building it here on demand keeps the screen
+        cheap (load() is one safe_json_read of jobs.json + state.json) and
+        avoids coupling the EmbeddedScanner lifecycle to the screen.
+        """
+        try:
+            from src.tui.screens.jobs_screen import JobsScreen
+            from src.scanner.automation.scheduled_jobs import ScheduledJobsRegistry
+        except ImportError as e:
+            logger.error("F9 Jobs screen: import failed: %s", e)
+            return
+        try:
+            registry = ScheduledJobsRegistry()
+            registry.load()
+        except (OSError, ValueError) as e:
+            logger.error("F9 Jobs screen: registry load failed: %s", e)
+            return
+        self.push_screen(JobsScreen(registry=registry))
 
     def action_open_command_palette(self) -> None:
         """`:` opens the Vim-style palette over any screen.
