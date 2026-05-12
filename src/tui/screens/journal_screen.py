@@ -176,6 +176,11 @@ class JournalScreen(Container):
         self._project_root = Path(project_root) if project_root else Path.cwd()
         # US-512: trade_ids parallel to journal-table rows for gate-trace lookup
         self._row_trade_ids: list[str] = []
+        # Auto-refresh: mtime of source files captured at last successful load.
+        # update_from_snapshot stats both files each tick and only reloads when
+        # mtime advances, so trade closures land in the table without restart.
+        self._journal_mtime: float = 0.0
+        self._learnings_mtime: float = 0.0
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="journal-top"):
@@ -211,6 +216,8 @@ class JournalScreen(Container):
         table.cursor_type = "row"
         if not table.columns:
             table.add_columns("Pair", "Dir", "Conf", "Entry", "Exit", "P/L", "Result", "Time")
+        # Drop prior rows before re-populating; otherwise auto-refresh duplicates.
+        table.clear()
         self._row_trade_ids = []
 
         entries = []
@@ -219,6 +226,7 @@ class JournalScreen(Container):
                 raw = json.loads(journal_path.read_text())
                 if isinstance(raw, list):
                     entries = raw
+                self._journal_mtime = journal_path.stat().st_mtime
             except Exception:
                 pass
 
@@ -340,10 +348,35 @@ class JournalScreen(Container):
     def _load_learnings(self) -> None:
         """Load learnings from .claude/learnings.md."""
         self.query_one("#learnings-panel", LearningsPanel).load_learnings(self._project_root)
+        learnings_path = self._project_root / ".claude" / "learnings.md"
+        try:
+            self._learnings_mtime = learnings_path.stat().st_mtime
+        except OSError:
+            pass
 
     def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
-        """Placeholder for live data refresh (journal is mostly static)."""
-        pass
+        """Auto-refresh on snapshot tick when source files change on disk.
+
+        Stats trade_journal_rl.json + learnings.md each tick; reloads only when
+        mtime advances. Replaces the prior no-op stub (the "journal is mostly
+        static" lie that caused the screen to stay stale until TUI restart).
+        """
+        journal_path = self._project_root / "trained_data" / "trade_journal_rl.json"
+        learnings_path = self._project_root / ".claude" / "learnings.md"
+
+        try:
+            new_journal_mtime = journal_path.stat().st_mtime
+        except OSError:
+            new_journal_mtime = self._journal_mtime
+        try:
+            new_learnings_mtime = learnings_path.stat().st_mtime
+        except OSError:
+            new_learnings_mtime = self._learnings_mtime
+
+        if new_journal_mtime > self._journal_mtime:
+            self._load_journal()
+        if new_learnings_mtime > self._learnings_mtime:
+            self._load_learnings()
 
     # ------------------------------------------------------------------
     # US-512: Enter on a row -> GateTraceModal

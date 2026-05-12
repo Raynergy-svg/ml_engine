@@ -1394,6 +1394,15 @@ class BuddyApp(App):
         except Exception:
             pass
 
+        # Update Journal screen (F5) — mtime-guarded auto-refresh of
+        # trade_journal_rl.json + learnings.md so closed trades land in
+        # the table without requiring a TUI restart.
+        try:
+            journal_screen = self.query_one("#journal-screen", JournalScreen)
+            journal_screen.update_from_snapshot(snap)
+        except Exception:
+            pass
+
         # Update state strip
         try:
             state_strip = self.query_one("#state-strip", StateStrip)
@@ -2216,7 +2225,11 @@ class BuddyApp(App):
         heartbeat_path = PROJECT_ROOT / ".claude" / "heartbeat.json"
         try:
             payload = json.loads(heartbeat_path.read_text())
-            ts_raw = str(payload.get("ts", ""))
+            # Heartbeat schema (src/tui/heartbeat.py:HeartbeatPayload) uses
+            # `ts_iso`. Reading `ts` returned "" → fromisoformat("") raised
+            # `Invalid isoformat string: ''` and silently blocked every
+            # unhalt attempt regardless of actual heartbeat freshness.
+            ts_raw = str(payload.get("ts_iso") or payload.get("ts") or "")
             hb_ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
             age = (datetime.now(timezone.utc) - hb_ts).total_seconds()
             if age > 30:
