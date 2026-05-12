@@ -1,0 +1,20 @@
+{
+  "jobs": [
+    {
+      "job_id": "homework_weekly",
+      "name": "Weekly homework batch",
+      "schedule": "weekly_SUN_02:00",
+      "command": "python buddy_scanner.py homework --generate-batch --last 100",
+      "enabled": false,
+      "description": "Regenerate the last 100 trade homework entries every Sunday 02:00 UTC."
+    },
+    {
+      "job_id": "ensemble_retrain_weekly",
+      "name": "Weekly ensemble retrain",
+      "schedule": "weekly_MON_10:00",
+      "command": "python scripts/scheduled_retrain.py",
+      "enabled": false,
+      "description": "Joint-model retrain to keep ensemble below the 7-day CRITICAL staleness threshold. Disabled by default — enable AFTER you have verified the retrain pipeline runs cleanly in your environment (it overwrites .pkl files under trained_data/models/*). The default cadence matches the script's docstring (Mon 10:00 UTC, London session). Add more entries — e.g. weekly_WED_10:00, weekly_FRI_10:00 — to approximate the original MWF launchd schedule."
+    }
+  ]
+}
