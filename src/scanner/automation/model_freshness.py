@@ -404,10 +404,19 @@ def get_model_freshness_for_pairs(
         bool(active_source_pairs)
         and set(pair_names) == set(active_source_pairs)
     )
-    if active_pair_sources_have_models:
-        # Active scanner calls use per-pair gate evaluators for these sources;
-        # joint_gates is fallback/audit context, not a live freshness blocker.
-        train_groups = [g for g in train_groups if g.name != "joint_gates"]
+    # 2026-05-12 deprecation: joint is no longer a runtime fallback.
+    # `joint_gates` (joint/ dir freshness) and `modular_ensemble` (joint
+    # ensemble training meta) are excluded from the rollup unconditionally
+    # — both are audit-only context, never a live freshness blocker.
+    # Per-pair routing is the gate path; pairs without per-pair coverage
+    # are dropped from active_pairs at engine startup (or will be once the
+    # filter ships), not silently re-routed through stale joint models.
+    #
+    # The groups still appear in freshness["groups"] for audit visibility.
+    train_groups = [
+        g for g in train_groups
+        if g.name not in ("joint_gates", "modular_ensemble")
+    ]
     ages = [g.age_days for g in train_groups if g.age_days is not None]
     oldest = max(ages) if ages else None
 

@@ -426,6 +426,32 @@ class GateEvaluator:
         Construction failures fall back to self (logged at WARNING).
         Sub-evaluators have ``_pair_evaluators = {}`` to disable
         recursive routing.
+
+        DEPRECATED 2026-05-12 — JOINT FALLBACK PATH
+        ════════════════════════════════════════════════════════════════
+        The `pair_dir not exists → return self` branch below is the
+        joint fallback path. Per operator directive 2026-05-12 ("no
+        joint as fallback, deprecate"), this path is on the way out:
+
+        - Engine startup is being changed to filter active_pairs to
+          only pairs with per-pair `transformer_direction.keras` files.
+        - When that filter is in place, this fallback should never
+          fire — any instrument reaching this method will have a
+          per-pair directory.
+        - When the fallback DOES fire today, it now emits a WARNING
+          log to surface the deprecation (was silent before).
+
+        Removal sequence:
+          1. (Done) Demote joint_gates + modular_ensemble from the
+             freshness rollup so they don't block unhalt.
+          2. (Pending) Add startup filter in engine.py to drop pairs
+             without per-pair coverage from active_pairs with loud log.
+          3. (Pending) Once filter ships and per-pair coverage extends
+             to all configured pairs, change this fallback to refuse
+             (return None or raise) instead of returning self.
+          4. (Pending) Delete the joint dir loading code in
+             GateEvaluator.__init__ and engine.py:_initialize_models.
+        ════════════════════════════════════════════════════════════════
         """
         if not instrument:
             return self
@@ -436,7 +462,17 @@ class GateEvaluator:
             return self._pair_evaluators[instrument]
         pair_dir = self.base_model_dir / instrument
         if not pair_dir.exists():
-            # Per-pair training didn't produce models for this instrument.
+            # DEPRECATED 2026-05-12 — joint fallback path (see method
+            # docstring for removal sequence). Surface every fallback
+            # so operators see exactly which pairs are still leaning on
+            # the deprecated joint dir.
+            logger.warning(
+                "DEPRECATED joint fallback: instrument=%s has no per-pair "
+                "directory at %s; falling back to joint gates. This path "
+                "is scheduled for removal — add per-pair training for %s "
+                "or drop it from active_pairs.",
+                instrument, pair_dir, instrument,
+            )
             # Cache the no-op so we don't hit the filesystem on every scan.
             self._pair_evaluators[instrument] = self
             return self

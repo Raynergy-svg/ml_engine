@@ -104,3 +104,19 @@ The inference path must reproduce the training pipeline's feature distribution e
 - BEFORE shipping a model, verify the saved scaler stats look real: `var_` should NOT be 1.0 ± 1e-9 across all features; binary one-hot columns should have `mean_ ≈ p` and `scale_ ≈ √(p(1-p))`, not `mean_=0, scale_=1`. The latter pattern means the column was constant-zero at training, which means the feature pipeline silently zeroed it (e.g. broken time-extraction, regime augmentation skipped).
 
 Source: 1 catastrophic observation — Phase 1 audit on 2026-05-08 found `trained_data/models/EUR_USD/transformer_direction.meta.pkl` (trained 2026-05-08 00:15) had `scaler.var_ = 1.0` exactly across all 50 features, the literal fingerprint of a fitted-on-already-scaled-data refit. The "70% M15 holdout" celebrated tonight was the all-SHORT fallback predictor's accuracy on a SHORT-heavy test slice; the trained transformer never actually evaluated. Re-validate after 30 days of live data with the Phase 2.A+B fixed pipeline.
+
+## Joint Fallback Deprecation Gates (promoted 2026-05-12, operator directive)
+The joint training output (`trained_data/models/joint/`, plus root-level `modular_ensemble.meta.json`) is deprecated as a runtime fallback. Per-pair routing is the only supported gate / inference path going forward.
+
+- NEVER add new code paths that fall back to `models/joint/` for gate evaluation, inference, or runtime model loading. The joint dir is audit-only. Add per-pair coverage for the instrument or drop it from `active_pairs`.
+- NEVER include `joint_gates` or `modular_ensemble` in any freshness rollup that gates unhalt / trade execution. They remain visible in `freshness["groups"]` for inspection but are excluded from `oldest_age_days` + `stale_models` by `get_model_freshness_for_pairs` as of 2026-05-12.
+- ALWAYS verify per-pair `transformer_direction.keras` exists at startup before treating an instrument as tradeable. Pairs without per-pair coverage hit the DEPRECATED warning log in `gates._get_pair_evaluator` (logged once per pair per process via the `_pair_evaluators` cache) and are heading for explicit refusal once the engine startup filter ships.
+- ALWAYS surface the joint fallback firing — `gates._get_pair_evaluator` logs `DEPRECATED joint fallback: instrument=X has no per-pair directory...` at WARNING. If you see this in `logs/buddy_debug.log`, that instrument needs per-pair training (Tier 1 master or Tier 2 transfer) or removal from `active_pairs`.
+- Removal sequence (track here as steps land):
+  1. ✅ (2026-05-12) Demote `joint_gates` + `modular_ensemble` from `get_model_freshness_for_pairs` rollup — they no longer block unhalt or AGING/STALE/CRITICAL classification.
+  2. ✅ (2026-05-12) Add DEPRECATED warning log in `gates._get_pair_evaluator` joint fallback branch.
+  3. ⏳ (pending) Engine startup filter: when `use_per_pair_routing=True`, drop pairs without per-pair `transformer_direction.keras` from `self.config.pairs` with one WARNING per dropped pair. Touches engine.py + 4 call sites at 5091/5471/6682/6970 that read `self.config.pairs`.
+  4. ⏳ (pending) Flip `_get_pair_evaluator` fallback from `return self` to `return None` (or raise `RuntimeError`). Callers updated to skip the pair cleanly.
+  5. ⏳ (pending) Delete joint dir loading code in `GateEvaluator.__init__` and `engine.py:_initialize_models`. Delete `use_joint_models_only` config field. Delete joint training tier from `run_full_training.sh`.
+
+Source: 1 operator directive on 2026-05-12 ("no joint as fall back.. deprecate") plus prior context — joint ensemble's last retrain was holdout-rejected 0/3 on May 4 (modular_ensemble.meta.json `_mythos_heal_note`), so trained_at was rolled back to April 16; joint has been stale-and-uncorrectable for 4+ weeks. The May 11 4-team unblock and per-pair routing fixes prove per-pair is the right path.

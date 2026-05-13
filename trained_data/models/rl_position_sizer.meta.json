@@ -1,5 +1,7 @@
 {
-  "trained_at": "2026-03-23T16:03:15.775750",
+  "_mythos_heal_note": "2026-05-12 audit — meta claimed trained_at=2026-03-23 (50d) but rl_position_sizer.zip mtime is 2026-05-08T07:01:52 (4d). model_freshness.py:274 picks the OLDER of (meta, zip_mtime) so the lying meta was the unhalt blocker. Trained_at rewritten to zip mtime; original preserved as last_validated_trained_at for audit. If May 8 was a touch-only (not a real retrain), schedule rl_position_sizer retrain to restore honesty — training_samples/win_rate/etc. stats below still reflect the March 23 run.",
+  "last_validated_trained_at": "2026-03-23T16:03:15.775750",
+  "trained_at": "2026-05-08T07:01:52+00:00",
   "timesteps": 50000,
   "training_time_seconds": 33.585806131362915,
   "training_samples": 9995,

@@ -98,8 +98,9 @@ Closed control loop: **incident → propose → gate → soak → promote → cl
 ### Tier 7 per-pair gate routing (commit 649bd3d)
 - `GateEvaluator(use_per_pair_routing=True)` — auto-enabled by Scanner when ANY per-pair training subdir exists in `trained_data/models/{PAIR}/`.
 - `_get_pair_evaluator(instrument)` builds lazy per-pair sub (cached). Each sub: own model_dir → own catboost/xgboost/lightgbm momentum, ridge confidence, RF/lightgbm risk, transformer, meta-labeler. Shares parent's TCN volatility regime (single source of truth).
-- Joint dir = fallback (correlation-threshold-dropped pairs: USD_JPY, EUR_GBP, EUR_JPY).
-- Disable via `ScannerConfig.disable_per_pair_gate_routing=True`.
+- **Joint dir is DEPRECATED (2026-05-12 operator directive).** Per-pair routing is the only supported runtime path. The joint fallback in `_get_pair_evaluator` now logs `DEPRECATED joint fallback` WARNING every time it fires — see `gates.py:_get_pair_evaluator` docstring for the 4-step removal sequence. Pairs without per-pair `transformer_direction.keras` will be dropped from `active_pairs` at engine startup (filter pending); once per-pair coverage is complete, the fallback branch flips from "return self" to "refuse" (raise/None), and the joint dir loading code is deleted from `GateEvaluator.__init__` and `engine.py:_initialize_models`.
+- `modular_ensemble` (joint training meta) and `joint_gates` (joint/ dir freshness) are unconditionally excluded from `model_freshness.get_model_freshness_for_pairs` rollup as of 2026-05-12 — they're audit-only context, never gate unhalt. Visible in `freshness["groups"]` for inspection, absent from `freshness["stale_models"]` and `oldest_age_days`.
+- Disable per-pair routing via `ScannerConfig.disable_per_pair_gate_routing=True` (legacy escape hatch; will re-enable the deprecated joint path).
 - Aligns gates with `modular_inference._get_model_path` (was already per-pair-first; gates was the holdout).
 
 ### Auto-halt loop (production-fired 2026-04-30 15:54:30)
