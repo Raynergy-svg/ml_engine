@@ -260,8 +260,8 @@
       "id": "US-005",
       "title": "Narrow global a/c/r BINDINGS so screen-local hotkeys take precedence",
       "priority": 5,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-13T21:28:09Z",
       "depends_on": [],
       "description": "Hotkey shadowing across three screens (A5, D4, H1): global `a` (app.py:833 → action_supervisor_abort) collides with F2 Inbox `a` (Approve, inbox_screen.py:509); global `c` (app.py:846 → copy_snapshot) collides with F3 Trades `c` (Close Trade, trades_screen.py:351); global `r` does not collide directly, but F7 Rules `r` (rules_screen.py:198 refresh_files) collides with F2 Inbox `r` (Reject). Resolution: in BuddyTUI.action_supervisor_abort, action_copy_snapshot, action_refresh_rules — early-return if the currently-focused tab is the screen that owns the local binding (F2 for `a`/`r`, F3 for `c`).",
       "primary_agent": {

@@ -1998,13 +1998,48 @@ class BuddyApp(App):
         self.notify(f"Mode: {label}", title="Mode Switch", severity=sev)
         logger.info("_apply_mode_change: %s → %s (nav=%.2f, open=%d)", from_mode, to_mode, nav, open_trade_count)
 
+    def _active_tab_id(self) -> str:
+        """US-005: Return the id of the currently-active TabPane (or '').
+
+        Used by the global a/c/r hotkey handlers to early-return when the
+        focused tab owns a screen-local binding for the same key. Falls
+        back to '' if the TabbedContent has not yet been mounted (e.g.
+        during app boot before compose finishes).
+        """
+        try:
+            tabs = self.query_one("#main-tabs", TabbedContent)
+        except Exception:  # noqa: BLE001 — pre-mount lookup, treat as no tab
+            return ""
+        return str(getattr(tabs, "active", "") or "")
+
+    def _emit_hotkey_routed(self, key: str, tab: str) -> None:
+        """US-005: Single brain-feed line per AC-4.
+
+        Format ``hotkey {key} routed to {tab} screen handler`` lands in
+        both ``#brain-log`` (operator surface) and ``.claude/brain/feed.jsonl``
+        via the existing ``_write_brain`` tee. Best-effort — observability
+        is never load-bearing on the routing decision.
+        """
+        try:
+            self._write_brain(f"hotkey {key} routed to {tab} screen handler")
+        except Exception:  # noqa: BLE001 — observability is never load-bearing
+            pass
+
     def action_supervisor_abort(self) -> None:
         """A: US-511 veto pending signal via AbortConfirmModal (US-003).
 
         Reads the most recent signal.pending from the replay buffer, shows the
         operator a confirmation modal with pair/direction/age, and only on
         confirm emits control.signal_veto + appends to strategic_log.md.
+
+        US-005: defers to F2 Inbox's screen-local ``a`` (Approve) binding
+        when the inbox tab is active — early-returns BEFORE event_bus
+        lookup so no ``control.signal_veto`` is ever published while the
+        operator is reviewing adjustments.
         """
+        if self._active_tab_id() == "inbox":
+            self._emit_hotkey_routed("a", "inbox")
+            return
         if self._kill_in_progress:
             return
         logger.info("hotkey supervisor_abort pressed")
@@ -2160,7 +2195,15 @@ class BuddyApp(App):
         Output lands in .claude/snapshots/tui_<ts>.md AND is piped to
         the system clipboard (pbcopy on macOS / xclip / xsel / wl-copy
         on Linux). Operator pastes the markdown directly into chat.
+
+        US-005: defers to F3 Trades's screen-local ``c`` (Close Trade)
+        binding when the trades tab is active — early-returns BEFORE
+        any snapshot work so ``trades_screen.action_close_selected_trade``
+        handles ``c`` unambiguously.
         """
+        if self._active_tab_id() == "trades":
+            self._emit_hotkey_routed("c", "trades")
+            return
         try:
             from src.tui.snapshot import (
                 build_snapshot,
@@ -2265,6 +2308,29 @@ class BuddyApp(App):
             body = repr(renderable)
 
         return header + f"```\n{body}\n```\n"
+
+    def action_refresh_rules(self) -> None:
+        """US-005: Safety guard for any global ``r`` binding routed to this app.
+
+        Defers to F2 Inbox's screen-local ``r`` (Reject) and F7 Rules's
+        screen-local ``r`` (Refresh) when their tabs are active — early-returns
+        BEFORE doing anything else, so the screen-local handler wins
+        unambiguously even if the operator's focus has drifted off the screen
+        widget (e.g. onto a Footer or the tab header) and the global handler
+        would otherwise fire.
+
+        Currently no global ``r`` Binding exists in ``BuddyApp.BINDINGS`` —
+        this method exists so the early-return contract is in place if a
+        future change wires one. Outside the two owning tabs the method is
+        a deliberate no-op (logs nothing, performs no side effects).
+        """
+        tab_id = self._active_tab_id()
+        if tab_id == "inbox":
+            self._emit_hotkey_routed("r", "inbox")
+            return
+        if tab_id == "rules":
+            self._emit_hotkey_routed("r", "rules")
+            return
 
     def action_unhalt(self) -> None:
         """Health-gated resume from the halted state.
