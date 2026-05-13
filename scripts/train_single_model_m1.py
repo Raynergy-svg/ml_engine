@@ -54,7 +54,73 @@ logger = logging.getLogger("train_m1")
 CONFIG_PATH = str(PROJECT_ROOT / "config" / "config_m1_optimized.yaml")
 MODELS_DIR = PROJECT_ROOT / "trained_data" / "models"
 CACHE_DIR = PROJECT_ROOT / "trained_data" / "cache" / "training_data"
-MAX_GAP = 0.06  # 6% max acceptable direction accuracy gap
+MAX_GAP = 0.06         # 6% — PASS/FAIL threshold for RESULT logging (cosmetic).
+HARD_MAX_GAP = 0.10    # 10% — operator ship rule (2026-05-13 directive):
+                       # "no models is to be shipped higher then 10% gap".
+                       # Models that violate are moved to a quarantine dir so
+                       # per-pair gate routing cannot pick them up.
+
+
+def _read_trainer_metrics(trainer) -> dict:
+    """Read the trainer's final metrics dict.
+
+    Transformer/HistGB trainers store the dict on ``self.metrics`` after
+    ``train()`` returns. The legacy ``get_metrics()`` accessor doesn't
+    exist on TransformerDirectionTrainer — previously every caller read
+    ``getattr(trainer, "get_metrics", lambda: {})()`` which silently
+    returned ``{}`` and zeroed train_acc/val_acc/gap → the 6% PASS gate
+    became a permanent no-op.
+    """
+    m = getattr(trainer, "metrics", None)
+    if isinstance(m, dict) and m:
+        return m
+    if hasattr(trainer, "get_metrics"):
+        try:
+            got = trainer.get_metrics() or {}
+            return got if isinstance(got, dict) else {}
+        except Exception:
+            pass
+    return {}
+
+
+def _quarantine_if_overshipped(
+    saved_paths: list,
+    train_acc: float,
+    val_acc: float,
+    instrument: str,
+    model_name: str,
+) -> dict:
+    """Enforce the operator's hard 10% train-val gap ship rule.
+
+    If gap > HARD_MAX_GAP, move every saved artifact (e.g. .keras + sidecar
+    .meta.pkl + .ema.pkl + .ewc.pkl + .arch.json + .weights.h5) to a
+    timestamped quarantine subdirectory so Tier 7 per-pair routing cannot
+    pick it up. Returns ``{"quarantined": bool, "gap": float,
+    "quarantine_dir": str|None}`` for the RESULT line.
+    """
+    gap = abs(train_acc - val_acc)
+    if gap <= HARD_MAX_GAP:
+        return {"quarantined": False, "gap": gap, "quarantine_dir": None}
+
+    ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    qdir = (MODELS_DIR / instrument / "_quarantine" / f"{model_name}-{ts}")
+    qdir.mkdir(parents=True, exist_ok=True)
+    moved = []
+    for p in saved_paths:
+        path = Path(p)
+        # Match every sidecar that shares the file's stem in the pair dir.
+        stem = path.stem
+        for sibling in path.parent.glob(f"{stem}*"):
+            if sibling.is_file():
+                dest = qdir / sibling.name
+                sibling.rename(dest)
+                moved.append(str(dest))
+    logger.error(
+        f"🚫 SHIP-BLOCKED: {instrument}/{model_name} gap={gap:.4f} > {HARD_MAX_GAP} "
+        f"(train={train_acc:.4f}, val={val_acc:.4f}). Quarantined {len(moved)} "
+        f"file(s) → {qdir}. Operator rule: no models shipped > 10% gap."
+    )
+    return {"quarantined": True, "gap": gap, "quarantine_dir": str(qdir)}
 
 # ── Full wandb-optimized params per master pair ──────────────────────────────
 # Restored from correlation_group_config.py — NO capping for M1 memory
@@ -244,13 +310,24 @@ def train_transformer(instrument: str, df_feat: pd.DataFrame, params: dict) -> d
                   w_train=dir_data.get("w_train"),
                   w_val=dir_data.get("w_val"),
                   feature_names=dir_data.get("feature_names"))
-    trainer.save(str(save_dir / "transformer_direction.keras"))
 
-    metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
-    train_acc = metrics.get("train_direction_accuracy", metrics.get("train_accuracy", 0))
-    val_acc = metrics.get("val_direction_accuracy", metrics.get("val_accuracy", 0))
+    save_path = save_dir / "transformer_direction.keras"
+    trainer.save(str(save_path))
+
+    metrics = _read_trainer_metrics(trainer)
+    train_acc = float(metrics.get("train_accuracy", 0.0))
+    val_acc = float(metrics.get("val_accuracy", 0.0))
+    ship = _quarantine_if_overshipped(
+        [save_path], train_acc, val_acc, instrument, "transformer_direction"
+    )
     gc_cleanup()
-    return {"train_acc": train_acc, "val_acc": val_acc, "gap": abs(train_acc - val_acc)}
+    return {
+        "train_acc": train_acc,
+        "val_acc": val_acc,
+        "gap": ship["gap"],
+        "quarantined": ship["quarantined"],
+        "quarantine_dir": ship["quarantine_dir"],
+    }
 
 
 def train_tcn(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
@@ -381,14 +458,23 @@ def train_histgb(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
     trainer.train(X_train, dir_data["y_train"], X_val, dir_data["y_val"],
                   w_train=dir_data.get("w_train"),
                   w_val=dir_data.get("w_val"))
-    trainer.save(str(save_dir / "histgb_direction.pkl"))
 
-    metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
+    save_path = save_dir / "histgb_direction.pkl"
+    trainer.save(str(save_path))
+
+    metrics = _read_trainer_metrics(trainer)
+    train_acc = float(metrics.get("train_accuracy", 0.0))
+    val_acc = float(metrics.get("val_accuracy", 0.0))
+    ship = _quarantine_if_overshipped(
+        [save_path], train_acc, val_acc, instrument, "histgb_direction"
+    )
     gc_cleanup()
     return {
-        "train_acc": metrics.get("train_accuracy", 0),
-        "val_acc": metrics.get("val_accuracy", 0),
-        "gap": abs(metrics.get("train_accuracy", 0) - metrics.get("val_accuracy", 0)),
+        "train_acc": train_acc,
+        "val_acc": val_acc,
+        "gap": ship["gap"],
+        "quarantined": ship["quarantined"],
+        "quarantine_dir": ship["quarantine_dir"],
     }
 
 
@@ -516,7 +602,17 @@ def main():
             result["duration_s"] = round(time.time() - t0, 1)
 
             gap = result.get("gap", 0)
-            if model_name in GAP_CHECKED_MODELS:
+            # Hard ship rule (operator 2026-05-13): gap > 10% → quarantined.
+            # If the trainer already moved files to _quarantine/, propagate
+            # the BLOCK status regardless of which model_name; the cosmetic
+            # PASS/FAIL still uses MAX_GAP=6% for the gap-checked subset.
+            if result.get("quarantined"):
+                result["passed"] = False
+                logger.info(
+                    f"🚫 SHIP-BLOCKED: {model_name} gap={gap:.4f} > "
+                    f"{HARD_MAX_GAP} (quarantined → {result.get('quarantine_dir')})"
+                )
+            elif model_name in GAP_CHECKED_MODELS:
                 result["passed"] = gap <= MAX_GAP
                 status = "✓ PASS" if result["passed"] else "✗ FAIL"
                 logger.info(f"{status}: {model_name} gap={gap:.4f} (max={MAX_GAP})")

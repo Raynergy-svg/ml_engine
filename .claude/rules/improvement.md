@@ -105,6 +105,20 @@ The inference path must reproduce the training pipeline's feature distribution e
 
 Source: 1 catastrophic observation — Phase 1 audit on 2026-05-08 found `trained_data/models/EUR_USD/transformer_direction.meta.pkl` (trained 2026-05-08 00:15) had `scaler.var_ = 1.0` exactly across all 50 features, the literal fingerprint of a fitted-on-already-scaled-data refit. The "70% M15 holdout" celebrated tonight was the all-SHORT fallback predictor's accuracy on a SHORT-heavy test slice; the trained transformer never actually evaluated. Re-validate after 30 days of live data with the Phase 2.A+B fixed pipeline.
 
+## Hard Ship Gate — 10% Train/Val Gap (promoted 2026-05-13, operator directive)
+"No models is to be shipped higher than 10% gap" — operator rule 2026-05-13. The training stack already has helpers to manage the gap (EarlyStopping, EMA, class-balanced loss, label smoothing, auto-dropout, SWA), but enforcement at the ship boundary was broken on two layers prior to this rule:
+
+1. `train_single_model_m1.py` read metrics via `trainer.get_metrics()`, which **does not exist** on TransformerDirectionTrainer. `hasattr()` returned False → empty dict → train_acc/val_acc/gap all reported as 0 → the cosmetic 6% PASS/FAIL gate (MAX_GAP) was a permanent no-op.
+2. The trainer's `_compute_final_metrics` reported `train_accuracy = history.history["accuracy"][-1]` — the LAST epoch's value, not the best-val epoch's. EarlyStoppingCheckpoint restores best-val weights for the saved model, so `train[-1]` (post-overfit) didn't describe the SAVED model state — produced a phantom gap that would have falsely quarantined good models.
+
+- ALWAYS read `trainer.metrics` directly (or via the `_read_trainer_metrics` helper). Never trust `getattr(trainer, "get_metrics", lambda: {})()` to return useful data.
+- ALWAYS report `train_accuracy` at the best-val epoch (the epoch whose weights were saved). The transformer trainer now finds `best_epoch_idx = np.argmax(history["val_accuracy"])` and reports `history["accuracy"][best_epoch_idx]`. Any new trainer must follow the same contract.
+- ALWAYS compute `gap = abs(train_accuracy - val_accuracy)` AFTER save, then route through `_quarantine_if_overshipped(...)`. If `gap > HARD_MAX_GAP (= 0.10)`, MOVE every artifact sharing the file's stem (e.g. `.keras`, `.meta.pkl`, `.ema.pkl`, `.ewc.pkl`, `.arch.json`, `.weights.h5`) to `trained_data/models/{PAIR}/_quarantine/{model_name}-{utc_ts}/`. Per-pair gate routing CANNOT pick from `_quarantine/`.
+- NEVER set `HARD_MAX_GAP` above 0.10 without explicit operator approval. The cosmetic `MAX_GAP=0.06` (PASS/FAIL printed in RESULT lines) can be stricter, but the ship gate is a hard rail.
+- ALWAYS emit `RESULT:{...}` lines containing `train_acc`, `val_acc`, `gap`, and `quarantined` (bool + `quarantine_dir`) for downstream automation (W&B, deploy gate, retrain agent). The legacy `gap=0` pattern means the metric-read path is broken — fail loud.
+
+Source: 2026-05-13 operator directive after the 2026-05-12 5-pair M15 retrain produced val_acc=4.7-18.9% with balanced_acc≈50% across all 5 pairs. Root-cause investigation surfaced TWO compounding bugs: the missing-weight forwarding fixed in commit `1a05e75`, AND the broken gap-gate read/write paths fixed here.
+
 ## Joint Fallback Deprecation Gates (promoted 2026-05-12, operator directive)
 The joint training output (`trained_data/models/joint/`, plus root-level `modular_ensemble.meta.json`) is deprecated as a runtime fallback. Per-pair routing is the only supported gate / inference path going forward.
 

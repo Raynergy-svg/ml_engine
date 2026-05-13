@@ -2638,9 +2638,26 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         # Calculate directional accuracy gap
         direction_gap = abs(up_acc_cal - down_acc_cal)
-        
+
+        # 2026-05-13 fix: report train_accuracy at the BEST-val epoch (the
+        # checkpoint that actually got saved), not history[-1] which is the
+        # last overfit epoch. Without this fix the saved best-checkpoint
+        # model could have raw gap≈4% but the meta would lie about train=80%
+        # (last-epoch value) vs val=58% → apparent gap=22%, falsely tripping
+        # the operator's 10% ship rule and quarantining good models.
+        val_acc_history = history.history.get("val_accuracy", [])
+        train_acc_history = history.history.get("accuracy", [])
+        if val_acc_history and train_acc_history:
+            best_epoch_idx = int(np.argmax(val_acc_history))
+            best_epoch_idx = min(best_epoch_idx, len(train_acc_history) - 1)
+            train_accuracy_at_best = float(train_acc_history[best_epoch_idx])
+        else:
+            train_accuracy_at_best = (
+                float(train_acc_history[-1]) if train_acc_history else 0.0
+            )
+
         metrics = {
-            "train_accuracy": float(history.history["accuracy"][-1]),
+            "train_accuracy": train_accuracy_at_best,
             "val_accuracy": float(val_acc),
             "val_balanced_accuracy": float(balanced_acc),
             "val_up_accuracy": float(up_acc_cal),
