@@ -33,6 +33,7 @@ class ExpectancyPanel(Static):
     def render(self) -> Text:
         s = self._stats
         t = Text()
+        _m = "#6666aa"
 
         total = s.get("total_trades", 0)
         wins = s.get("wins", 0)
@@ -50,31 +51,37 @@ class ExpectancyPanel(Static):
         wr_color = "#00ff41" if wr >= 55 else "#ffab00" if wr >= 45 else "#ff1744"
         exp_color = "#00ff41" if expectancy > 0 else "#ff1744"
         pf_color = "#00ff41" if pf > 1.0 else "#ff1744"
+        no_data = total == 0
 
-        t.append("  Total Trades:   ", style="#6666aa")
+        t.append("  Total Trades:   ", style=_m)
         t.append(f"{total}\n", style="bold #e0e0ff")
-        t.append("  Wins / Losses:  ", style="#6666aa")
+        t.append("  Wins / Losses:  ", style=_m)
         t.append(f"{wins}", style="bold #00ff41")
-        t.append(" / ", style="#6666aa")
+        t.append(" / ", style=_m)
         t.append(f"{losses}\n", style="bold #ff1744")
-        t.append("  Win Rate:       ", style="#6666aa")
+        t.append("  Win Rate:       ", style=_m)
         t.append(f"{wr:.1f}%\n", style=f"bold {wr_color}")
         t.append("  ─────────────────────────\n", style="#2a2a4a")
-        t.append("  Avg Win:        ", style="#6666aa")
-        t.append(f"${avg_win:,.2f}\n", style="bold #00ff41")
-        t.append("  Avg Loss:       ", style="#6666aa")
-        t.append(f"${abs(avg_loss):,.2f}\n", style="bold #ff1744")
-        t.append("  Expectancy:     ", style="#6666aa")
-        t.append(f"${expectancy:,.2f}\n", style=f"bold {exp_color}")
-        t.append("  Profit Factor:  ", style="#6666aa")
+        t.append("  Avg Win:        ", style=_m)
+        t.append("—\n" if no_data else f"${avg_win:,.2f}\n",
+                 style=_m if no_data else "bold #00ff41")
+        t.append("  Avg Loss:       ", style=_m)
+        t.append("—\n" if no_data else f"${abs(avg_loss):,.2f}\n",
+                 style=_m if no_data else "bold #ff1744")
+        t.append("  Expectancy:     ", style=_m)
+        t.append("—\n" if no_data else f"${expectancy:,.2f}\n",
+                 style=_m if no_data else f"bold {exp_color}")
+        t.append("  Profit Factor:  ", style=_m)
         t.append(f"{pf:.2f}\n", style=f"bold {pf_color}")
         t.append("  ─────────────────────────\n", style="#2a2a4a")
-        t.append("  Best Trade:     ", style="#6666aa")
-        t.append(f"${best:,.2f}\n", style="bold #00ff41")
-        t.append("  Worst Trade:    ", style="#6666aa")
-        t.append(f"${worst:,.2f}\n", style="bold #ff1744")
-        t.append("  Current Streak: ", style="#6666aa")
-        streak_color = "#00ff41" if streak_type == "WIN" else "#ff1744" if streak_type == "LOSS" else "#6666aa"
+        t.append("  Best Trade:     ", style=_m)
+        t.append("—\n" if no_data else f"${best:,.2f}\n",
+                 style=_m if no_data else "bold #00ff41")
+        t.append("  Worst Trade:    ", style=_m)
+        t.append("—\n" if no_data else f"${worst:,.2f}\n",
+                 style=_m if no_data else "bold #ff1744")
+        t.append("  Current Streak: ", style=_m)
+        streak_color = "#00ff41" if streak_type == "WIN" else "#ff1744" if streak_type == "LOSS" else _m
         t.append(f"{streak} {streak_type}\n", style=f"bold {streak_color}")
 
         return t
@@ -201,6 +208,11 @@ class JournalScreen(Container):
             with Vertical(id="journal-pnl-panel"):
                 yield Label("⟨ CUMULATIVE P/L ⟩", classes="panel-title")
                 yield Sparkline(data=[], id="pnl-sparkline")
+                yield Static(
+                    "no closed trades",
+                    id="pnl-sparkline-placeholder",
+                    classes="status-dim",
+                )
                 yield Label("", id="pnl-summary", classes="status-dim")
 
     def on_mount(self) -> None:
@@ -337,13 +349,19 @@ class JournalScreen(Container):
 
         self.query_one("#expectancy-panel", ExpectancyPanel).set_stats(stats)
 
-        # P/L Curve sparkline
+        # P/L Curve sparkline — show placeholder when no closed trades yet
+        pnl_spark = self.query_one("#pnl-sparkline", Sparkline)
+        pnl_ph = self.query_one("#pnl-sparkline-placeholder", Static)
         if pnl_curve:
-            self.query_one("#pnl-sparkline", Sparkline).data = pnl_curve
+            pnl_spark.display = True
+            pnl_ph.display = False
+            pnl_spark.data = pnl_curve
             final = pnl_curve[-1]
-            color = "#00ff41" if final >= 0 else "#ff1744"
             summary = f"  Total P/L: ${final:,.2f}  │  {total} trades  │  Win rate: {win_rate:.1f}%"
             self.query_one("#pnl-summary", Label).update(summary)
+        else:
+            pnl_spark.display = False
+            pnl_ph.display = True
 
     def _load_learnings(self) -> None:
         """Load learnings from .claude/learnings.md."""

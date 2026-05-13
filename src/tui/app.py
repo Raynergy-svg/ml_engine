@@ -976,6 +976,11 @@ class BuddyApp(App):
                             yield RiskPanel(id="risk-display")
                             yield Label("  NAV 30d", classes="status-dim")
                             yield Sparkline(data=[], id="nav-sparkline")
+                            yield Static(
+                                "NAV history pending",
+                                id="nav-sparkline-placeholder",
+                                classes="status-dim",
+                            )
                         with Vertical(id="reflection-stream", classes="panel"):
                             yield Label(
                                 "⟨ REFLECTION STREAM ⟩  [Claude self-improvement subprocess]",
@@ -1435,9 +1440,13 @@ class BuddyApp(App):
         mtf_panel.update_from_snapshot(snap)
         mtf_panel.refresh()
 
-        # Update NAV sparkline
-        if snap.nav_history:
-            spark = self.query_one("#nav-sparkline", Sparkline)
+        # Update NAV sparkline — show placeholder when no meaningful data yet
+        spark = self.query_one("#nav-sparkline", Sparkline)
+        nav_ph = self.query_one("#nav-sparkline-placeholder", Static)
+        has_nav = bool(snap.nav_history) and any(v != 0 for v in snap.nav_history)
+        spark.display = has_nav
+        nav_ph.display = not has_nav
+        if has_nav:
             spark.data = snap.nav_history
 
         # Update system health bar
