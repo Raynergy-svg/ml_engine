@@ -2067,6 +2067,33 @@ class ExecutionManager:
         Returns:
             ExecutionResult with trade details
         """
+        # Tier 7 mid-cycle halt re-check — closes the halt-bypass bug where
+        # trades fired through ``execute_trade`` while ``state.halted=True``.
+        # The TUI runtime path (embedded_scanner._execute_trades →
+        # Scanner.execute_trades → ExecutionManager.execute_trades → here)
+        # skips ``submit_trade``, which is the only other halt-aware entry.
+        # EmbeddedScanner.run_one_cycle's halt early-return catches halts set
+        # BEFORE the cycle starts, but a halt set MID-cycle (the common case
+        # when auto_halt_loss_streak or AlertManager fires during scanning)
+        # was being bypassed — see trade 1306 (2026-05-12T20:39 UTC, opened
+        # while halted=True). Read-only check; never raises out of this guard.
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            if StateEngine().get_halted():
+                logger.warning(
+                    "execute_trade BLOCKED — state.halted=True (mid-cycle re-check); pair=%s",
+                    pair,
+                )
+                return ExecutionResult(
+                    success=False,
+                    error="BLOCKED: state.halted=True",
+                )
+        except Exception as _halt_exc:  # noqa: BLE001
+            # Halt-check should never block execution due to its own failure.
+            # Log and proceed; circuit breaker + submit_trade are still in place
+            # for callers that route through them.
+            logger.warning("execute_trade halt re-check failed (%s); proceeding", _halt_exc)
+
         # Phase 84 (US-P84-004): CircuitBreaker — reject if API is degraded
         _cb = getattr(self, "_api_circuit_breaker", None)
         if _cb is not None:
@@ -3700,34 +3727,48 @@ class ExecutionManager:
         trade_id: str,
         analysis_context: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Log trade to memory client with full gate/agent context."""
+        """Log trade to memory client AND trade_journal.json for RL feedback.
+
+        The trade_journal.json write is UNCONDITIONAL — the journal is the
+        canonical source-of-truth for RL feedback and downstream agent weight
+        updates, and must never be gated on the memory_client subsystem.
+
+        Prior bug (orphan trades 1207/1211/1215/1277/1281/1287/1300): the
+        early-return at ``if self._memory_client is None: return`` ran when
+        the MLEngineMemory import failed (intermittent — chroma DB lock /
+        import state), and the journal-write below was skipped entirely.
+        Result: OANDA filled the order; nothing in `trade_journal_rl.json`.
+        Backfill from OANDA can patch outcomes for existing entries but
+        cannot synthesize a missing entry's agent attribution.
+        """
         self._init_memory_client()
 
-        if self._memory_client is None:
-            return
+        if self._memory_client is not None:
+            try:
+                nav = self._cached_nav or self.config.account_equity or 10000.0
+                record: Dict[str, Any] = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "instrument": pair,
+                    "direction": direction,
+                    "confidence": confidence,
+                    "lots": lots,
+                    "entry": entry,
+                    "sl": sl,
+                    "tp": tp,
+                    "trade_id": trade_id,
+                    "model": "scanner",
+                    "account_balance": nav,
+                }
+                if analysis_context:
+                    record["metadata"] = analysis_context
+                self._memory_client.log_trade(record)
+            except Exception as e:
+                logger.debug(f"Failed to log trade: {e}")
 
-        try:
-            nav = self._cached_nav or self.config.account_equity or 10000.0
-            record: Dict[str, Any] = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "instrument": pair,
-                "direction": direction,
-                "confidence": confidence,
-                "lots": lots,
-                "entry": entry,
-                "sl": sl,
-                "tp": tp,
-                "trade_id": trade_id,
-                "model": "scanner",
-                "account_balance": nav,
-            }
-            if analysis_context:
-                record["metadata"] = analysis_context
-            self._memory_client.log_trade(record)
-        except Exception as e:
-            logger.debug(f"Failed to log trade: {e}")
-
-        # Also append to trade_journal.json for RL feedback
+        # Append to trade_journal.json for RL feedback — UNCONDITIONAL.
+        # Must run regardless of memory_client state; this is the canonical
+        # record consumed by ScannerAgentTeam.update_weights_from_outcome,
+        # ExecutionManager.sync_closed_trades_rl, and the F5 Journal screen.
         self._append_journal_entry(trade_id, pair, direction, confidence, entry, sl, tp, lots, analysis_context)
 
     def _append_journal_entry(

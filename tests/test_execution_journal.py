@@ -220,6 +220,10 @@ class TestLogTrade:
         mock_memory.log_trade.assert_called_once()
 
     def test_log_trade_no_memory_client(self):
+        # 2026-05-12: orphan-trade fix flipped this contract. Pre-fix, _log_trade
+        # early-returned when memory_client was None and the journal write was
+        # skipped (causing OANDA fills with no journal entry). Post-fix, the
+        # journal write is unconditional — see test_execute_trade_halt_and_journal_fixes_2026_05_12.py.
         mgr = _make_manager()
         mgr._memory_client = None
 
@@ -230,9 +234,8 @@ class TestLogTrade:
                     lots=1.0, entry=1.1050, sl=1.1000, tp=1.1100,
                     trade_id="T101",
                 )
-        # _append_journal_entry should NOT be called since _memory_client is None
-        # and the early return fires
-        mock_append.assert_not_called()
+        # Journal write MUST fire even when memory_client is None.
+        mock_append.assert_called_once()
 
     def test_log_trade_with_analysis_context(self):
         mgr = _make_manager()
