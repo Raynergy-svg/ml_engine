@@ -413,8 +413,8 @@
       "id": "US-009",
       "title": "Diagnostics screen — fix stale TCN/Ridge/RF strings and add psutil-missing banner",
       "priority": 9,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-13T21:56:27Z",
       "depends_on": [],
       "description": "Two diagnostics issues. (I1) src/tui/screens/diagnostics_screen.py:799-813 _seed_error_log hardcodes 'Models loaded: TCN + Ridge + RF ensemble ready' — stale; CLAUDE.md ML Stack section (line 187-200) now uses Transformer + LightGBM + XGBoost. Operator in demo sees a lie. (I2) :567-579 when psutil ImportError fires, System Vitals panel synthesizes CPU/memory/disk with random.uniform — operator could think system is healthy when there is no measurement. Replace with red 'psutil missing — vitals unavailable' banner.",
       "primary_agent": {

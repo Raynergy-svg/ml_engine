@@ -4,7 +4,7 @@ DIAGNOSTICS SCREEN -- "The Engine Room"
 Five-panel layout in a 2x3 grid:
   1. SYSTEM VITALS -- CPU/MEM/DISK ProgressBars with labels
   2. OANDA API HEALTH -- connection status, latency sparkline, rate limit bars
-  3. MODEL HEALTH -- DataTable showing TCN/Ridge/RF model status and accuracy
+  3. MODEL HEALTH -- DataTable showing Transformer/LightGBM/XGBoost model status and accuracy
   4. ERROR LOG -- RichLog with severity-colored entries
   5. MAINTENANCE TASKS -- DataTable with task schedule and status (full width)
 
@@ -197,6 +197,19 @@ class SystemVitalsPanel(Static):
         self._disk_used: float = 0.0
         self._disk_total: float = 0.0
         self._proc_rss: float = 0.0
+        self._psutil_error_shown: bool = False
+
+    def show_psutil_error(self) -> None:
+        """Mount a visible error banner when psutil is not installed."""
+        if self._psutil_error_shown:
+            return
+        self._psutil_error_shown = True
+        self.mount(
+            Static(
+                "psutil missing — install with `pip install psutil` to see vitals",
+                classes="error-banner",
+            )
+        )
 
     def update_vitals(
         self,
@@ -235,6 +248,8 @@ class SystemVitalsPanel(Static):
         t.append("\n")
 
     def render(self) -> Text:
+        if self._psutil_error_shown:
+            return Text()
         t = Text()
 
         self._render_gauge(
@@ -568,19 +583,15 @@ class DiagnosticsScreen(Container):
             proc_rss = float(proc.memory_info().rss)
 
         except ImportError:
-            # psutil not installed -- use demo fallbacks
-            cpu_pct = random.uniform(8, 35)
-            mem_pct = random.uniform(45, 72)
-            mem_used = mem_pct / 100 * 16 * 1024 ** 3
-            mem_total = 16 * 1024 ** 3
-            disk_pct = random.uniform(40, 65)
-            disk_used = disk_pct / 100 * 500 * 1024 ** 3
-            disk_total = 500 * 1024 ** 3
-            proc_rss = random.uniform(200, 450) * 1024 * 1024
+            try:
+                vitals_panel = self.query_one("#diag-vitals", SystemVitalsPanel)
+                vitals_panel.show_psutil_error()
+            except Exception:
+                pass
+            return
         except Exception as exc:
             logger.debug("psutil error: %s", exc)
-            # Return zeros -- vitals panel handles gracefully
-            pass
+            return
 
         try:
             vitals_panel = self.query_one("#diag-vitals", SystemVitalsPanel)
@@ -802,7 +813,9 @@ class DiagnosticsScreen(Container):
         seed_entries = [
             {"ts": now - timedelta(minutes=12), "sev": "INFO", "msg": "Scanner initialized — 7 pairs loaded"},
             {"ts": now - timedelta(minutes=10), "sev": "INFO", "msg": "OANDA connection established"},
-            {"ts": now - timedelta(minutes=8), "sev": "INFO", "msg": "Models loaded: TCN + Ridge + RF ensemble ready"},
+            {"ts": now - timedelta(minutes=8), "sev": "INFO", "msg": "Direction: Transformer ready"},
+            {"ts": now - timedelta(minutes=7), "sev": "INFO", "msg": "Confidence/Momentum/Risk: LightGBM ready"},
+            {"ts": now - timedelta(minutes=6), "sev": "INFO", "msg": "Meta-labeler: XGBoost ready"},
             {"ts": now - timedelta(minutes=5), "sev": "WARN", "msg": "EUR/GBP spread elevated: 3.2 pips (threshold: 2.5)"},
             {"ts": now - timedelta(minutes=3), "sev": "INFO", "msg": "Scan cycle #427 completed — 2 tradeable setups"},
             {"ts": now - timedelta(minutes=2), "sev": "WARN", "msg": "GBP/JPY model disagreement: 0.31 > 0.30 threshold"},
