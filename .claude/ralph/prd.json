@@ -215,8 +215,8 @@
       "id": "US-004",
       "title": "Wire _start_veto_countdown to event_bus.signal.pending subscription",
       "priority": 4,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-13T21:19:17Z",
       "depends_on": [],
       "description": "src/tui/app.py:1974-1995 defines _start_veto_countdown which renders an `EXECUTING {pair} in {n}s… A to abort` countdown banner. `grep _start_veto_countdown src/tui/app.py` returns only its definition — no callers. US-511 pre-trade veto window is dead in live mode. Subscribe to event_bus signal.pending in on_mount; call _start_veto_countdown per event with the configured veto window duration (default 5s, configurable via ScannerConfig.pre_trade_veto_seconds).",
       "primary_agent": {

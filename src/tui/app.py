@@ -943,6 +943,13 @@ class BuddyApp(App):
         # before _start_scanner instantiates the EmbeddedScanner. The
         # scanner adopts this same instance (see _start_scanner).
         self._phase_state = PhaseState()
+        # US-004: pre-trade veto countdown bookkeeping. _active_veto_countdown_cancel
+        # is the bound stop-fn for the currently-ticking set_interval handle
+        # (None when no countdown is active). A fresh signal.pending stops
+        # the prior countdown before starting its own — see
+        # _start_veto_countdown.
+        self._active_veto_countdown_cancel: Optional[Any] = None
+        self._active_veto_signal_id: str = ""
 
     def compose(self) -> ComposeResult:
         yield HeaderBar(id="header-bar")
@@ -1078,6 +1085,11 @@ class BuddyApp(App):
         # entries.
         self._meta_ledger_offset: int = self._initial_meta_ledger_offset()
         self.set_interval(1.0, self._tick_meta_events)
+        # US-004: subscribe to event_bus signal.pending so the pre-trade
+        # veto countdown banner fires automatically when ExecutionManager
+        # publishes a pending signal. Replaces the dead-code path where
+        # _start_veto_countdown was defined but never called.
+        self._veto_subscription_worker()
 
     def on_unmount(self) -> None:
         """Signal background readers to exit cleanly."""
@@ -2023,21 +2035,109 @@ class BuddyApp(App):
 
         self.push_screen(AbortConfirmModal(_pending_event), _on_modal_result)
 
-    def _start_veto_countdown(self, pair: str, window_ms: int, signal_id: str) -> None:
-        """US-511: Show brain-log countdown '{n}s — A to abort' using set_interval."""
-        import math
-        _remaining_s = [math.ceil(window_ms / 1000)]
+    @work
+    async def _veto_subscription_worker(self) -> None:
+        """US-004: Async worker subscribing to event_bus signal.pending events.
+
+        For each ``signal.pending``, invokes ``_start_veto_countdown`` on the
+        TUI thread with duration sourced from ``ScannerConfig.pre_trade_veto_seconds``
+        (default 5). Other event types are ignored. A second ``signal.pending``
+        before the prior countdown ends cancels the prior cleanly — see the
+        zombie-timer rule in ``_start_veto_countdown``.
+
+        The worker runs inside Textual's asyncio loop (see ``@work``); the
+        bus's ``subscribe()`` async generator naturally yields events as the
+        publisher thread schedules them via ``call_soon_threadsafe``.
+        """
+        import asyncio as _asyncio
+
+        try:
+            from src.scanner.automation.event_bus import get_event_bus
+            bus = get_event_bus()
+        except Exception as e:
+            logger.warning("_veto_subscription_worker: bus unavailable: %s", e)
+            return
+
+        def _resolve_duration() -> int:
+            try:
+                from src.scanner.config import ScannerConfig as _SC
+                cfg = _SC()
+            except Exception:
+                cfg = None
+            return int(getattr(cfg, "pre_trade_veto_seconds", 5))
+
+        try:
+            async for event in bus.subscribe():
+                if event.get("event_type") != "signal.pending":
+                    continue
+                payload = event.get("payload", {}) or {}
+                pair = str(payload.get("pair", "?"))
+                direction = str(payload.get("direction", "?"))
+                signal_id = str(payload.get("signal_id", ""))
+                duration_s = _resolve_duration()
+                try:
+                    self._start_veto_countdown(pair, direction, duration_s, signal_id)
+                except Exception as e:
+                    logger.debug("_start_veto_countdown dispatch failed: %s", e)
+        except _asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug("_veto_subscription_worker stream error: %s", e)
+
+    def _start_veto_countdown(
+        self,
+        pair: str,
+        direction: str,
+        duration_s: int,
+        signal_id: str = "",
+    ) -> None:
+        """US-004/US-511: Brain-log countdown 'EXECUTING {pair} {dir} in {n}s… A to abort'.
+
+        Uses the existing #brain-log RichLog rather than a new pinned banner
+        widget (design choice — keeps composition/TCSS untouched, mirrors
+        every other transient TUI surface that streams through the brain
+        log).
+
+        Zombie-timer rule: if a prior countdown is still ticking when this
+        is called (a second signal.pending preempted the first), the prior
+        ``set_interval`` handle is stopped before a new one is created, so
+        we never have two banners decrementing concurrently.
+        """
+        prior_cancel = getattr(self, "_active_veto_countdown_cancel", None)
+        if prior_cancel is not None:
+            try:
+                prior_cancel()
+            except Exception as _e:
+                logger.debug("_start_veto_countdown: prior cancel raised: %s", _e)
+        self._active_veto_countdown_cancel = None
+        self._active_veto_signal_id = signal_id
+
+        _remaining_s = [max(1, int(duration_s))]
         _cancel_holder: list = [None]
+
+        def _stop_self() -> None:
+            handle = _cancel_holder[0]
+            if handle is not None:
+                try:
+                    handle()
+                except Exception:
+                    pass
+            if getattr(self, "_active_veto_countdown_cancel", None) is _stop_self:
+                self._active_veto_countdown_cancel = None
+                self._active_veto_signal_id = ""
 
         def _tick() -> None:
             n = _remaining_s[0]
             if n <= 0:
-                if _cancel_holder[0] is not None:
-                    _cancel_holder[0]()
+                _stop_self()
                 return
             try:
+                arrow = "↑" if direction.upper() in ("LONG", "BUY") else (
+                    "↓" if direction.upper() in ("SHORT", "SELL") else "•"
+                )
                 self.query_one("#brain-log", RichLog).write(
-                    f"[bold yellow]⏳ EXECUTING {pair} in {n}s… [dim]A to abort[/][/]"
+                    f"[bold yellow]⏳ EXECUTING {pair} {arrow}{direction} in {n}s… "
+                    f"[dim]A to abort[/][/]"
                 )
             except Exception:
                 pass
@@ -2045,6 +2145,7 @@ class BuddyApp(App):
 
         _handle = self.set_interval(1.0, _tick, pause=False)
         _cancel_holder[0] = _handle.stop
+        self._active_veto_countdown_cancel = _stop_self
 
     def action_copy_snapshot(self) -> None:
         """Copy state to file + clipboard. Focused box → just that box.

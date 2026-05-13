@@ -93,3 +93,9 @@ Started: Wed May 13 11:53:18 EDT 2026
 [2026-05-13 12:23:47] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
 [2026-05-13 12:23:59] Story US-003 attempt made, not yet complete
 [2026-05-13 12:24:01] Ralph reached max iterations (30) without completing all tasks.
+[2026-05-13 17:13:02] Ralph started with tool=claude, max_iterations=50
+[2026-05-13 17:13:02] Iteration 1: Progress 3/14 complete, 11 pending
+[2026-05-13 17:13:02] Processing story: US-004 - Wire _start_veto_countdown to event_bus.signal.pending subscription [model: claude-opus-4-7]
+[INFO] Marked story US-004 as complete
+[2026-05-13 17:19:19] Iteration 2: Progress 4/14 complete, 10 pending
+[2026-05-13 17:19:19] Processing story: US-005 - Narrow global a/c/r BINDINGS so screen-local hotkeys take precedence [model: claude-opus-4-7]
