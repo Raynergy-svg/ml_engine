@@ -910,6 +910,7 @@ class BuddyApp(App):
         Binding("f12", "safe_restart", "Restart(F12)", show=True),
         Binding("u", "unhalt", "Unhalt", show=True),
         Binding("c", "copy_snapshot", "Copy", show=True),
+        Binding("r", "action_refresh_rules", "Refresh Rules", show=True),
         Binding("q", "quit", "Quit", show=True),
         Binding("colon", "open_command_palette", "Commands", show=False),
         Binding("ctrl+l", "open_log_viewer", "Logs", show=False),
