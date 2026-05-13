@@ -16,6 +16,7 @@ import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Optional
 
 from rich.text import Text
 
@@ -38,6 +39,7 @@ from textual.widgets import (
 from src.tui.data_provider import DataProvider, DashboardSnapshot
 from src.tui.heartbeat import write_heartbeat
 from src.tui.screens.command_palette_modal import CommandPaletteModal
+from src.tui.screens.abort_confirm_modal import AbortConfirmModal
 from src.tui.screens.kill_modal import KillModal
 from src.tui.screens.log_viewer_modal import LogViewerModal
 from src.tui.screens.mode_modal import ModeConfirmModal, check_oanda_credentials
@@ -56,6 +58,70 @@ from src.tui.widgets.phase_indicator import PhaseIndicator, PhaseState
 
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+STRATEGIC_LOG_PATH = PROJECT_ROOT / ".claude" / "brain" / "strategic_log.md"
+
+
+def _emit_signal_veto(
+    app: Optional[App],
+    bus: Any,
+    pending_event: dict,
+    log_path: Optional[Path] = None,
+) -> bool:
+    """Publish control.signal_veto and append the audit entry to strategic_log.md.
+
+    Pure side-effect helper extracted for testability — the unit test drives
+    it directly with a real EventBus + tmp_path log without mounting the App.
+
+    Returns True if the veto was published. The audit log is best-effort:
+    a failed disk write does not block the veto publish, but is logged.
+    """
+    payload = pending_event.get("payload", {}) or {}
+    signal_id = str(payload.get("signal_id", ""))
+    if not signal_id:
+        logger.warning("_emit_signal_veto: refusing to publish — empty signal_id")
+        return False
+    pair = str(payload.get("pair", "?"))
+    direction = str(payload.get("direction", "?"))
+
+    bus.publish("control.signal_veto", {
+        "signal_id": signal_id,
+        "vetoed_by": "operator",
+        "pair": pair,
+        "direction": direction,
+    })
+    logger.info("control.signal_veto emitted for signal_id=%s pair=%s", signal_id, pair)
+
+    target = log_path if log_path is not None else STRATEGIC_LOG_PATH
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).isoformat()
+        entry = (
+            f"\n### {ts} — Operator SUPERVISOR_ABORT\n"
+            f"**actor:** TUI  **action:** supervisor_abort  "
+            f"**pair:** {pair}  **signal_id:** {signal_id}\n"
+        )
+        with target.open("a", encoding="utf-8") as fh:
+            fh.write(entry)
+    except Exception as exc:
+        logger.debug("_emit_signal_veto: strategic_log write failed: %s", exc)
+
+    if app is not None:
+        try:
+            app.notify(
+                f"Signal VETOED: {pair} {direction}",
+                title="Operator Abort",
+                severity="warning",
+            )
+        except Exception:
+            pass
+        try:
+            app.query_one("#brain-log", RichLog).write(Text.from_markup(
+                f"[bold red]◈ SIGNAL VETOED[/] — operator abort: [yellow]{pair} {direction}[/] "
+                f"[dim]signal_id={signal_id[:8]}…[/]"
+            ))
+        except Exception:
+            pass
+    return True
 
 # ── Simulated Data (demo mode) ──────────────────────────────────────
 
@@ -1921,8 +1987,12 @@ class BuddyApp(App):
         logger.info("_apply_mode_change: %s → %s (nav=%.2f, open=%d)", from_mode, to_mode, nav, open_trade_count)
 
     def action_supervisor_abort(self) -> None:
-        """A: US-511 veto pending signal. Reads last signal.pending from replay buffer,
-        emits control.signal_veto with the signal_id to cancel execution."""
+        """A: US-511 veto pending signal via AbortConfirmModal (US-003).
+
+        Reads the most recent signal.pending from the replay buffer, shows the
+        operator a confirmation modal with pair/direction/age, and only on
+        confirm emits control.signal_veto + appends to strategic_log.md.
+        """
         if self._kill_in_progress:
             return
         logger.info("hotkey supervisor_abort pressed")
@@ -1935,41 +2005,23 @@ class BuddyApp(App):
             self.notify("Abort unavailable (event bus error)", severity="warning")
             return
 
-        # Find the most recent signal.pending in the replay buffer
-        _pending: dict = {}
+        _pending_event: Optional[dict] = None
         for _evt in reversed(_bus.replay_buffer()):
             if _evt.get("event_type") == "signal.pending":
-                _pending = _evt.get("payload", {})
+                _pending_event = _evt
                 break
 
-        _signal_id = _pending.get("signal_id", "")
-        if not _signal_id:
-            self.notify("No pending signal to abort", severity="warning")
-            logger.info("action_supervisor_abort: no pending signal found in replay buffer")
-            return
+        def _on_modal_result(confirmed: Optional[bool]) -> None:
+            # Operator dismissed / cancelled / empty-state → no-op.
+            if not confirmed or _pending_event is None:
+                logger.info(
+                    "action_supervisor_abort: dismissed without veto (confirmed=%s, has_pending=%s)",
+                    confirmed, _pending_event is not None,
+                )
+                return
+            _emit_signal_veto(self, _bus, _pending_event)
 
-        _pair = _pending.get("pair", "?")
-        _direction = _pending.get("direction", "?")
-
-        # Emit the veto — the scanner thread's threading.Event.wait() will unblock
-        _bus.publish("control.signal_veto", {
-            "signal_id": _signal_id,
-            "vetoed_by": "operator",
-            "pair": _pair,
-            "direction": _direction,
-        })
-
-        logger.info("control.signal_veto emitted for signal_id=%s pair=%s", _signal_id, _pair)
-        self.notify(f"Signal VETOED: {_pair} {_direction}", title="Operator Abort", severity="warning")
-
-        try:
-            from rich.text import Text as _Text
-            self.query_one("#brain-log", RichLog).write(_Text.from_markup(
-                f"[bold red]◈ SIGNAL VETOED[/] — operator abort: [yellow]{_pair} {_direction}[/] "
-                f"[dim]signal_id={_signal_id[:8]}…[/]"
-            ))
-        except Exception:
-            pass
+        self.push_screen(AbortConfirmModal(_pending_event), _on_modal_result)
 
     def _start_veto_countdown(self, pair: str, window_ms: int, signal_id: str) -> None:
         """US-511: Show brain-log countdown '{n}s — A to abort' using set_interval."""

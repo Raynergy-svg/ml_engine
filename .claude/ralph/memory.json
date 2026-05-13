@@ -10,107 +10,107 @@
     "story_status": {
       "US-501": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Foundation: state.json schema extension + in-process event bus"
       },
       "US-502": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Scanner respects halted / paused / mode state flags"
       },
       "US-503": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Flatten-all routine in ExecutionManager (panic-button backend)"
       },
       "US-504": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "TUI: global hotkeys + Overview state strip (visual baseline for supervisor mode)"
       },
       "US-505": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Kill switch wired end-to-end (hotkey K \u2192 confirmation modal \u2192 flatten_all)"
       },
       "US-506": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Pause/Resume wired end-to-end (hotkey Space \u2192 toggle scanner_paused)"
       },
       "US-507": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Mode toggle dry-run\u2194live (hotkey M \u2192 confirmation for dry\u2192live, immediate for li"
       },
       "US-508": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Adjustment proposal interceptor + ScannerConfig field validator (retire silent s"
       },
       "US-509": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Adjustment Inbox TUI screen (F2) \u2014 the killer feature"
       },
       "US-510": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Per-trade close action on Trades screen (select row \u2192 C \u2192 confirm \u2192 market-close"
       },
       "US-511": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Pre-trade veto window (signal.pending \u2192 configurable hold \u2192 operator A key abort"
       },
       "US-512": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Gate trace panel (any signal \u2192 12 agent votes + 3 gates + R:R + regime visible)"
       },
       "US-513": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Model staleness banner + enforce uncertainty hard-block threshold tightening"
       },
       "US-514": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Rules / Learnings / Brain Viewer \u2014 searchable read-only window into Buddy's reas"
       },
       "US-515": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Agent Weight Inspector \u2014 RL state + delta tracking for the 12-agent team"
       },
       "US-516": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Integration test harness \u2014 end-to-end Supervisor Console smoke across all Tier-1"
       },
       "US-517": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Security + Code review gate \u2014 full sweep across all Phase 91 modules"
       },
       "US-518": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Performance benchmark \u2014 TUI refresh under scanner load"
       },
       "US-519": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Operator runbook + documentation \u2014 docs/supervisor_console_runbook.md"
       },
       "US-520": {
         "passed": true,
-        "completed_at": "2026-05-05T01:05:44.948634+00:00",
+        "completed_at": "2026-05-13T10:00:23.110211+00:00",
         "title": "Final reality check + Phase 91 evidence collection"
       }
     },
     "last_story_completed": "US-501",
-    "last_updated": "2026-05-05T01:05:44.948634+00:00",
+    "last_updated": "2026-05-13T10:00:23.110211+00:00",
     "all_complete": true
   },
   "loop_history": {

@@ -1,47 +1,95 @@
-# Ralph Progress - Buddy Self-Improvement Loop
-
-## Stories: 12/12 completed
-
-## Completed
-- US-001: Bootstrap .claude/ learning infrastructure ✓ (CLAUDE.md, learnings.md, rules/)
-- US-002: Session state engine ✓ (src/scanner/automation/state_engine.py — StateEngine class)
-- US-003: Trade outcome analyzer ✓ (src/scanner/automation/learning_engine.py — LearningEngine.analyze_trade)
-- US-004: Rule promotion ✓ (LearningEngine.check_promotions — 3+ observations → promoted rule)
-- US-005: Adaptive config tuner ✓ (src/scanner/automation/config_tuner.py — ConfigTuner class)
-- US-006: Per-pair SL/TP adaptation ✓ (LearningEngine.update_pair_sl_tp + engine.py reads pair_sl_tp_config.json)
-- US-007: Improvement tracker ✓ (src/scanner/automation/improvement_tracker.py — ImprovementTracker class)
-- US-008: Observation logging ✓ (src/scanner/automation/observation_log.py — ObservationLog class)
-- US-009: LLM deep analysis ✓ (LearningEngine.deep_analyze_loss + enable_llm_trade_analysis config flag)
-- US-010: Consolidation guards ✓ (LearningEngine.audit/consolidate — archive promoted, cap files)
-- US-011: Learn CLI command ✓ (cli/learn_commands.py + main.py dispatch — buddy learn [--analyze|--promote|--consolidate|--report|--status])
-- US-012: Full learning loop integration ✓ (continuous.py _run_learning_loop — wires all components into watch mode)
-
-## New Files Created
-- src/scanner/automation/state_engine.py — StateEngine for cross-session state
-- src/scanner/automation/learning_engine.py — LearningEngine for trade analysis + promotion + consolidation
-- src/scanner/automation/config_tuner.py — ConfigTuner for adaptive config from rules
-- src/scanner/automation/improvement_tracker.py — ImprovementTracker for meta-learning metrics
-- src/scanner/automation/observation_log.py — ObservationLog for market pattern capture
-- cli/learn_commands.py — CLI handler for `buddy learn` command
-
-## Modified Files
-- src/scanner/automation/continuous.py — Added _run_learning_loop(), observation logging, config tuning
-- src/scanner/engine.py — Per-pair SL/TP override from pair_sl_tp_config.json
-- src/scanner/config.py — Added enable_llm_trade_analysis flag + smart profile enablement
-- cli/argparser.py — Added 'learn' command + arguments
-- main.py — Wired handle_learn into dispatch table
-
-## Architecture
-```
-Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py) → OANDA
-     ↑                                                        ↓
-     ├── Config Tuner ← Rules ← Learnings ← RL Feedback ←── Trade Outcomes
-     ├── Observation Log (non-trade patterns)                  ↓
-     ├── Per-pair SL/TP config                    Learning Engine (analyze_trade)
-     └── State Engine (session continuity)         ↓
-                                             Rule Promotion (3+ observations)
-                                                   ↓
-                                             Config Tuner (apply_to_config)
-                                                   ↓
-                                             Improvement Tracker (meta-metrics)
-```
+# Ralph Progress Log
+Started: Wed May 13 11:53:18 EDT 2026
+---
+[2026-05-13 11:53:18] Ralph started with tool=claude, max_iterations=30
+[2026-05-13 11:53:18] Iteration 1: Progress 0/14 complete, 14 pending
+[2026-05-13 11:53:18] Processing story: US-001 - Replace random.uniform spread fake in TradesDrillDown with live OANDA spread [model: claude-opus-4-7]
+[INFO] Marked story US-001 as complete
+[2026-05-13 12:00:32] Iteration 2: Progress 1/14 complete, 13 pending
+[2026-05-13 12:00:32] Processing story: US-002 - Replace hardcoded regime + back-derived ATR in TradesDrillDown with live values [model: claude-opus-4-7]
+[INFO] Marked story US-002 as complete
+[2026-05-13 12:09:10] Iteration 3: Progress 2/14 complete, 12 pending
+[2026-05-13 12:09:10] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:17:57] Story US-003 attempt made, not yet complete
+[2026-05-13 12:17:59] Iteration 4: Progress 2/14 complete, 12 pending
+[2026-05-13 12:17:59] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:18:10] Story US-003 attempt made, not yet complete
+[2026-05-13 12:18:12] Iteration 5: Progress 2/14 complete, 12 pending
+[2026-05-13 12:18:12] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:18:22] Story US-003 attempt made, not yet complete
+[2026-05-13 12:18:25] Iteration 6: Progress 2/14 complete, 12 pending
+[2026-05-13 12:18:25] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:18:35] Story US-003 attempt made, not yet complete
+[2026-05-13 12:18:38] Iteration 7: Progress 2/14 complete, 12 pending
+[2026-05-13 12:18:38] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:18:49] Story US-003 attempt made, not yet complete
+[2026-05-13 12:18:51] Iteration 8: Progress 2/14 complete, 12 pending
+[2026-05-13 12:18:51] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:19:02] Story US-003 attempt made, not yet complete
+[2026-05-13 12:19:04] Iteration 9: Progress 2/14 complete, 12 pending
+[2026-05-13 12:19:04] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:19:15] Story US-003 attempt made, not yet complete
+[2026-05-13 12:19:17] Iteration 10: Progress 2/14 complete, 12 pending
+[2026-05-13 12:19:17] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:19:29] Story US-003 attempt made, not yet complete
+[2026-05-13 12:19:31] Iteration 11: Progress 2/14 complete, 12 pending
+[2026-05-13 12:19:31] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:19:42] Story US-003 attempt made, not yet complete
+[2026-05-13 12:19:44] Iteration 12: Progress 2/14 complete, 12 pending
+[2026-05-13 12:19:45] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:19:56] Story US-003 attempt made, not yet complete
+[2026-05-13 12:19:58] Iteration 13: Progress 2/14 complete, 12 pending
+[2026-05-13 12:19:58] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:20:08] Story US-003 attempt made, not yet complete
+[2026-05-13 12:20:11] Iteration 14: Progress 2/14 complete, 12 pending
+[2026-05-13 12:20:11] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:20:22] Story US-003 attempt made, not yet complete
+[2026-05-13 12:20:24] Iteration 15: Progress 2/14 complete, 12 pending
+[2026-05-13 12:20:24] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:20:36] Story US-003 attempt made, not yet complete
+[2026-05-13 12:20:38] Iteration 16: Progress 2/14 complete, 12 pending
+[2026-05-13 12:20:38] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:20:50] Story US-003 attempt made, not yet complete
+[2026-05-13 12:20:52] Iteration 17: Progress 2/14 complete, 12 pending
+[2026-05-13 12:20:52] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:21:03] Story US-003 attempt made, not yet complete
+[2026-05-13 12:21:05] Iteration 18: Progress 2/14 complete, 12 pending
+[2026-05-13 12:21:05] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:21:16] Story US-003 attempt made, not yet complete
+[2026-05-13 12:21:18] Iteration 19: Progress 2/14 complete, 12 pending
+[2026-05-13 12:21:19] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:21:30] Story US-003 attempt made, not yet complete
+[2026-05-13 12:21:32] Iteration 20: Progress 2/14 complete, 12 pending
+[2026-05-13 12:21:32] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:21:44] Story US-003 attempt made, not yet complete
+[2026-05-13 12:21:46] Iteration 21: Progress 2/14 complete, 12 pending
+[2026-05-13 12:21:46] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:21:57] Story US-003 attempt made, not yet complete
+[2026-05-13 12:21:59] Iteration 22: Progress 2/14 complete, 12 pending
+[2026-05-13 12:21:59] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:22:11] Story US-003 attempt made, not yet complete
+[2026-05-13 12:22:13] Iteration 23: Progress 2/14 complete, 12 pending
+[2026-05-13 12:22:13] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:22:24] Story US-003 attempt made, not yet complete
+[2026-05-13 12:22:26] Iteration 24: Progress 2/14 complete, 12 pending
+[2026-05-13 12:22:26] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:22:37] Story US-003 attempt made, not yet complete
+[2026-05-13 12:22:40] Iteration 25: Progress 2/14 complete, 12 pending
+[2026-05-13 12:22:40] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:22:51] Story US-003 attempt made, not yet complete
+[2026-05-13 12:22:53] Iteration 26: Progress 2/14 complete, 12 pending
+[2026-05-13 12:22:53] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:23:04] Story US-003 attempt made, not yet complete
+[2026-05-13 12:23:06] Iteration 27: Progress 2/14 complete, 12 pending
+[2026-05-13 12:23:06] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:23:17] Story US-003 attempt made, not yet complete
+[2026-05-13 12:23:19] Iteration 28: Progress 2/14 complete, 12 pending
+[2026-05-13 12:23:19] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:23:32] Story US-003 attempt made, not yet complete
+[2026-05-13 12:23:34] Iteration 29: Progress 2/14 complete, 12 pending
+[2026-05-13 12:23:34] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:23:45] Story US-003 attempt made, not yet complete
+[2026-05-13 12:23:47] Iteration 30: Progress 2/14 complete, 12 pending
+[2026-05-13 12:23:47] Processing story: US-003 - Add AbortConfirmModal to action_supervisor_abort [model: claude-opus-4-7]
+[2026-05-13 12:23:59] Story US-003 attempt made, not yet complete
+[2026-05-13 12:24:01] Ralph reached max iterations (30) without completing all tasks.

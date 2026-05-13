@@ -1,1533 +1,642 @@
 {
-  "phase": 92,
-  "title": "AI Supervisor Console — Full TUI Integration (Buddy as Autonomous, Human-Gated Trader)",
-  "goal": "Transform the Buddy TUI from observability-only dashboard into an AI Supervisor Console — the human checkpoint layer that makes autonomous trading safe to leave running. Ship end-to-end: kill switch, pause/resume, dry-run↔live toggle, adjustment inbox (self-tuner human-gate), per-trade close, pre-trade veto window, gate trace panel, model staleness banner, rules/learnings viewer, and agent weight inspector. Retire silent self-tuner writes. Every feature wired end-to-end with integration test + code review + security review + performance benchmark. No story passes without specialist sub-agent sign-off.",
-  "context": "Phase 90 closed the self-improvement loop (learnings → rules → config adjustments). Phase 91 closes the HUMAN loop: an operator-supervised override layer on top of Buddy's autonomy. Gap audit (2026-04-16): TUI today reads live from DataProvider (NAV, trades, agents, MTF, system health) and writes only through Config screen profile selector. Missing: kill switch, pause, mode toggle, per-trade close, pre-trade veto, adjustment approval, gate trace, staleness banner, rules viewer, RL weight inspector. Drivers: (a) 2026-04-15 10-trade losing streak from stale models ($2,637 loss) — soft penalties were insufficient, needed hard staleness block; (b) 2026-04-16 orphan-key bug in config_adjustments.json where 5/9 proposals had invalid ScannerConfig field names and cost $3,527 over 14 trades — needed human approval gate with schema validation. Both were preventable by a supervisor console.",
+  "project": "Buddy TUI",
+  "phase": "audit-2026-05-13",
+  "title": "TUI Correctness & Safety — Audit Backlog (May 2026)",
+  "branchName": "ralph/tui-audit-2026-05-13",
+  "description": "TUI Correctness & Safety — close 14 gaps surfaced by the 2026-05-13 code audit",
+  "goal": "Close the trading-correctness, safety-control, and operator-visibility gaps the 2026-05-13 src/tui/ code audit surfaced. The bot is currently halted. Every story here is a precondition for safe unhalt OR a visibility fix the operator needs to make the unhalt decision honestly. Doc-defined backlog is empty (all spec'd TUI features shipped); this PRD is the audit's residual debt — fakes that look live, modals that don't fire, hotkey collisions that could destroy live trades, silent reconnect failures, sparse error surfaces.",
+  "context": "2026-05-13 audit (one Plan-agent pass across src/tui/app.py + 17 screens + 8 widgets + data_provider.py + theme.tcss) found ~20 gaps. Top 14 ranked by impact: D1 fake random.uniform spread in TradesDrillDown (operator's flatten decision relies on a lie), A6 _start_veto_countdown defined but never called (US-511 pre-trade abort window is dead in live mode), A4 action_supervisor_abort has no confirmation modal (one mis-key vetoes live execution), A5/D4/H1 global a/c/r hotkey shadowing (could trigger destructive global action when operator believes they're acting on current screen), L3 OANDA disconnect mid-session leaves TUI calling dead client (no auto-reconnect; operator forced into Ctrl+R restart). All fixes are reversible, additive, and exercise the existing TUI invariants without touching the trading hot path.",
   "dependencies": [
-    "prd.json",
     ".claude/rules/trading.md",
-    ".claude/rules/improvement.md"
+    ".claude/rules/improvement.md",
+    "CLAUDE.md (TUI + Working Rules sections)",
+    "docs/supervisor_console_runbook.md"
   ],
   "global_mandates": {
     "agent_policy": [
       "FORBIDDEN: 'general-purpose' agent. Any sub-agent call MUST specify a subagent_type from the agent_roster below.",
-      "Every story MUST invoke at least one specialist for IMPLEMENTATION and one distinct specialist for REVIEW.",
+      "Every story MUST invoke a primary specialist for IMPLEMENTATION and a distinct specialist for REVIEW.",
       "Ralph MUST NOT mark a story complete until both implementation and review agents have signed off in `notes` with timestamp.",
       "If a story needs a capability not in the roster, Ralph MUST HALT and escalate rather than defaulting to general-purpose."
     ],
     "code_quality": [
-      "All JSON file writes MUST be atomic: write to .tmp, then os.rename. No exceptions. (.claude/rules/improvement.md JSON Safety Gates)",
+      "NO MOCK CODE. No unittest.mock, MagicMock, patch, or test-double class. Tests use real ScannerConfig, real ConfigAdjuster(persistence_path=tmp_path / 'x.json'), real disk via tmp_path. (.claude/rules/improvement.md No-Mock Rule, promoted 2026-05-01)",
+      "All JSON file writes MUST be atomic: write to .tmp, then os.rename. (.claude/rules/improvement.md JSON Safety Gates)",
       "All JSON file reads MUST be wrapped in try/except with graceful fallback to empty dict/list.",
-      "All OANDA API calls MUST use exponential backoff (base 1s, max 30s, jitter) with explicit timeouts (connect=5s, read=30s).",
-      "NEVER retry on 4xx — only 5xx/timeout/connection errors.",
       "NEVER use bare except: or except Exception: pass — always log + re-raise or return explicit error status.",
-      "Every new ScannerConfig field MUST be added in THREE places: (a) dataclass field, (b) profile dict entries, (c) consumer getattr() calls. Missing any = dead feature. (Live Wiring Verification Gates)",
-      "Every new feature flag MUST have an end-to-end smoke test: profile dict → dataclass → consumer → log line confirmed in live scan output.",
-      "NEVER write to a ScannerConfig field without validating the field name against the dataclass first (orphan-key prevention, .claude/rules/improvement.md promoted 2026-04-16)."
+      "All OANDA API calls MUST use exponential backoff (base 1s, max 30s, jitter) with explicit timeouts (connect=5s, read=30s). NEVER retry on 4xx — only 5xx/timeout/connection errors.",
+      "Specific exception types, not Exception, for narrow recoverable errors.",
+      "Type hints on all new public APIs. mypy must remain clean on touched files."
     ],
     "tui_policy": [
-      "All destructive actions (kill, mode→live, reject adjustment) MUST show a confirmation modal with explicit typed confirmation or double-tap.",
+      "All destructive actions (kill, mode→live, abort signal, reject adjustment) MUST show a confirmation modal with typed confirmation or double-tap.",
       "All TUI writes to backend state MUST be audit-logged to .claude/brain/strategic_log.md with ISO timestamp, actor='TUI', action, before/after values.",
       "State flags (halted, scanner_paused, mode) MUST persist in .claude/state.json and survive TUI restart.",
-      "TUI MUST NEVER block the event loop on OANDA calls — use Textual @work workers."
+      "TUI MUST NEVER block the event loop on OANDA calls — use Textual @work workers.",
+      "Live-mode widgets MUST NEVER display synthetic/random values. If real data is unavailable, show '—' or 'no data' placeholder, never a plausible-looking number."
     ],
     "completion_discipline": [
       "A story is NOT complete until ALL validation_commands exit 0 AND all definition_of_done checks pass.",
-      "Claude Ralph MUST emit <promise>COMPLETE_STORY_{id}</promise> only AFTER validation_commands have been executed and evidence logged.",
+      "Ralph MUST emit <promise>COMPLETE_STORY_{id}</promise> only AFTER validation_commands have been executed and evidence logged in notes.",
       "A story that cannot pass validation MUST have passes stay false and notes updated with blocker reason.",
       "No story may be marked complete based on 'should work' reasoning — only on recorded evidence."
     ]
   },
   "agent_roster": {
-    "note": "File paths reference .claude/agents/*.md. subagent_type values match the agent file stem.",
-    "architecture_layer": {
-      "software_architect": {
-        "subagent_type": "engineering-software-architect",
-        "file": ".claude/agents/engineering-software-architect.md",
-        "use_for": "Cross-module design, event bus contracts, state schema, ADR-level decisions"
+    "note": "Subagent_type values match .claude/agents/*.md file stems. Verified 2026-05-13.",
+    "primary_implementation": {
+      "frontend_developer": {
+        "subagent_type": "engineering-frontend-developer",
+        "use_for": "All Textual TUI screens, widgets, hotkeys, modals, TCSS theming, BINDINGS lists"
+      },
+      "senior_developer": {
+        "subagent_type": "engineering-senior-developer",
+        "use_for": "data_provider.py wiring, OANDA reconnect logic, dataclass extensions, event-bus subscriptions"
       },
       "backend_architect": {
         "subagent_type": "engineering-backend-architect",
-        "file": ".claude/agents/engineering-backend-architect.md",
-        "use_for": "Service boundaries, interceptor design, persistence layer design"
-      },
-      "autonomous_optimization_architect": {
-        "subagent_type": "engineering-autonomous-optimization-architect",
-        "file": ".claude/agents/engineering-autonomous-optimization-architect.md",
-        "use_for": "Self-tuner intercept design, adjustment flow supervisor integration"
+        "use_for": "Service boundaries when a fix needs threading through scanner→data_provider→TUI"
       }
     },
-    "implementation_layer": {
-      "senior_developer": {
-        "subagent_type": "engineering-senior-developer",
-        "file": ".claude/agents/engineering-senior-developer.md",
-        "use_for": "Scanner/execution/state-engine Python code, event bus plumbing, backend wiring"
-      },
-      "frontend_developer": {
-        "subagent_type": "engineering-frontend-developer",
-        "file": ".claude/agents/engineering-frontend-developer.md",
-        "use_for": "All Textual TUI screens, widgets, hotkeys, modals, TCSS theming"
-      },
-      "ai_engineer": {
-        "subagent_type": "engineering-ai-engineer",
-        "file": ".claude/agents/engineering-ai-engineer.md",
-        "use_for": "Model staleness logic, RL weight surfacing, uncertainty threshold tightening"
-      },
-      "data_engineer": {
-        "subagent_type": "engineering-data-engineer",
-        "file": ".claude/agents/engineering-data-engineer.md",
-        "use_for": "Journal queries, agent_weights.json analysis, gate trace data assembly"
-      },
-      "database_optimizer": {
-        "subagent_type": "engineering-database-optimizer",
-        "file": ".claude/agents/engineering-database-optimizer.md",
-        "use_for": "Journal index strategy if read latency becomes an issue"
-      }
-    },
-    "review_layer": {
+    "review": {
       "code_reviewer": {
         "subagent_type": "engineering-code-reviewer",
-        "file": ".claude/agents/engineering-code-reviewer.md",
-        "use_for": "Mandatory review of every new module. Checks robustness gates, JSON safety, error handling.",
-        "required_for": "EVERY story with code changes"
+        "use_for": "Mandatory review of every code change. Checks: no-mock, atomic writes, no bare except, type hints, error handling.",
+        "required_for": "EVERY story"
       },
       "security_engineer": {
         "subagent_type": "engineering-security-engineer",
-        "file": ".claude/agents/engineering-security-engineer.md",
-        "use_for": "Review of kill switch, mode toggle, flatten-all, any path that moves money or halts trading"
-      },
-      "threat_detection_engineer": {
-        "subagent_type": "engineering-threat-detection-engineer",
-        "file": ".claude/agents/engineering-threat-detection-engineer.md",
-        "use_for": "Review of confirmation modal bypass risk, audit log tampering"
+        "use_for": "Review of any path that moves money, halts trading, or vetoes a signal (US-003, US-004, US-005)"
       }
     },
-    "testing_layer": {
+    "testing": {
       "api_tester": {
         "subagent_type": "testing-api-tester",
-        "file": ".claude/agents/testing-api-tester.md",
-        "use_for": "OANDA integration tests, flatten-all correctness, adjustment round-trip"
-      },
-      "test_results_analyzer": {
-        "subagent_type": "testing-test-results-analyzer",
-        "file": ".claude/agents/testing-test-results-analyzer.md",
-        "use_for": "Aggregate pass/fail across integration harness, flag flakes"
-      },
-      "performance_benchmarker": {
-        "subagent_type": "testing-performance-benchmarker",
-        "file": ".claude/agents/testing-performance-benchmarker.md",
-        "use_for": "TUI refresh latency under scanner load, pre-trade veto window execution impact"
+        "use_for": "OANDA integration tests (reconnect, live spread fetch)"
       },
       "reality_checker": {
         "subagent_type": "testing-reality-checker",
-        "file": ".claude/agents/testing-reality-checker.md",
-        "use_for": "Final sign-off — 'does this actually do what the PRD says in a live run?'"
-      },
-      "evidence_collector": {
-        "subagent_type": "testing-evidence-collector",
-        "file": ".claude/agents/testing-evidence-collector.md",
-        "use_for": "Generate .claude/ralph/reports/phase91_evidence.md with screenshots, logs, test outputs"
-      }
-    },
-    "documentation_layer": {
-      "technical_writer": {
-        "subagent_type": "engineering-technical-writer",
-        "file": ".claude/agents/engineering-technical-writer.md",
-        "use_for": "Operator runbook, hotkey reference, recovery procedures"
-      }
-    },
-    "ops_layer": {
-      "devops_automator": {
-        "subagent_type": "engineering-devops-automator",
-        "file": ".claude/agents/engineering-devops-automator.md",
-        "use_for": "Launch script updates, pre-flight checks, CI integration"
-      },
-      "sre": {
-        "subagent_type": "engineering-sre",
-        "file": ".claude/agents/engineering-sre.md",
-        "use_for": "Runbook review, incident response hooks, on-call ergonomics"
+        "use_for": "Final sign-off — 'does this actually do what the story says when ./buddy --demo boots and the operator presses the key?'"
       }
     }
   },
-  "phase_success_criteria": [
-    "All 20 user stories have passes=true with Ralph completion timestamp.",
-    "Integration test harness (US-516) runs end-to-end with real OANDA practice account + all 5 Tier-1 controls exercised + all 5 Tier-2 panels verified, and exits 0.",
-    "Kill switch test: flattens all positions in under 2s AND halts scanner before next cycle AND halted flag persists across TUI restart.",
-    "Pause/Resume test: scanner skips executions while paused but continues monitoring existing trades AND pause state persists across TUI restart.",
-    "Mode toggle test: dry→live requires explicit typed confirmation modal; live→dry is immediate; mode flag persists in state.json.",
-    "Adjustment Inbox test: self-tuner writes to pending_adjustments.json only; orphan keys caught by schema validator; approve and reject paths both round-trip correctly; rejected proposals never reach config_adjustments.json.",
-    "Pre-trade veto test: configurable window (0/2/3s pair-scoped); veto reason written to trade_journal_rl.json with 'vetoed_by=operator'; vetoed signals never execute.",
-    "Gate trace test: any signal (passed or rejected) resolves to 12 agent votes + 3 gate results (confidence/momentum/risk) + R:R computation + regime classification, all visible in the panel.",
-    "Model staleness test: synthetic 8-day-old component triggers banner on Overview AND uncertainty_score hard-block threshold tightens from 0.45 to 0.35 (per .claude/rules/trading.md).",
-    "Rules/learnings viewer test: loads .claude/brain/briefing.md, .claude/rules/*.md, .claude/learnings.md — all searchable.",
-    "Agent weight inspector test: shows per-agent weight + delta over last 10 trades from trade_journal_rl.json.",
-    "Code Reviewer agent has signed off on every story with code changes (15+ stories).",
-    "Security Engineer has signed off on US-503, US-505, US-507, US-508 (all destructive/money-moving paths).",
-    "Performance benchmark: TUI snapshot apply + render loop stays under 100ms average across 1000 cycles while scanner runs.",
-    "Runbook exists at docs/supervisor_console_runbook.md with hotkey reference, recovery procedures, and screenshots.",
-    "Evidence file exists at .claude/ralph/reports/phase91_evidence.md with timestamped artifacts.",
-    "No silent features: every new wired feature has a log line grepped and confirmed in live scan output.",
-    "No orphan config keys: `python -c 'from src.scanner.automation.config_tuner import validate_all_pending; validate_all_pending()'` exits 0.",
-    ".claude/brain/strategic_log.md has an append entry documenting phase 91 completion with operator (human) sign-off line pending.",
-    "A single command — `./buddy` — launches the TUI and the operator can, from that session alone, pause/resume/kill/toggle-mode/approve-adjustment/close-trade/veto-signal without dropping to CLI."
-  ],
-  "phase_completion_signal": "<promise>COMPLETE_PHASE_92_SUPERVISOR_CONSOLE</promise>",
   "userStories": [
     {
-      "id": "US-501",
-      "title": "Foundation: state.json schema extension + in-process event bus",
+      "id": "US-001",
+      "title": "Replace random.uniform spread fake in TradesDrillDown with live OANDA spread",
       "priority": 1,
       "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T20:44:20Z",
+      "notes": "Completed by Ralph at 2026-05-13T16:00:29Z",
       "depends_on": [],
-      "description": "Create the substrate every other story depends on. Extend .claude/state.json schema with supervisor flags (halted, scanner_paused, mode, last_actor). Build a lightweight in-process event bus at src/scanner/automation/event_bus.py for signal.pending / signal.executed / signal.rejected / adjustment.proposed / control.kill / control.pause / control.mode_change events. No network, no threads-per-event — asyncio.Queue-based with sync-publish/async-subscribe bridge for TUI consumption.",
+      "description": "src/tui/screens/trades_screen.py:527 currently sets drill-down spread to `random.uniform(0.8, 2.5)` — a synthetic value injected into the LIVE-mode UI. Operator may decide to flatten based on this. Extend src/tui/data_provider.py TradeRow with a `live_spread_pips: float | None` field, populate it from OANDA's /v3/accounts/{id}/pricing endpoint inside _refresh_trades, and read it in TradesScreen drill-down. When OANDA pricing is unavailable, show '—' (NEVER fall back to random).",
       "primary_agent": {
-        "name": "Software Architect",
-        "subagent_type": "engineering-software-architect",
-        "file": ".claude/agents/engineering-software-architect.md"
+        "name": "Senior Developer",
+        "subagent_type": "engineering-senior-developer"
       },
       "supporting_agents": [
         {
-          "name": "Senior Developer",
-          "subagent_type": "engineering-senior-developer",
-          "role": "Implement event_bus.py and state schema migration"
+          "name": "Frontend Developer",
+          "subagent_type": "engineering-frontend-developer",
+          "role": "Wire TradeRow.live_spread_pips into the drill-down panel render"
         },
         {
           "name": "Code Reviewer",
           "subagent_type": "engineering-code-reviewer",
-          "role": "Review: atomic writes, thread safety, graceful fallback, schema versioning"
+          "role": "Verify atomic OANDA call, no bare except, no synthetic fallback"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "state.json writes MUST be atomic (.tmp + os.rename). Include schema_version='2' field.",
-        "Event bus MUST be importable without side-effects at import time.",
-        "Event bus MUST have a thread-safe publish() callable from any thread and an async subscribe() for Textual workers.",
-        "MUST include a replay buffer of last N=100 events for late subscribers (TUI mount after scanner start)."
-      ],
       "acceptanceCriteria": [
-        "File .claude/state.json extended with fields: halted (bool, default false), scanner_paused (bool, default false), mode (str, 'dry_run'|'live', default 'dry_run'), last_actor (str), schema_version (str, '2').",
-        "Module src/scanner/automation/event_bus.py exists with class EventBus and singleton get_event_bus().",
-        "EventBus supports event types: signal.pending, signal.executed, signal.rejected, signal.vetoed, adjustment.proposed, adjustment.applied, adjustment.rejected, control.kill, control.pause, control.resume, control.mode_change, trade.manual_close.",
-        "EventBus.publish(event_type, payload) is thread-safe (uses threading.Lock).",
-        "EventBus.subscribe() returns an async iterator yielding events.",
-        "EventBus maintains a 100-event replay buffer for late subscribers.",
-        "src/scanner/automation/state_engine.py extended with get_halted(), set_halted(), get_paused(), set_paused(), get_mode(), set_mode() — all persist to state.json atomically.",
-        "Schema migration: if state.json has schema_version<2, fields are added with defaults without data loss.",
-        "Unit tests at tests/test_event_bus.py cover: publish/subscribe, replay buffer, thread safety (10 threads × 100 events), late subscriber catches replay.",
-        "Unit tests at tests/test_state_engine_flags.py cover: get/set each flag, persistence across instantiation, concurrent writes don't corrupt.",
-        "Typecheck passes: `python -m mypy src/scanner/automation/event_bus.py src/scanner/automation/state_engine.py` exits 0."
+        "src/tui/data_provider.py TradeRow dataclass has new field `live_spread_pips: float | None = None`.",
+        "_refresh_trades populates live_spread_pips via OANDA pricing endpoint with 5s connect / 30s read timeout and exponential backoff on 5xx/timeout.",
+        "src/tui/screens/trades_screen.py:527 NO LONGER calls random.uniform; reads trade.live_spread_pips.",
+        "When live_spread_pips is None, drill-down shows '—' (not a placeholder number).",
+        "grep -n 'random.uniform' src/tui/screens/trades_screen.py returns 0 matches.",
+        "Test at tests/test_tui_trades_drill_down.py verifies: (a) None spread renders '—', (b) populated spread renders correctly. Uses real TradeRow dataclass, NO MOCKS.",
+        "Typecheck passes: `python -m mypy src/tui/data_provider.py src/tui/screens/trades_screen.py` exits 0."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_event_bus.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_state_engine_flags.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.automation.event_bus import get_event_bus; bus=get_event_bus(); bus.publish('test', {'ok': True}); print('EVENT_BUS_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.automation.state_engine import StateEngine; e=StateEngine(); e.set_paused(True); assert e.get_paused()==True; e.set_paused(False); print('STATE_FLAGS_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && jq '.schema_version' .claude/state.json"
+        "cd /Users/buddy/Documents/ml_engine && ! grep -n 'random.uniform' src/tui/screens/trades_screen.py",
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_trades_drill_down.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/data_provider.py src/tui/screens/trades_screen.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked with evidence in notes.",
         "All validation_commands exit 0.",
-        "Code Reviewer signed off with timestamp in notes.",
-        "No print() debug statements left in code.",
-        "strategic_log.md has entry: 'US-501 complete — event bus + state schema v2 shipped'."
+        "Code Reviewer signed off with timestamp.",
+        "No print() debug statements in touched files."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-501</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-001</promise>"
     },
     {
-      "id": "US-502",
-      "title": "Scanner respects halted / paused / mode state flags",
+      "id": "US-002",
+      "title": "Replace hardcoded regime + back-derived ATR in TradesDrillDown with live values",
       "priority": 2,
       "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T20:48:00Z",
-      "depends_on": [
-        "US-501"
-      ],
-      "description": "Wire state flags into the scanner execution path. Before any scan cycle, check halted (hard-stop: skip scan, log). Before any signal execution, check scanner_paused (allow monitoring, block new executions). Before OANDA order submission, check mode ('dry_run' = log only, 'live' = real submit).",
+      "notes": "Completed by Ralph at 2026-05-13T16:09:07Z",
+      "depends_on": [],
+      "description": "src/tui/screens/trades_screen.py:526 hardcodes `regime='NORMAL'` and :528 back-derives ATR from SL distance (circular — SL is derived from ATR upstream). agents_screen.py:633-637 already uses _LiveRegimeProbe for live regime; reuse that pattern. Pipe ATR from src/tui/data_provider.py ScanEnrichment.atr_value into TradeRow.live_atr_pips.",
       "primary_agent": {
-        "name": "Senior Developer",
-        "subagent_type": "engineering-senior-developer",
-        "file": ".claude/agents/engineering-senior-developer.md"
+        "name": "Frontend Developer",
+        "subagent_type": "engineering-frontend-developer"
       },
       "supporting_agents": [
         {
           "name": "Code Reviewer",
           "subagent_type": "engineering-code-reviewer",
-          "role": "Review: race conditions between state check and action, error handling"
+          "role": "Verify no synthetic fallback; '—' on missing data"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "State flags MUST be checked from state.json ON EACH scan cycle (not cached), so external TUI writes take effect immediately.",
-        "When halted=true, scanner emits log line 'SCANNER HALTED — skipping cycle' and exits the cycle BEFORE any pair analysis.",
-        "When paused=true, scanner runs full analysis and logs 'SCANNER PAUSED — signal suppressed for {pair}' but does NOT call ExecutionManager.submit_trade().",
-        "Monitoring of existing open trades (SL/TP trailing, drawdown guardian) continues while paused.",
-        "Mode='dry_run' path MUST write to a separate dry_run_journal.jsonl so live journal stays clean."
-      ],
       "acceptanceCriteria": [
-        "src/scanner/automation/continuous.py ContinuousScanner._run_smart_loop() checks halted at start of each cycle via StateEngine.get_halted() and short-circuits if true.",
-        "src/scanner/execution.py ExecutionManager.submit_trade() checks scanner_paused and returns 'paused' status instead of submitting if true.",
-        "ExecutionManager.submit_trade() branches on mode: 'live' = real OANDA submit, 'dry_run' = write to trained_data/dry_run_journal.jsonl with full context.",
-        "Emit event_bus events at each branch point: control.kill consumed → halt, control.pause consumed → pause, signal.executed on live, signal.rejected with reason='paused' when paused.",
-        "Log line 'SCANNER HALTED' grepped from live scan output confirms wiring (Live Wiring Verification Gate).",
-        "Log line 'SCANNER PAUSED — signal suppressed' grepped from live scan output confirms wiring.",
-        "Log line 'MODE=dry_run — trade simulated' grepped from live scan output confirms wiring.",
-        "Unit tests at tests/test_scanner_state_gates.py cover: halted→no cycle, paused→no submit, dry_run→no OANDA call (mock), live→submit called."
+        "src/tui/screens/trades_screen.py imports and uses _LiveRegimeProbe from agents_screen (or a shared helper if extracted) — no string 'NORMAL' literal.",
+        "TradeRow.live_atr_pips populated from ScanEnrichment.atr_value via existing apply_scan_enrichment pipe.",
+        "Drill-down ATR display reads trade.live_atr_pips; back-derived `sl_dist * 10000` math is deleted.",
+        "Missing regime or ATR renders '—' (not the previous fakes).",
+        "grep -n \"regime=.NORMAL.\" src/tui/screens/trades_screen.py returns 0 matches.",
+        "Test at tests/test_tui_trades_drill_down.py verifies regime and ATR come from data sources (extends US-001 test file).",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_scanner_state_gates.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.automation.state_engine import StateEngine; s=StateEngine(); s.set_halted(True); import subprocess; r=subprocess.run(['timeout', '20', 'python', 'main.py', '--dry-run', '--max-cycles', '1'], capture_output=True, text=True); s.set_halted(False); assert 'SCANNER HALTED' in r.stdout or 'SCANNER HALTED' in r.stderr; print('HALT_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -r 'SCANNER PAUSED' src/scanner/ | head -3",
-        "cd /Users/buddy/Documents/ml_engine && grep -r 'MODE=dry_run' src/scanner/ | head -3"
+        "cd /Users/buddy/Documents/ml_engine && ! grep -nE \"regime=[\\\"']NORMAL[\\\"']\" src/tui/screens/trades_screen.py",
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_trades_drill_down.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/trades_screen.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "Smoke test: manually flip halted=true in state.json, run main.py, confirm 'SCANNER HALTED' in output within 2s.",
-        "Code Reviewer sign-off with timestamp."
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-502</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-002</promise>"
     },
     {
-      "id": "US-503",
-      "title": "Flatten-all routine in ExecutionManager (panic-button backend)",
+      "id": "US-003",
+      "title": "Add AbortConfirmModal to action_supervisor_abort",
       "priority": 3,
       "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T20:51:43Z",
-      "depends_on": [
-        "US-501",
-        "US-502"
-      ],
-      "description": "Implement the backend of the kill switch. ExecutionManager.flatten_all() cancels every working order, then parallel market-closes every open position, respects exponential backoff on OANDA errors, sets halted=true on state, emits control.kill event. MUST be atomic in intent — if any close fails, retry with backoff; if all retries exhausted, return structured failure including which trades still open.",
+      "notes": "Manually marked complete by operator after Ralph hit Claude rate limit (resets 16:40 EDT). Iter3 shipped the code; iter4-30 burned trying to verify. Independent verification 2026-05-13T16:27Z: 13/13 tests pass tests/test_tui_abort_modal.py, mypy clean on src/tui/app.py.",
+      "depends_on": [],
+      "description": "src/tui/app.py:1923-1972 action_supervisor_abort directly publishes control.signal_veto with no confirmation. docs/supervisor_console_runbook.md §3.4 specifies a modal that confirms which signal will be aborted (pair, direction, age in replay buffer). Build AbortConfirmModal analogous to KillModal, push via push_screen with callback.",
       "primary_agent": {
-        "name": "Senior Developer",
-        "subagent_type": "engineering-senior-developer",
-        "file": ".claude/agents/engineering-senior-developer.md"
+        "name": "Frontend Developer",
+        "subagent_type": "engineering-frontend-developer"
       },
       "supporting_agents": [
         {
           "name": "Security Engineer",
           "subagent_type": "engineering-security-engineer",
-          "role": "Review: authorization, audit logging, failure modes — this is the red button"
-        },
-        {
-          "name": "API Tester",
-          "subagent_type": "testing-api-tester",
-          "role": "OANDA integration tests, rate-limit behavior, partial failure recovery"
+          "role": "Confirm no modal-bypass path, no race between modal open and event publication"
         },
         {
           "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Standard review"
+          "subagent_type": "engineering-code-reviewer"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "flatten_all() MUST first set state.halted=true BEFORE any OANDA call, so no new scan cycle starts concurrently.",
-        "Then cancel all working (pending) orders in parallel via asyncio.gather with return_exceptions=True.",
-        "Then market-close all open positions in parallel.",
-        "Each OANDA call uses exponential backoff: base=1s, max=30s, jitter; max 5 retries.",
-        "NEVER retry on 4xx (client errors) — only 5xx/timeout/connection.",
-        "Return structured result: {orders_cancelled: int, orders_failed: list, positions_closed: int, positions_failed: list, duration_ms: int}.",
-        "Write audit entry to .claude/brain/strategic_log.md with timestamp, actor='TUI_KILL', full result.",
-        "Emit control.kill event on event_bus.",
-        "If any position fails to close after retries, leave halted=true, raise KillSwitchPartialFailure with details."
-      ],
       "acceptanceCriteria": [
-        "src/scanner/execution.py ExecutionManager.flatten_all(reason: str) method exists with signature and docstring.",
-        "flatten_all() sets state.halted=true via StateEngine before any OANDA call.",
-        "Working orders cancelled in parallel using asyncio.gather + return_exceptions.",
-        "Open positions market-closed in parallel.",
-        "Each OANDA call uses existing retry policy from .claude/rules/improvement.md (exponential backoff, 4xx no-retry).",
-        "Returns FlattenResult dataclass: orders_cancelled, orders_failed, positions_closed, positions_failed, duration_ms.",
-        "Writes entry to .claude/brain/strategic_log.md with actor='TUI_KILL' and structured JSON detail.",
-        "Emits control.kill event with FlattenResult payload.",
-        "On partial failure (any close retries exhausted), raises KillSwitchPartialFailure with remaining trades.",
-        "Integration test at tests/test_flatten_all_integration.py against OANDA practice account: open 3 trades, call flatten_all, confirm all 3 closed in <2s, state.halted=true, strategic_log.md has entry.",
-        "Unit test at tests/test_flatten_all_unit.py with mocked OANDA covers: all-success, partial-failure, rate-limit retry, 4xx-no-retry."
+        "New module/class AbortConfirmModal (mirrors KillModal pattern in src/tui/screens/).",
+        "Modal displays the most recent pending signal from event_bus replay buffer: pair, direction, signal age in seconds.",
+        "Modal accepts ENTER to confirm or ESC to cancel.",
+        "action_supervisor_abort opens the modal via push_screen with a callback that publishes control.signal_veto ONLY on confirm.",
+        "If no signal.pending in replay buffer, modal shows 'no pending signal' and does not publish.",
+        "Audit log line written to .claude/brain/strategic_log.md on confirm (ISO timestamp, actor='TUI', action='supervisor_abort', pair, signal_id).",
+        "Test at tests/test_tui_abort_modal.py uses real EventBus + tmp_path strategic_log; verifies confirm publishes, cancel does not, no signal renders empty modal. NO MOCKS.",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_flatten_all_unit.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_flatten_all_integration.py -v --oanda-practice",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.execution import ExecutionManager; import inspect; assert 'flatten_all' in dir(ExecutionManager); sig=inspect.signature(ExecutionManager.flatten_all); assert 'reason' in sig.parameters; print('FLATTEN_API_OK')\""
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_abort_modal.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "Security Engineer sign-off recorded in notes — specifically approves the audit log and failure-mode handling.",
-        "API Tester sign-off recorded in notes — integration test passed against practice account.",
-        "Code Reviewer sign-off.",
-        "Latency target: flatten-all with 5 open positions completes in <3s on practice account (evidence in notes)."
+        "All validation_commands exit 0.",
+        "Code Reviewer AND Security Engineer signed off."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-503</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-003</promise>"
     },
     {
-      "id": "US-504",
-      "title": "TUI: global hotkeys + Overview state strip (visual baseline for supervisor mode)",
+      "id": "US-004",
+      "title": "Wire _start_veto_countdown to event_bus.signal.pending subscription",
       "priority": 4,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T20:55:30Z",
-      "depends_on": [
-        "US-501"
-      ],
-      "description": "Add the visible chrome: global hotkeys (Space=pause, K=kill, M=mode, A=abort-signal) registered at App level, and a persistent state strip at top of Overview showing RUNNING/PAUSED/HALTED and DRY-RUN/LIVE and model staleness. These hotkeys are wired to NO-OP handlers in this story — just the plumbing + visual feedback. Actual kill/pause/mode behavior lands in US-505/506/507.",
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "src/tui/app.py:1974-1995 defines _start_veto_countdown which renders an `EXECUTING {pair} in {n}s… A to abort` countdown banner. `grep _start_veto_countdown src/tui/app.py` returns only its definition — no callers. US-511 pre-trade veto window is dead in live mode. Subscribe to event_bus signal.pending in on_mount; call _start_veto_countdown per event with the configured veto window duration (default 5s, configurable via ScannerConfig.pre_trade_veto_seconds).",
       "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer",
-        "file": ".claude/agents/engineering-frontend-developer.md"
+        "name": "Senior Developer",
+        "subagent_type": "engineering-senior-developer"
       },
       "supporting_agents": [
         {
+          "name": "Security Engineer",
+          "subagent_type": "engineering-security-engineer",
+          "role": "Confirm the abort window cannot be bypassed by rapid signal arrival; confirm countdown teardown is idempotent"
+        },
+        {
           "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Review: Textual best practices, hotkey collisions"
+          "subagent_type": "engineering-code-reviewer"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Hotkey bindings MUST use Textual Binding() at BuddyApp level so they work from any tab.",
-        "State strip MUST use reactive attrs so it auto-updates when DashboardSnapshot changes.",
-        "RUNNING = green, PAUSED = yellow, HALTED = red. DRY-RUN = cyan, LIVE = magenta (per theme.tcss cyberpunk palette).",
-        "Hotkey F7 (FX⇄Futures) MUST be remapped to Ctrl+F to free the F-key range.",
-        "Add new tab F2=Inbox placeholder (empty screen with 'Coming in US-509' placeholder) to reserve the slot."
-      ],
       "acceptanceCriteria": [
-        "src/tui/app.py adds Binding('space', 'supervisor_pause', 'Pause'), Binding('k', 'supervisor_kill', 'Kill'), Binding('m', 'supervisor_mode', 'Mode'), Binding('a', 'supervisor_abort', 'Abort Signal').",
-        "action_supervisor_pause, action_supervisor_kill, action_supervisor_mode, action_supervisor_abort methods exist on BuddyApp (NO-OP for this story — log 'hotkey {name} pressed' and return).",
-        "F7 FX⇄Futures rebound to Ctrl+F to avoid collision with future F7=Diagnostics.",
-        "New tab F2='◈ Inbox' added with empty PlaceholderContent('Inbox (US-509)') body.",
-        "Existing tabs rebound: F2→F3 Trades, F3→F4 Agents, F4→F5 Journal, F5→F6 Config, F6→F7 Diagnostics.",
-        "New widget src/tui/widgets/state_strip.py with StateStrip class: reactive fields for scanner_status ('RUNNING'|'PAUSED'|'HALTED'), mode ('DRY-RUN'|'LIVE'), model_staleness_days (int).",
-        "StateStrip mounted at top of Overview tab, above HeaderBar.",
-        "StateStrip.update_from_snapshot(snap) reads new DashboardSnapshot fields: scanner_paused, halted, mode, max_component_age_days.",
-        "DashboardSnapshot dataclass extended with: scanner_paused (bool), halted (bool), mode (str), max_component_age_days (float).",
-        "DataProvider.refresh() populates these new fields from StateEngine.",
-        "TCSS theme.tcss has classes .state-running, .state-paused, .state-halted, .mode-dryrun, .mode-live with appropriate colors.",
-        "Footer bar shows updated hotkey hints."
+        "BuddyTUI.on_mount subscribes to event_bus signal.pending events via a Textual @work async worker.",
+        "Each signal.pending event invokes self._start_veto_countdown(pair, direction, duration_s) with duration from getattr(config, 'pre_trade_veto_seconds', 5).",
+        "If a second signal.pending arrives before the prior countdown ends, the prior countdown is cancelled cleanly (no zombie timers).",
+        "Countdown banner is mounted via existing brain-feed widget OR a new pinned banner widget (Frontend Developer picks; document choice in notes).",
+        "On abort (`a` key during countdown window), the published event is control.signal_veto with signal_id; on countdown completion without abort, no event is published (scanner proceeds independently).",
+        "Test at tests/test_tui_veto_countdown.py uses real EventBus, publishes signal.pending, asserts _start_veto_countdown is called within 100ms. NO MOCKS.",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.widgets.state_strip import StateStrip; print('STATE_STRIP_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.data_provider import DashboardSnapshot; s=DashboardSnapshot(); assert hasattr(s,'scanner_paused') and hasattr(s,'halted') and hasattr(s,'mode') and hasattr(s,'max_component_age_days'); print('SNAPSHOT_FIELDS_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -c \"Binding(\\\"space\\\"\" src/tui/app.py",
-        "cd /Users/buddy/Documents/ml_engine && grep -c \"Binding(\\\"k\\\"\" src/tui/app.py",
-        "cd /Users/buddy/Documents/ml_engine && timeout 5 python -m src.tui --demo --headless-smoke-test 2>&1 | grep -E '(StateStrip|RUNNING|DRY-RUN)'"
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_veto_countdown.py -v",
+        "cd /Users/buddy/Documents/ml_engine && grep -n '_start_veto_countdown' src/tui/app.py | wc -l | awk '$1 >= 2 { exit 0 } { exit 1 }'",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "Visual smoke test: launch ./buddy --demo, confirm state strip visible with 'RUNNING' and 'DRY-RUN' pills.",
-        "Hotkey smoke test: press K/Space/M/A in demo, confirm log line 'hotkey {name} pressed' for each.",
-        "Code Reviewer sign-off."
+        "All validation_commands exit 0.",
+        "Code Reviewer AND Security Engineer signed off.",
+        "strategic_log.md entry: 'US-004 complete — pre-trade veto countdown wired to event_bus'."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-504</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-004</promise>"
     },
     {
-      "id": "US-505",
-      "title": "Kill switch wired end-to-end (hotkey K → confirmation modal → flatten_all)",
+      "id": "US-005",
+      "title": "Narrow global a/c/r BINDINGS so screen-local hotkeys take precedence",
       "priority": 5,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T21:03:49Z",
-      "depends_on": [
-        "US-501",
-        "US-502",
-        "US-503",
-        "US-504"
-      ],
-      "description": "Wire the K hotkey to the actual flatten-all routine with a double-confirm modal. Modal shows current open-trade count and total exposure, requires typing 'KILL' to confirm. On confirm: call ExecutionManager.flatten_all('operator_kill'), stream progress to Brain log, show result toast.",
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "Hotkey shadowing across three screens (A5, D4, H1): global `a` (app.py:833 → action_supervisor_abort) collides with F2 Inbox `a` (Approve, inbox_screen.py:509); global `c` (app.py:846 → copy_snapshot) collides with F3 Trades `c` (Close Trade, trades_screen.py:351); global `r` does not collide directly, but F7 Rules `r` (rules_screen.py:198 refresh_files) collides with F2 Inbox `r` (Reject). Resolution: in BuddyTUI.action_supervisor_abort, action_copy_snapshot, action_refresh_rules — early-return if the currently-focused tab is the screen that owns the local binding (F2 for `a`/`r`, F3 for `c`).",
       "primary_agent": {
         "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer",
-        "file": ".claude/agents/engineering-frontend-developer.md"
+        "subagent_type": "engineering-frontend-developer"
       },
       "supporting_agents": [
         {
-          "name": "Senior Developer",
-          "subagent_type": "engineering-senior-developer",
-          "role": "Wire async handler to ExecutionManager.flatten_all()"
-        },
-        {
           "name": "Security Engineer",
           "subagent_type": "engineering-security-engineer",
-          "role": "Review: bypass risk, modal cannot be dismissed accidentally, audit log integrity"
+          "role": "Confirm no destructive global action fires when operator believes they're on a local screen"
         },
         {
           "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Standard review"
+          "subagent_type": "engineering-code-reviewer"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Kill modal MUST require typed 'KILL' confirmation (no single-tap).",
-        "Modal MUST show: open trade count, total unrealized P/L, total exposure in base currency.",
-        "On confirm: disable all other hotkeys while flatten runs (prevent rage-clicks).",
-        "Stream progress to Brain log: '[red]KILL INITIATED — cancelling orders[/]' then '[red]Closing position {pair} {idx}/{total}[/]' then final '[green]KILL COMPLETE — flat in {ms}ms[/]' or '[red]KILL PARTIAL — {n} positions still open[/]'.",
-        "After kill, state strip flips to HALTED and stays red until operator explicitly clears halted via future un-kill flow (out of scope — document as follow-up).",
-        "Hotkey MUST be guarded: if mode='dry_run' and no open trades, show info modal instead (nothing to kill)."
-      ],
       "acceptanceCriteria": [
-        "src/tui/screens/kill_modal.py ModalScreen subclass with typed-confirm input field.",
-        "action_supervisor_kill wired to push kill_modal.",
-        "Modal shows current open trade count, unrealized PnL, exposure — read from DataProvider.snapshot.",
-        "Requires typed 'KILL' (case-sensitive) to enable Confirm button.",
-        "On Confirm: ExecutionManager.flatten_all(reason='operator_kill') invoked via @work worker.",
-        "Progress events streamed from event_bus (signal.rejected with reason='flattened', control.kill) to Brain log with red styling.",
-        "Success toast: '✓ All positions flat. Scanner halted.' Failure toast shows KillSwitchPartialFailure details.",
-        "State strip updates to HALTED (red) via reactive update from StateEngine.get_halted().",
-        "All other hotkeys disabled while flatten in progress (App.set_focus nullified).",
-        "Guard: no open trades → show info modal 'Nothing to flatten.' and no-op.",
-        "Integration test tests/test_kill_switch_e2e.py: open 2 practice trades, simulate K keypress, type KILL, confirm trades flat within 3s, state.halted==true."
+        "action_supervisor_abort checks self._active_tab_id (or equivalent) and returns early WITHOUT publishing control.signal_veto when the F2 Inbox tab is active.",
+        "action_copy_snapshot returns early when F3 Trades tab is active (lets trades_screen.action_close_selected_trade handle `c`).",
+        "action_refresh_rules (global `r` if it exists; or whichever global binding `r` maps to) returns early when F2 Inbox OR F7 Rules tab is active.",
+        "All three early-returns emit a single brain-feed line: 'hotkey {key} routed to {tab} screen handler'.",
+        "Test at tests/test_tui_hotkey_routing.py boots a real BuddyTUI in headless Textual mode, switches tabs, fires each key, asserts the global handler did NOT publish to event_bus when the screen-local handler should win. NO MOCKS.",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_kill_switch_e2e.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.screens.kill_modal import KillModal; print('KILL_MODAL_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'flatten_all' src/tui/app.py"
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_hotkey_routing.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "E2E evidence: video or screenshot of kill flow in .claude/ralph/reports/phase91_evidence/kill_switch.md.",
-        "Security Engineer sign-off specifically on modal bypass resistance.",
-        "Code Reviewer sign-off."
+        "All validation_commands exit 0.",
+        "Code Reviewer AND Security Engineer signed off."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-505</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-005</promise>"
     },
     {
-      "id": "US-506",
-      "title": "Pause/Resume wired end-to-end (hotkey Space → toggle scanner_paused)",
+      "id": "US-006",
+      "title": "Require non-empty Reject note in InboxScreen RejectModal",
       "priority": 6,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T21:08:21Z",
-      "depends_on": [
-        "US-501",
-        "US-502",
-        "US-504"
-      ],
-      "description": "Wire the Space hotkey to toggle scanner_paused flag via StateEngine. No modal — single-tap toggle. State strip flips RUNNING↔PAUSED. Brain log emits log line. Pause persists across TUI restart. Monitoring of open trades continues — only new executions are suppressed.",
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "src/tui/screens/inbox_screen.py:222-239 RejectModal accepts empty rejection note. CLAUDE.md (Phase 96 homework workflow) and runbook line 466 specify the note is mandatory for the heuristic-promotion / RL ingestion pipeline. Empty rejections silently lose feedback signal.",
       "primary_agent": {
-        "name": "Senior Developer",
-        "subagent_type": "engineering-senior-developer",
-        "file": ".claude/agents/engineering-senior-developer.md"
+        "name": "Frontend Developer",
+        "subagent_type": "engineering-frontend-developer"
       },
       "supporting_agents": [
         {
-          "name": "Frontend Developer",
-          "subagent_type": "engineering-frontend-developer",
-          "role": "Wire hotkey action, state strip reactive update, brain log message"
-        },
-        {
           "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Standard review"
+          "subagent_type": "engineering-code-reviewer"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Space MUST be an instant toggle — no confirmation (pause is non-destructive, reversible).",
-        "While paused, the drawdown guardian MUST continue running — protect open trades.",
-        "Brain log entry: '[yellow]⏸ SCANNER PAUSED by operator[/]' and '[green]▶ SCANNER RESUMED by operator[/]'.",
-        "Audit log entry to strategic_log.md for each toggle.",
-        "If halted=true, Space does nothing (halt takes precedence) — show toast 'Halted. Clear halt first.'"
-      ],
       "acceptanceCriteria": [
-        "action_supervisor_pause in src/tui/app.py toggles StateEngine.set_paused(not current) via event_bus.publish('control.pause' | 'control.resume').",
-        "Brain log receives styled pause/resume notification.",
-        "State strip reactive fields update within one refresh cycle.",
-        "strategic_log.md entry written with ISO timestamp, actor='TUI', action='pause'|'resume', before/after values.",
-        "Pause state survives TUI restart (read from state.json on mount).",
-        "Guard: if halted=true, pause hotkey shows toast and no-ops.",
-        "Integration test tests/test_pause_resume_e2e.py: open 1 practice trade, press Space, confirm new signals skip submit but drawdown guardian still ticks.",
-        "Smoke grep: 'SCANNER PAUSED by operator' appears in live TUI Brain log after Space keypress."
+        "RejectModal Submit button is disabled when the Input is empty or whitespace-only.",
+        "Submit attempt with whitespace-only input shows inline validation message 'note required' and does NOT dismiss the modal.",
+        "ESC still cancels cleanly with no rejection emitted.",
+        "Test at tests/test_tui_inbox_reject_modal.py drives the modal headless and asserts: (a) empty submit blocked, (b) whitespace submit blocked, (c) non-empty submit emits TrainingSignal with note. NO MOCKS.",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_pause_resume_e2e.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.automation.state_engine import StateEngine; s=StateEngine(); s.set_paused(True); assert s.get_paused(); s.set_paused(False); print('PAUSE_TOGGLE_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'action_supervisor_pause' src/tui/app.py"
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_inbox_reject_modal.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/inbox_screen.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "Integration test passes.",
-        "Code Reviewer sign-off."
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-506</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-006</promise>"
     },
     {
-      "id": "US-507",
-      "title": "Mode toggle dry-run↔live (hotkey M → confirmation for dry→live, immediate for live→dry)",
+      "id": "US-007",
+      "title": "Wire JournalScreen DataTable row-selected handler to GateTraceModal",
       "priority": 7,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T21:16:55Z",
-      "depends_on": [
-        "US-501",
-        "US-502",
-        "US-504"
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "src/tui/screens/journal_screen.py:177 maintains self._row_trade_ids (`parallel to journal-table rows for gate-trace lookup`) but there is no on_data_table_row_selected handler that pushes GateTraceModal. F3 Trades has this; F5 Journal does not. Runbook §6 + §9 incident-response checklist says 'Read the gate trace for the last trade that opened before the kill' — currently requires switching to F3 and finding the row, which is awkward post-kill (trades are flat). Mirror the trades_screen.py:409-437 pattern.",
+      "primary_agent": {
+        "name": "Frontend Developer",
+        "subagent_type": "engineering-frontend-developer"
+      },
+      "supporting_agents": [
+        {
+          "name": "Code Reviewer",
+          "subagent_type": "engineering-code-reviewer"
+        }
       ],
-      "description": "Wire the M hotkey to toggle mode between dry_run and live. Going dry→live requires typed 'LIVE' confirmation and checks OANDA credentials are loaded. Going live→dry is immediate. Mode changes logged to strategic_log.md. State strip flips DRY-RUN↔LIVE.",
+      "acceptanceCriteria": [
+        "JournalScreen.on_data_table_row_selected fires when a journal row is clicked or selected via cursor + enter.",
+        "Handler looks up trade_id from self._row_trade_ids[row_key] and calls self.app.push_screen(GateTraceModal(trade_id=tid)).",
+        "If trade_id not found (stale row), shows toast 'gate trace unavailable for this trade'.",
+        "Test at tests/test_tui_journal_gate_trace.py loads a sample journal row, fires row-selected, asserts GateTraceModal is mounted with correct trade_id. NO MOCKS.",
+        "Typecheck passes."
+      ],
+      "validation_commands": [
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_journal_gate_trace.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/journal_screen.py"
+      ],
+      "definition_of_done": [
+        "All acceptance criteria ticked.",
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
+      ],
+      "completion_signal": "<promise>COMPLETE_STORY_US-007</promise>"
+    },
+    {
+      "id": "US-008",
+      "title": "F9 Jobs screen — replace silent ImportError swallow with visible toast",
+      "priority": 8,
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "src/tui/app.py:1539-1560 _open_jobs_screen swallows ImportError + OSError + ValueError with bare-style `return` — operator presses F9 and nothing happens, no notify, no brain-log entry. Looks broken. Replace bare swallow with self.notify('Jobs screen unavailable: {reason}', severity='warning') + brain-feed line.",
+      "primary_agent": {
+        "name": "Frontend Developer",
+        "subagent_type": "engineering-frontend-developer"
+      },
+      "supporting_agents": [
+        {
+          "name": "Code Reviewer",
+          "subagent_type": "engineering-code-reviewer",
+          "role": "Confirm no bare except remains; specific exception types named"
+        }
+      ],
+      "acceptanceCriteria": [
+        "_open_jobs_screen catches ImportError, OSError, ValueError as separately-named clauses (not lumped) — each emits a distinct toast message that names the underlying cause.",
+        "All three paths also write a brain-feed line via self._write_brain at WARNING severity.",
+        "No bare `except:` and no `except Exception: pass` in the touched function.",
+        "Test at tests/test_tui_jobs_screen_error.py monkey-patches the registry import to raise ImportError, fires F9, asserts toast was published. (Real TUI app, NO mock of TUI internals — only of the import is allowed; the import path itself is at the boundary so this is the rare exception.)",
+        "If even the import-level monkey-patch feels like a mock violation, an alternative acceptance: rename ScheduledJobsRegistry to a fake-but-real-disk path that raises OSError via missing dir, then test passes that path.",
+        "Typecheck passes."
+      ],
+      "validation_commands": [
+        "cd /Users/buddy/Documents/ml_engine && ! grep -nE 'except\\s*(Exception)?\\s*:\\s*pass' src/tui/app.py",
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_jobs_screen_error.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
+      ],
+      "definition_of_done": [
+        "All acceptance criteria ticked.",
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
+      ],
+      "completion_signal": "<promise>COMPLETE_STORY_US-008</promise>"
+    },
+    {
+      "id": "US-009",
+      "title": "Diagnostics screen — fix stale TCN/Ridge/RF strings and add psutil-missing banner",
+      "priority": 9,
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "Two diagnostics issues. (I1) src/tui/screens/diagnostics_screen.py:799-813 _seed_error_log hardcodes 'Models loaded: TCN + Ridge + RF ensemble ready' — stale; CLAUDE.md ML Stack section (line 187-200) now uses Transformer + LightGBM + XGBoost. Operator in demo sees a lie. (I2) :567-579 when psutil ImportError fires, System Vitals panel synthesizes CPU/memory/disk with random.uniform — operator could think system is healthy when there is no measurement. Replace with red 'psutil missing — vitals unavailable' banner.",
+      "primary_agent": {
+        "name": "Frontend Developer",
+        "subagent_type": "engineering-frontend-developer"
+      },
+      "supporting_agents": [
+        {
+          "name": "Code Reviewer",
+          "subagent_type": "engineering-code-reviewer"
+        }
+      ],
+      "acceptanceCriteria": [
+        "_seed_error_log strings updated to match current ML stack: 'Direction: Transformer ready', 'Confidence/Momentum/Risk: LightGBM ready', 'Meta-labeler: XGBoost ready'. (Or, simpler: delete the seed entirely and let the live feed populate it.)",
+        "psutil ImportError path no longer calls random.uniform; instead, the System Vitals panel widget renders a single Static element with class 'error-banner' and text 'psutil missing — install with `pip install psutil` to see vitals'.",
+        "grep -n 'TCN.*Ridge.*RF' src/tui/screens/diagnostics_screen.py returns 0 matches.",
+        "grep -nE 'random.uniform' src/tui/screens/diagnostics_screen.py returns 0 matches inside the psutil-missing branch (other random calls in demo mode are acceptable).",
+        "Test at tests/test_tui_diagnostics_screen.py asserts seed strings match current stack; asserts psutil-missing branch renders the banner Static. NO MOCKS for diagnostics logic; import-boundary patch of psutil is the only allowed monkeypatch.",
+        "Typecheck passes."
+      ],
+      "validation_commands": [
+        "cd /Users/buddy/Documents/ml_engine && ! grep -nE 'TCN.*Ridge.*RF' src/tui/screens/diagnostics_screen.py",
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_diagnostics_screen.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/diagnostics_screen.py"
+      ],
+      "definition_of_done": [
+        "All acceptance criteria ticked.",
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
+      ],
+      "completion_signal": "<promise>COMPLETE_STORY_US-009</promise>"
+    },
+    {
+      "id": "US-010",
+      "title": "Empty-state UX — F1 NAV sparkline, F5 expectancy stats, F5 P/L sparkline",
+      "priority": 10,
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "Three empty-state gaps. (B2) src/tui/app.py:1360-1362 F1 NAV sparkline retains stale data when snap.nav_history is empty — no 'no data' indicator. (F1) src/tui/screens/journal_screen.py:22-82 ExpectancyPanel shows 'Best Trade $0.00' in green when no trades exist — green is misleading. (F2) :201-204 P/L sparkline silent on empty journal with no label. All three: when underlying data is empty, render a clear neutral-colored '—' or 'no closed trades yet' placeholder.",
+      "primary_agent": {
+        "name": "Frontend Developer",
+        "subagent_type": "engineering-frontend-developer"
+      },
+      "supporting_agents": [
+        {
+          "name": "Code Reviewer",
+          "subagent_type": "engineering-code-reviewer"
+        }
+      ],
+      "acceptanceCriteria": [
+        "F1 NAV sparkline (app.py:1360-1362): when snap.nav_history is empty OR all-zeros, render Static 'NAV history pending' in neutral color (theme's $text-muted) instead of stale sparkline.",
+        "F5 ExpectancyPanel: when no closed trades, all $-formatted stat fields render '—' in $text-muted, not '$0.00' in green.",
+        "F5 P/L sparkline (journal_screen.py:201-204): when data is empty, render 'no closed trades' Static instead of empty Sparkline.",
+        "Test at tests/test_tui_empty_states.py builds three real fixtures: empty NAV history, empty journal, mixed. Asserts each placeholder renders. NO MOCKS — use real DashboardSnapshot, real journal file in tmp_path.",
+        "Typecheck passes."
+      ],
+      "validation_commands": [
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_empty_states.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py src/tui/screens/journal_screen.py"
+      ],
+      "definition_of_done": [
+        "All acceptance criteria ticked.",
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
+      ],
+      "completion_signal": "<promise>COMPLETE_STORY_US-010</promise>"
+    },
+    {
+      "id": "US-011",
+      "title": "data_provider — OANDA auto-reconnect on transient disconnect",
+      "priority": 11,
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "src/tui/data_provider.py:189-209 connect() is only called once at boot. If OANDA disconnects mid-session, _do_live_refresh keeps calling a dead client. Header shows OANDA OFF but no auto-reconnect; operator forced to Ctrl+R. Add reconnect-with-backoff inside _do_live_refresh when self.oanda_connected is False: attempt connect() at increasing intervals (5s, 10s, 30s, 60s, capped 60s).",
       "primary_agent": {
         "name": "Senior Developer",
-        "subagent_type": "engineering-senior-developer",
-        "file": ".claude/agents/engineering-senior-developer.md"
+        "subagent_type": "engineering-senior-developer"
       },
       "supporting_agents": [
-        {
-          "name": "Frontend Developer",
-          "subagent_type": "engineering-frontend-developer",
-          "role": "Modal screen for live confirmation"
-        },
-        {
-          "name": "Security Engineer",
-          "subagent_type": "engineering-security-engineer",
-          "role": "Review: credential check, confirmation bypass resistance"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Standard review"
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Going to LIVE MUST check os.environ.get('OANDA_API_KEY') and account_id — if missing, reject with toast 'OANDA credentials not loaded. Run source .env.local and restart.'",
-        "Going to LIVE MUST show modal with current account NAV, open trade count, warning text in red. Operator must type 'LIVE' (case-sensitive).",
-        "Going to DRY-RUN is immediate — reversible, non-destructive. No modal.",
-        "Mode change MUST NOT close or affect existing open trades — only gates future submissions.",
-        "Emit control.mode_change event with before/after values.",
-        "strategic_log.md audit entry mandatory."
-      ],
-      "acceptanceCriteria": [
-        "src/tui/screens/mode_modal.py ModeConfirmModal with typed 'LIVE' input.",
-        "action_supervisor_mode: if current=='dry_run' → push ModeConfirmModal; if current=='live' → immediate set_mode('dry_run') + toast.",
-        "Credential precheck: OANDA_API_KEY and account_id must be present to enter live mode.",
-        "State strip reactive update to LIVE (magenta) / DRY-RUN (cyan).",
-        "strategic_log.md entry on every toggle.",
-        "control.mode_change event emitted on event_bus with {from, to, actor, nav, open_trade_count}.",
-        "Integration test tests/test_mode_toggle_e2e.py: start in dry_run, press M, type LIVE, confirm mode=='live' and state strip updates; press M again, confirm mode=='dry_run' immediately.",
-        "Unit test covers: missing credentials → rejection toast, wrong confirmation text → no change."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_mode_toggle_e2e.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.screens.mode_modal import ModeConfirmModal; print('MODE_MODAL_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'control.mode_change' src/"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "Security Engineer sign-off on credential check and confirmation gate.",
-        "Integration test passes.",
-        "Code Reviewer sign-off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-507</promise>"
-    },
-    {
-      "id": "US-508",
-      "title": "Adjustment proposal interceptor + ScannerConfig field validator (retire silent self-tuner writes)",
-      "priority": 8,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T21:27:25Z",
-      "depends_on": [
-        "US-501"
-      ],
-      "description": "The root cause of the 2026-04-16 $3,527 loss was self-tuner writing orphan keys to config_adjustments.json. This story redirects every self-tuner write to a HOLDING file (pending_adjustments.json) AND adds a schema validator that rejects any proposal whose key does not match a ScannerConfig dataclass field. No proposal ever reaches config_adjustments.json unless operator-approved via Inbox (US-509).",
-      "primary_agent": {
-        "name": "Backend Architect",
-        "subagent_type": "engineering-backend-architect",
-        "file": ".claude/agents/engineering-backend-architect.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "Autonomous Optimization Architect",
-          "subagent_type": "engineering-autonomous-optimization-architect",
-          "role": "Design the self-tuner intercept point and approval flow"
-        },
-        {
-          "name": "Senior Developer",
-          "subagent_type": "engineering-senior-developer",
-          "role": "Implement validator and interceptor"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Review: must catch the exact class of bug from 2026-04-16"
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Validator MUST use dataclasses.fields(ScannerConfig) to enumerate valid field names — no hardcoded list.",
-        "Validator MUST check type compatibility (float vs int vs bool vs str) against ScannerConfig annotations.",
-        "Validator MUST check bounds from existing config_tuner.py (atr_sl_multiplier max 2.0, etc.).",
-        "Interceptor MUST route ConfigTuner.propose_adjustment() → pending_adjustments.json (not config_adjustments.json).",
-        "Direct writes to config_adjustments.json from any module OTHER than the approval handler MUST be prevented — add write-guard in ConfigAdjuster.apply_adjustments() that raises if pending_adjustments.json bypassed.",
-        "Validation failures MUST be logged AND the proposal recorded in pending_adjustments.json with status='invalid' + reason, so Inbox can display 'rejected by validator' to operator for learning.",
-        "Emit adjustment.proposed event on event_bus with validated payload."
-      ],
-      "acceptanceCriteria": [
-        "src/scanner/automation/adjustment_validator.py with validate_adjustment(key: str, value: Any, reason: str) -> ValidationResult.",
-        "ValidationResult dataclass: valid (bool), field_exists (bool), type_matches (bool), within_bounds (bool), error_message (str).",
-        "Validator enumerates ScannerConfig fields via dataclasses.fields() — no hardcoded list.",
-        "Validator catches known orphan keys from phase 90 incident: 'min_confidence_threshold' (correct: 'min_confidence'), 'atr_sl_multiplier_low_regime' (correct: 'atr_sl_multiplier').",
-        "src/scanner/automation/config_tuner.py propose_adjustment() modified: writes to pending_adjustments.json instead of config_adjustments.json.",
-        "pending_adjustments.json schema: {proposals: [{id, timestamp, key, current_value, proposed_value, reason, source, validation: ValidationResult, status: 'pending'|'approved'|'rejected'|'invalid'|'snoozed', snooze_until}]}.",
-        "src/scanner/automation/config_adjuster.py apply_adjustments() has write-guard: raises BypassAttempt if called with proposals not routed via approval_handler.",
-        "Approval handler at src/scanner/automation/adjustment_approver.py with approve(proposal_id), reject(proposal_id, reason), snooze(proposal_id, hours).",
-        "approve() moves proposal from pending to config_adjustments.json (only path).",
-        "Emit adjustment.proposed, adjustment.applied, adjustment.rejected events on event_bus.",
-        "Unit test tests/test_adjustment_validator.py covers: valid field, orphan key, wrong type, out-of-bounds — all return correct ValidationResult.",
-        "Regression test tests/test_phase90_orphan_keys.py: replay the 5 orphan keys from 2026-04-16 incident, all rejected by validator.",
-        "Integration test tests/test_adjustment_flow_e2e.py: self-tuner proposes → lands in pending → approve → appears in config_adjustments → ScannerConfig field actually changes on next scan cycle."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_adjustment_validator.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_phase90_orphan_keys.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_adjustment_flow_e2e.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.automation.adjustment_validator import validate_adjustment; r=validate_adjustment('min_confidence_threshold', 0.6, 'test'); assert not r.valid and not r.field_exists; print('ORPHAN_CAUGHT')\"",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.automation.config_adjuster import ConfigAdjuster; ca=ConfigAdjuster(); assert hasattr(ca, '_guard_bypass'); print('GUARD_OK')\""
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "Regression test for 2026-04-16 orphan keys passes — this is the bar.",
-        "Backend Architect sign-off on interceptor design.",
-        "Code Reviewer sign-off.",
-        "strategic_log.md entry: 'US-508 complete — self-tuner writes now human-gated via pending_adjustments.json'."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-508</promise>"
-    },
-    {
-      "id": "US-509",
-      "title": "Adjustment Inbox TUI screen (F2) — the killer feature",
-      "priority": 9,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T21:36:30Z",
-      "depends_on": [
-        "US-504",
-        "US-508"
-      ],
-      "description": "Build the Inbox screen at F2. Lists pending proposals with: observation/reason, current→proposed diff, validation status, apply/reject/snooze actions, stacked diff preview if multiple pending. This is the screen the operator opens every morning before letting Buddy run.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer",
-        "file": ".claude/agents/engineering-frontend-developer.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "Senior Developer",
-          "subagent_type": "engineering-senior-developer",
-          "role": "Wire approval handler into TUI actions"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Standard review"
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Inbox MUST show proposals sorted by timestamp descending (newest first).",
-        "Each row displays: timestamp, key, current→proposed, reason, validation status (✓ valid / ✗ invalid + error).",
-        "Invalid proposals MUST NOT have Apply button enabled — only Reject or Snooze.",
-        "Stacked diff: if multiple proposals pending, a 'Preview net config' button shows the merged result.",
-        "Row actions via hotkey: A=approve, R=reject, S=snooze 24h, V=view full detail.",
-        "Snooze stores snooze_until ISO timestamp; validator skips snoozed until that time.",
-        "Badge on tab label: '◈ Inbox (3)' showing pending count.",
-        "Auto-refresh via event_bus subscribe to adjustment.proposed events — new proposals appear without manual refresh."
-      ],
-      "acceptanceCriteria": [
-        "src/tui/screens/inbox_screen.py InboxScreen(Screen) class.",
-        "DataTable columns: Timestamp, Field, Current, Proposed, Reason, Source, Validation, Status.",
-        "Invalid proposals visually distinct (red row or ✗ icon).",
-        "Row actions: A approve, R reject, S snooze 24h, V view detail — all bound via Binding().",
-        "Approve calls approval_handler.approve(proposal_id) — only enabled if validation.valid==true.",
-        "Reject opens small modal for reason text; writes to pending_adjustments.json with status='rejected'.",
-        "Snooze writes snooze_until = now + 24h.",
-        "'Preview net config' button opens modal showing merged ScannerConfig diff if all pending approved.",
-        "Tab label updates to show pending count: '◈ Inbox ({n})'.",
-        "Auto-refresh: subscribes to event_bus adjustment.* events and re-queries pending list.",
-        "Empty state: 'No pending adjustments. Buddy is running on current config.'",
-        "Integration test tests/test_inbox_e2e.py: seed pending_adjustments.json with 3 proposals (1 valid, 1 orphan, 1 out-of-bounds), launch TUI, assert table shows 3 rows with correct validation status, approve valid one → appears in config_adjustments.json."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_inbox_e2e.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.screens.inbox_screen import InboxScreen; print('INBOX_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'InboxScreen' src/tui/app.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "Visual evidence in .claude/ralph/reports/phase91_evidence/inbox_screen.md.",
-        "Integration test passes.",
-        "Code Reviewer sign-off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-509</promise>"
-    },
-    {
-      "id": "US-510",
-      "title": "Per-trade close action on Trades screen (select row → C → confirm → market-close)",
-      "priority": 10,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-16T21:44:01Z",
-      "depends_on": [
-        "US-503",
-        "US-504"
-      ],
-      "description": "Add actionable per-trade close to the Trades screen. Select row → C hotkey → confirmation modal showing trade details and current P/L → market-close via OANDA. Journal entry logged with 'manually_closed_by=operator'.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer",
-        "file": ".claude/agents/engineering-frontend-developer.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "Senior Developer",
-          "subagent_type": "engineering-senior-developer",
-          "role": "ExecutionManager.close_trade(trade_id) method"
-        },
         {
           "name": "API Tester",
           "subagent_type": "testing-api-tester",
-          "role": "OANDA integration test"
+          "role": "Drive a disconnect/reconnect cycle against the OANDA practice endpoint"
         },
         {
           "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Standard review"
+          "subagent_type": "engineering-code-reviewer"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Confirmation modal MUST show: pair, direction, entry, current price, unrealized P/L, pips.",
-        "Uses ExecutionManager.close_trade(trade_id, reason='operator_manual') which wraps OANDA close + journal write.",
-        "Journal entry MUST include operator flag: outcome.closed_by='operator', outcome.reason='manual'.",
-        "Retry policy same as flatten_all (exponential backoff, 4xx no-retry).",
-        "Failure toast on OANDA error: 'Close failed — {error}. Trade still open.'",
-        "Emit trade.manual_close event on event_bus."
-      ],
       "acceptanceCriteria": [
-        "src/scanner/execution.py ExecutionManager.close_trade(trade_id: str, reason: str) method.",
-        "Calls OANDA market-close with retry policy.",
-        "Writes journal entry with outcome.closed_by='operator'.",
-        "Emits trade.manual_close event on event_bus.",
-        "src/tui/screens/trades_screen.py: Binding('c', 'close_selected_trade', 'Close Trade').",
-        "action_close_selected_trade reads selected row's trade_id, pushes TradeCloseModal.",
-        "TradeCloseModal shows trade details + current P/L + Confirm/Cancel.",
-        "On Confirm: @work worker calls ExecutionManager.close_trade; result toast.",
-        "Trades DataTable refreshes after close (row disappears from open, appears in closed).",
-        "Integration test tests/test_per_trade_close_e2e.py: open 1 practice trade, select row, press C, confirm, trade closed within 2s, journal has operator flag."
+        "data_provider tracks self._reconnect_attempts: int and self._next_reconnect_at: datetime.",
+        "_do_live_refresh, when self.oanda_connected is False, attempts self._oanda.connect() only if now() >= self._next_reconnect_at.",
+        "Backoff schedule: 5s, 10s, 30s, 60s, 60s, 60s … (cap at 60s after 4 attempts). Reset on successful reconnect.",
+        "Each attempt logs to brain feed at INFO with attempt number and delay. Success logs at INFO 'OANDA reconnected'.",
+        "Header indicator flips OANDA OFF → OANDA ON on success.",
+        "Integration test at tests/test_tui_data_provider_reconnect.py (marked `@pytest.mark.integration` since it touches OANDA) drives: (a) connect succeeds, (b) simulate disconnect by stopping the OANDA client, (c) refresh fires reconnect attempt, (d) reconnect succeeds and header reflects it. NO MOCKS — uses real OANDA practice creds via env or skip if creds absent.",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_per_trade_close_e2e.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.execution import ExecutionManager; assert 'close_trade' in dir(ExecutionManager); print('CLOSE_API_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'action_close_selected_trade' src/tui/screens/trades_screen.py"
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_data_provider_reconnect.py -v -m integration",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/data_provider.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "API Tester sign-off on OANDA integration.",
-        "Code Reviewer sign-off."
+        "All validation_commands exit 0 (integration test may be skipped if OANDA creds absent; that is acceptable but must log SKIP, not FAIL).",
+        "Code Reviewer signed off."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-510</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-011</promise>"
     },
     {
-      "id": "US-511",
-      "title": "Pre-trade veto window (signal.pending → configurable hold → operator A key aborts)",
-      "priority": 11,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T00:39:28Z",
-      "depends_on": [
-        "US-501",
-        "US-502"
-      ],
-      "description": "Before each execution, scanner emits signal.pending and holds for a configurable window (per-pair, 0-5s). Brain log shows 'EXECUTING {pair} in {n}s… A to abort'. Hotkey A vetoes the pending signal; vetoed signals are journaled with vetoed_by=operator and never execute.",
-      "primary_agent": {
-        "name": "Senior Developer",
-        "subagent_type": "engineering-senior-developer",
-        "file": ".claude/agents/engineering-senior-developer.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "Frontend Developer",
-          "subagent_type": "engineering-frontend-developer",
-          "role": "Wire A hotkey, countdown in Brain log"
-        },
-        {
-          "name": "Performance Benchmarker",
-          "subagent_type": "testing-performance-benchmarker",
-          "role": "Measure execution latency impact — FX is latency-sensitive"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Standard review"
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Veto window is per-pair configurable via ScannerConfig.veto_window_ms_per_pair: dict[str, int], default {}. 0ms = immediate execute (current behavior).",
-        "Default global fallback: ScannerConfig.veto_window_ms_default: int = 0. Must be opt-in.",
-        "During hold: emit signal.pending event with {signal_id, pair, direction, entry, sl, tp, wvs, window_ms}.",
-        "If control.signal_veto event with matching signal_id arrives during window → cancel execution, journal with vetoed_by='operator', reason.",
-        "If window expires without veto → proceed with original execution path.",
-        "Brain log countdown: update every 1s — '[yellow]▸ EXECUTING {pair} {dir} in {n}s — A to abort[/]'.",
-        "Veto is a soft control — if operator is AFK and window elapses, trade executes. This is intentional — preserves autonomy."
-      ],
-      "acceptanceCriteria": [
-        "ScannerConfig extended: veto_window_ms_default (int, 0), veto_window_ms_per_pair (dict[str,int], {}). Present in dataclass + profile dicts + consumer getattr.",
-        "src/scanner/execution.py ExecutionManager.submit_trade() modified: if veto_window_ms > 0, emit signal.pending, await veto-or-timeout via event_bus subscribe with asyncio.wait_for.",
-        "signal.pending payload includes signal_id (uuid), pair, direction, entry, sl, tp, weighted_vote_score, window_ms, deadline_iso.",
-        "If control.signal_veto with matching signal_id arrives → cancel execution, write journal entry with vetoed_by='operator', emit signal.vetoed.",
-        "If window expires → normal execution continues.",
-        "src/tui/app.py action_supervisor_abort (A hotkey) reads pending signal from event_bus replay buffer, emits control.signal_veto with last pending signal_id.",
-        "Brain log countdown updates via Textual set_interval, shows '{n}s — A to abort'.",
-        "Integration test tests/test_pre_trade_veto_e2e.py: inject synthetic signal with 3s window, send veto during window, assert no OANDA submit + journal has vetoed_by='operator'.",
-        "Integration test: window expires without veto → OANDA submit called.",
-        "Performance benchmark: veto window of 0ms adds <5ms overhead to execution path (measured p99 over 1000 cycles)."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_pre_trade_veto_e2e.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.scanner.config import ScannerConfig; c=ScannerConfig(); assert hasattr(c,'veto_window_ms_default') and hasattr(c,'veto_window_ms_per_pair'); print('VETO_CONFIG_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'signal.pending' src/scanner/execution.py",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'action_supervisor_abort' src/tui/app.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "Performance benchmark evidence in notes: p99 < 5ms overhead for 0ms window.",
-        "Integration test passes.",
-        "Code Reviewer sign-off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-511</promise>"
-    },
-    {
-      "id": "US-512",
-      "title": "Gate trace panel (any signal → 12 agent votes + 3 gates + R:R + regime visible)",
+      "id": "US-012",
+      "title": "ConfigScreen — add keyboard BINDINGS for stage/queue/reset",
       "priority": 12,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T00:44:08Z",
-      "depends_on": [
-        "US-504"
-      ],
-      "description": "Add a gate-trace reveal accessible from Trades screen (Enter on row), Journal screen, and Brain log. For any signal (executed, rejected, or vetoed) show: 12 agent votes with scores, 3 gate results (confidence/momentum/risk), weighted vote score math, R:R computation, regime classification, uncertainty score. Read-only panel — answers 'why did this fire?' or 'why was this rejected?'",
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "src/tui/screens/config_screen.py:254-803 has no BINDINGS list. Screen relies entirely on mouse-click of STAGE PROFILE / QUEUE FOR APPROVAL / RESET FORM buttons. Cyberpunk keyboard-driven TUI should support `s` (stage), `q` (queue), `r` (reset). Share dispatch with on_button_pressed.",
       "primary_agent": {
         "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer",
-        "file": ".claude/agents/engineering-frontend-developer.md"
+        "subagent_type": "engineering-frontend-developer"
       },
       "supporting_agents": [
         {
-          "name": "Data Engineer",
-          "subagent_type": "engineering-data-engineer",
-          "role": "Assemble gate trace from trade_journal_rl.json and scanner snapshot"
-        },
-        {
           "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Standard review"
+          "subagent_type": "engineering-code-reviewer"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Gate trace data source: trade_journal_rl.json entry (for historical) or live event_bus signal.pending/executed/rejected payload (for current).",
-        "Panel sections: (1) Header (pair, direction, signal_id, outcome), (2) Gates (confidence PASS/FAIL with value vs threshold, momentum, risk), (3) Agents (table of 12 agents with score, weight, signal, contribution to WVS), (4) Math (WVS formula with values, R:R = TP_pips/SL_pips), (5) Context (regime, uncertainty, model_disagreement, max_component_age_days).",
-        "Color-coded: green PASS, red FAIL, yellow NEAR-MISS (within 2% of threshold).",
-        "Accessible from: Trades screen Enter key, Journal screen Enter key, Brain log click on signal line.",
-        "If data missing from journal (pre-phase-91 trade), show graceful 'Trace unavailable for legacy entry'."
-      ],
       "acceptanceCriteria": [
-        "src/tui/screens/gate_trace_modal.py GateTraceModal(ModalScreen).",
-        "src/tui/journal_reader.py get_gate_trace(trade_id) returns structured dict with gates, agents, math, context.",
-        "Modal displays all 5 sections per story_guidelines.",
-        "Color-coded PASS/FAIL/NEAR-MISS per theme.tcss.",
-        "Trades screen on_data_table_row_selected modified: Enter key pushes GateTraceModal.",
-        "Journal screen similar binding.",
-        "Graceful fallback for missing data: 'Trace unavailable — journal entry predates phase 91'.",
-        "Unit test tests/test_gate_trace_assembly.py: synthetic journal entry → assemble trace → assert all 5 sections populated.",
-        "E2E test tests/test_gate_trace_e2e.py: launch TUI, select a real closed trade, press Enter, assert modal shows 12 agent rows + 3 gate rows."
+        "ConfigScreen has BINDINGS list with `s` → action_stage_profile, `q` → action_queue_for_approval, `r` → action_reset_form.",
+        "Each action method dispatches to the same logic as the corresponding on_button_pressed branch (extract shared helpers if needed).",
+        "Bindings show=True in Footer.",
+        "Conflict check: `r` does NOT fire when an Input widget inside ConfigScreen has focus (Textual focus normally prevents this; verify with a focus test).",
+        "Test at tests/test_tui_config_screen_bindings.py: real ConfigScreen mounted headless, fires each key, asserts the corresponding action method ran. NO MOCKS.",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_gate_trace_assembly.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_gate_trace_e2e.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.journal_reader import get_gate_trace; print('GATE_TRACE_API_OK')\""
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_config_screen_bindings.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/config_screen.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "Visual evidence in .claude/ralph/reports/phase91_evidence/gate_trace.md.",
-        "Code Reviewer sign-off."
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-512</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-012</promise>"
     },
     {
-      "id": "US-513",
-      "title": "Model staleness banner + enforce uncertainty hard-block threshold tightening",
+      "id": "US-013",
+      "title": "Inbox approve-all — move to Textual @work worker with progress indicator",
       "priority": 13,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T00:49:09Z",
-      "depends_on": [
-        "US-502",
-        "US-504"
-      ],
-      "description": "Surface the existing rule (.claude/rules/trading.md 2026-04-15: max_component_age_days > 7 → uncertainty hard-block drops from 0.45 to 0.35). Today this is documented but not enforced in code. Add: (a) max_component_age_days in DashboardSnapshot, (b) red banner on Overview when > 7, (c) scanner enforces tighter threshold when staleness triggered.",
-      "primary_agent": {
-        "name": "AI Engineer",
-        "subagent_type": "engineering-ai-engineer",
-        "file": ".claude/agents/engineering-ai-engineer.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "Frontend Developer",
-          "subagent_type": "engineering-frontend-developer",
-          "role": "Banner widget + reactive state strip integration"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Verify the 2026-04-15 rule is now enforced, not just documented"
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Staleness source: compute max over (NOW - component.trained_at) across all loaded model components (TCN, Ridge, RF, agent weights).",
-        "Threshold: > 7 days → staleness_triggered=true. Banner red. Uncertainty hard-block drops to 0.35.",
-        "Banner text: '⚠ MODEL STALENESS: {n} days — uncertainty block tightened (0.45→0.35). Retrain recommended.'",
-        "Scanner path: when staleness_triggered and uncertainty_score > 0.35, signal is HARD blocked (not soft penalty).",
-        "Emit signal.rejected with reason='stale_models_uncertainty_block' when triggered.",
-        "This closes the loop on the 2026-04-15 10-trade losing streak root cause — rule promoted but never enforced."
-      ],
-      "acceptanceCriteria": [
-        "src/scanner/engine.py get_model_staleness_days() -> float method, max over component trained_at deltas.",
-        "DashboardSnapshot.max_component_age_days populated by DataProvider from this method.",
-        "src/tui/widgets/staleness_banner.py StalenessBanner widget — renders red alert when >7d.",
-        "Banner mounted on Overview tab, above state strip, hidden when <=7d.",
-        "src/scanner/engine.py signal evaluation: if staleness_triggered and uncertainty_score > 0.35 → reject with reason='stale_models_uncertainty_block'.",
-        "Rule enforcement logged: 'HARD-BLOCK: models stale {n}d, uncertainty {u:.2f} > 0.35 tightened threshold'.",
-        "Unit test tests/test_staleness_enforcement.py: synthetic 8-day-old model + uncertainty=0.40 → signal rejected with correct reason.",
-        "Unit test: 3-day-old model + uncertainty=0.40 → signal passes (old 0.45 threshold).",
-        "Integration test: real scan cycle with mocked stale timestamp → banner visible AND gate blocks."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_staleness_enforcement.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.widgets.staleness_banner import StalenessBanner; print('BANNER_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'stale_models_uncertainty_block' src/scanner/"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "Evidence: test with mocked stale models shows banner + rejection.",
-        "AI Engineer sign-off confirming the 2026-04-15 rule is now enforced, not just documented.",
-        "Code Reviewer sign-off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-513</promise>"
-    },
-    {
-      "id": "US-514",
-      "title": "Rules / Learnings / Brain Viewer — searchable read-only window into Buddy's reasoning layer",
-      "priority": 14,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T00:52:16Z",
-      "depends_on": [
-        "US-501",
-        "US-504"
-      ],
-      "description": "Operator needs a TUI window into the reasoning artifacts: .claude/rules/*.md (active gates), .claude/learnings.md (raw observations), .claude/brain/briefing.md (Claude's working memory), .claude/brain/open_questions.md. New tab (F7 — relocate Diagnostics to F8) with file tree on left, rendered markdown on right, '/' to search within, 'g' to grep across all files. Read-only — never write from this screen. Surfaces the promoted rules that are actively gating behavior vs the pending learnings awaiting promotion.",
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "src/tui/screens/inbox_screen.py:1260-1407 action_approve_all runs three loops (homework, adjustments, meta) + MetaManager.drain() inline on the main thread. With Phase 96 batch homework (17+ entries), this can lock the TUI for several seconds. Move to @work(thread=True) worker; emit progress via call_from_thread.",
       "primary_agent": {
         "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer",
-        "file": ".claude/agents/engineering-frontend-developer.md"
+        "subagent_type": "engineering-frontend-developer"
       },
       "supporting_agents": [
         {
-          "name": "Technical Writer",
-          "subagent_type": "engineering-technical-writer",
-          "file": ".claude/agents/engineering-technical-writer.md",
-          "role": "Ensure rendered markdown preserves structure (headers, lists, code blocks) and that promoted rule cross-references (e.g., 'Source: 2026-04-15 Trade 1220') link-jump correctly."
-        },
-        {
           "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "file": ".claude/agents/engineering-code-reviewer.md",
-          "role": "Verify read-only invariant — no write handles, no edit bindings, no save buttons."
+          "subagent_type": "engineering-code-reviewer"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Use Textual's Markdown widget with syntax highlighting.",
-        "File tree uses Textual Tree widget, populated by globbing .claude/rules/*.md, .claude/learnings.md, .claude/brain/*.md on mount.",
-        "Search within rendered view via '/' — regex-capable using Python re module.",
-        "Grep across files via 'g' — opens modal input, returns file:line:snippet matches.",
-        "Refresh on tab activation (files may have been updated by self-tuner or manual edit).",
-        "NO write handles — verified by code review grep for open(..., 'w') inside src/tui/screens/rules_screen.py → must return zero hits."
-      ],
       "acceptanceCriteria": [
-        "src/tui/screens/rules_screen.py RulesScreen class with Tree + Markdown layout.",
-        "src/tui/app.py registers TabPane with id='rules', bound to F7 (Diagnostics relocates to F8).",
-        "Tree populated from Path('.claude/rules').glob('*.md') + ['learnings.md', 'brain/briefing.md', 'brain/open_questions.md', 'brain/session_handoff.md', 'brain/strategic_log.md', 'brain/trade_narrative.md'].",
-        "Selecting tree node renders markdown in right pane.",
-        "'/' opens search modal, highlights matches in current view.",
-        "'g' opens grep modal, ripgreps .claude/rules/ + .claude/learnings.md + .claude/brain/, shows results list, enter jumps to file+line.",
-        "Tab refresh re-reads files on each activation.",
-        "NO write operations — grep confirms zero open('w') calls in rules_screen.py.",
-        "Unit test tests/test_rules_screen.py: mount screen, assert tree has expected nodes, assert markdown renders, assert search finds term."
+        "action_approve_all decorated or refactored to use Textual @work(thread=True).",
+        "Worker emits progress updates via self.app.call_from_thread(self._approve_all_progress, current, total).",
+        "_approve_all_progress updates a ProgressBar widget mounted at the top of the Inbox screen (shown during approve-all, hidden afterward).",
+        "On completion, ProgressBar shows 'approved N items' for 3s then auto-hides.",
+        "TUI main thread remains responsive: a follow-up keypress (e.g., F1) during a 10-item approve-all is processed within 100ms (manual test in DoD; automated test in next bullet).",
+        "Test at tests/test_tui_inbox_approve_all_worker.py: builds 5 real homework entries in tmp_path, fires action_approve_all, asserts main loop is non-blocked (uses Textual's run_test harness with a concurrent F1 keypress). NO MOCKS.",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_rules_screen.py -v",
-        "cd /Users/buddy/Documents/ml_engine && grep -n \"open(.*'w'\" src/tui/screens/rules_screen.py || echo 'READ_ONLY_OK'",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.screens.rules_screen import RulesScreen; print('RULES_SCREEN_OK')\""
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_inbox_approve_all_worker.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/inbox_screen.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "Frontend Developer evidence: screenshot/text capture of tree + rendered markdown + grep modal.",
-        "Technical Writer sign-off: markdown rendering preserves structure, cross-references navigable.",
-        "Code Reviewer sign-off: read-only invariant verified."
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-514</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-013</promise>"
     },
     {
-      "id": "US-515",
-      "title": "Agent Weight Inspector — RL state + delta tracking for the 12-agent team",
-      "priority": 15,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T00:57:13Z",
-      "depends_on": [
-        "US-501",
-        "US-512"
-      ],
-      "description": "New panel on the Agents tab (or new subtab) that shows: current weight per agent from trained_data/models/agent_weights.json, delta over last N trades (default 50) computed from trade_journal_rl.json, trajectory sparkline per agent, and a summary of which agents are gaining vs losing influence. Surfaces the RL learning loop to the operator so they can see whether 'trend' agent is being upweighted after wins or downweighted after losses, and catch anomalies like one agent collapsing to near-zero weight.",
+      "id": "US-014",
+      "title": "Add --live CLI flag and OANDA-creds auto-detect to src/tui/app.py:run()",
+      "priority": 14,
+      "passes": false,
+      "notes": "",
+      "depends_on": [],
+      "description": "src/tui/app.py:2402-2422 run() argparser only declares --demo. CLAUDE.md and docs/supervisor_console_runbook.md §1 describe dual-mode --live/--demo with auto-detect via OANDA creds. `./buddy --live` from the documented launch path fails with argparse error.",
       "primary_agent": {
-        "name": "Data Engineer",
-        "subagent_type": "engineering-data-engineer",
-        "file": ".claude/agents/engineering-data-engineer.md"
+        "name": "Frontend Developer",
+        "subagent_type": "engineering-frontend-developer"
       },
       "supporting_agents": [
         {
-          "name": "Frontend Developer",
-          "subagent_type": "engineering-frontend-developer",
-          "file": ".claude/agents/engineering-frontend-developer.md",
-          "role": "Build the inspector widget layout + sparkline rendering via Textual Sparkline or custom Canvas."
-        },
-        {
-          "name": "AI Engineer",
-          "subagent_type": "engineering-ai-engineer",
-          "file": ".claude/agents/engineering-ai-engineer.md",
-          "role": "Validate that weight delta math correctly reflects the RL update rule in ScannerAgentTeam — agent-side sign-off on interpretation."
-        },
-        {
           "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "file": ".claude/agents/engineering-code-reviewer.md",
-          "role": "JSON safety review on agent_weights.json + trade_journal_rl.json reads (try/except, graceful fallback per JSON Safety Gates)."
+          "subagent_type": "engineering-code-reviewer"
         }
       ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Reads are READ-ONLY on agent_weights.json and trade_journal_rl.json — no writes from this panel.",
-        "Delta computation: current_weight minus weight_N_trades_ago, reconstructed by replaying RL updates backward OR by sampling historical weight snapshots if available.",
-        "If historical snapshots don't exist yet, the feature must introduce weight_history.jsonl as append-only log (written by ExecutionManager on RL sync) — atomic append only, not a read-modify-write.",
-        "Sparkline shows last N=50 weight values per agent, with color coding: green if weight rising, red if falling, grey if flat.",
-        "Anomaly detection: flag any agent whose weight fell below 0.1 or rose above 0.9 (out-of-normal-range for mean-reversion weights).",
-        "Mount on Agents tab as split-pane: left = live agent votes (existing), right = weight inspector (new)."
-      ],
       "acceptanceCriteria": [
-        "src/scanner/execution.py ExecutionManager.sync_rl_weights() writes a snapshot row to trained_data/models/weight_history.jsonl on every RL update (atomic append).",
-        "weight_history.jsonl row schema: {ts, trade_id, agent, weight_before, weight_after, pnl, reason}.",
-        "src/tui/screens/agents_screen.py adds WeightInspector widget: table with agent name, current_weight, delta_50_trades, sparkline.",
-        "Sparkline uses last 50 entries from weight_history.jsonl, filtered by agent.",
-        "Anomaly badge: red '⚠ low' if weight < 0.1, red '⚠ high' if > 0.9.",
-        "JSON reads wrapped in try/except with empty fallback (JSON Safety Gates).",
-        "Unit test tests/test_weight_history.py: simulate 3 RL syncs, verify weight_history.jsonl has 3 rows, verify inspector reads them correctly.",
-        "Integration test: run dry-run scan that triggers RL sync (mocked trade close), verify snapshot appended AND inspector updates on next refresh."
+        "run() argparser declares mutually exclusive group: --live and --demo.",
+        "When neither flag is given, run() calls check_oanda_credentials() (existing helper if present, or new minimal one reading OANDA_API_KEY + OANDA_ACCOUNT_ID from env); if both present → live, else → demo.",
+        "When --live is given without OANDA creds, run() prints a clear error to stderr and exits 2.",
+        "Test at tests/test_tui_run_cli.py uses argparse directly (no TUI boot) and asserts: (a) --live sets live=True, (b) --demo sets live=False, (c) no flag + creds → live, (d) no flag - creds → demo, (e) --live - creds → SystemExit. NO MOCKS — env vars set/unset via monkeypatch.setenv (acceptable: env is a system boundary).",
+        "Typecheck passes."
       ],
       "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_weight_history.py -v",
-        "cd /Users/buddy/Documents/ml_engine && grep -n 'weight_history.jsonl' src/scanner/execution.py",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"from src.tui.screens.agents_screen import WeightInspector; print('INSPECTOR_OK')\""
+        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_run_cli.py -v",
+        "cd /Users/buddy/Documents/ml_engine && python -c \"import argparse; from src.tui.app import run; print('IMPORT_OK')\"",
+        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
       ],
       "definition_of_done": [
         "All acceptance criteria ticked.",
-        "weight_history.jsonl schema documented in docs/supervisor_console_runbook.md (US-519).",
-        "Data Engineer sign-off on append-only pattern and schema.",
-        "AI Engineer sign-off on delta math correctness.",
-        "Code Reviewer sign-off on JSON safety."
+        "All validation_commands exit 0.",
+        "Code Reviewer signed off."
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-515</promise>"
-    },
-    {
-      "id": "US-516",
-      "title": "Integration test harness — end-to-end Supervisor Console smoke across all Tier-1 controls + Tier-2 panels",
-      "priority": 16,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T01:10:26Z",
-      "depends_on": [
-        "US-501",
-        "US-502",
-        "US-503",
-        "US-504",
-        "US-505",
-        "US-506",
-        "US-507",
-        "US-508",
-        "US-509",
-        "US-510",
-        "US-511",
-        "US-512",
-        "US-513",
-        "US-514",
-        "US-515"
-      ],
-      "description": "Ship a headless integration test harness that drives the TUI through every control and panel end-to-end with a mocked OANDA backend. Proves the whole system works together, not just individual units. Runs in CI and on every push. Covers: kill switch → flatten + halt; pause → scanner skips; mode toggle → execution policy switches; adjustment inbox approve → ScannerConfig mutates; adjustment inbox reject → no mutation; per-trade close → OANDA close API called; pre-trade veto → A hotkey aborts signal within hold window; gate trace populates on pending signal; staleness banner appears when max_component_age_days > 7; rules viewer renders all expected files; weight inspector reads from weight_history.jsonl.",
-      "primary_agent": {
-        "name": "API Tester",
-        "subagent_type": "testing-api-tester",
-        "file": ".claude/agents/testing-api-tester.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "Test Results Analyzer",
-          "subagent_type": "testing-test-results-analyzer",
-          "file": ".claude/agents/testing-test-results-analyzer.md",
-          "role": "Aggregate pass/fail across all flows, classify failures (flake vs real bug), surface the critical-path failures first."
-        },
-        {
-          "name": "Reality Checker",
-          "subagent_type": "testing-reality-checker",
-          "file": ".claude/agents/testing-reality-checker.md",
-          "role": "Confirm each test actually exercises the production code path — not a mock that passes trivially. Spot-check 5 tests by tracing the stack from assertion back to the real module."
-        },
-        {
-          "name": "Evidence Collector",
-          "subagent_type": "testing-evidence-collector",
-          "file": ".claude/agents/testing-evidence-collector.md",
-          "role": "Capture logs, state.json deltas, and strategic_log.md entries produced by each test run as evidence artifacts."
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Use Textual's built-in Pilot API for headless TUI driving (async context manager, press() for keys, click() for buttons).",
-        "Mock OANDA via responses library or httpretty — NO live OANDA calls in CI.",
-        "Each flow is ONE test function with clear name: test_kill_switch_flatten_all, test_pause_scanner_skips_cycle, test_mode_toggle_dry_to_live, test_adjustment_inbox_approve_mutates_config, test_adjustment_inbox_reject_noop, test_per_trade_close, test_pre_trade_veto_within_window, test_gate_trace_populates_on_pending, test_staleness_banner_visible, test_staleness_hard_block, test_rules_viewer_renders, test_weight_inspector_reads_history.",
-        "Run order: critical gates (US-502, US-503, US-508, US-513) FIRST so a failure fails fast before deeper tests.",
-        "Each test produces a JSONL evidence row in .claude/ralph/reports/phase91_e2e_evidence.jsonl with test_id, status, duration_ms, assertions_checked, log_excerpt.",
-        "Reality checker MUST trace 5 random tests end-to-end and confirm real code paths exercised — no trivial mock-only passes."
-      ],
-      "acceptanceCriteria": [
-        "tests/e2e/test_supervisor_console.py with all 12 flow tests enumerated above.",
-        "All 12 tests PASS with green evidence.",
-        "tests/conftest.py fixture oanda_mock configures httpretty with orders/trades/close endpoints.",
-        "tests/conftest.py fixture tui_pilot yields a Pilot instance against a fresh BuddyTUI.",
-        "Test runtime < 60s total on developer laptop — else optimize fixtures.",
-        "Evidence file .claude/ralph/reports/phase91_e2e_evidence.jsonl appended by each test via pytest fixture.",
-        "Reality-check report at .claude/ralph/reports/phase91_reality_check.md with 5 traced tests + verdict per test.",
-        "CI integration: .github/workflows/e2e.yml (or equivalent) runs this suite on every push."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/e2e/test_supervisor_console.py -v --tb=short",
-        "cd /Users/buddy/Documents/ml_engine && jq 'select(.status==\"FAIL\")' .claude/ralph/reports/phase91_e2e_evidence.jsonl | test $(wc -l) -eq 0",
-        "cd /Users/buddy/Documents/ml_engine && test -f .claude/ralph/reports/phase91_reality_check.md"
-      ],
-      "definition_of_done": [
-        "All 12 E2E tests pass.",
-        "Evidence JSONL has 12 rows, all status=PASS.",
-        "Reality checker report verdict: all 5 traced tests exercise real code paths, no trivial mock passes.",
-        "Test Results Analyzer sign-off on zero flaky tests across 3 consecutive runs.",
-        "CI workflow file committed and green."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-516</promise>"
-    },
-    {
-      "id": "US-517",
-      "title": "Security + Code review gate — full sweep across all Phase 91 modules",
-      "priority": 17,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T01:22:10Z",
-      "depends_on": [
-        "US-516"
-      ],
-      "description": "Before Phase 91 can close, every module shipped by stories US-501 through US-515 MUST pass a security review AND a code review. Security focuses on: credential handling in mode toggle (US-507), destructive action confirmation paths (US-505, US-503), audit log integrity (strategic_log.md append-only contract), event bus not leaking to unauthorized subscribers, input sanitization on typed confirmations (KILL, LIVE). Code review focuses on: adherence to JSON Safety Gates, Live Wiring Verification Gates, Silent Exception Prevention, and the orphan-key prevention mandate (US-508). Produces a written gate report that must be ALL-GREEN before phase complete.",
-      "primary_agent": {
-        "name": "Security Engineer",
-        "subagent_type": "engineering-security-engineer",
-        "file": ".claude/agents/engineering-security-engineer.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "file": ".claude/agents/engineering-code-reviewer.md",
-          "role": "Second pair of eyes on every shipped module — quality gate beyond correctness: readability, error handling, adherence to improvement.md rules."
-        },
-        {
-          "name": "Threat Detection Engineer",
-          "subagent_type": "engineering-threat-detection-engineer",
-          "file": ".claude/agents/engineering-threat-detection-engineer.md",
-          "role": "Model threat vectors specific to supervisor console: malicious adjustment injection, kill-switch race conditions, audit log tampering, event bus eavesdropping."
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Security Engineer produces .claude/ralph/reports/phase91_security_review.md with one section per module: threat model, findings (critical/high/medium/low), mitigations, verdict.",
-        "Code Reviewer produces .claude/ralph/reports/phase91_code_review.md with one section per module: adherence to each improvement.md rule class (JSON Safety, Retry & Robustness, State Persistence, Test Coverage, Config Validation, Silent Exception Prevention, Live Wiring Verification, Orphan-Key Prevention).",
-        "Any CRITICAL or HIGH finding is an immediate blocker — the originating story's passes flag MUST revert to false, requiring rework + re-review.",
-        "Threat Detection Engineer covers at minimum: (a) can a compromised self-tuner inject malicious config? (US-508 mitigation: dataclass field validation + human approval), (b) can kill switch be bypassed? (US-505 mitigation: typed KILL + state flag + scanner checks flag on every cycle entry), (c) can audit log be silently stripped? (strategic_log.md append-only + hash chain OR simpler: periodic snapshot to .claude/brain/strategic_log.backup.md), (d) can mode toggle be spoofed? (US-507 mitigation: credential precheck + typed LIVE).",
-        "Review must cite actual file:line references, not just module names."
-      ],
-      "acceptanceCriteria": [
-        ".claude/ralph/reports/phase91_security_review.md exists, covers all 15 modules from US-501..US-515.",
-        ".claude/ralph/reports/phase91_code_review.md exists, covers all 15 modules.",
-        "Zero CRITICAL findings across both reports.",
-        "Zero HIGH findings OR all HIGH findings have a documented mitigation with file:line reference AND follow-up story logged in Phase 92 backlog.",
-        "Every MEDIUM finding has a written decision: fix-now / fix-later (with story ID) / accept-risk (with rationale).",
-        "Threat model diagram (text-based is fine) for supervisor console at top of security review.",
-        "Each review section ends with explicit 'VERDICT: PASS' or 'VERDICT: BLOCK'.",
-        "Strategic log entry: 'Phase 91 security + code review gates PASSED' with reviewer names and timestamp."
-      ],
-      "validation_commands": [
-        "test -f /Users/buddy/Documents/ml_engine/.claude/ralph/reports/phase91_security_review.md",
-        "test -f /Users/buddy/Documents/ml_engine/.claude/ralph/reports/phase91_code_review.md",
-        "cd /Users/buddy/Documents/ml_engine && grep -c 'VERDICT: PASS' .claude/ralph/reports/phase91_security_review.md .claude/ralph/reports/phase91_code_review.md",
-        "cd /Users/buddy/Documents/ml_engine && ! grep -q 'SEVERITY: CRITICAL' .claude/ralph/reports/phase91_security_review.md"
-      ],
-      "definition_of_done": [
-        "Both reports exist, complete, all-green.",
-        "Zero CRITICAL findings.",
-        "All HIGH findings mitigated or documented with follow-up story.",
-        "Strategic log updated with gate pass confirmation."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-517</promise>"
-    },
-    {
-      "id": "US-518",
-      "title": "Performance benchmark — TUI refresh under scanner load",
-      "priority": 18,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T01:26:14Z",
-      "depends_on": [
-        "US-516"
-      ],
-      "description": "Benchmark the Supervisor Console under realistic scanner load. Requirement: TUI frame refresh < 100ms p95 and < 250ms p99 while scanner runs a full cycle across 28 pairs every 30 seconds, with kill switch response < 2s p99 (flatten triggered → all positions reported closed), and adjustment inbox render < 500ms for a batch of 50 pending adjustments. Identify bottlenecks (DataProvider lock contention, OANDA rate-limit pauses that block UI, snapshot deepcopy cost) and remediate. If target missed, story stays open.",
-      "primary_agent": {
-        "name": "Performance Benchmarker",
-        "subagent_type": "testing-performance-benchmarker",
-        "file": ".claude/agents/testing-performance-benchmarker.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "SRE",
-          "subagent_type": "engineering-sre",
-          "file": ".claude/agents/engineering-sre.md",
-          "role": "Set up reproducible benchmark harness + document runbook for re-running in future phases."
-        },
-        {
-          "name": "Senior Developer",
-          "subagent_type": "engineering-senior-developer",
-          "file": ".claude/agents/engineering-senior-developer.md",
-          "role": "Fix any perf regression identified — lock contention, blocking calls on UI thread, slow widget refresh."
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Benchmark harness in tests/perf/bench_supervisor_console.py — pytest-benchmark or custom timeit loop.",
-        "Scenario: 1000 scan cycles across 28 pairs with Textual Pilot driving the TUI (simulated keypresses every 5 cycles).",
-        "Metrics captured: frame_render_ms (p50/p95/p99), scan_cycle_ms, kill_switch_response_ms, adjustment_inbox_render_ms.",
-        "Output: .claude/ralph/reports/phase91_perf_report.md with tables, distributions, and verdict per target.",
-        "If any metric misses its target, Senior Developer investigates, patches, re-runs — story loops until green.",
-        "NO blocking OANDA calls on the UI thread — benchmark specifically checks that the event loop was never starved > 50ms.",
-        "Use cProfile + snakeviz screenshot (or text summary) to identify top-10 hot functions, attach as appendix."
-      ],
-      "acceptanceCriteria": [
-        "tests/perf/bench_supervisor_console.py runs 1000-cycle scenario without error.",
-        "frame_render_ms p95 < 100ms, p99 < 250ms.",
-        "kill_switch_response_ms p99 < 2000ms.",
-        "adjustment_inbox_render_ms p95 < 500ms for 50-row batch.",
-        "scan_cycle_ms does not regress vs Phase 90 baseline — documented in perf report.",
-        "Event loop starvation check: no single blocking call > 50ms on UI thread during benchmark.",
-        ".claude/ralph/reports/phase91_perf_report.md with metrics tables, distributions, and VERDICT: PASS.",
-        "Top-10 hot functions listed in appendix."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/perf/bench_supervisor_console.py -v --benchmark-only",
-        "test -f /Users/buddy/Documents/ml_engine/.claude/ralph/reports/phase91_perf_report.md",
-        "cd /Users/buddy/Documents/ml_engine && grep -q 'VERDICT: PASS' .claude/ralph/reports/phase91_perf_report.md"
-      ],
-      "definition_of_done": [
-        "All three perf targets met.",
-        "Perf report committed with distributions and hot-function analysis.",
-        "Performance Benchmarker sign-off.",
-        "SRE sign-off on reproducibility of benchmark harness."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-518</promise>"
-    },
-    {
-      "id": "US-519",
-      "title": "Operator runbook + documentation — docs/supervisor_console_runbook.md",
-      "priority": 19,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T01:30:52Z",
-      "depends_on": [
-        "US-517",
-        "US-518"
-      ],
-      "description": "Write the operator-facing runbook for the Supervisor Console so any operator (including future-you at 2am) can use it safely without spelunking the code. Covers: launch procedure, every hotkey, every confirmation flow, adjustment inbox workflow, what to do when kill switch is hit, how to interpret gate trace, how to interpret staleness banner, how to read weight inspector, on-call escalation checklist. NOT marketing copy — operational discipline.",
-      "primary_agent": {
-        "name": "Technical Writer",
-        "subagent_type": "engineering-technical-writer",
-        "file": ".claude/agents/engineering-technical-writer.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "SRE",
-          "subagent_type": "engineering-sre",
-          "file": ".claude/agents/engineering-sre.md",
-          "role": "Ensure runbook follows incident-response playbook format, includes SEV tiers, escalation contacts slot, rollback procedures."
-        },
-        {
-          "name": "Reality Checker",
-          "subagent_type": "testing-reality-checker",
-          "file": ".claude/agents/testing-reality-checker.md",
-          "role": "Execute each runbook procedure against the real system end-to-end and flag any step that is wrong, missing, or ambiguous."
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "File location: docs/supervisor_console_runbook.md.",
-        "Structure: 1. Launch & shutdown. 2. Hotkey reference (tabular). 3. Destructive actions (kill / mode→live / reject adjustment) with typed confirmations. 4. Adjustment inbox workflow: approve criteria, reject criteria, defer criteria. 5. Reading the state strip + staleness banner + gate trace. 6. Weight inspector: how to spot RL anomalies. 7. Rules viewer: where active gates live. 8. Incident response: kill switch hit → next 10 minutes checklist. 9. On-call escalation: severities + contact slots (placeholders OK if contacts not yet known). 10. Known limitations + Phase 92 backlog.",
-        "Every section has an 'Evidence' callout with the log file / state file / brain file that will confirm the action succeeded.",
-        "Every destructive action has a 'Blast radius' callout describing what changes when you hit it.",
-        "Runbook lives in git and is linked from CLAUDE.md.",
-        "Reality checker MUST walk through each procedure on the real machine and sign off at the bottom of the document with timestamp."
-      ],
-      "acceptanceCriteria": [
-        "docs/supervisor_console_runbook.md exists with all 10 sections enumerated above.",
-        "Hotkey reference table is complete — every binding from US-504 onward listed.",
-        "Destructive actions section has step-by-step for kill, mode→live, reject adjustment.",
-        "Incident response section has a 10-minute post-kill checklist.",
-        "Reality Checker walkthrough transcript appended as appendix or separate file .claude/ralph/reports/phase91_runbook_walkthrough.md with dated sign-off.",
-        "CLAUDE.md updated to reference docs/supervisor_console_runbook.md from the 'Claude Brain' section.",
-        "No broken internal links — validated with markdown-link-check or equivalent."
-      ],
-      "validation_commands": [
-        "test -f /Users/buddy/Documents/ml_engine/docs/supervisor_console_runbook.md",
-        "cd /Users/buddy/Documents/ml_engine && grep -q 'supervisor_console_runbook' CLAUDE.md",
-        "test -f /Users/buddy/Documents/ml_engine/.claude/ralph/reports/phase91_runbook_walkthrough.md",
-        "cd /Users/buddy/Documents/ml_engine && grep -c '^##' docs/supervisor_console_runbook.md | awk '{exit !($1 >= 10)}'"
-      ],
-      "definition_of_done": [
-        "Runbook complete with all 10 sections.",
-        "Reality checker walkthrough signed off.",
-        "CLAUDE.md cross-links runbook.",
-        "Technical Writer sign-off on clarity and structure.",
-        "SRE sign-off on incident response section completeness."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-519</promise>"
-    },
-    {
-      "id": "US-520",
-      "title": "Final reality check + Phase 91 evidence collection",
-      "priority": 20,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-04-17T01:41:57Z",
-      "depends_on": [
-        "US-501",
-        "US-502",
-        "US-503",
-        "US-504",
-        "US-505",
-        "US-506",
-        "US-507",
-        "US-508",
-        "US-509",
-        "US-510",
-        "US-511",
-        "US-512",
-        "US-513",
-        "US-514",
-        "US-515",
-        "US-516",
-        "US-517",
-        "US-518",
-        "US-519"
-      ],
-      "description": "The gate on Phase 91 closing. A dedicated reality check + evidence collection pass that independently verifies every one of the 19 prior stories actually shipped the thing it claimed to ship — not just that the validation command returned zero. Produces the phase evidence report at .claude/ralph/reports/phase91_evidence.md. If any story evidence fails independent verification, that story's passes flag reverts to false and Phase 91 does NOT close until re-verified.",
-      "primary_agent": {
-        "name": "Reality Checker",
-        "subagent_type": "testing-reality-checker",
-        "file": ".claude/agents/testing-reality-checker.md"
-      },
-      "supporting_agents": [
-        {
-          "name": "Evidence Collector",
-          "subagent_type": "testing-evidence-collector",
-          "file": ".claude/agents/testing-evidence-collector.md",
-          "role": "Aggregate log excerpts, state.json before/after diffs, strategic_log.md entries, test outputs, and perf report metrics into a single evidence document."
-        },
-        {
-          "name": "Software Architect",
-          "subagent_type": "engineering-software-architect",
-          "file": ".claude/agents/engineering-software-architect.md",
-          "role": "Final architectural review — does the shipped system match the intended design? Are there integration seams that were handwaved? Sign off or block."
-        }
-      ],
-      "forbidden_agents": [
-        "general-purpose"
-      ],
-      "story_guidelines": [
-        "Reality Checker runs the VALIDATION commands for US-501..US-519 fresh, in order, and records each result.",
-        "For each story, Reality Checker ALSO performs one out-of-band check that the validation command did not cover — e.g., for US-505 (kill switch) also confirm the TUI state strip shows HALTED after kill + state.json has halted:true AND survives TUI restart (not just 'kill button closed positions').",
-        "Evidence Collector gathers artifacts into .claude/ralph/reports/phase91_evidence.md: one section per story with (a) validation output, (b) out-of-band check result, (c) log excerpts, (d) state deltas.",
-        "Software Architect signs the cover page of phase91_evidence.md confirming the shipped system matches the phase-level architecture (event bus + state schema + audit log + TUI control surface).",
-        "Phase_completion_signal '<promise>COMPLETE_PHASE_91_SUPERVISOR_CONSOLE</promise>' is ONLY emitted after this story passes — it is the LAST story, it gates the phase.",
-        "If ANY prior story fails the out-of-band check, US-520 stays open, that prior story's passes reverts to false, Ralph re-processes it, and US-520 re-runs when that story is re-confirmed."
-      ],
-      "acceptanceCriteria": [
-        ".claude/ralph/reports/phase91_evidence.md exists with 19 story sections.",
-        "Every section has: validation_command output (stdout/stderr captured), out-of-band check result, log excerpt, state-delta (if applicable).",
-        "Cover page: phase goals vs shipped reality, signed by Software Architect with timestamp.",
-        "Summary table at top: all 19 prior stories show 'REAL' (not 'claimed').",
-        "Any story with 'FAIL' in out-of-band check triggers that story's passes reversion — documented in the evidence report.",
-        "Phase success criteria (20 items in phase_success_criteria block) each have a row in a final table with status + evidence pointer.",
-        "Strategic log entry: 'Phase 91 Supervisor Console — ALL STORIES VERIFIED, PHASE CLOSED' with timestamp, evidence path, and phase_completion_signal reference."
-      ],
-      "validation_commands": [
-        "test -f /Users/buddy/Documents/ml_engine/.claude/ralph/reports/phase91_evidence.md",
-        "cd /Users/buddy/Documents/ml_engine && grep -c '^## US-' .claude/ralph/reports/phase91_evidence.md | awk '{exit !($1 == 19)}'",
-        "cd /Users/buddy/Documents/ml_engine && ! grep -q 'OUT_OF_BAND: FAIL' .claude/ralph/reports/phase91_evidence.md",
-        "cd /Users/buddy/Documents/ml_engine && grep -q 'Phase 91 Supervisor Console — ALL STORIES VERIFIED' .claude/brain/strategic_log.md"
-      ],
-      "definition_of_done": [
-        "All 19 prior stories independently verified REAL.",
-        "Phase success criteria table complete, all green.",
-        "Software Architect cover-page sign-off.",
-        "Reality Checker sign-off.",
-        "Evidence Collector artifact bundle complete.",
-        "Strategic log closing entry written.",
-        "Phase completion signal <promise>COMPLETE_PHASE_91_SUPERVISOR_CONSOLE</promise> is now valid to emit."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-520</promise>"
+      "completion_signal": "<promise>COMPLETE_STORY_US-014</promise>"
     }
-  ],
-  "branchName": "ralph/phase-92-supervisor-console"
+  ]
 }
