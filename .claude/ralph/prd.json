@@ -451,8 +451,8 @@
       "id": "US-010",
       "title": "Empty-state UX — F1 NAV sparkline, F5 expectancy stats, F5 P/L sparkline",
       "priority": 10,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-13T22:06:28Z",
       "depends_on": [],
       "description": "Three empty-state gaps. (B2) src/tui/app.py:1360-1362 F1 NAV sparkline retains stale data when snap.nav_history is empty — no 'no data' indicator. (F1) src/tui/screens/journal_screen.py:22-82 ExpectancyPanel shows 'Best Trade $0.00' in green when no trades exist — green is misleading. (F2) :201-204 P/L sparkline silent on empty journal with no label. All three: when underlying data is empty, render a clear neutral-colored '—' or 'no closed trades yet' placeholder.",
       "primary_agent": {
