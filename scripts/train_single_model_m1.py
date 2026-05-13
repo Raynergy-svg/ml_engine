@@ -233,8 +233,16 @@ def train_transformer(instrument: str, df_feat: pd.DataFrame, params: dict) -> d
     save_dir.mkdir(parents=True, exist_ok=True)
 
     trainer = TransformerDirectionTrainer(cfg)
+    # 2026-05-13 fix: forward w_train/w_val from load_direction_data so the
+    # trainer's `w_train_seq > 0` clear-label filter actually fires. Without
+    # these, create_sequences_with_weights substitutes uniform 1.0 weights
+    # (utils.py:304-307) → 100% of sequences pass the "clear" filter → 60%
+    # unclear (y=0.5) samples leak into Keras binary_accuracy as SHORT and
+    # drag val_accuracy to ~17% with balanced_acc=50% (chance).
     trainer.train(dir_data["X_train"], dir_data["y_train"],
                   dir_data["X_val"], dir_data["y_val"],
+                  w_train=dir_data.get("w_train"),
+                  w_val=dir_data.get("w_val"),
                   feature_names=dir_data.get("feature_names"))
     trainer.save(str(save_dir / "transformer_direction.keras"))
 
@@ -366,7 +374,13 @@ def train_histgb(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
         X_val = X_val.reshape(X_val.shape[0], -1)
 
     trainer = HistGradientBoostingDirectionTrainer(cfg)
-    trainer.train(X_train, dir_data["y_train"], X_val, dir_data["y_val"])
+    # 2026-05-13 fix: forward w_train/w_val so the HistGB trainer can drop
+    # unclear (weight=0) samples. Without these the trainer just predicts
+    # the SHORT majority class → val_accuracy=82%/balanced_acc=50% (the
+    # majority-class-only fingerprint observed in the 2026-05-12 retrain).
+    trainer.train(X_train, dir_data["y_train"], X_val, dir_data["y_val"],
+                  w_train=dir_data.get("w_train"),
+                  w_val=dir_data.get("w_val"))
     trainer.save(str(save_dir / "histgb_direction.pkl"))
 
     metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
