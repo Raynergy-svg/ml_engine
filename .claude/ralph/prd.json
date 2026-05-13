@@ -302,8 +302,8 @@
       "id": "US-006",
       "title": "Require non-empty Reject note in InboxScreen RejectModal",
       "priority": 6,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-13T21:36:07Z",
       "depends_on": [],
       "description": "src/tui/screens/inbox_screen.py:222-239 RejectModal accepts empty rejection note. CLAUDE.md (Phase 96 homework workflow) and runbook line 466 specify the note is mandatory for the heuristic-promotion / RL ingestion pipeline. Empty rejections silently lose feedback signal.",
       "primary_agent": {

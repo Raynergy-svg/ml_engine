@@ -214,6 +214,12 @@ class RejectModal(ModalScreen[Optional[str]]):
     #reject-cancel-btn {
         margin: 0 1;
     }
+
+    #reject-validation {
+        color: #ff3158;
+        padding: 0 0 0 0;
+        height: 1;
+    }
     """
 
     def __init__(self, proposal_key: str) -> None:
@@ -225,16 +231,32 @@ class RejectModal(ModalScreen[Optional[str]]):
             yield Label(f"✗ Reject '{self._proposal_key}'", id="reject-title")
             yield Label("Reason for rejection:", id="reject-prompt")
             yield Input(placeholder="e.g. bounds too aggressive", id="reject-input", max_length=256)
+            yield Label("", id="reject-validation")
             with Horizontal(id="reject-buttons"):
-                yield Button("✕ Reject", id="reject-confirm", variant="error")
+                yield Button("✕ Reject", id="reject-confirm", variant="error", disabled=True)
                 yield Button("← Back", id="reject-cancel-btn", variant="default")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        btn = self.query_one("#reject-confirm", Button)
+        btn.disabled = not event.value.strip()
+        if event.value.strip():
+            self.query_one("#reject-validation", Label).update("")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self._try_submit()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "reject-confirm":
-            reason = self.query_one("#reject-input", Input).value or "(no reason)"
-            self.dismiss(reason)
+            self._try_submit()
         elif event.button.id == "reject-cancel-btn":
             self.dismiss(None)
+
+    def _try_submit(self) -> None:
+        note = self.query_one("#reject-input", Input).value.strip()
+        if not note:
+            self.query_one("#reject-validation", Label).update("note required")
+            return
+        self.dismiss(note)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
