@@ -714,13 +714,13 @@ class ConfigScreen(Container):
 
             history_table.add_row(ts_text, status_text, field_text, old_text, new_text, source_text)
 
-        # If no entries, show a placeholder row
+        # If no entries, show a placeholder row.
+        # Must match the 6-column schema: Timestamp | Status | Field | Old | New | Source.
         if not recent:
             history_table.add_row(
                 Text("---", style=_DIM),
                 Text("---", style=_DIM),
                 Text("No config proposals recorded", style=_DIM),
-                Text("---", style=_DIM),
                 Text("---", style=_DIM),
                 Text("---", style=_DIM),
                 Text("---", style=_DIM),

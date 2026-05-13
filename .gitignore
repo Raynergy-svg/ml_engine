@@ -216,6 +216,7 @@ trained_data/model_routing_log.json
 trained_data/module_activation_log.json
 trained_data/observation_consumer_log.json
 trained_data/observations.jsonl
+trained_data/adaptive_sizer_state.json
 trained_data/pair_accuracy.json
 trained_data/pair_regime_agent_matrix_log.json
 trained_data/regime_reward_log.json

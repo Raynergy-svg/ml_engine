@@ -16,15 +16,20 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Dict, Any
-from unittest.mock import MagicMock
-import sys
 
 import numpy as np
 import pytest
 
-# Mock TensorFlow before importing callbacks
-sys.modules['tensorflow'] = MagicMock()
-
+# Note: previously this file had `sys.modules['tensorflow'] = MagicMock()` at
+# module load to avoid needing real tensorflow in CI. That mock leaked into
+# every other test that pytest collected after this one — when any subsequent
+# test imported a module needing real tensorflow (e.g. transformer_trainer's
+# @register_keras_serializable decorator), the cached Mock raised
+# `AttributeError: Mock object has no attribute '__name__'`. With requirements.txt
+# now installed in CI, tensorflow is available natively. None of the 3 classes
+# tested below (ReplayBuffer, DriftDetector, TrainingLineage) use `tf.` —
+# verified by grep — so dropping the mock has no behavioral effect on these
+# tests but unblocks every other test downstream.
 from src.training.trainers.callbacks import (
     ReplayBuffer,
     DriftDetector,
