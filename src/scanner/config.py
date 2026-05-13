@@ -1082,6 +1082,12 @@ class ScannerConfig:
     # --- Pre-Trade Veto Window (US-511) ---
     veto_window_ms_default: int = 0  # 0 = disabled; 1-5000ms hold before execution
     veto_window_ms_per_pair: Dict[str, int] = field(default_factory=dict)  # pair-specific overrides
+    # US-004: TUI-side countdown banner duration (seconds). Read by the
+    # signal.pending subscriber in BuddyApp.on_mount to drive
+    # _start_veto_countdown. Independent from veto_window_ms_default —
+    # the broker side controls the actual veto hold; this controls how
+    # long the operator sees the abort-countdown banner.
+    pre_trade_veto_seconds: int = 5
 
     # --- Autonomous Performance-Driven PRD Generation (Ralph Trigger) ---
     enable_auto_ralph: bool = True  # Auto-generate PRD stories from performance gaps
