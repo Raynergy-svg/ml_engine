@@ -50,6 +50,34 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _apply_atr_to_trades(
+    trades: "list[TradeRow]",
+    atr_by_instrument: "dict[str, float] | None",
+) -> None:
+    """Pipe per-pair ATR (pips) onto live trades.
+
+    US-002: TradeRow.pair is OANDA-display style ("EUR/USD"); ScanResult
+    keys are OANDA-instrument style ("EUR_USD"). Normalise on lookup so
+    both forms hit the same dict entry. Non-positive / missing values
+    leave trade.live_atr_pips untouched so the drill-down keeps showing
+    "—" rather than a misleading 0.0.
+    """
+    if not atr_by_instrument or not trades:
+        return
+    lookup = dict(atr_by_instrument)
+    for tr in trades:
+        key = (tr.pair or "").replace("/", "_")
+        atr = lookup.get(key)
+        if atr is None:
+            continue
+        try:
+            atr_f = float(atr)
+        except (TypeError, ValueError):
+            continue
+        if atr_f > 0.0:
+            tr.live_atr_pips = atr_f
+
+
 @dataclass
 class TradeRow:
     """Simplified trade for display in the TUI DataTable."""
@@ -61,6 +89,19 @@ class TradeRow:
     tp_price: float
     quantity: float
     trade_id: str = ""
+    # Live OANDA spread in pips for this instrument. None when the pricing
+    # call hasn't succeeded yet (cold start, network failure, OANDA error).
+    # The drill-down renders "—" instead of a synthetic placeholder when None
+    # — never substitute a fake value, the operator's flatten decision may
+    # depend on this.
+    live_spread_pips: float | None = None
+    # Latest scanner-computed ATR (pips) for this instrument. Populated
+    # in refresh() from ScanEnrichment.atr_value (per-pair dict, last
+    # successful scan). None when the scanner hasn't reported ATR for the
+    # instrument yet — drill-down renders "—" (US-002: NEVER back-derive
+    # ATR from SL distance; SL is derived from ATR upstream, so the
+    # circular fallback hid model behaviour).
+    live_atr_pips: float | None = None
 
 
 @dataclass
@@ -285,6 +326,13 @@ class DataProvider:
             )
             snap.config_values = dict(getattr(enrichment, "config_values", {}) or {})
 
+            # US-002: pipe per-pair ATR onto the broker-built trades so the
+            # drill-down can read trade.live_atr_pips.
+            _apply_atr_to_trades(
+                snap.trades,
+                getattr(enrichment, "atr_value", None),
+            )
+
         # ── NAV History (deque is thread-safe + auto-bounded) ──
         if snap.nav > 0:
             self._nav_history.append(snap.nav)
@@ -329,8 +377,24 @@ class DataProvider:
                 logger.warning("Broker client not initialized, skipping trade refresh")
                 return snap
             raw_trades = client.get_trades(state="OPEN", count=50)
+            open_dicts = raw_trades.get("trades", [])
+
+            # Fetch live spreads for every open instrument in ONE pricing call
+            # so the drill-down panel shows real bid/ask spread (NOT a random
+            # placeholder). pip_size is 0.01 for JPY pairs, 0.0001 otherwise.
+            # Underlying _request already enforces (5s connect, 30s read)
+            # timeout + exponential backoff on 5xx/timeout via _should_retry.
+            instruments_set: set[str] = {
+                str(d.get("instrument", ""))
+                for d in open_dicts
+                if d.get("instrument")
+            }
+            spreads_by_instrument: dict[str, float] = (
+                self._fetch_live_spreads_pips(client, instruments_set)
+            )
+
             trades = []
-            for trade_dict in raw_trades.get("trades", []):
+            for trade_dict in open_dicts:
                 instrument = trade_dict.get("instrument", "")
                 units = float(trade_dict.get("currentUnits", trade_dict.get("initialUnits", 0)))
                 direction = "BUY" if units > 0 else "SELL"
@@ -350,12 +414,72 @@ class DataProvider:
                     tp_price=tp,
                     quantity=abs(units),
                     trade_id=str(trade_dict.get("id", "")),
+                    live_spread_pips=spreads_by_instrument.get(instrument),
                 ))
             snap.trades = trades
         except Exception as e:
             logger.warning(f"Trades refresh failed: {e}")
             snap.last_error = f"Trades: {e}"
         return snap
+
+    @staticmethod
+    def _fetch_live_spreads_pips(
+        client: Any, instruments: set[str]
+    ) -> dict[str, float]:
+        """Fetch live bid/ask spreads (in pips) for the given OANDA instruments.
+
+        Uses a single /v3/accounts/{id}/pricing call (comma-separated
+        instruments). The underlying _request enforces (5s connect, 30s read)
+        timeout and 3-attempt exponential backoff on 5xx + timeouts already.
+
+        Returns a dict keyed by OANDA instrument symbol (e.g. ``"EUR_USD"``).
+        Instruments that fail to parse are simply omitted — callers must
+        treat a missing key as "no live spread available" and render the
+        TUI placeholder (NEVER substitute a fake number).
+        """
+        if not instruments:
+            return {}
+
+        try:
+            payload = client.get_pricing(
+                instruments=",".join(sorted(instruments))
+            )
+        except Exception as e:
+            logger.warning(f"OANDA pricing fetch failed: {e}")
+            return {}
+
+        result: dict[str, float] = {}
+        prices = (payload or {}).get("prices") or []
+        if not isinstance(prices, list):
+            return {}
+
+        for price in prices:
+            if not isinstance(price, dict):
+                continue
+            instrument = str(price.get("instrument", ""))
+            if not instrument:
+                continue
+            try:
+                bids = price.get("bids") or []
+                asks = price.get("asks") or []
+                if not bids or not asks:
+                    continue
+                bid = float(bids[0].get("price", 0.0))
+                ask = float(asks[0].get("price", 0.0))
+            except (TypeError, ValueError, AttributeError, IndexError):
+                continue
+
+            if bid <= 0 or ask <= 0 or ask < bid:
+                continue
+
+            # JPY pairs use pip_size = 0.01; all others use 0.0001.
+            pip_size = 0.01 if instrument.endswith("_JPY") else 0.0001
+            spread_pips = (ask - bid) / pip_size
+            if not math.isfinite(spread_pips) or spread_pips < 0:
+                continue
+            result[instrument] = float(spread_pips)
+
+        return result
 
     def _refresh_candles(self, snap: DashboardSnapshot) -> DashboardSnapshot:
         """Fetch MTF candle data for sparklines."""

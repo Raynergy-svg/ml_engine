@@ -11,7 +11,6 @@ Drop-in replacement for PlaceholderContent in the Trades TabPane.
 from __future__ import annotations
 
 import logging
-import random
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -105,9 +104,20 @@ class DrillDownPanel(Static):
         self._candles_h1: list[float] = []
         self._confidence: float = 0.0
         self._rr_ratio: float = 0.0
-        self._regime: str = "NORMAL"
-        self._spread: float = 0.0
-        self._atr: float = 0.0
+        # None means "live regime probe hasn't reported yet" — renderer
+        # shows "—". NEVER fall back to a hardcoded "NORMAL" literal
+        # (US-002): the regime drives sl_mult, weight-table routing, and
+        # uncertainty thresholds; showing a fake regime would mask state
+        # the operator's decisions depend on.
+        self._regime: str | None = None
+        # None means "no live spread available" — renderer shows "—".
+        # NEVER replace None with a synthetic float; operator's flatten
+        # decisions in LIVE mode depend on real broker spread.
+        self._spread: float | None = None
+        # None means "no scanner ATR available yet" — renderer shows "—".
+        # NEVER back-derive from SL distance: SL is derived from ATR
+        # upstream so the fallback was circular (US-002).
+        self._atr: float | None = None
 
     def set_trade(
         self,
@@ -116,9 +126,9 @@ class DrillDownPanel(Static):
         candles_h1: list[float] | None = None,
         confidence: float = 0.0,
         rr_ratio: float = 0.0,
-        regime: str = "NORMAL",
-        spread: float = 0.0,
-        atr: float = 0.0,
+        regime: str | None = None,
+        spread: float | None = None,
+        atr: float | None = None,
     ) -> None:
         self._trade = trade
         self._agent_scores = agent_scores or []
@@ -175,13 +185,30 @@ class DrillDownPanel(Static):
 
         # -- Row 3: ATR, Regime, Spread --
         t.append("  ATR: ", style=_DIM)
-        t.append(f"{self._atr:.1f} pips", style=_TEXT)
+        if self._atr is None:
+            # No scanner ATR available — render em-dash placeholder.
+            # The previous `sl_dist * 10000` math was circular (SL is
+            # derived from ATR upstream) and produced misleading numbers.
+            t.append("—", style=_DIM)
+        else:
+            t.append(f"{self._atr:.1f} pips", style=_TEXT)
         t.append("  │  ", style=_BORDER)
         t.append("Regime: ", style=_DIM)
-        t.append(f"{self._regime}", style=f"bold {_DATA}")
+        if self._regime is None:
+            # No live regime from _LiveRegimeProbe — render em-dash.
+            # NEVER fall back to "NORMAL" (US-002): hardcoded regime
+            # masks the actual state driving sl_mult / weight routing.
+            t.append("—", style=_DIM)
+        else:
+            t.append(f"{self._regime}", style=f"bold {_DATA}")
         t.append("  │  ", style=_BORDER)
         t.append("Spread: ", style=_DIM)
-        t.append(f"{self._spread:.1f} pips", style=_TEXT)
+        if self._spread is None:
+            # Render em-dash placeholder when live pricing unavailable —
+            # NEVER fall back to a synthetic number (US-001).
+            t.append("—", style=_DIM)
+        else:
+            t.append(f"{self._spread:.1f} pips", style=_TEXT)
         t.append("\n\n")
 
         # -- Agent Breakdown --
@@ -517,15 +544,37 @@ class TradesScreen(Container):
             total_score = sum(a.get("score", 0.0) for a in self._agent_scores)
             confidence = total_score / len(self._agent_scores) if self._agent_scores else 0.0
 
+        # US-002: resolve regime via the same probe agents_screen uses
+        # (microstructure_regime.json → ewma_correlation_state.json).
+        # Probe failure → None → panel renders "—". NEVER fall back to a
+        # hardcoded "NORMAL" literal: the regime drives sl_mult, weight
+        # routing, and uncertainty thresholds; faking it masks state the
+        # operator depends on.
+        live_regime: str | None = None
+        try:
+            from src.scanner.automation.meta_manager import _LiveRegimeProbe
+            live_regime = _LiveRegimeProbe().current()
+        except Exception as probe_err:
+            logger.debug("Live regime probe failed in drill-down: %s", probe_err)
+
         panel.set_trade(
             trade=trade,
             agent_scores=self._agent_scores,
             candles_h1=self._candles_h1,
             confidence=confidence,
             rr_ratio=rr,
-            regime="NORMAL",
-            spread=random.uniform(0.8, 2.5),
-            atr=sl_dist * 10000 if sl_dist < 1 else sl_dist,  # rough ATR from SL
+            regime=live_regime,
+            # Live OANDA spread, or None when the pricing call hasn't
+            # succeeded yet (cold start, network failure, broker error).
+            # The panel renders "—" for None. NEVER substitute a fake
+            # value — US-001 removed the synthetic randomized placeholder.
+            spread=trade.live_spread_pips,
+            # US-002: per-pair ATR piped from ScanEnrichment.atr_value via
+            # DataProvider.refresh(). None when no scan has reported ATR
+            # for this instrument yet — panel renders "—". NEVER
+            # back-derive from sl_dist: SL is derived from ATR upstream
+            # so the fallback was circular.
+            atr=trade.live_atr_pips,
         )
 
     def _clear_drilldown(self) -> None:

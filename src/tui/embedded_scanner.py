@@ -140,6 +140,13 @@ class ScanEnrichment:
     config_profile: str = "smart"
     config_values: dict = field(default_factory=dict)
 
+    # US-002: Per-instrument ATR (pips) from the last scan cycle. Keyed by
+    # OANDA instrument symbol (e.g. ``"EUR_USD"``). DataProvider.refresh()
+    # pipes these into TradeRow.live_atr_pips during _refresh_trades so the
+    # drill-down can show real model-driven ATR instead of the previous
+    # back-derived ``sl_dist * 10000`` fake.
+    atr_value: dict = field(default_factory=dict)
+
 
 class EmbeddedScanner:
     """Bridge between the Scanner engine and the Textual TUI.
@@ -1195,6 +1202,18 @@ class EmbeddedScanner:
         )
         enrichment.config_profile = str(getattr(self._config, "profile", "smart") or "smart")
         enrichment.config_values = self._snapshot_config_values()
+
+        # US-002: per-instrument ATR (pips) — feeds TradeRow.live_atr_pips in
+        # DataProvider.refresh(). Skip rows where atr_pips is missing or
+        # non-positive (cold start / failed analysis) so the drill-down
+        # renders the "—" placeholder rather than a misleading 0.0.
+        atr_by_instrument: dict[str, float] = {}
+        for pa in result.analyses or []:
+            pair = getattr(pa, "pair", "") or ""
+            atr = float(getattr(pa, "atr_pips", 0.0) or 0.0)
+            if pair and atr > 0.0:
+                atr_by_instrument[pair] = atr
+        enrichment.atr_value = atr_by_instrument
 
         # ── Agent scores from scan results ─────────────────────
         # Aggregate agent data across all directional analyses
