@@ -338,8 +338,8 @@
       "id": "US-007",
       "title": "Wire JournalScreen DataTable row-selected handler to GateTraceModal",
       "priority": 7,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-13T21:42:09Z",
       "depends_on": [],
       "description": "src/tui/screens/journal_screen.py:177 maintains self._row_trade_ids (`parallel to journal-table rows for gate-trace lookup`) but there is no on_data_table_row_selected handler that pushes GateTraceModal. F3 Trades has this; F5 Journal does not. Runbook §6 + §9 incident-response checklist says 'Read the gate trace for the last trade that opened before the kill' — currently requires switching to F3 and finding the row, which is awkward post-kill (trades are flat). Mirror the trades_screen.py:409-437 pattern.",
       "primary_agent": {

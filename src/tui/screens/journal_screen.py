@@ -386,7 +386,12 @@ class JournalScreen(Container):
         from src.tui.screens.gate_trace_modal import GateTraceModal
 
         row_idx = event.cursor_row
-        if 0 <= row_idx < len(self._row_trade_ids):
-            tid = self._row_trade_ids[row_idx]
-            if tid:
-                self.app.push_screen(GateTraceModal(trade_id=tid))
+        tid = (
+            self._row_trade_ids[row_idx]
+            if 0 <= row_idx < len(self._row_trade_ids)
+            else ""
+        )
+        if tid:
+            self.app.push_screen(GateTraceModal(trade_id=tid))
+        else:
+            self.app.notify("gate trace unavailable for this trade", severity="warning")
