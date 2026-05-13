@@ -374,8 +374,8 @@
       "id": "US-008",
       "title": "F9 Jobs screen — replace silent ImportError swallow with visible toast",
       "priority": 8,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-13T21:48:48Z",
       "depends_on": [],
       "description": "src/tui/app.py:1539-1560 _open_jobs_screen swallows ImportError + OSError + ValueError with bare-style `return` — operator presses F9 and nothing happens, no notify, no brain-log entry. Looks broken. Replace bare swallow with self.notify('Jobs screen unavailable: {reason}', severity='warning') + brain-feed line.",
       "primary_agent": {

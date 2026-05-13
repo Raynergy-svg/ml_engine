@@ -1627,14 +1627,26 @@ class BuddyApp(App):
         try:
             from src.tui.screens.jobs_screen import JobsScreen
             from src.scanner.automation.scheduled_jobs import ScheduledJobsRegistry
-        except ImportError as e:
-            logger.error("F9 Jobs screen: import failed: %s", e)
+        except ImportError as exc:
+            msg = f"Jobs screen unavailable: {exc}"
+            logger.error("F9 Jobs screen: import failed: %s", exc)
+            self.notify(msg, severity="warning")
+            self._write_brain(f"[yellow]⚠ F9 Jobs: import failed: {exc}[/]")
             return
         try:
             registry = ScheduledJobsRegistry()
             registry.load()
-        except (OSError, ValueError) as e:
-            logger.error("F9 Jobs screen: registry load failed: %s", e)
+        except OSError as exc:
+            msg = f"Jobs screen unavailable: {exc}"
+            logger.error("F9 Jobs screen: registry OS error: %s", exc)
+            self.notify(msg, severity="warning")
+            self._write_brain(f"[yellow]⚠ F9 Jobs: registry OS error: {exc}[/]")
+            return
+        except ValueError as exc:
+            msg = f"Jobs screen unavailable: {exc}"
+            logger.error("F9 Jobs screen: registry value error: %s", exc)
+            self.notify(msg, severity="warning")
+            self._write_brain(f"[yellow]⚠ F9 Jobs: registry value error: {exc}[/]")
             return
         self.push_screen(JobsScreen(registry=registry))
 
