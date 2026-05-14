@@ -14,6 +14,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 
 def _safe_float(v, default: float = 0.0) -> float:
@@ -48,6 +49,67 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+# US-011: backoff schedule for OANDA auto-reconnect on transient disconnect.
+# Schedule: 5s after 1st failed attempt, 10s after 2nd, 30s after 3rd, then
+# 60s capped indefinitely. Reset to 0 on successful reconnect.
+_RECONNECT_BACKOFF_SCHEDULE: tuple[int, ...] = (5, 10, 30, 60)
+_RECONNECT_BACKOFF_CAP_SECONDS: int = 60
+_BRAIN_FEED_MAX_BYTES: int = 5 * 1024 * 1024
+
+
+def _next_reconnect_delay_seconds(attempts_so_far: int) -> int:
+    """Delay (in seconds) before the next reconnect attempt.
+
+    ``attempts_so_far`` is the count of FAILED attempts INCLUDING the one
+    that just failed. Schedule produces 5s/10s/30s/60s for attempts 1-4
+    and clamps at 60s for attempt 5+.
+    """
+    if attempts_so_far <= 0:
+        return _RECONNECT_BACKOFF_SCHEDULE[0]
+    idx = min(attempts_so_far - 1, len(_RECONNECT_BACKOFF_SCHEDULE) - 1)
+    return _RECONNECT_BACKOFF_SCHEDULE[idx]
+
+
+def _emit_brain_feed_line(project_root: Path, msg: str) -> None:
+    """Append ``msg`` to ``<project_root>/.claude/brain/feed.jsonl`` as JSONL.
+
+    Mirrors :func:`src.tui.app._tee_brain_to_disk` for background threads.
+    DataProvider runs in a Worker thread, so we can't reuse the TUI helper
+    (which assumes Textual app context). Best-effort: any OSError is
+    swallowed so a missing/full disk never breaks the refresh loop.
+    """
+    feed_path = project_root / ".claude" / "brain" / "feed.jsonl"
+    try:
+        feed_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+
+    try:
+        if feed_path.exists() and feed_path.stat().st_size > _BRAIN_FEED_MAX_BYTES:
+            rotated = feed_path.with_suffix(".jsonl.1")
+            try:
+                rotated.unlink()
+            except FileNotFoundError:
+                pass
+            feed_path.rename(rotated)
+    except OSError:
+        pass
+
+    line = json.dumps(
+        {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "msg": msg,
+            "raw": msg,
+        },
+        ensure_ascii=False,
+    )
+    try:
+        with feed_path.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        return
 
 
 def _apply_atr_to_trades(
@@ -198,7 +260,11 @@ class DataProvider:
 
     def __init__(self, project_root: str | None = None) -> None:
         self._project_root = Path(project_root or os.getcwd())
-        self._broker = None
+        # ``OandaBroker`` import is deferred to keep test imports cheap and to
+        # avoid a hard dependency on the broker module at TUI startup. ``Any``
+        # is the honest annotation here — the field carries either ``None`` or
+        # a real :class:`OandaBroker` instance after :meth:`connect`.
+        self._broker: Any = None
         self._lock = threading.Lock()
         self._snapshot = DashboardSnapshot()
         self._nav_history: collections.deque[float] = collections.deque(maxlen=60)
@@ -206,12 +272,27 @@ class DataProvider:
         self._scan_count = 0
         # Scan enrichment overlay (set by EmbeddedScanner after each cycle)
         self._scan_enrichment = None  # ScanEnrichment | None
+        # US-011: auto-reconnect state. ``_reconnect_attempts`` counts failed
+        # tries since the last successful connect; ``_next_reconnect_at`` gates
+        # the retry cadence (refresh() refuses to retry before this deadline).
+        self._reconnect_attempts: int = 0
+        self._next_reconnect_at: datetime = datetime.now(timezone.utc)
 
     @property
     def snapshot(self) -> DashboardSnapshot:
         """Return the latest snapshot (thread-safe read)."""
         with self._lock:
             return self._snapshot
+
+    @property
+    def oanda_connected(self) -> bool:
+        """Whether the OANDA broker is currently flagged connected.
+
+        Exposed as the public contract surface for US-011 — flips False when
+        a refresh-path API call raises (so the next refresh enters the
+        reconnect-with-backoff branch) and True on a verified reconnect.
+        """
+        return self._connected
 
     def get_snapshot(self) -> DashboardSnapshot:
         """Compatibility accessor for call sites that predate the property."""
@@ -242,11 +323,64 @@ class DataProvider:
             nav = self._broker.get_nav()
             logger.info(f"OANDA connected — NAV: ${nav:,.2f}")
             self._connected = True
+            # US-011: clean slate for the backoff state on successful connect.
+            self._reconnect_attempts = 0
+            self._next_reconnect_at = datetime.now(timezone.utc)
             return True
         except Exception as e:
             logger.warning(f"OANDA connection failed: {e}")
             self._connected = False
             return False
+
+    def _maybe_attempt_reconnect(self) -> None:
+        """US-011: try to revive a dead OANDA connection with backoff.
+
+        Called at the top of ``refresh()``. When the broker is flagged
+        disconnected AND ``now() >= self._next_reconnect_at``, attempts a
+        verified reconnect (``connect()`` + ``get_nav()``). On success,
+        clears attempt counter and emits an ``OANDA reconnected`` INFO line.
+        On failure, increments the counter, schedules the next attempt per
+        the backoff schedule (5s, 10s, 30s, 60s, 60s ...), and emits an INFO
+        line carrying the attempt number and next-retry delay.
+        """
+        if self._connected:
+            return
+        now = datetime.now(timezone.utc)
+        if now < self._next_reconnect_at:
+            return
+
+        attempt = self._reconnect_attempts + 1
+        try:
+            if self._broker is None:
+                from src.brokers.oanda import OandaBroker
+                self._broker = OandaBroker.from_env()
+            self._broker.connect()
+            # connect() is a no-op on the REST broker — verify with a real call.
+            nav = self._broker.get_nav()
+        except Exception as e:
+            self._reconnect_attempts = attempt
+            delay = _next_reconnect_delay_seconds(attempt)
+            self._next_reconnect_at = now + timedelta(seconds=delay)
+            msg = (
+                f"OANDA reconnect attempt {attempt} failed: {e}; "
+                f"retry in {delay}s"
+            )
+            logger.info(msg)
+            _emit_brain_feed_line(self._project_root, msg)
+            return
+
+        # Success.
+        self._connected = True
+        self._reconnect_attempts = 0
+        self._next_reconnect_at = now
+        attempt_msg = (
+            f"OANDA reconnect attempt {attempt} succeeded (next delay 0s)"
+        )
+        logger.info(attempt_msg)
+        _emit_brain_feed_line(self._project_root, attempt_msg)
+        success_msg = f"OANDA reconnected — NAV: ${nav:,.2f}"
+        logger.info(success_msg)
+        _emit_brain_feed_line(self._project_root, success_msg)
 
     def refresh(self) -> DashboardSnapshot:
         """Refresh all data from live sources.
@@ -256,6 +390,10 @@ class DataProvider:
 
         Returns the new snapshot.
         """
+        # US-011: try to revive a dead OANDA connection BEFORE we use it.
+        # No-op when self._connected is True or the backoff gate hasn't elapsed.
+        self._maybe_attempt_reconnect()
+
         with self._lock:
             previous = self._snapshot
 
@@ -362,6 +500,11 @@ class DataProvider:
             logger.warning(f"Account refresh failed: {e}")
             snap.last_error = f"Account: {e}"
             snap.oanda_connected = False
+            # US-011: a failed account call is the signal that the broker
+            # client is dead. Flip the connection flag so the next refresh()
+            # enters the reconnect-with-backoff branch instead of pointlessly
+            # re-calling get_account_summary() against the same dead client.
+            self._connected = False
         return snap
 
     def _refresh_trades(self, snap: DashboardSnapshot) -> DashboardSnapshot:

@@ -4,114 +4,84 @@
   "description": "Hot-state memory for the PRD improvement loop. Written by Ralph/user as stories complete. Read by scheduled sweep and chain agents.",
   "current_prd": {
     "file": ".claude/ralph/prd.json",
-    "phase": "ralph/phase-92-supervisor-console",
-    "total_stories": 20,
-    "passed_stories": 20,
+    "phase": "ralph/tui-audit-2026-05-13",
+    "total_stories": 14,
+    "passed_stories": 11,
     "story_status": {
-      "US-501": {
+      "US-001": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Foundation: state.json schema extension + in-process event bus"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Replace random.uniform spread fake in TradesDrillDown with live OANDA spread"
       },
-      "US-502": {
+      "US-002": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Scanner respects halted / paused / mode state flags"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Replace hardcoded regime + back-derived ATR in TradesDrillDown with live values"
       },
-      "US-503": {
+      "US-003": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Flatten-all routine in ExecutionManager (panic-button backend)"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Add AbortConfirmModal to action_supervisor_abort"
       },
-      "US-504": {
+      "US-004": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "TUI: global hotkeys + Overview state strip (visual baseline for supervisor mode)"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Wire _start_veto_countdown to event_bus.signal.pending subscription"
       },
-      "US-505": {
+      "US-005": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Kill switch wired end-to-end (hotkey K \u2192 confirmation modal \u2192 flatten_all)"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Narrow global a/c/r BINDINGS so screen-local hotkeys take precedence"
       },
-      "US-506": {
+      "US-006": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Pause/Resume wired end-to-end (hotkey Space \u2192 toggle scanner_paused)"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Require non-empty Reject note in InboxScreen RejectModal"
       },
-      "US-507": {
+      "US-007": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Mode toggle dry-run\u2194live (hotkey M \u2192 confirmation for dry\u2192live, immediate for li"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Wire JournalScreen DataTable row-selected handler to GateTraceModal"
       },
-      "US-508": {
+      "US-008": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Adjustment proposal interceptor + ScannerConfig field validator (retire silent s"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "F9 Jobs screen \u2014 replace silent ImportError swallow with visible toast"
       },
-      "US-509": {
+      "US-009": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Adjustment Inbox TUI screen (F2) \u2014 the killer feature"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Diagnostics screen \u2014 fix stale TCN/Ridge/RF strings and add psutil-missing banne"
       },
-      "US-510": {
+      "US-010": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Per-trade close action on Trades screen (select row \u2192 C \u2192 confirm \u2192 market-close"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "Empty-state UX \u2014 F1 NAV sparkline, F5 expectancy stats, F5 P/L sparkline"
       },
-      "US-511": {
+      "US-011": {
         "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Pre-trade veto window (signal.pending \u2192 configurable hold \u2192 operator A key abort"
+        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "title": "data_provider \u2014 OANDA auto-reconnect on transient disconnect"
       },
-      "US-512": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Gate trace panel (any signal \u2192 12 agent votes + 3 gates + R:R + regime visible)"
+      "US-012": {
+        "passed": false,
+        "completed_at": null,
+        "title": "ConfigScreen \u2014 add keyboard BINDINGS for stage/queue/reset"
       },
-      "US-513": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Model staleness banner + enforce uncertainty hard-block threshold tightening"
+      "US-013": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Inbox approve-all \u2014 move to Textual @work worker with progress indicator"
       },
-      "US-514": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Rules / Learnings / Brain Viewer \u2014 searchable read-only window into Buddy's reas"
-      },
-      "US-515": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Agent Weight Inspector \u2014 RL state + delta tracking for the 12-agent team"
-      },
-      "US-516": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Integration test harness \u2014 end-to-end Supervisor Console smoke across all Tier-1"
-      },
-      "US-517": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Security + Code review gate \u2014 full sweep across all Phase 91 modules"
-      },
-      "US-518": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Performance benchmark \u2014 TUI refresh under scanner load"
-      },
-      "US-519": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Operator runbook + documentation \u2014 docs/supervisor_console_runbook.md"
-      },
-      "US-520": {
-        "passed": true,
-        "completed_at": "2026-05-13T10:00:23.110211+00:00",
-        "title": "Final reality check + Phase 91 evidence collection"
+      "US-014": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Add --live CLI flag and OANDA-creds auto-detect to src/tui/app.py:run()"
       }
     },
-    "last_story_completed": "US-501",
-    "last_updated": "2026-05-13T10:00:23.110211+00:00",
-    "all_complete": true
+    "last_story_completed": "US-001",
+    "last_updated": "2026-05-14T00:52:38.900179+00:00",
+    "all_complete": false
   },
   "loop_history": {
     "total_phases_completed": 29,

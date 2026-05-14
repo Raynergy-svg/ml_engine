@@ -120,3 +120,128 @@ Started: Wed May 13 11:53:18 EDT 2026
 [INFO] Marked story US-010 as complete
 [2026-05-13 18:06:30] Iteration 9: Progress 10/14 complete, 4 pending
 [2026-05-13 18:06:30] Processing story: US-011 - data_provider — OANDA auto-reconnect on transient disconnect [model: claude-opus-4-7]
+[INFO] Marked story US-011 as complete
+[2026-05-13 18:11:57] Iteration 10: Progress 11/14 complete, 3 pending
+[2026-05-13 18:11:57] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:12:31] Story US-012 attempt made, not yet complete
+[2026-05-13 18:12:33] Iteration 11: Progress 11/14 complete, 3 pending
+[2026-05-13 18:12:34] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:12:45] Story US-012 attempt made, not yet complete
+[2026-05-13 18:12:47] Iteration 12: Progress 11/14 complete, 3 pending
+[2026-05-13 18:12:47] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:12:58] Story US-012 attempt made, not yet complete
+[2026-05-13 18:13:00] Iteration 13: Progress 11/14 complete, 3 pending
+[2026-05-13 18:13:00] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:13:11] Story US-012 attempt made, not yet complete
+[2026-05-13 18:13:13] Iteration 14: Progress 11/14 complete, 3 pending
+[2026-05-13 18:13:13] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:13:24] Story US-012 attempt made, not yet complete
+[2026-05-13 18:13:26] Iteration 15: Progress 11/14 complete, 3 pending
+[2026-05-13 18:13:26] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:13:37] Story US-012 attempt made, not yet complete
+[2026-05-13 18:13:39] Iteration 16: Progress 11/14 complete, 3 pending
+[2026-05-13 18:13:39] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:13:51] Story US-012 attempt made, not yet complete
+[2026-05-13 18:13:53] Iteration 17: Progress 11/14 complete, 3 pending
+[2026-05-13 18:13:53] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:14:03] Story US-012 attempt made, not yet complete
+[2026-05-13 18:14:05] Iteration 18: Progress 11/14 complete, 3 pending
+[2026-05-13 18:14:05] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:14:17] Story US-012 attempt made, not yet complete
+[2026-05-13 18:14:19] Iteration 19: Progress 11/14 complete, 3 pending
+[2026-05-13 18:14:19] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:14:29] Story US-012 attempt made, not yet complete
+[2026-05-13 18:14:31] Iteration 20: Progress 11/14 complete, 3 pending
+[2026-05-13 18:14:31] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:14:43] Story US-012 attempt made, not yet complete
+[2026-05-13 18:14:45] Iteration 21: Progress 11/14 complete, 3 pending
+[2026-05-13 18:14:45] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:14:57] Story US-012 attempt made, not yet complete
+[2026-05-13 18:14:59] Iteration 22: Progress 11/14 complete, 3 pending
+[2026-05-13 18:14:59] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:15:10] Story US-012 attempt made, not yet complete
+[2026-05-13 18:15:12] Iteration 23: Progress 11/14 complete, 3 pending
+[2026-05-13 18:15:12] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:15:23] Story US-012 attempt made, not yet complete
+[2026-05-13 18:15:25] Iteration 24: Progress 11/14 complete, 3 pending
+[2026-05-13 18:15:26] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:15:37] Story US-012 attempt made, not yet complete
+[2026-05-13 18:15:39] Iteration 25: Progress 11/14 complete, 3 pending
+[2026-05-13 18:15:39] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:15:50] Story US-012 attempt made, not yet complete
+[2026-05-13 18:15:52] Iteration 26: Progress 11/14 complete, 3 pending
+[2026-05-13 18:15:53] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:16:03] Story US-012 attempt made, not yet complete
+[2026-05-13 18:16:05] Iteration 27: Progress 11/14 complete, 3 pending
+[2026-05-13 18:16:05] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:16:16] Story US-012 attempt made, not yet complete
+[2026-05-13 18:16:18] Iteration 28: Progress 11/14 complete, 3 pending
+[2026-05-13 18:16:18] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:16:29] Story US-012 attempt made, not yet complete
+[2026-05-13 18:16:31] Iteration 29: Progress 11/14 complete, 3 pending
+[2026-05-13 18:16:31] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:16:42] Story US-012 attempt made, not yet complete
+[2026-05-13 18:16:45] Iteration 30: Progress 11/14 complete, 3 pending
+[2026-05-13 18:16:45] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:16:55] Story US-012 attempt made, not yet complete
+[2026-05-13 18:16:57] Iteration 31: Progress 11/14 complete, 3 pending
+[2026-05-13 18:16:57] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:17:09] Story US-012 attempt made, not yet complete
+[2026-05-13 18:17:11] Iteration 32: Progress 11/14 complete, 3 pending
+[2026-05-13 18:17:11] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:17:21] Story US-012 attempt made, not yet complete
+[2026-05-13 18:17:23] Iteration 33: Progress 11/14 complete, 3 pending
+[2026-05-13 18:17:23] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:17:35] Story US-012 attempt made, not yet complete
+[2026-05-13 18:17:37] Iteration 34: Progress 11/14 complete, 3 pending
+[2026-05-13 18:17:37] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:17:49] Story US-012 attempt made, not yet complete
+[2026-05-13 18:17:51] Iteration 35: Progress 11/14 complete, 3 pending
+[2026-05-13 18:17:51] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:18:01] Story US-012 attempt made, not yet complete
+[2026-05-13 18:18:03] Iteration 36: Progress 11/14 complete, 3 pending
+[2026-05-13 18:18:03] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:18:14] Story US-012 attempt made, not yet complete
+[2026-05-13 18:18:16] Iteration 37: Progress 11/14 complete, 3 pending
+[2026-05-13 18:18:16] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:18:27] Story US-012 attempt made, not yet complete
+[2026-05-13 18:18:29] Iteration 38: Progress 11/14 complete, 3 pending
+[2026-05-13 18:18:29] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:18:40] Story US-012 attempt made, not yet complete
+[2026-05-13 18:18:42] Iteration 39: Progress 11/14 complete, 3 pending
+[2026-05-13 18:18:43] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:18:53] Story US-012 attempt made, not yet complete
+[2026-05-13 18:18:56] Iteration 40: Progress 11/14 complete, 3 pending
+[2026-05-13 18:18:56] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:19:07] Story US-012 attempt made, not yet complete
+[2026-05-13 18:19:09] Iteration 41: Progress 11/14 complete, 3 pending
+[2026-05-13 18:19:09] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:19:20] Story US-012 attempt made, not yet complete
+[2026-05-13 18:19:22] Iteration 42: Progress 11/14 complete, 3 pending
+[2026-05-13 18:19:22] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:19:33] Story US-012 attempt made, not yet complete
+[2026-05-13 18:19:35] Iteration 43: Progress 11/14 complete, 3 pending
+[2026-05-13 18:19:35] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:19:46] Story US-012 attempt made, not yet complete
+[2026-05-13 18:19:48] Iteration 44: Progress 11/14 complete, 3 pending
+[2026-05-13 18:19:48] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:20:00] Story US-012 attempt made, not yet complete
+[2026-05-13 18:20:02] Iteration 45: Progress 11/14 complete, 3 pending
+[2026-05-13 18:20:02] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:20:14] Story US-012 attempt made, not yet complete
+[2026-05-13 18:20:16] Iteration 46: Progress 11/14 complete, 3 pending
+[2026-05-13 18:20:16] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:20:27] Story US-012 attempt made, not yet complete
+[2026-05-13 18:20:29] Iteration 47: Progress 11/14 complete, 3 pending
+[2026-05-13 18:20:29] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:20:40] Story US-012 attempt made, not yet complete
+[2026-05-13 18:20:42] Iteration 48: Progress 11/14 complete, 3 pending
+[2026-05-13 18:20:42] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:20:53] Story US-012 attempt made, not yet complete
+[2026-05-13 18:20:55] Iteration 49: Progress 11/14 complete, 3 pending
+[2026-05-13 18:20:55] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:21:06] Story US-012 attempt made, not yet complete
+[2026-05-13 18:21:08] Iteration 50: Progress 11/14 complete, 3 pending
+[2026-05-13 18:21:08] Processing story: US-012 - ConfigScreen — add keyboard BINDINGS for stage/queue/reset [model: claude-sonnet-4-6]
+[2026-05-13 18:21:18] Story US-012 attempt made, not yet complete
+[2026-05-13 18:21:20] Ralph reached max iterations (50) without completing all tasks.

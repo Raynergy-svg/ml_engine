@@ -487,8 +487,8 @@
       "id": "US-011",
       "title": "data_provider — OANDA auto-reconnect on transient disconnect",
       "priority": 11,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-13T22:11:55Z",
       "depends_on": [],
       "description": "src/tui/data_provider.py:189-209 connect() is only called once at boot. If OANDA disconnects mid-session, _do_live_refresh keeps calling a dead client. Header shows OANDA OFF but no auto-reconnect; operator forced to Ctrl+R. Add reconnect-with-backoff inside _do_live_refresh when self.oanda_connected is False: attempt connect() at increasing intervals (5s, 10s, 30s, 60s, capped 60s).",
       "primary_agent": {
