@@ -3335,12 +3335,23 @@ class Scanner:
             _vtl_failures: List[str] = []
             _vtl_failures_detail: List[Dict[str, Any]] = []
             if not result.confidence_passed:
+                # 2026-05-19 (unit-mismatch fix): the failure string used to read
+                # `result.confidence` ([0,1] blended/penalty-adjusted probability)
+                # while comparing to `self.config.min_confidence` (0-100 ADX
+                # threshold, default 42.0) — producing lines like
+                # `confidence=0.400 < min=42.0` that mix scales. The gate at
+                # `gates.py:2326` compares `confidence` (0-100 from
+                # `evaluate_confidence`) >= `min_confidence` (0-100); the
+                # PairAnalysis field that mirrors that value is
+                # `confidence_score`, not `confidence`. Both observability
+                # surfaces (the legacy string and the structured detail dict)
+                # now render in the same 0-100 ADX scale.
                 _vtl_failures.append(
-                    f"confidence={result.confidence:.3f} < min={self.config.min_confidence}"
+                    f"confidence={result.confidence_score:.1f} < min={self.config.min_confidence:.1f}"
                 )
                 _vtl_failures_detail.append({
                     "gate": "confidence",
-                    "observed": round(float(result.confidence), 4),
+                    "observed": round(float(result.confidence_score), 4),
                     "threshold": float(self.config.min_confidence),
                     "reason": "confidence_passed=False",
                 })
@@ -4926,8 +4937,11 @@ class Scanner:
                 try:
                     _block_reasons = []
                     if not result.confidence_passed:
+                        # 2026-05-19 (unit-mismatch fix): use `confidence_score`
+                        # (0-100 ADX) to match `min_confidence` (0-100). See
+                        # `_log_virtual_trade_for_result` for the full rationale.
                         _block_reasons.append(
-                            f"confidence={result.confidence:.3f} < min={self.config.min_confidence}"
+                            f"confidence={result.confidence_score:.1f} < min={self.config.min_confidence:.1f}"
                         )
                     if not result.momentum_passed:
                         _block_reasons.append(
