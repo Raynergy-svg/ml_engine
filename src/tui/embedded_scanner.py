@@ -206,7 +206,9 @@ class EmbeddedScanner:
         self._reconciler = None
         self._reconciler_task = None
         self._reconciler_thread = None
+        self._maintenance = None  # IdleMaintenance — journal sync + retrain
         self._freshness_check_interval = 10  # every N cycles
+        self._maintenance_interval = 5  # run IdleMaintenance.run_if_needed every N cycles
 
         # State
         self._scan_count = 0
@@ -526,6 +528,21 @@ class EmbeddedScanner:
                 logger.info("EmbeddedScanner: ConfigAdjuster initialized (no pending)")
         except Exception as e:
             logger.debug("ConfigAdjuster init skipped: %s", e)
+
+        # IdleMaintenance — journal sync (every cycle invocation) + gate
+        # retrain check (24h cooldown enforced inside the helper). Was
+        # only wired into ContinuousScanner (the headless CLI path) per
+        # the 2026-05-19 audit; live TUI path was therefore never running
+        # OANDA journal sync or background retrains. Throttled to every
+        # self._maintenance_interval cycles (default 5) in
+        # _run_post_scan_automation to keep OANDA listClosedTrades calls
+        # off the per-cycle hot path.
+        try:
+            from src.scanner.automation.maintenance import IdleMaintenance
+            self._maintenance = IdleMaintenance()
+            logger.info("EmbeddedScanner: IdleMaintenance initialized")
+        except Exception as e:
+            logger.debug("IdleMaintenance init skipped: %s", e)
 
     def _start_reconciler_loop(self) -> None:
         """Run StateReconciler.run_forever on a dedicated asyncio thread.
@@ -1080,6 +1097,22 @@ class EmbeddedScanner:
             except Exception as e:
                 logger.debug("Online RL error: %s", e)
 
+        # IdleMaintenance — journal sync + retrain check, every N cycles.
+        # The 24h retrain cooldown is enforced inside run_if_needed; the
+        # outer throttle keeps OANDA listClosedTrades calls bounded on
+        # short scan intervals. Pre-2026-05-19 this was only wired into
+        # ContinuousScanner (the headless CLI), so the live TUI runtime
+        # was never running journal sync or background retrains.
+        if (
+            self._maintenance is not None
+            and self._maintenance_interval > 0
+            and self._scan_count % self._maintenance_interval == 0
+        ):
+            try:
+                self._maintenance.run_if_needed()
+            except Exception as e:
+                logger.debug("IdleMaintenance run_if_needed error: %s", e)
+
         # Drift monitoring — every 20 cycles
         if (
             self._scan_count % 20 == 0
@@ -1422,6 +1455,16 @@ class EmbeddedScanner:
         if self._policy_engine is not None:
             try:
                 self._policy_engine.shutdown()
+            except Exception:
+                pass
+
+        # IdleMaintenance — signal cooperative stop. The helper's stop()
+        # sets _stop_requested, terminates any in-flight retrain subprocess
+        # within ~2s, and joins the daemon thread. Best-effort — never
+        # raise during shutdown.
+        if self._maintenance is not None:
+            try:
+                self._maintenance.stop()
             except Exception:
                 pass
 
