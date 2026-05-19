@@ -53,11 +53,30 @@ def _get_wandb():
         return None
 
 
+def _get_keras_callback_base():
+    """Return tf.keras.callbacks.Callback if importable, else `object`.
+
+    Inheriting from the real Callback base gives us free no-op
+    implementations of EVERY lifecycle method Keras 3 may add — past, present,
+    and future. Falling back to `object` keeps this module importable in
+    environments without TensorFlow (e.g. sklearn-only test runs).
+    """
+    try:
+        import tensorflow as tf  # noqa: F401
+        from tensorflow.keras.callbacks import Callback as _Callback  # type: ignore[attr-defined]
+        return _Callback
+    except Exception:  # ImportError, RuntimeError on partial installs, etc.
+        return object
+
+
+_KERAS_CALLBACK_BASE = _get_keras_callback_base()
+
+
 # ─────────────────────────────────────────────────────────────────
 # 1. Keras callback — for Transformer + TCN epoch training
 # ─────────────────────────────────────────────────────────────────
 
-class WandBTrainingCallback:
+class WandBTrainingCallback(_KERAS_CALLBACK_BASE):  # type: ignore[misc,valid-type]
     """Keras-compatible callback that logs epoch metrics to W&B.
 
     Usage:
@@ -65,8 +84,15 @@ class WandBTrainingCallback:
         model.fit(..., callbacks=[cb, ...other_callbacks])
         # On training end, logs best metrics + model file as artifact.
 
-    Implements on_epoch_end / on_train_end via duck-typing (works with both
-    tf.keras.callbacks.Callback subclass and plain objects that Keras accepts).
+    Inherits from tf.keras.callbacks.Callback when available. This gives us
+    no-op implementations of every lifecycle method (on_train_begin,
+    on_test_batch_end, etc.) for free, so Keras 3's unconditional dispatch
+    (`callback_list.py:237: callback.on_train_begin(logs)`) never raises
+    AttributeError. The explicit hook stubs below remain as defensive
+    documentation of which hooks intentionally no-op.
+
+    The base falls back to `object` in TF-less environments — the explicit
+    stubs are then load-bearing.
     """
 
     def __init__(
@@ -76,6 +102,13 @@ class WandBTrainingCallback:
         model_save_path: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
+        # Initialize the Keras Callback base when present so Keras-internal
+        # state (e.g. self.params, self.model) is wired up correctly. Safe
+        # no-op when base is `object`.
+        try:
+            super().__init__()
+        except Exception:
+            pass
         self.model_name = model_name
         self.pair = pair
         self.model_save_path = model_save_path
@@ -86,6 +119,7 @@ class WandBTrainingCallback:
         self._best_val_acc = 0.0
         self._best_epoch = 0
         self._start_time = time.time()
+        self._model = None
 
         if self._wandb is not None:
             try:
@@ -118,7 +152,55 @@ class WandBTrainingCallback:
 
     def set_model(self, model: Any) -> None:
         """Called by Keras — store model ref."""
-        pass
+        self._model = model
+
+    def on_train_begin(self, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras lifecycle hook; intentionally no-op beyond start-time reset."""
+        self._start_time = time.time()
+
+    def on_epoch_begin(self, epoch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras lifecycle hook; metrics are logged at epoch end."""
+        return None
+
+    def on_train_batch_begin(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras lifecycle hook; batch-level logging is intentionally disabled."""
+        return None
+
+    def on_train_batch_end(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras lifecycle hook; batch-level logging is intentionally disabled."""
+        return None
+
+    def on_test_begin(self, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras validation lifecycle hook; epoch-end metrics handle logging."""
+        return None
+
+    def on_test_end(self, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras validation lifecycle hook; epoch-end metrics handle logging."""
+        return None
+
+    def on_test_batch_begin(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras validation lifecycle hook; batch-level logging is disabled."""
+        return None
+
+    def on_test_batch_end(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras validation lifecycle hook; batch-level logging is disabled."""
+        return None
+
+    def on_predict_begin(self, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras prediction lifecycle hook; intentionally no-op."""
+        return None
+
+    def on_predict_end(self, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras prediction lifecycle hook; intentionally no-op."""
+        return None
+
+    def on_predict_batch_begin(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras prediction lifecycle hook; intentionally no-op."""
+        return None
+
+    def on_predict_batch_end(self, batch: int, logs: Optional[Dict[str, Any]] = None) -> None:
+        """Keras prediction lifecycle hook; intentionally no-op."""
+        return None
 
     def on_epoch_end(self, epoch: int, logs: Optional[Dict[str, Any]] = None) -> None:
         """Stream epoch metrics to W&B."""

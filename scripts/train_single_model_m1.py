@@ -511,6 +511,7 @@ def train_tcn_vol_regime(instrument: str, df_feat: pd.DataFrame, params: dict) -
     """TCN Volatility Regime Trainer — volatility regime with 3D sequence input."""
     from src.training.trainers.config import TrainerConfig
     from src.training.trainers.tcn_volatility_trainer import TCNVolatilityRegimeTrainer
+    from src.training.trainers.utils import create_sequences
     from src.core.modular_data_loaders import load_volatility_regime_data
 
     cfg = TrainerConfig(
@@ -526,10 +527,27 @@ def train_tcn_vol_regime(instrument: str, df_feat: pd.DataFrame, params: dict) -
     save_dir = MODELS_DIR / instrument
     save_dir.mkdir(parents=True, exist_ok=True)
 
+    # The volatility-regime data loader returns 2D (N, n_features). The
+    # TCNVolatilityRegimeTrainer.train() (unlike TCNTrainer.train()) does not
+    # sequence internally — it explicitly requires (batch, seq_len, features).
+    # Apply create_sequences() here to match the same sequencing the direction-
+    # TCN trainer applies, then hand 3D arrays to the regime trainer.
+    seq_len = params["seq_len"]
+    X_train = vol_data["X_train"]
+    X_val = vol_data["X_val"]
+    y_train = vol_data["y_train"]
+    y_val = vol_data["y_val"]
+    if X_train.ndim == 2:
+        X_train_seq, y_train_seq = create_sequences(X_train, y_train, seq_len)
+        X_val_seq, y_val_seq = create_sequences(X_val, y_val, seq_len)
+    else:
+        X_train_seq, y_train_seq = X_train, y_train
+        X_val_seq, y_val_seq = X_val, y_val
+
     trainer = TCNVolatilityRegimeTrainer(cfg)
-    trainer.train(vol_data["X_train"], vol_data["y_train"],
-                  vol_data["X_val"], vol_data["y_val"],
-                  seq_len=params["seq_len"])
+    trainer.train(X_train_seq, y_train_seq,
+                  X_val_seq, y_val_seq,
+                  seq_len=seq_len)
     trainer.save(str(save_dir / "tcn_volatility_regime.keras"))
 
     metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
