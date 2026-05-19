@@ -163,10 +163,12 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
         self.is_trained = True
 
         # Evaluate
+        train_pred = self.model.predict(x_train_final)
         y_pred = self.model.predict(x_val_final)
         y_prob = self.model.predict_proba(x_val_final)[:, 1]
 
         # Metrics
+        train_acc = np.mean(train_pred == y_train_filtered)
         val_acc = np.mean(y_pred == y_val_filtered)
 
         # Balanced accuracy
@@ -185,6 +187,7 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
             auc = 0.5
 
         self.metrics = {
+            "train_accuracy": float(train_acc),
             "val_accuracy": float(val_acc),
             "val_balanced_accuracy": float(balanced_acc),
             "val_up_accuracy": float(up_acc),
@@ -197,7 +200,8 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
         }
 
         logger.info(
-            f"HistGB trained: val_accuracy={val_acc:.4f}, balanced={balanced_acc:.4f}, "
+            f"HistGB trained: train_accuracy={train_acc:.4f}, "
+            f"val_accuracy={val_acc:.4f}, balanced={balanced_acc:.4f}, "
             f"auc={auc:.4f}, iters={self.model.n_iter_}"
         )
         return self.metrics
