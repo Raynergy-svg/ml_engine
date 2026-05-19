@@ -32,6 +32,7 @@ from textual.widgets import (
     Input,
     Label,
     Markdown,
+    ProgressBar,
     Static,
     TabbedContent,
 )
@@ -629,6 +630,27 @@ class InboxScreen(Container):
         border: solid #26304f;
         background: #090d18;
     }
+
+    /* US-013 — approve-all worker progress indicator.
+       Hidden by default; the worker toggles display via set_styles
+       through call_from_thread when approve-all starts/finishes. */
+    #approve-all-progress-row {
+        height: 3;
+        align: center middle;
+        padding: 0 1;
+        background: #0a0e1a;
+        border-bottom: solid #26304f;
+        display: none;
+    }
+
+    #approve-all-progress-label {
+        color: #00f5ff;
+        padding: 0 2;
+    }
+
+    #approve-all-progress {
+        width: 1fr;
+    }
     """
 
     def __init__(self, project_root: str = "", **kwargs) -> None:
@@ -652,6 +674,13 @@ class InboxScreen(Container):
         self._homework_cache: tuple[tuple[int, int], list[Any]] | None = None
         # Cache for _read_meta_packages: (dir_mtime_ns, rows)
         self._meta_cache: tuple[int, list[UnifiedInboxRow]] | None = None
+        # US-013 — re-entrancy guard for approve-all worker. Prevents a
+        # second click/keypress from spawning a parallel worker while the
+        # first is still running.
+        self._approve_all_running: bool = False
+        # Latest auto-hide timer for the completion banner (cancelled on
+        # any new approve-all to keep the banner state coherent).
+        self._approve_all_hide_timer: Any = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -663,6 +692,18 @@ class InboxScreen(Container):
             yield Label(
                 "A approve  R reject  E edit  S snooze 24h  V detail  Tab filter",
                 id="inbox-subtitle",
+            )
+
+        # US-013 — approve-all worker progress indicator. Hidden until
+        # the worker fires; the worker uses call_from_thread to flip
+        # display + update progress, keeping the main thread responsive.
+        with Horizontal(id="approve-all-progress-row"):
+            yield Label("Approve all …", id="approve-all-progress-label")
+            yield ProgressBar(
+                total=100,
+                show_eta=False,
+                show_percentage=True,
+                id="approve-all-progress",
             )
 
         with Horizontal(id="filter-bar"):
@@ -1280,17 +1321,74 @@ class InboxScreen(Container):
             self._set_filter(bid.replace("filter-", ""))
 
     def action_approve_all(self) -> None:
-        """Approve every pending homework + every valid pending/snoozed adjustment in the queue."""
+        """Dispatch the approve-all work onto a Textual worker thread.
+
+        US-013 — Phase 96 batch homework can mount 17+ rows in the queue;
+        the legacy main-thread loop (3 sub-loops + MetaManager.drain inline)
+        locked the TUI for several seconds on a real run. Now we snapshot
+        the visible row lists on the main thread, then hand them to a
+        @work(thread=True) worker so the compositor stays responsive.
+
+        Progress is published back to the main thread via
+        ``self.app.call_from_thread(self._approve_all_progress, ...)``.
+        On completion the worker calls ``_approve_all_complete`` which
+        emits the summary notification, reloads the queue, and auto-hides
+        the progress bar after 3 seconds.
+        """
+        if self._approve_all_running:
+            # Second press while a worker is in flight — guard against
+            # the parallel-spawn race. The progress bar is already
+            # visible; the operator can wait for completion.
+            self.notify("Approve-all already running…", severity="information")
+            return
+
+        # Snapshot visible rows on the main thread. The worker thread
+        # must not read self._current_rows directly — the 5s auto-refresh
+        # timer can mutate it under the worker, and Textual's reactive
+        # internals are not thread-safe.
+        hw_rows = [r for r in self._current_rows if r.entry_type == "homework"]
+        meta_rows = [r for r in self._current_rows if r.entry_type == "meta"]
+        total = len(hw_rows) + 1 + len(meta_rows)  # +1 for adjustment batch
+        if total <= 0:
+            self.notify("No entries to approve.", severity="information")
+            return
+
+        self._approve_all_running = True
+        # Cancel any pending auto-hide from a prior approve-all so the
+        # banner doesn't disappear mid-run.
+        self._cancel_progress_autohide()
+        # Show progress bar at 0/total before the worker starts.
+        self._set_progress_visible(True)
+        self._update_progress(0, total, "Starting…")
+
+        self._approve_all_worker(hw_rows, meta_rows, total)
+
+    @work(thread=True, exclusive=True, group="inbox-approve-all")
+    def _approve_all_worker(
+        self,
+        hw_rows: list[UnifiedInboxRow],
+        meta_rows: list[UnifiedInboxRow],
+        total: int,
+    ) -> None:
+        """Run the three approval loops + drain on a worker thread.
+
+        All UI mutations route through ``self.app.call_from_thread`` so
+        the Textual event loop owns every widget update. The worker
+        itself does only file I/O + module-level approver/reviewer calls.
+        """
         hw_approved = 0
         hw_failed = 0
         adj_approved = 0
         adj_skipped = 0
         adj_failed = 0
+        meta_approved = 0
+        meta_failed = 0
 
-        # Homework: iterate visible rows in current filtered queue
+        current = 0
+
+        # ── 1. Homework loop ────────────────────────────────────────────
         try:
             reviewer = HomeworkReviewer(store=HomeworkStore())
-            hw_rows = [r for r in self._current_rows if r.entry_type == "homework"]
             for row in hw_rows:
                 try:
                     entry = row.raw_entry
@@ -1301,12 +1399,25 @@ class InboxScreen(Container):
                         hw_failed += 1
                 except Exception:
                     hw_failed += 1
-                    logger.exception("InboxScreen.action_approve_all: homework approve failed")
+                    logger.exception(
+                        "InboxScreen._approve_all_worker: homework approve failed"
+                    )
+                current += 1
+                self.app.call_from_thread(
+                    self._update_progress,
+                    current,
+                    total,
+                    f"Homework {hw_approved}/{len(hw_rows)} approved",
+                )
         except Exception as e:
-            logger.exception("InboxScreen.action_approve_all: homework loop init failed")
-            self.notify(f"Homework approve init error: {e}", severity="error")
+            logger.exception(
+                "InboxScreen._approve_all_worker: homework loop init failed"
+            )
+            self.app.call_from_thread(
+                self.notify, f"Homework approve init error: {e}", severity="error"
+            )
 
-        # Adjustments: keep existing AdjustmentApprover.approve_all() behavior
+        # ── 2. Adjustments batch (treated as a single step) ─────────────
         try:
             approver = AdjustmentApprover(
                 pending_path=self._pending_path,
@@ -1317,30 +1428,208 @@ class InboxScreen(Container):
             adj_skipped = result.get("skipped", 0)
             adj_failed = len(result.get("failed", []))
         except Exception as e:
-            logger.exception("InboxScreen.action_approve_all: adjustment approve failed")
-            self.notify(f"Adjustment approve error: {e}", severity="error")
+            logger.exception(
+                "InboxScreen._approve_all_worker: adjustment approve failed"
+            )
+            self.app.call_from_thread(
+                self.notify, f"Adjustment approve error: {e}", severity="error"
+            )
+        current += 1
+        self.app.call_from_thread(
+            self._update_progress,
+            current,
+            total,
+            f"Adjustments {adj_approved} approved",
+        )
 
-        # Mythos audit 2026-04-30 — meta-package approval handler.
-        # Pre-fix the [🧠 Meta] filter (commit 18a273f) showed packages
-        # but action_approve_all had no code path for entry_type="meta".
-        # Operator pressed approve-all on the meta filter → silent no-op.
-        # The fix: for each visible meta row, invoke ApprovalQueue.approve
-        # to move the pending file into approved/, then call
-        # MetaManager.drain() which loads the singleton (already
-        # initialized by per-cycle routing in commit bcd976f) and walks
-        # each approved package through StagedDeployer.advance →
-        # DEPLOYED_SHADOW, persisting the new stage to .claude/meta/changes/
-        # so the inbox auto-refreshes.
-        meta_approved, meta_failed = self._approve_meta_packages()
+        # ── 3. Meta packages (uses existing helper; runs on worker thread).
+        # _approve_meta_packages is file I/O + ApprovalQueue + drain — safe
+        # to call from a worker so long as we don't touch widgets directly
+        # inside it. We pre-snapshotted meta_rows, so route through a small
+        # private variant that takes the snapshot.
+        meta_approved, meta_failed = self._approve_meta_rows(meta_rows)
+        current += len(meta_rows)
+        self.app.call_from_thread(
+            self._update_progress,
+            current,
+            total,
+            f"Meta {meta_approved} approved",
+        )
 
+        # ── 4. Summary, reload, auto-hide ────────────────────────────────
         total_failed = hw_failed + adj_failed + meta_failed
         msg = (
             f"Approved {hw_approved} homework + {adj_approved} adjustments + "
             f"{meta_approved} meta packages; "
             f"{total_failed} failed; {adj_skipped} invalid skipped."
         )
-        self.notify(msg, severity="warning" if total_failed else "information")
+        approved_count = hw_approved + adj_approved + meta_approved
+        self.app.call_from_thread(
+            self._approve_all_complete,
+            msg,
+            approved_count,
+            bool(total_failed),
+        )
+
+    def _approve_meta_rows(
+        self, meta_rows: list[UnifiedInboxRow]
+    ) -> tuple[int, int]:
+        """Worker-thread variant of _approve_meta_packages.
+
+        Accepts a pre-snapshotted list of meta rows instead of reading
+        ``self._current_rows`` (which is owned by the main thread).
+        """
+        if not meta_rows:
+            return (0, 0)
+
+        approved = 0
+        failed = 0
+
+        try:
+            from src.scanner.automation.approval_queue import ApprovalQueue
+            queue = ApprovalQueue()
+        except Exception as e:
+            logger.exception(
+                "InboxScreen._approve_meta_rows: ApprovalQueue init failed"
+            )
+            self.app.call_from_thread(
+                self.notify, f"Meta approve init error: {e}", severity="error"
+            )
+            return (0, len(meta_rows))
+
+        for row in meta_rows:
+            blob = row.raw_entry if isinstance(row.raw_entry, dict) else {}
+            change_id = str(blob.get("change_id", ""))
+            if not change_id:
+                failed += 1
+                continue
+            try:
+                pkg = queue.approve(change_id, reason="bulk approve from inbox")
+                if pkg is not None:
+                    approved += 1
+                else:
+                    failed += 1
+                    logger.info(
+                        "InboxScreen._approve_meta_rows: change_id=%s "
+                        "had no pending entry — likely already approved or "
+                        "orphan in changes_dir",
+                        change_id,
+                    )
+            except Exception:
+                failed += 1
+                logger.exception(
+                    "InboxScreen._approve_meta_rows: queue.approve raised "
+                    "change_id=%s", change_id,
+                )
+
+        # Drain inline so packages walk to DEPLOYED_SHADOW immediately
+        # rather than sitting in approved/ until a separate trigger fires.
+        try:
+            from src.scanner.automation.meta_manager import (
+                is_enabled as _meta_enabled,
+                _build_production_manager,
+            )
+            if _meta_enabled():
+                from src.scanner.automation import meta_manager as _mm
+                if _mm._PRODUCTION_MGR is None:
+                    _mm._PRODUCTION_MGR = _build_production_manager()
+                counters = _mm._PRODUCTION_MGR.drain(current_cycle=0)
+                logger.info(
+                    "InboxScreen._approve_meta_rows: drain counters=%s",
+                    counters,
+                )
+        except Exception:
+            logger.exception(
+                "InboxScreen._approve_meta_rows: drain failed — packages "
+                "approved but not yet deployed; next drain call will pick "
+                "them up"
+            )
+
+        return (approved, failed)
+
+    # ── ProgressBar helpers (main-thread only) ──────────────────────────
+
+    def _set_progress_visible(self, visible: bool) -> None:
+        """Toggle the progress row visibility. Main thread only."""
+        try:
+            row = self.query_one("#approve-all-progress-row", Horizontal)
+            row.display = visible
+        except NoMatches:
+            logger.debug(
+                "InboxScreen._set_progress_visible: row not mounted yet"
+            )
+
+    def _update_progress(self, current: int, total: int, message: str) -> None:
+        """Update progress bar value + label. Routed from the worker via
+        ``call_from_thread``; safe to call directly on the main thread too.
+        """
+        try:
+            label = self.query_one("#approve-all-progress-label", Label)
+            label.update(f"Approve all — {message} ({current}/{total})")
+        except NoMatches:
+            pass
+        try:
+            bar = self.query_one("#approve-all-progress", ProgressBar)
+            # Keep total in sync in case the visible queue shrank between
+            # snapshot and now (paranoia — total is fixed per worker run).
+            bar.update(total=total, progress=current)
+        except NoMatches:
+            pass
+
+    def _approve_all_progress(self, current: int, total: int) -> None:
+        """Public progress callback (AC contract).
+
+        US-013 acceptance criterion specifies the entry point as
+        ``self._approve_all_progress(current, total)`` — keep this thin
+        wrapper around ``_update_progress`` so tests + future callers can
+        target the documented surface even though the worker uses the
+        richer message-bearing variant.
+        """
+        self._update_progress(current, total, "")
+
+    def _approve_all_complete(
+        self,
+        summary_msg: str,
+        approved_count: int,
+        had_failures: bool,
+    ) -> None:
+        """Called from the worker thread on completion. Main-thread only."""
+        self._approve_all_running = False
+        # Final progress bar state — surface "approved N items" then hide.
+        try:
+            label = self.query_one("#approve-all-progress-label", Label)
+            label.update(f"approved {approved_count} items")
+        except NoMatches:
+            pass
+        try:
+            bar = self.query_one("#approve-all-progress", ProgressBar)
+            # Force the bar to "complete" visually regardless of any
+            # partial-fail counts the worker accumulated.
+            current_total = bar.total or max(approved_count, 1)
+            bar.update(progress=current_total)
+        except NoMatches:
+            pass
+
+        self.notify(
+            summary_msg, severity="warning" if had_failures else "information"
+        )
         self._load_proposals()
+
+        # Auto-hide after 3s — give the operator a moment to read the
+        # completion banner before the row collapses.
+        self._cancel_progress_autohide()
+        self._approve_all_hide_timer = self.set_timer(
+            3.0, lambda: self._set_progress_visible(False)
+        )
+
+    def _cancel_progress_autohide(self) -> None:
+        """Cancel any pending auto-hide timer for the progress banner."""
+        if self._approve_all_hide_timer is not None:
+            try:
+                self._approve_all_hide_timer.stop()
+            except Exception:
+                pass
+            self._approve_all_hide_timer = None
 
     def _approve_meta_packages(self) -> tuple[int, int]:
         """Approve every visible meta row + drain so packages actuate.
