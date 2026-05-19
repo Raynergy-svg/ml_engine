@@ -50,13 +50,34 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
         self.n_features = None
 
         # HistGB specific config
-        self.max_iter = getattr(config, "histgb_max_iter", 200) if config else 200
-        self.max_depth = getattr(config, "histgb_max_depth", 8) if config else 8
+        # NOTE 2026-05-18 (capacity-shrink for 10% gap gate):
+        # Defaults below tightened from (max_iter=200, max_depth=8, lr=0.05, l2=0.1,
+        # min_samples_leaf=sklearn-default-20, max_leaf_nodes=sklearn-default-31,
+        # n_iter_no_change=20, validation_fraction=0.15) which produced
+        # train=96.11% / val=48.82% / gap=47.29% on USD_JPY M15/25k (smoke 2026-05-13
+        # post commit 983892a).
+        # Goal: gap < 0.10 per .claude/rules/improvement.md "Hard Ship Gate".
+        # Reverse by restoring the old getattr defaults — every change is a single
+        # literal swap.
+        self.max_iter = getattr(config, "histgb_max_iter", 100) if config else 100
+        self.max_depth = getattr(config, "histgb_max_depth", 4) if config else 4
         self.learning_rate = (
-            getattr(config, "histgb_learning_rate", 0.05) if config else 0.05
+            getattr(config, "histgb_learning_rate", 0.03) if config else 0.03
         )
         self.l2_regularization = (
-            getattr(config, "histgb_l2_reg", 0.1) if config else 0.1
+            getattr(config, "histgb_l2_reg", 1.0) if config else 1.0
+        )
+        self.min_samples_leaf = (
+            getattr(config, "histgb_min_samples_leaf", 50) if config else 50
+        )
+        self.max_leaf_nodes = (
+            getattr(config, "histgb_max_leaf_nodes", 15) if config else 15
+        )
+        self.n_iter_no_change = (
+            getattr(config, "histgb_n_iter_no_change", 10) if config else 10
+        )
+        self.validation_fraction = (
+            getattr(config, "histgb_validation_fraction", 0.2) if config else 0.2
         )
         self.use_pca = getattr(config, "histgb_use_pca", True) if config else True
         self.pca_variance = (
@@ -150,11 +171,13 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
         self.model = HistGradientBoostingClassifier(
             max_iter=self.max_iter,
             max_depth=self.max_depth,
+            max_leaf_nodes=self.max_leaf_nodes,
+            min_samples_leaf=self.min_samples_leaf,
             learning_rate=self.learning_rate,
             l2_regularization=self.l2_regularization,
             early_stopping=True,
-            validation_fraction=0.15,
-            n_iter_no_change=20,
+            validation_fraction=self.validation_fraction,
+            n_iter_no_change=self.n_iter_no_change,
             random_state=42,
             verbose=0,
         )

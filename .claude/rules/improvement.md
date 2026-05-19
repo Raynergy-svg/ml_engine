@@ -119,6 +119,46 @@ Source: 1 catastrophic observation — Phase 1 audit on 2026-05-08 found `traine
 
 Source: 2026-05-13 operator directive after the 2026-05-12 5-pair M15 retrain produced val_acc=4.7-18.9% with balanced_acc≈50% across all 5 pairs. Root-cause investigation surfaced TWO compounding bugs: the missing-weight forwarding fixed in commit `1a05e75`, AND the broken gap-gate read/write paths fixed here.
 
+### 2026-05-18 HistGB capacity-shrink experiment (RUN AFTER DISK FREED)
+
+Context: 2026-05-13 post commit `983892a` (HistGB train_acc honest-reporting fix), USD_JPY M15/25k smoke produced `train=96.11% / val=48.82% / gap=47.29%`. The gap is real (not a metric bug), driven by HistGB's default capacity being too high for forex M15 features. Capacity-shrink change shipped to `src/training/trainers/histgb_trainer.py` on `main` (defaults only; `TrainerConfig` getattr overrides still supported for future sweeps).
+
+Change summary (old -> new):
+- `max_iter` 200 -> 100
+- `max_depth` 8 -> 4
+- `learning_rate` 0.05 -> 0.03
+- `l2_regularization` 0.1 -> 1.0
+- `min_samples_leaf` (sklearn-default 20) -> 50 (now explicit)
+- `max_leaf_nodes` (sklearn-default 31) -> 15 (now explicit)
+- `n_iter_no_change` 20 -> 10
+- `validation_fraction` 0.15 -> 0.2
+
+Validation plan when disk is freed (`/System/Volumes/Data` was 91% full / 19 GiB free on 2026-05-18 — do not run training under ENOSPC, the model-save would risk corrupting a per-pair `histgb_direction.pkl` and the gate routing reads from there):
+
+```
+python scripts/train_single_model_m1.py \
+    --pair USD_JPY \
+    --model histgb_direction \
+    --granularity M15 \
+    --candles 25000
+```
+
+Expected RESULT line shape: `train_acc=0.58-0.65, val_acc=0.50-0.55, gap<0.10, quarantined=false`.
+
+Decision rules:
+- `gap < 0.10` AND `val_acc > 0.51`: SHIP, mark experiment successful, run the same smoke on EUR_USD + GBP_USD for confirmation, then on remaining majors.
+- `gap < 0.10` AND `val_acc ~= 0.50`: capacity-shrink fixed the gap but the features have no signal at this scale (HistGB is now a coinflip). Validates that price-only HistGB is not a tradeable head; the model can ship inside the ensemble (it's already a baseline only) but the news/macro P1 lever is the next move per CLAUDE.md.
+- `gap > 0.10` AND `gap < 0.20`: a single-knob nudge closes it. Drop `max_iter` to 60 OR drop `max_depth` to 3. Re-run.
+- `gap > 0.20`: capacity is still too high. Halve `max_iter` AGAIN (to 50), set `max_depth=3`, `max_leaf_nodes=8`. Re-run. If still > 0.20, the data has a leakage issue rather than a capacity issue — investigate `compute_normalized_features` (rolling stats may include the target bar).
+
+Reverse plan if any of the above fails: every changed knob is a single literal swap in `histgb_trainer.py:53-83` (the dataclass-default block). Revert with one `git revert` on the experiment commit.
+
+Confidence calibration (per .claude/rules/improvement.md "Confidence calibration"):
+- HIGH confidence the gap will drop BELOW 20%. Capacity has been cut hard along five independent axes; the train side cannot overfit as before.
+- MEDIUM confidence the gap will drop BELOW 10% on first try without a second pass. The exact magnitude of the gap reduction depends on noise floor of M15 forex.
+- LOW-MEDIUM confidence `val_acc` will materially improve. HistGB on price-only forex M15 has a hard ceiling around 50% (matches the Chronos zero-shot 44-46% empirical data in CLAUDE.md Modernization stance) — capacity-shrink closes the gap by lowering train_acc, not necessarily by raising val_acc.
+- UNKNOWN whether the same hyperparams generalize across all majors. Need per-pair smokes on at least EUR_USD + GBP_USD before treating as the default.
+
 ## Joint Fallback Deprecation Gates (promoted 2026-05-12, operator directive)
 The joint training output (`trained_data/models/joint/`, plus root-level `modular_ensemble.meta.json`) is deprecated as a runtime fallback. Per-pair routing is the only supported gate / inference path going forward.
 
