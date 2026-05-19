@@ -20,16 +20,21 @@ from typing import Dict, Any
 import numpy as np
 import pytest
 
-# Note: previously this file had `sys.modules['tensorflow'] = MagicMock()` at
-# module load to avoid needing real tensorflow in CI. That mock leaked into
-# every other test that pytest collected after this one — when any subsequent
-# test imported a module needing real tensorflow (e.g. transformer_trainer's
-# @register_keras_serializable decorator), the cached Mock raised
-# `AttributeError: Mock object has no attribute '__name__'`. With requirements.txt
-# now installed in CI, tensorflow is available natively. None of the 3 classes
-# tested below (ReplayBuffer, DriftDetector, TrainingLineage) use `tf.` —
-# verified by grep — so dropping the mock has no behavioral effect on these
-# tests but unblocks every other test downstream.
+# `callbacks` imports tensorflow at module load time. If tensorflow is not
+# installed (e.g. CI lacking the tf-metal env), skip the entire module — the
+# three classes exercised below (ReplayBuffer, DriftDetector, TrainingLineage)
+# are pure-Python data structures and don't touch tf.*, but their parent module
+# can't be imported without tf available.
+#
+# IMPORTANT: do NOT replace tensorflow with a MagicMock via `sys.modules`.
+# That polluted `sys.modules['tensorflow']` globally for the pytest process
+# and broke collection of every downstream test that imports the real
+# transformer_trainer (the `@register_keras_serializable` decorator received
+# Mock instead of a class, AttributeError on `arg.__name__`). The collection
+# error wedged the meta-pipeline `software_correctness` scorecard for 9 days.
+# Real tensorflow only, or skip. See `.claude/rules/improvement.md` No-Mock Rule.
+pytest.importorskip("tensorflow")
+
 from src.training.trainers.callbacks import (
     ReplayBuffer,
     DriftDetector,
