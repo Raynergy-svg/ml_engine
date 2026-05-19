@@ -147,6 +147,17 @@ MASTER_PARAMS = {
         "top_features": None, "mixed_precision": True,
     },
     "USD_CAD": {
+        # 2026-05-19 capacity-reduction experiment FAILED. Tried seq_len=60
+        # (was 120), l2_reg=1e-3 (was 1.3e-5, ~80×), patience=10 (was 25).
+        # Trainer's auto-helpers ALSO fired hard: Dropout +15% twice,
+        # weight perturbation, momentum reset. Final result still gap=29.4%
+        # (train=76.0%, val=46.6%, balanced=46.6%) — val BELOW chance.
+        # See trained_data/logs/m15_usd_cad_regularization_2026_05_19.log.
+        # Per CLAUDE.md modernization roadmap, USD_CAD M15 price-only is
+        # shelved as unlearnable; news-fusion P1 is the next lever (design
+        # at docs/superpowers/plans/2026-05-08-news-macro-signal-design.md).
+        # Reverted to canonical params; further ad-hoc retrains will keep
+        # producing quarantines until the news signal lands.
         "seq_len": 120, "batch_size": 128, "lr": 0.000552, "patience": 25,
         "dropout_rate": 0.468, "l2_reg": 0.000013,
         "tcn_nb_filters": 128, "tcn_kernel_size": 5,
