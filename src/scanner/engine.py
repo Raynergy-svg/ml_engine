@@ -3377,13 +3377,36 @@ class Scanner:
                     "reason": "agent_passed=False",
                 })
 
+            # 2026-05-19 (observability fix): `result.agents` does NOT exist on
+            # `PairAnalysis` — `agent_reasons` is the actual top-level field
+            # (set by `ScannerAgentTeam` at `_team.py:1844`). The pre-fix path
+            # `getattr(result, "agents", {}) or {}` returned `{}` every time,
+            # so `agent_scores` shipped EMPTY on every virtual-trades row,
+            # leaving "which agent vetoed?" forensically unanswerable.
+            # Read the real field, and also capture per-agent `passed` + the
+            # canonical `vetoing_agents` list so jq tallies can answer the
+            # vetoer question directly without re-parsing `gate_failures`.
             _vtl_agents: Dict[str, float] = {}
-            _agents_info = getattr(result, "agents", {}) or {}
-            for _ar in (_agents_info.get("agent_reasons") or []):
+            _vetoing_agents: List[str] = []
+            _agent_reasons = getattr(result, "agent_reasons", None) or []
+            for _ar in _agent_reasons:
+                if not isinstance(_ar, dict):
+                    continue
                 _name = _ar.get("name", "")
-                _score = float(_ar.get("score", _ar.get("confidence", 0.0)))
-                if _name:
-                    _vtl_agents[_name] = _score
+                if not _name:
+                    continue
+                try:
+                    _score = float(_ar.get("score", _ar.get("confidence", 0.0)))
+                except (TypeError, ValueError):
+                    _score = 0.0
+                _vtl_agents[_name] = _score
+                # An agent "vetoes" when it either fails its own check OR
+                # explicitly forces a block. Both surfaces matter — e.g. the
+                # devil_advocate agent sets `block_trade=True` without
+                # flipping `passed`, while the trend agent flips `passed=False`
+                # as its veto signal.
+                if _ar.get("block_trade") is True or _ar.get("passed") is False:
+                    _vetoing_agents.append(_name)
 
             self._virtual_trade_logger.log_virtual_trade(
                 pair=pair,
@@ -3393,6 +3416,7 @@ class Scanner:
                 features={},
                 agent_scores=_vtl_agents,
                 gate_failures_detail=_vtl_failures_detail,
+                vetoing_agents=_vetoing_agents,
             )
         except Exception as _vtl_err:
             logger.debug("%s: Phase 56 virtual trade log failed: %s", pair, _vtl_err)
@@ -7305,8 +7329,21 @@ class Scanner:
         except Exception as e:
             logger.warning(f"Pre-flight check error (non-fatal): {e}")
 
-        # Filter to tradeable pairs only
-        tradeable = [a for a in analyses if a.is_tradeable]
+        # Filter to tradeable pairs only. `agent_passed=False` is a fast veto
+        # here because ExecutionManager also hard-blocks it at the order
+        # boundary; keeping the scanner aligned avoids attempted executions
+        # that are immediately rejected as agent vetoes.
+        tradeable = []
+        for a in analyses:
+            if not a.is_tradeable:
+                continue
+            if not bool(getattr(a, "agent_passed", False)):
+                logger.info(
+                    "Pre-flight skip %s: agent_passed=False before execution selection",
+                    getattr(a, "pair", "UNKNOWN"),
+                )
+                continue
+            tradeable.append(a)
 
         if max_trades:
             tradeable = tradeable[:max_trades]

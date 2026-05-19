@@ -102,6 +102,7 @@ class VirtualTradeLogger:
         features: Optional[Dict[str, float]] = None,
         agent_scores: Optional[Dict[str, float]] = None,
         gate_failures_detail: Optional[List[Dict[str, Any]]] = None,
+        vetoing_agents: Optional[List[str]] = None,
     ) -> bool:
         """Log a rejected setup as a virtual trade.
 
@@ -119,6 +120,14 @@ class VirtualTradeLogger:
                 aggregation can answer "did the risk gate veto?" unambiguously.
                 When supplied, the counter is updated using `gate` (canonical),
                 NOT the free-form prefix of `gate_failures` strings.
+            vetoing_agents: 2026-05-19 (observability fix) — optional list of
+                agent names that vetoed this setup (passed=False OR
+                block_trade=True). Persisted as a top-level row field so
+                `jq '.vetoing_agents'` over the JSONL gives a direct tally of
+                "which agent killed this setup". Pre-fix the only way to
+                answer this was to manually scan `agent_scores` (which was
+                always empty due to the `result.agents` read bug) or parse
+                `why_no_trade`, both of which were fragile.
 
         Returns:
             True if entry was written, False if skipped (confidence too low).
@@ -150,6 +159,21 @@ class VirtualTradeLogger:
                 "reason": str(d.get("reason", "")),
             })
 
+        # 2026-05-19: dedupe + stringify vetoing_agents while preserving order.
+        # Defensive — engine.py builds this list from agent_reasons but a
+        # malformed verdict could repeat a name; deduping here means consumers
+        # don't have to.
+        _vetoers_clean: List[str] = []
+        _seen_vetoers: set = set()
+        for _name in (vetoing_agents or []):
+            if not _name:
+                continue
+            _s = str(_name)
+            if _s in _seen_vetoers:
+                continue
+            _seen_vetoers.add(_s)
+            _vetoers_clean.append(_s)
+
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "pair": pair,
@@ -159,6 +183,7 @@ class VirtualTradeLogger:
             "gate_failures_detail": detail_clean,
             "features": {k: round(float(v), 4) for k, v in (features or {}).items()},
             "agent_scores": {k: round(float(v), 4) for k, v in (agent_scores or {}).items()},
+            "vetoing_agents": _vetoers_clean,
         }
 
         try:

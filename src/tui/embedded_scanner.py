@@ -818,9 +818,36 @@ class EmbeddedScanner:
                 f"R:R={rr:.1f}:1 @ {price:.5f}[/]"
             )
         elif direction in ("LONG", "SHORT"):
-            # Directional but didn't pass gates
+            # Directional but didn't pass gates.
+            #
+            # 2026-05-19 (observability fix): enrich the line with the names of
+            # any vetoing agents (passed=False OR block_trade=True). Operator
+            # symptom that motivated this: "0/15 tradeable, no idea WHICH
+            # agent is doing it." Reads from `analysis.agent_reasons` (the
+            # real top-level field) — `analysis.agents` does NOT exist on
+            # PairAnalysis. Keeps the existing `blocked: <reason>` token
+            # intact for downstream parsers that look for it; appends a
+            # `[veto: a,b,c]` token only when at least one vetoer is found.
             reason = analysis.rejection_reason or "gates"
-            self._brain(f"[dim]  ─ {pair} {direction} conf={conf:.2f} — blocked: {reason}[/]")
+            _vetoers: list = []
+            _seen: set = set()
+            for _ar in (getattr(analysis, "agent_reasons", None) or []):
+                if not isinstance(_ar, dict):
+                    continue
+                _name = _ar.get("name")
+                if not _name or _name in _seen:
+                    continue
+                if _ar.get("block_trade") is True or _ar.get("passed") is False:
+                    _seen.add(_name)
+                    _vetoers.append(str(_name))
+            if _vetoers:
+                _veto_token = f" [veto: {', '.join(_vetoers)}]"
+            else:
+                _veto_token = ""
+            self._brain(
+                f"[dim]  ─ {pair} {direction} conf={conf:.2f} — "
+                f"blocked: {reason}{_veto_token}[/]"
+            )
         else:
             self._brain(f"[dim]  ─ {pair} HOLD[/]")
 
