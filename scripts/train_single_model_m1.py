@@ -14,9 +14,11 @@ import gc
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 # ── tf-metal configuration ───────────────────────────────────────────────────
@@ -297,6 +299,82 @@ def gc_cleanup():
     except Exception:
         pass
     gc.collect()
+
+
+def _git_short_sha() -> str:
+    """Return short git SHA for the current HEAD, or 'unknown' on any failure."""
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        sha = (out.stdout or "").strip()
+        return sha or "unknown"
+    except (subprocess.SubprocessError, OSError) as exc:
+        logger.warning(f"git rev-parse failed: {exc}")
+        return "unknown"
+
+
+def _write_status_json(
+    instrument: str,
+    granularity: str,
+    candles: int,
+    model_filter: str,
+    started_at_utc: str,
+    completed_at_utc: str,
+    duration_s: float,
+    git_commit: str,
+    results: list,
+    errors: list,
+) -> Path | None:
+    """Atomically write per-run unified training_status.json for agent consumption.
+
+    Schema v1 — see docs/superpowers/plans/2026-05-19-training-architecture-autonomy-audit.md
+    recommendation #1. One file per pair, overwritten each retrain. Failures here MUST
+    NOT crash the training run — log a WARNING and return None.
+    """
+    try:
+        passed_count = sum(1 for r in results if r.get("passed"))
+        failed_count = sum(1 for r in results if not r.get("passed"))
+        quarantined_count = sum(1 for r in results if r.get("quarantined"))
+
+        payload = {
+            "schema_version": 1,
+            "instrument": instrument,
+            "granularity": granularity,
+            "candles": candles,
+            "model_filter": model_filter,
+            "started_at_utc": started_at_utc,
+            "completed_at_utc": completed_at_utc,
+            "duration_s": duration_s,
+            "git_commit": git_commit,
+            "results": results,
+            "passed_count": passed_count,
+            "failed_count": failed_count,
+            "quarantined_count": quarantined_count,
+            "errors": errors,
+        }
+
+        out_dir = MODELS_DIR / instrument
+        out_dir.mkdir(parents=True, exist_ok=True)
+        final_path = out_dir / "training_status.json"
+        tmp_path = out_dir / "training_status.json.tmp"
+
+        serialized = json.dumps(payload, indent=2, sort_keys=True, default=str)
+        with open(tmp_path, "w") as f:
+            f.write(serialized)
+            f.flush()
+            os.fsync(f.fileno())
+        os.rename(tmp_path, final_path)
+        logger.info(f"✓ Wrote {final_path}")
+        return final_path
+    except (OSError, TypeError, ValueError) as exc:
+        logger.warning(f"_write_status_json failed: {exc}")
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -706,6 +784,9 @@ def main():
         check_metal_gpu()
 
     t0 = time.time()
+    started_at_utc = datetime.now(timezone.utc).isoformat()
+    git_commit = _git_short_sha()
+    top_level_errors: list = []
     instrument = args.instrument
     params = MASTER_PARAMS.get(instrument, DEFAULT_PARAMS.copy())
 
@@ -713,6 +794,19 @@ def main():
     df = fetch_or_load(instrument, args.candles, args.granularity)
     if df.empty:
         print(json.dumps({"error": "No data", "instrument": instrument, "model": args.model}))
+        top_level_errors.append({"stage": "fetch_or_load", "error": "No data"})
+        _write_status_json(
+            instrument=instrument,
+            granularity=args.granularity,
+            candles=args.candles,
+            model_filter=args.model,
+            started_at_utc=started_at_utc,
+            completed_at_utc=datetime.now(timezone.utc).isoformat(),
+            duration_s=round(time.time() - t0, 1),
+            git_commit=git_commit,
+            results=[],
+            errors=top_level_errors,
+        )
         sys.exit(1)
 
     # Feature engineering
@@ -794,6 +888,21 @@ def main():
             "failed": failed,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         }, f, indent=2, sort_keys=True, default=str)
+
+    # Write unified per-run training_status.json (schema v1) for autonomous agents.
+    # Per docs/superpowers/plans/2026-05-19-training-architecture-autonomy-audit.md.
+    _write_status_json(
+        instrument=instrument,
+        granularity=args.granularity,
+        candles=args.candles,
+        model_filter=args.model,
+        started_at_utc=started_at_utc,
+        completed_at_utc=datetime.now(timezone.utc).isoformat(),
+        duration_s=total_time,
+        git_commit=git_commit,
+        results=results,
+        errors=top_level_errors,
+    )
 
     sys.exit(0 if failed == 0 else 1)
 
