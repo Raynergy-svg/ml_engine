@@ -13,6 +13,7 @@ import argparse
 import gc
 import json
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -130,6 +131,12 @@ def _quarantine_if_overshipped(
 # embargo always matches the labeler horizon (no drift if defaults change).
 # Source: docs/superpowers/plans/2026-05-19-val-acc-methodology-audit.md (#3).
 DIRECTION_LOOKAHEAD = 24
+
+# ── Pre-flight gate thresholds (see docs/superpowers/plans/2026-05-19-training-architecture-autonomy-audit.md) ──
+# Directly addresses the 2026-05-13 "Bug B" disk-full corruption pattern observed twice.
+MIN_FREE_GB = 2.0  # Minimum free disk space (GiB) required before training starts
+OANDA_PROBE_CONNECT_TIMEOUT = 5.0  # seconds
+OANDA_PROBE_READ_TIMEOUT = 10.0  # seconds
 
 # ── Full wandb-optimized params per master pair ──────────────────────────────
 # Restored from correlation_group_config.py — NO capping for M1 memory
@@ -594,6 +601,87 @@ MODEL_TRAINERS = {
 GAP_CHECKED_MODELS = {"transformer", "tcn", "histgb"}
 
 
+def _preflight_check(args) -> None:
+    """Pre-flight gate. HARD STOP before any training begins.
+
+    Validates the two failure modes that caused the 2026-05-13 "Bug B" disk-full
+    corruption (val_acc=0.4839 model shipped via 2/3-pass deploy gate):
+      1. Disk free space ≥ MIN_FREE_GB on PROJECT_ROOT volume.
+      2. OANDA connectivity probe (short timeout, no retries — fail fast).
+
+    Exit code 2 on failure (distinguishes from training failures which exit 1).
+    Bypassable via --skip-preflight for dev / local debugging.
+    """
+    if getattr(args, "skip_preflight", False):
+        logger.warning("⚠ pre-flight skipped via --skip-preflight (dev mode)")
+        return
+
+    # 1. Disk free space check
+    try:
+        usage = shutil.disk_usage(str(PROJECT_ROOT))
+        free_gb = usage.free / (1024 ** 3)
+    except OSError as e:
+        logger.error(f"✗ pre-flight FAIL: disk_usage({PROJECT_ROOT}) raised {type(e).__name__}: {e}")
+        logger.error("  remediation: verify PROJECT_ROOT path exists and is readable")
+        raise SystemExit(2)
+
+    if free_gb < MIN_FREE_GB:
+        logger.error(
+            f"✗ pre-flight FAIL: disk free {free_gb:.2f} GiB < required {MIN_FREE_GB} GiB on {PROJECT_ROOT}"
+        )
+        logger.error(
+            "  remediation: free up space in trained_data/ (cache, replay, old models) or pass --skip-preflight"
+        )
+        raise SystemExit(2)
+    logger.info(f"✓ pre-flight: disk free {free_gb:.2f} GiB (≥ {MIN_FREE_GB} GiB required)")
+
+    # 2. OANDA connectivity probe (no retries — fail fast)
+    import requests
+
+    api_token = os.getenv("OANDA_API_TOKEN") or os.getenv("OANDA_API_KEY")
+    account_id = os.getenv("OANDA_ACCOUNT_ID")
+    if not api_token:
+        logger.error("✗ pre-flight FAIL: OANDA_API_TOKEN / OANDA_API_KEY not set in env")
+        logger.error("  remediation: source .env.local or set OANDA_API_KEY, or pass --skip-preflight")
+        raise SystemExit(2)
+    if not account_id:
+        logger.error("✗ pre-flight FAIL: OANDA_ACCOUNT_ID not set in env")
+        logger.error("  remediation: source .env.local or set OANDA_ACCOUNT_ID, or pass --skip-preflight")
+        raise SystemExit(2)
+
+    probe_url = "https://api-fxpractice.oanda.com/v3/accounts"
+    try:
+        resp = requests.get(
+            probe_url,
+            headers={"Authorization": f"Bearer {api_token}"},
+            timeout=(OANDA_PROBE_CONNECT_TIMEOUT, OANDA_PROBE_READ_TIMEOUT),
+        )
+    except requests.Timeout as e:
+        logger.error(f"✗ pre-flight FAIL: OANDA probe timed out: {e}")
+        logger.error(
+            f"  remediation: check network; probe used connect={OANDA_PROBE_CONNECT_TIMEOUT}s read={OANDA_PROBE_READ_TIMEOUT}s"
+        )
+        raise SystemExit(2)
+    except requests.ConnectionError as e:
+        logger.error(f"✗ pre-flight FAIL: OANDA probe connection error: {e}")
+        logger.error("  remediation: check DNS/firewall; api-fxpractice.oanda.com must be reachable")
+        raise SystemExit(2)
+    except requests.RequestException as e:
+        logger.error(f"✗ pre-flight FAIL: OANDA probe failed: {type(e).__name__}: {e}")
+        raise SystemExit(2)
+
+    if resp.status_code >= 400:
+        logger.error(
+            f"✗ pre-flight FAIL: OANDA probe HTTP {resp.status_code} from {probe_url}"
+        )
+        body_preview = resp.text[:200] if resp.text else "<empty>"
+        logger.error(f"  body: {body_preview}")
+        logger.error("  remediation: verify OANDA_API_KEY is valid and not expired")
+        raise SystemExit(2)
+    logger.info(f"✓ pre-flight: OANDA reachable (HTTP {resp.status_code})")
+    logger.info("✓ pre-flight passed; proceeding to training")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train single model (M1 Mac optimized)")
     parser.add_argument("--instrument", required=True, help="e.g. GBP_JPY")
@@ -603,7 +691,15 @@ def main():
     parser.add_argument("--candles", type=int, default=25000, help="Number of H1 candles")
     parser.add_argument("--granularity", default="H1")
     parser.add_argument("--no-gpu-check", action="store_true", help="Skip Metal GPU check")
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="Skip pre-flight disk/OANDA gate (dev / local debugging only)",
+    )
     args = parser.parse_args()
+
+    # Pre-flight gate — HARD STOP if disk low or OANDA unreachable (exit 2)
+    _preflight_check(args)
 
     # GPU check
     if not args.no_gpu_check:
