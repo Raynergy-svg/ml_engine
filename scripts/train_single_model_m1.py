@@ -122,6 +122,15 @@ def _quarantine_if_overshipped(
     )
     return {"quarantined": True, "gap": gap, "quarantine_dir": str(qdir)}
 
+# 2026-05-19 — close train/val embargo leak. The direction labeler uses
+# `lookahead` bars of future return to assign y. Without `gap=lookahead` between
+# train/val (and val/test), the first `lookahead` sequences of val are labeled
+# from price moves that train sequences already saw — classic label leakage
+# that silently inflates val_acc. Keep `lookahead` and `gap` lockstep so the
+# embargo always matches the labeler horizon (no drift if defaults change).
+# Source: docs/superpowers/plans/2026-05-19-val-acc-methodology-audit.md (#3).
+DIRECTION_LOOKAHEAD = 24
+
 # ── Full wandb-optimized params per master pair ──────────────────────────────
 # Restored from correlation_group_config.py — NO capping for M1 memory
 MASTER_PARAMS = {
@@ -302,7 +311,7 @@ def train_transformer(instrument: str, df_feat: pd.DataFrame, params: dict) -> d
         max_acceptable_gap=MAX_GAP,
     )
 
-    dir_data = load_direction_data(df_feat)
+    dir_data = load_direction_data(df_feat, lookahead=DIRECTION_LOOKAHEAD, gap=DIRECTION_LOOKAHEAD)
     if not dir_data:
         return {"error": "No direction data"}
 
@@ -448,7 +457,7 @@ def train_histgb(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
     from src.core.modular_data_loaders import load_direction_data
 
     cfg = TrainerConfig(batch_size=params["batch_size"], learning_rate=params["lr"])
-    dir_data = load_direction_data(df_feat)
+    dir_data = load_direction_data(df_feat, lookahead=DIRECTION_LOOKAHEAD, gap=DIRECTION_LOOKAHEAD)
     if not dir_data:
         return {"error": "No direction data"}
 
@@ -501,7 +510,7 @@ def train_transformer_regime(instrument: str, df_feat: pd.DataFrame, params: dic
         use_replay_buffer=False, overfit_threshold=0.04, max_acceptable_gap=MAX_GAP,
     )
 
-    dir_data = load_direction_data(df_feat)
+    dir_data = load_direction_data(df_feat, lookahead=DIRECTION_LOOKAHEAD, gap=DIRECTION_LOOKAHEAD)
     if not dir_data:
         return {"error": "No direction data"}
 
