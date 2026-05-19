@@ -20,6 +20,7 @@ from typing import Any
 from rich.text import Text
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.widgets import (
     Button,
@@ -262,6 +263,12 @@ class ConfigScreen(Container):
     Edits are staged (amber highlight) until queued via the approval pipeline.
     """
 
+    BINDINGS = [
+        Binding("s", "stage_profile", "Stage", show=True),
+        Binding("q", "queue_for_approval", "Queue", show=True),
+        Binding("r", "reset_form", "Reset", show=True),
+    ]
+
     DEFAULT_CSS = """
     ConfigScreen {
         height: 1fr;
@@ -403,15 +410,31 @@ class ConfigScreen(Container):
         self._update_status_label()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button clicks."""
+        """Handle button clicks — delegates to action methods (shared dispatch)."""
         button_id = event.button.id or ""
 
         if button_id == "btn-save-config":
-            self._save_staged_changes()
+            self.action_queue_for_approval()
         elif button_id == "btn-reset-config":
-            self._reset_to_profile()
+            self.action_reset_form()
         elif button_id == "btn-apply-profile":
-            self._apply_selected_profile()
+            self.action_stage_profile()
+
+    # ------------------------------------------------------------------
+    # Actions (BINDINGS dispatch) — keyboard equivalents of the buttons
+    # ------------------------------------------------------------------
+
+    def action_stage_profile(self) -> None:
+        """Stage the selected profile's differences for approval (key: s)."""
+        self._apply_selected_profile()
+
+    def action_queue_for_approval(self) -> None:
+        """Queue all staged changes through the approval pipeline (key: q)."""
+        self._save_staged_changes()
+
+    def action_reset_form(self) -> None:
+        """Reset all inputs to the selected profile's defaults (key: r)."""
+        self._reset_to_profile()
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         """Track selected profile from RadioSet."""
