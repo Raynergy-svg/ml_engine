@@ -2642,10 +2642,31 @@ class BuddyApp(App):
 
 def run():
     """Launch the Buddy Command Bridge TUI."""
+    import sys
+
     parser = argparse.ArgumentParser(description="BUDDY — Cyberpunk Command Bridge")
-    parser.add_argument("--demo", action="store_true",
-                        help="Run with simulated data instead of live OANDA feed")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--live", action="store_true",
+                            help="Connect to live OANDA feed (requires OANDA creds in env)")
+    mode_group.add_argument("--demo", action="store_true",
+                            help="Run with simulated data instead of live OANDA feed")
     args = parser.parse_args()
+
+    creds_ok, creds_msg = check_oanda_credentials()
+
+    if args.live:
+        if not creds_ok:
+            print(
+                f"ERROR: --live requires OANDA credentials but they are missing: {creds_msg}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        live = True
+    elif args.demo:
+        live = False
+    else:
+        # Auto-detect: live when creds are present, demo otherwise.
+        live = creds_ok
 
     # Pick #6: surface brain-file cap overages before Textual takes over
     # stderr. Non-blocking — never raises, never delays startup more than
@@ -2655,9 +2676,6 @@ def run():
         emit_brain_cap_warnings()
     except Exception:
         pass
-
-    # Default: LIVE always. Only demo when explicitly requested.
-    live = not args.demo
 
     app = BuddyApp(live=live)
     app.run()
