@@ -477,6 +477,25 @@ class GateEvaluator:
             self._pair_evaluators[instrument] = self
             return self
 
+        # Disk-pressure guard — Tier 7 per-pair construction path.
+        # Extends the Fix #4 (commit a8db9bf — Scanner.__init__ +
+        # ModularEnsembleInference.load_models) and Fix #6 (commit 8aee0a6 —
+        # GateEvaluator.load_models) chain to the per-pair sub-evaluator
+        # construction site. Fix #6's load_models guard is bypassed here:
+        # the sub below calls the individual _load_* helpers directly without
+        # going through load_models, so under ENOSPC every per-pair, every
+        # cycle would still risk SIGSEGV inside lightgbm/keras/joblib.
+        # Placed OUTSIDE the try below on purpose — the broad except there
+        # falls back to joint on construction failure, which would silently
+        # swallow this RuntimeError and let the load proceed via the cached
+        # joint evaluator. Branch logic guarding this call: cache-hit and
+        # joint-fallback (no per-pair dir) both returned above; this fires
+        # only on fresh per-pair construction. See `src/scanner/runtime_guards.py`.
+        from .runtime_guards import assert_disk_ok_for_model_load
+        assert_disk_ok_for_model_load(
+            context=f"per_pair_gate_evaluator_load:{instrument}",
+        )
+
         try:
             sub = GateEvaluator(
                 model_dir=str(self.base_model_dir),

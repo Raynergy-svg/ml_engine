@@ -513,6 +513,214 @@ def test_t8c_gate_evaluator_disk_guard_fires_before_any_model_file_is_opened(
 
 
 # ---------------------------------------------------------------------------
+# T9: GateEvaluator._get_pair_evaluator() — Tier 7 per-pair construction.
+#
+# Fix #6 (commit 8aee0a6) closed GateEvaluator.load_models() under disk
+# pressure but its agent explicitly flagged that the per-pair Tier 7 routing
+# path at gates._get_pair_evaluator bypasses load_models() entirely — it
+# constructs a fresh sub-evaluator and calls the individual _load_* helpers
+# directly. So "every pair, every cycle" SIGSEGV risk was still unguarded.
+# Fix #7 (this) hoists assert_disk_ok_for_model_load() into _get_pair_evaluator
+# on the fresh-construction branch only (cache-hit + joint-fallback paths
+# return early and load nothing new — they must NOT trigger the guard).
+# ---------------------------------------------------------------------------
+
+
+def test_t9a_get_pair_evaluator_raises_runtimeerror_under_disk_pressure(
+    monkeypatch, tmp_path
+):
+    """T9a: _get_pair_evaluator raises RuntimeError with the
+    `per_pair_gate_evaluator_load:EUR_USD` context tag when disk is low.
+
+    The per-pair dir must exist on disk for the fresh-construction branch
+    to be selected — otherwise the joint-fallback branch returns self
+    BEFORE the guard fires (T9d covers that case).
+    """
+    from src.scanner.gates import GateEvaluator
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+
+    # Real per-pair dir on disk so we reach the fresh-construction branch.
+    pair_dir = tmp_path / "EUR_USD"
+    pair_dir.mkdir()
+
+    # Build the parent evaluator BEFORE patching disk (parent __init__ also
+    # runs the Fix #6 guard via load_models — but we skip that by passing
+    # use_per_pair_routing=True and never calling load_models on the parent).
+    evaluator = GateEvaluator(
+        model_dir=tmp_path,
+        use_joint_only=False,
+        use_per_pair_routing=True,
+    )
+
+    # Now apply disk pressure and exercise the per-pair construction path.
+    _patch_disk_usage(monkeypatch, free_mib=60)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        evaluator._get_pair_evaluator("EUR_USD")
+
+    msg = str(exc_info.value)
+    assert "disk pressure" in msg
+    assert "60 MiB free" in msg
+    assert "500 MiB threshold" in msg
+    assert "per_pair_gate_evaluator_load:EUR_USD" in msg, (
+        "context tag must include the pair so operators can trace which "
+        "per-pair construction triggered the guard"
+    )
+
+    # The fresh-construction branch must NOT have cached anything — a
+    # subsequent call with disk OK should attempt construction again.
+    assert "EUR_USD" not in evaluator._pair_evaluators, (
+        "guard fires before the try/except, so no cached entry should be "
+        "written for EUR_USD on the failure path"
+    )
+
+
+def test_t9b_get_pair_evaluator_does_not_raise_disk_runtimeerror_when_disk_ok(
+    monkeypatch, tmp_path
+):
+    """T9b: _get_pair_evaluator does NOT raise the disk-pressure RuntimeError
+    when free disk is above threshold. The call may still fail or return a
+    sub-evaluator with all _load_* status False (no models on disk) — we
+    only assert the absence of the disk-pressure RuntimeError branch.
+    """
+    from src.scanner.gates import GateEvaluator
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+    _patch_disk_usage(monkeypatch, free_mib=10_000)
+
+    pair_dir = tmp_path / "EUR_USD"
+    pair_dir.mkdir()
+
+    evaluator = GateEvaluator(
+        model_dir=tmp_path,
+        use_joint_only=False,
+        use_per_pair_routing=True,
+    )
+
+    # With healthy disk, the fresh-construction branch runs without raising
+    # the disk-pressure RuntimeError. The sub-evaluator's _load_* helpers
+    # are exercised but find no models on disk; the try/except in
+    # _get_pair_evaluator may swallow non-disk-pressure construction errors
+    # and fall back to self (the parent). Either outcome is acceptable here
+    # — we only assert that no disk-pressure RuntimeError surfaced.
+    try:
+        result = evaluator._get_pair_evaluator("EUR_USD")
+    except RuntimeError as exc:  # pragma: no cover — defensive
+        assert "disk pressure" not in str(exc), (
+            "disk-pressure RuntimeError must NOT fire when free_mib=10_000"
+        )
+        raise
+
+    # Whatever was returned, it must be a GateEvaluator (either the fresh
+    # sub or the parent self on construction-fail fallback).
+    assert isinstance(result, GateEvaluator)
+
+
+def test_t9c_get_pair_evaluator_cache_hit_branch_is_not_guarded(
+    monkeypatch, tmp_path
+):
+    """T9c: The cache-hit branch must NOT fire the disk-pressure guard.
+
+    Pattern: warm the cache with disk OK (first call constructs and caches
+    the sub-evaluator), then drop disk below threshold and call again with
+    the SAME pair. The second call must return the cached evaluator
+    silently — no RuntimeError, no fresh load.
+    """
+    from src.scanner.gates import GateEvaluator
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+
+    pair_dir = tmp_path / "EUR_USD"
+    pair_dir.mkdir()
+
+    evaluator = GateEvaluator(
+        model_dir=tmp_path,
+        use_joint_only=False,
+        use_per_pair_routing=True,
+    )
+
+    # First call — disk OK, fresh construction caches a sub-evaluator
+    # (or, on inner construction failure, falls back to self and caches
+    # that). Either way, _pair_evaluators[EUR_USD] becomes populated.
+    _patch_disk_usage(monkeypatch, free_mib=10_000)
+    first = evaluator._get_pair_evaluator("EUR_USD")
+    assert "EUR_USD" in evaluator._pair_evaluators, (
+        "first call with disk OK must populate the per-pair cache"
+    )
+
+    # Second call — disk DROPS below threshold. The cache-hit branch at
+    # the top of _get_pair_evaluator must short-circuit BEFORE the guard
+    # runs, so this call must NOT raise RuntimeError.
+    _patch_disk_usage(monkeypatch, free_mib=50)
+    try:
+        second = evaluator._get_pair_evaluator("EUR_USD")
+    except RuntimeError as exc:  # pragma: no cover — failing path
+        if "disk pressure" in str(exc):
+            pytest.fail(
+                "cache-hit branch must NOT fire the disk-pressure guard "
+                "(cached evaluator returned without any new model load); "
+                f"got: {exc}"
+            )
+        raise
+
+    # The cache-hit branch returns the SAME object that was cached.
+    assert second is first, (
+        "second call must return the cached evaluator without rebuilding"
+    )
+
+
+def test_t9d_get_pair_evaluator_joint_fallback_branch_is_not_guarded(
+    monkeypatch, tmp_path
+):
+    """T9d: The joint-fallback branch (no per-pair dir on disk) must NOT
+    fire the disk-pressure guard.
+
+    When the per-pair directory doesn't exist, _get_pair_evaluator caches
+    `self` (the parent / joint evaluator) and returns it. No new model is
+    loaded on this branch, so the guard must NOT fire here even under
+    severe disk pressure.
+    """
+    from src.scanner.gates import GateEvaluator
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+
+    # Build parent BEFORE patching disk. Deliberately do NOT create
+    # tmp_path/EUR_USD — this exercises the joint-fallback branch.
+    evaluator = GateEvaluator(
+        model_dir=tmp_path,
+        use_joint_only=False,
+        use_per_pair_routing=True,
+    )
+    assert not (tmp_path / "EUR_USD").exists(), (
+        "test precondition: per-pair dir must NOT exist to exercise joint fallback"
+    )
+
+    # Drop disk below threshold. The joint-fallback branch must return
+    # self without firing the guard.
+    _patch_disk_usage(monkeypatch, free_mib=40)
+    try:
+        result = evaluator._get_pair_evaluator("EUR_USD")
+    except RuntimeError as exc:  # pragma: no cover — failing path
+        if "disk pressure" in str(exc):
+            pytest.fail(
+                "joint-fallback branch must NOT fire the disk-pressure "
+                "guard (no new model load — returns parent self); "
+                f"got: {exc}"
+            )
+        raise
+
+    # The joint-fallback branch caches self and returns self.
+    assert result is evaluator, (
+        "joint-fallback branch must return the parent (self), not a fresh sub"
+    )
+    assert evaluator._pair_evaluators.get("EUR_USD") is evaluator, (
+        "joint-fallback branch must cache self under the pair key to avoid "
+        "re-hitting the filesystem on subsequent scans"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Bonus: real-disk smoke test (no monkeypatch) — confirms the guard works on
 # the actual filesystem without crashing.
 # ---------------------------------------------------------------------------
