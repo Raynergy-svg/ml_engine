@@ -141,6 +141,32 @@ def check_disk_pressure(
     return True, free_mib, threshold_mib, "ok"
 
 
+def get_disk_pressure_status(
+    path: Optional[Path] = None,
+    threshold_mib: Optional[int] = None,
+) -> Tuple[bool, int, int]:
+    """Introspecting variant of the disk-pressure check (never raises).
+
+    Returns `(ok, free_mib, threshold_mib)` — the same 3 values
+    `check_disk_pressure` returns minus the `reason` string. Intended for
+    fire-and-forget loops (maintenance daemons, post-scan automation hooks)
+    where the caller MUST NOT raise — a raise from a daemon thread would
+    silently kill the thread and wedge any cooldown depending on it.
+
+    For call sites that *can* recover from an exception (scanner init,
+    gate evaluator load), prefer `assert_disk_ok_for_model_load` so the
+    operator sees a loud ERROR log + RuntimeError. For sites that must
+    cleanly skip + report via a tracker/return-value, use this.
+
+    See Fix #8 (maintenance retrain subprocess guard) for the motivating
+    case: ENOSPC mid-retrain produces a silent SIGSEGV in the forked child
+    AND can corrupt half-written checkpoints; the parent must skip cleanly
+    so the next maintenance cycle can re-attempt as soon as disk frees up.
+    """
+    ok, free_mib, threshold, _reason = check_disk_pressure(path, threshold_mib)
+    return ok, free_mib, threshold
+
+
 def assert_disk_ok_for_model_load(
     path: Optional[Path] = None,
     threshold_mib: Optional[int] = None,

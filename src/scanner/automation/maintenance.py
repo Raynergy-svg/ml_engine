@@ -155,6 +155,37 @@ class IdleMaintenance:
                 if self._stop_requested.is_set():
                     tracker.update_activity(activity_id, status="canceled", summary="Shutdown requested before retrain started")
                     return
+
+                # Disk-pressure precondition (Fix #8). ENOSPC inside the
+                # retrain subprocess produces a silent SIGSEGV mid-train AND
+                # can corrupt half-written checkpoints (joblib/keras write
+                # incrementally; a truncated artifact then segfaults on the
+                # next inference load). Skip cleanly here — do NOT update
+                # _last_retrain, so the 24h cooldown stays reserved for
+                # successful runs and the next maintenance cycle can
+                # re-attempt as soon as conditions improve. The introspecting
+                # variant is required: a raise would kill this daemon thread
+                # and wedge the cooldown permanently.
+                from src.scanner.runtime_guards import get_disk_pressure_status
+                disk_ok, free_mib, threshold_mib = get_disk_pressure_status()
+                if not disk_ok:
+                    msg = (
+                        f"maintenance retrain skipped: disk pressure "
+                        f"({free_mib} MiB free < {threshold_mib} MiB threshold)"
+                    )
+                    logger.warning(msg)
+                    tracker.fail_activity(
+                        activity_id,
+                        error=msg,
+                        summary="Retrain skipped due to disk pressure",
+                        metadata={
+                            "free_mib": free_mib,
+                            "threshold_mib": threshold_mib,
+                            "reason": "disk_pressure",
+                        },
+                    )
+                    return
+
                 logger.info("🔄 Background gate retraining started...")
                 tracker.append_event(activity_id, "Background gate retraining started")
 
@@ -271,6 +302,22 @@ class IdleMaintenance:
         Use this during dedicated maintenance windows, not between scans.
         """
         try:
+            # Disk-pressure precondition (Fix #8). Same failure mode as the
+            # async path: ENOSPC mid-train SIGSEGVs the child + corrupts
+            # partial checkpoints. The sync variant must NOT raise — callers
+            # expect a bool return — so use the introspecting status helper
+            # and bail with `return False`. _last_retrain is left untouched
+            # so the cooldown is not wedged by a transient disk fill.
+            from src.scanner.runtime_guards import get_disk_pressure_status
+            disk_ok, free_mib, threshold_mib = get_disk_pressure_status()
+            if not disk_ok:
+                logger.warning(
+                    "sync retrain skipped: disk pressure "
+                    "(%d MiB free < %d MiB threshold)",
+                    free_mib, threshold_mib,
+                )
+                return False
+
             if console:
                 console.print("[dim]🔄 Running synchronous gate retraining...[/dim]")
 

@@ -721,6 +721,277 @@ def test_t9d_get_pair_evaluator_joint_fallback_branch_is_not_guarded(
 
 
 # ---------------------------------------------------------------------------
+# T10: IdleMaintenance retrain subprocess — Fix #8.
+#
+# The maintenance retrain (both async `trigger_background_retrain._retrain_task`
+# and sync `run_sync_retrain`) shells out to a child process that runs
+# `retrain_gates.py`. Under ENOSPC, the child SIGSEGVs mid-train (same failure
+# class as Fix #4/6/7 but in a forked process) AND can leave half-written
+# checkpoints (`.keras`, `.pkl`) on disk that then SIGSEGV on the next
+# inference load. The guard must:
+#
+#   (a) skip the subprocess Popen / subprocess.run entirely under disk pressure,
+#   (b) report the skip via the BackgroundActivityTracker so the operator sees
+#       it in the brain feed (async path only — the sync path just returns
+#       False),
+#   (c) NOT update `_last_retrain` so the 24h cooldown is not wedged by a
+#       transient disk fill (next maintenance cycle can re-attempt immediately
+#       when disk frees up),
+#   (d) NEVER raise — the async path runs in a daemon thread; a raise would
+#       kill the thread and wedge the cooldown permanently.
+#
+# Tests use the introspecting `get_disk_pressure_status` helper added to
+# runtime_guards.py alongside this fix.
+# ---------------------------------------------------------------------------
+
+
+def _redirect_tracker_to_tmp(monkeypatch: pytest.MonkeyPatch, tmp_path) -> "Path":
+    """Point the module-level BackgroundActivityTracker registry at tmp_path.
+
+    Real-disk no-mock pattern: monkeypatch `_DEFAULT_PATH` to a tmp-rooted
+    JSON file and clear the path-keyed `_TRACKERS` cache. Subsequent calls
+    to `get_background_activity_tracker()` (with no path arg, as
+    `IdleMaintenance` does) construct a fresh tracker against the tmp file.
+    Returns the tmp path so tests can read the persisted state directly.
+    """
+    from pathlib import Path as _Path
+
+    from src.scanner.automation import background_activity as ba
+
+    tmp_file = tmp_path / "background_activity.json"
+    monkeypatch.setattr(ba, "_DEFAULT_PATH", _Path(tmp_file))
+    # Clear the singleton cache so the next `get_background_activity_tracker`
+    # call constructs a fresh tracker against the new default path.
+    ba._TRACKERS.clear()
+    return tmp_file
+
+
+def _wait_for_thread(thread, timeout_s: float = 5.0) -> None:
+    """Real thread join — no mocks, no sleeps in a polling loop."""
+    if thread is None:
+        return
+    thread.join(timeout=timeout_s)
+
+
+def test_t10a_async_retrain_skips_popen_under_disk_pressure(monkeypatch, tmp_path):
+    """T10a: trigger_background_retrain skips subprocess.Popen entirely
+    when disk is low, reports via fail_activity, and leaves _last_retrain
+    unset so the cooldown is not wedged.
+    """
+    import subprocess as _subprocess
+
+    from src.scanner.automation.background_activity import (
+        get_background_activity_tracker,
+    )
+    from src.scanner.automation.maintenance import IdleMaintenance, MaintenanceConfig
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+    tracker_file = _redirect_tracker_to_tmp(monkeypatch, tmp_path)
+
+    # Tripwire: Popen MUST NOT be called under disk pressure. Use a real
+    # callable that raises (no MagicMock) — if the guard fails to short-
+    # circuit, the thread will record the AssertionError via fail_activity.
+    popen_invocations = {"count": 0}
+
+    def _popen_tripwire(*_args, **_kwargs):
+        popen_invocations["count"] += 1
+        raise AssertionError(
+            "subprocess.Popen must not be called under disk pressure — "
+            "Fix #8 disk guard failed to short-circuit"
+        )
+
+    monkeypatch.setattr(_subprocess, "Popen", _popen_tripwire)
+    # Also patch the module-level reference used inside _retrain_task.
+    import src.scanner.automation.maintenance as _mm
+    monkeypatch.setattr(_mm.subprocess, "Popen", _popen_tripwire)
+
+    # Disk below threshold.
+    _patch_disk_usage(monkeypatch, free_mib=80)
+
+    maintenance = IdleMaintenance(
+        config=MaintenanceConfig(retrain_timeout_seconds=2)
+    )
+    maintenance.trigger_background_retrain()
+
+    # Wait for the daemon thread to complete its skip path.
+    _wait_for_thread(maintenance._retrain_thread)
+
+    # (a) Popen was NEVER called — disk guard short-circuited above it.
+    assert popen_invocations["count"] == 0, (
+        "subprocess.Popen was invoked despite disk pressure — guard failed"
+    )
+
+    # (b) The activity tracker recorded a `failed` activity with the
+    #     disk-pressure error message. Re-open the same tracker (cache was
+    #     cleared) and read the persisted state.
+    tracker = get_background_activity_tracker()
+    snapshot = tracker.get_snapshot()
+    # Newest entries are first in active/history; we expect history to
+    # contain exactly one failed maintenance_retrain entry.
+    all_entries = list(snapshot["active"]) + list(snapshot["history"])
+    retrain_entries = [
+        a for a in all_entries if a.get("kind") == "maintenance_retrain"
+    ]
+    assert retrain_entries, (
+        f"expected at least one maintenance_retrain activity, got snapshot: "
+        f"{snapshot}"
+    )
+    failed = [a for a in retrain_entries if a.get("status") == "failed"]
+    assert failed, (
+        f"expected the retrain activity to be marked failed, got: "
+        f"{[(a.get('status'), a.get('error')) for a in retrain_entries]}"
+    )
+    err_msg = failed[0].get("error") or ""
+    assert "disk pressure" in err_msg, (
+        f"expected disk-pressure error message, got: {err_msg!r}"
+    )
+    assert "80 MiB free" in err_msg
+    assert "500 MiB threshold" in err_msg
+
+    # (c) _last_retrain MUST stay None so the cooldown is not wedged.
+    assert maintenance._last_retrain is None, (
+        "_last_retrain must remain None on a disk-pressure skip so the "
+        f"24h cooldown allows re-attempt; got: {maintenance._last_retrain}"
+    )
+
+    # Sanity: tracker file actually exists on disk (real I/O happened).
+    assert tracker_file.exists(), (
+        "tmp tracker file should have been written by fail_activity"
+    )
+
+
+def test_t10b_sync_retrain_returns_false_under_disk_pressure(monkeypatch, tmp_path):
+    """T10b: run_sync_retrain returns False and does NOT call subprocess.run
+    when disk is low. _last_retrain stays None so the cooldown is not wedged.
+    """
+    import subprocess as _subprocess
+
+    from src.scanner.automation.maintenance import IdleMaintenance, MaintenanceConfig
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+
+    # Tripwire on subprocess.run — real callable that raises.
+    run_invocations = {"count": 0}
+
+    def _run_tripwire(*_args, **_kwargs):
+        run_invocations["count"] += 1
+        raise AssertionError(
+            "subprocess.run must not be called under disk pressure — "
+            "Fix #8 sync-path disk guard failed to short-circuit"
+        )
+
+    import src.scanner.automation.maintenance as _mm
+    monkeypatch.setattr(_mm.subprocess, "run", _run_tripwire)
+    monkeypatch.setattr(_subprocess, "run", _run_tripwire)
+
+    _patch_disk_usage(monkeypatch, free_mib=120)
+
+    maintenance = IdleMaintenance(
+        config=MaintenanceConfig(retrain_timeout_seconds=2)
+    )
+    result = maintenance.run_sync_retrain()
+
+    assert result is False, (
+        "run_sync_retrain must return False under disk pressure"
+    )
+    assert run_invocations["count"] == 0, (
+        "subprocess.run was invoked despite disk pressure — sync guard failed"
+    )
+    assert maintenance._last_retrain is None, (
+        "_last_retrain must remain None on a disk-pressure skip"
+    )
+
+
+def test_t10c_retrain_proceeds_to_popen_when_disk_ok(monkeypatch, tmp_path):
+    """T10c: trigger_background_retrain DOES call subprocess.Popen when disk
+    is healthy. Guards against the regression "disk guard fires too eagerly
+    and blocks legitimate retrains".
+
+    Uses a real Popen-shaped fake that returns immediately so the test
+    doesn't actually spawn a retrain. NO MagicMock — the fake is a real
+    class with the methods Popen exposes that `_retrain_task` calls.
+    """
+    from src.scanner.automation.maintenance import IdleMaintenance, MaintenanceConfig
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+    _redirect_tracker_to_tmp(monkeypatch, tmp_path)
+
+    # Pre-create the retrain script in tmp_path so the script-resolution
+    # branch picks it up without falling through to main.py. _retrain_task
+    # uses Path(__file__).parents[3] which is the real repo root; we leave
+    # that path alone (the real retrain_gates.py exists in the repo) so the
+    # cmd construction succeeds without us having to fiddle with __file__.
+
+    popen_invocations = {"count": 0, "last_cmd": None}
+
+    class _RealishPopen:
+        """Real class, not a MagicMock. Implements the subset of Popen's
+        API that _retrain_task uses: .pid, .poll(), .communicate(),
+        .returncode. Returns instantly with returncode=0."""
+
+        def __init__(self, cmd, *_args, **_kwargs):
+            popen_invocations["count"] += 1
+            popen_invocations["last_cmd"] = cmd
+            self.pid = 99999
+            self.returncode = 0
+            self._polled = False
+
+        def poll(self):
+            # Return None on first poll (so the while-loop body runs once
+            # for activity-tracker metadata population), then 0 thereafter.
+            if not self._polled:
+                self._polled = True
+                return None
+            return 0
+
+        def communicate(self):
+            return ("", "")
+
+        def terminate(self):  # pragma: no cover — only used on shutdown
+            return None
+
+        def kill(self):  # pragma: no cover — only used on timeout
+            return None
+
+        def wait(self, timeout=None):  # pragma: no cover
+            return 0
+
+    import src.scanner.automation.maintenance as _mm
+    monkeypatch.setattr(_mm.subprocess, "Popen", _RealishPopen)
+
+    # Disk is HEALTHY.
+    _patch_disk_usage(monkeypatch, free_mib=10_000)
+
+    maintenance = IdleMaintenance(
+        config=MaintenanceConfig(retrain_timeout_seconds=2)
+    )
+    maintenance.trigger_background_retrain()
+
+    _wait_for_thread(maintenance._retrain_thread, timeout_s=10.0)
+
+    assert popen_invocations["count"] == 1, (
+        f"subprocess.Popen should be invoked exactly once on the healthy-"
+        f"disk path; got {popen_invocations['count']} invocations. The "
+        f"disk guard is firing too eagerly and blocking legitimate retrains."
+    )
+    # The cmd should reference either retrain_gates.py or main.py — both
+    # are acceptable depending on which file exists in the repo.
+    cmd = popen_invocations["last_cmd"]
+    assert cmd is not None
+    cmd_str = " ".join(str(p) for p in cmd)
+    assert ("retrain_gates.py" in cmd_str) or ("retrain-gates" in cmd_str), (
+        f"unexpected retrain command: {cmd_str}"
+    )
+
+    # On a successful Popen returncode=0 path, _last_retrain is updated.
+    # (Confirms the success path is reachable when the guard does NOT
+    # fire — i.e. the guard isn't silently shadowing the success branch.)
+    assert maintenance._last_retrain is not None, (
+        "_last_retrain should be updated after a successful retrain"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Bonus: real-disk smoke test (no monkeypatch) — confirms the guard works on
 # the actual filesystem without crashing.
 # ---------------------------------------------------------------------------
