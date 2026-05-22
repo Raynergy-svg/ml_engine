@@ -94,6 +94,12 @@ class ReplayResult:
             "gate_pass_rate": round(
                 self.signals_passed_gates / max(self.signals_generated, 1), 4
             ),
+            # `trades` must round-trip through `to_dict` because
+            # `change_eval._aggregate_trading` reads `b.get("trades") or []`
+            # to compute per-pair win_rate. Omitting it silently zeroed
+            # the scorecard's `win_rate` whenever candles were loaded.
+            # (2026-05-21: adjacent fix landed with the candle-loader repair.)
+            "trades": list(self.trades),
         }
 
 

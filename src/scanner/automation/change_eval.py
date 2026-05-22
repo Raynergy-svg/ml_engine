@@ -12,6 +12,7 @@ unit-testable without OANDA, MLflow, or a real test suite running.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import subprocess
@@ -32,6 +33,18 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _DEFAULT_REGIME_WINDOWS_PATH = _PROJECT_ROOT / "tests" / "fixtures" / "regime_windows.json"
 _DEFAULT_SCORECARD_LOG = _PROJECT_ROOT / ".claude" / "meta" / "scorecards.jsonl"
 
+# Canonical on-disk candle cache used by training pipelines. ChangeEvalHarness
+# reads the same cache so the scorecard runs against the SAME OHLCV data the
+# bot has been training on — no OANDA round trip, no network, no creds.
+_DEFAULT_CANDLES_ROOT = _PROJECT_ROOT / "trained_data" / "cache" / "training_data"
+
+# Bars per UTC day per granularity (used to convert "days" → candle count).
+_BARS_PER_DAY = {"M15": 96, "M30": 48, "H1": 24, "H4": 6, "D": 1}
+
+# Preferred granularity order when the harness has no explicit preference.
+# M15 first — the scanner's primary timeframe and what we have most cached.
+_PREFERRED_GRANULARITIES = ("M15", "H1", "M30", "H4")
+
 
 # Trading thresholds (Stage 3.2)
 TRADING_PNL_DELTA_FLOOR_R = -1.0
@@ -49,21 +62,173 @@ CandleLoader = Callable[[str, int], List[Dict[str, Any]]]
 PytestRunner = Callable[[Optional[Path]], Dict[str, Any]]
 
 
-def _default_candle_loader(pair: str, days: int) -> List[Dict[str, Any]]:
-    """Load historical candles for a pair. Returns [] when OANDA isn't reachable."""
+def _normalize_pair(pair: str) -> str:
+    """Round-trip pair symbol to the on-disk convention (`EUR_USD`).
+
+    Accepts `EUR_USD`, `EUR/USD`, `EURUSD`, lowercase, whitespace. Returns the
+    underscore form used by both the training cache and the live scanner.
+    """
+    if not pair:
+        return ""
+    s = pair.strip().upper().replace("/", "_").replace("-", "_")
+    if "_" in s:
+        return s
+    # `EURUSD` → `EUR_USD` (only handle the 6-char major case; anything else
+    # is returned as-is and will miss the cache, surfacing a real `no_candles`).
+    if len(s) == 6:
+        return f"{s[:3]}_{s[3:]}"
+    return s
+
+
+def _resolve_cached_candle_path(
+    pair: str,
+    *,
+    candles_root: Optional[Path] = None,
+    preferred_granularity: Optional[str] = None,
+) -> Optional[Path]:
+    """Find the largest available cached candle CSV for `pair`.
+
+    Search order:
+      1. Caller's `preferred_granularity` if supplied
+      2. `_PREFERRED_GRANULARITIES` in declared order
+      3. Within a granularity, the file with the highest candle-count suffix
+         (`EUR_USD_M15_65000.csv` beats `EUR_USD_M15_30000.csv`).
+
+    Returns `None` if nothing is cached for the pair.
+    """
+    root = Path(candles_root) if candles_root else _DEFAULT_CANDLES_ROOT
+    if not root.is_dir():
+        return None
+
+    norm_pair = _normalize_pair(pair)
+    if not norm_pair:
+        return None
+
+    grans: List[str] = []
+    if preferred_granularity:
+        grans.append(preferred_granularity)
+    for g in _PREFERRED_GRANULARITIES:
+        if g not in grans:
+            grans.append(g)
+
+    for gran in grans:
+        candidates: List[tuple[int, Path]] = []
+        for p in root.glob(f"{norm_pair}_{gran}_*.csv"):
+            stem = p.stem  # e.g. EUR_USD_M15_65000
+            tail = stem.rsplit("_", 1)[-1]
+            try:
+                count = int(tail)
+            except ValueError:
+                count = 0
+            candidates.append((count, p))
+        if candidates:
+            candidates.sort(reverse=True)  # highest count first
+            return candidates[0][1]
+    return None
+
+
+def _read_candles_csv(path: Path, *, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Read OHLCV rows from a training-cache CSV into the dict shape
+    `ReplayValidator` consumes (`{time, open, high, low, close, volume}` with
+    numeric OHLCV). Returns the LAST `limit` rows when limit is set — the
+    scorecard wants the most recent history, not the oldest.
+    """
+    rows: List[Dict[str, Any]] = []
     try:
-        from src.scanner.market_data import get_recent_candles  # type: ignore
-        return list(get_recent_candles(pair, count=days * 24))
-    except Exception as e:
-        logger.debug("change_eval.candle_loader_unavailable pair=%s err=%s", pair, e)
+        with open(path, "r", encoding="utf-8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                try:
+                    rows.append(
+                        {
+                            "time": row.get("time", ""),
+                            "open": float(row["open"]),
+                            "high": float(row["high"]),
+                            "low": float(row["low"]),
+                            "close": float(row["close"]),
+                            "volume": float(row.get("volume", 0) or 0),
+                        }
+                    )
+                except (KeyError, TypeError, ValueError):
+                    # Skip header-shaped or malformed rows — never fail the
+                    # whole load on a single dirty row.
+                    continue
+    except OSError as e:
+        logger.warning("change_eval.csv_read_failed path=%s err=%s", path, e)
         return []
+
+    if limit is not None and limit > 0 and len(rows) > limit:
+        rows = rows[-limit:]
+    return rows
+
+
+def _default_candle_loader(pair: str, days: int) -> List[Dict[str, Any]]:
+    """Load historical candles for `pair` covering ~`days` of history.
+
+    Disk-only: reads `trained_data/cache/training_data/{PAIR}_{GRAN}_*.csv`,
+    the same cache the training pipelines populate. NEVER hits the network,
+    NEVER needs OANDA creds — the scorecard runs in subprocess and harness
+    contexts that may not have either.
+
+    Returns `[]` only when the cache has no file for the pair OR the file is
+    unreadable. Symbol mismatch is normalized away (`EUR/USD` → `EUR_USD`).
+    """
+    csv_path = _resolve_cached_candle_path(pair)
+    if csv_path is None:
+        logger.debug(
+            "change_eval.candle_loader.no_cache_file pair=%s root=%s",
+            pair, _DEFAULT_CANDLES_ROOT,
+        )
+        return []
+
+    # Determine the bar count to slice. We don't know the granularity for sure
+    # here (path resolution may have picked M15 or H1); take the per-day rate
+    # of the granularity embedded in the filename so "days" stays honest.
+    gran = csv_path.stem.split("_")[-2] if "_" in csv_path.stem else "M15"
+    bars_per_day = _BARS_PER_DAY.get(gran, _BARS_PER_DAY["M15"])
+    limit = max(int(days) * bars_per_day, 0) if days else 0
+    candles = _read_candles_csv(csv_path, limit=limit if limit > 0 else None)
+    logger.debug(
+        "change_eval.candle_loader.loaded pair=%s path=%s gran=%s n=%d",
+        pair, csv_path.name, gran, len(candles),
+    )
+    return candles
 
 
 def _default_pytest_runner(target: Optional[Path]) -> Dict[str, Any]:
     """Run pytest -q on the provided target dir (defaults to ./tests).
 
     Returns {passed: bool, exit_code: int, failed: [test ids], stdout_tail: str}.
+
+    Disk-pressure precondition (US: scanner-disk-guard, 2026-05-21): when free
+    disk on the project volume is below the configured threshold (default
+    500 MiB; override via `BUDDY_DISK_PRESSURE_MIB`), this function refuses to
+    spawn pytest. Returns `{passed: False, skipped: True, reason:
+    "low_disk_skipped", ...}` so the scorecard surface distinguishes "disk
+    pressure" from "actual test failure" and the autonomous loop can alert the
+    operator instead of silently rejecting every config proposal. See
+    `src/scanner/runtime_guards.py` for the full diagnosis.
     """
+    from src.scanner.runtime_guards import check_disk_pressure
+    ok, free_mib, threshold_mib, reason = check_disk_pressure()
+    if not ok:
+        msg = (
+            f"low_disk_skipped: {free_mib} MiB free < {threshold_mib} MiB "
+            f"threshold (reason={reason}). Refusing to spawn pytest to avoid "
+            f"SIGSEGV in native model loads. Free space and re-trigger."
+        )
+        logger.error("change_eval.pytest_runner_skipped %s", msg)
+        return {
+            "passed": False,
+            "skipped": True,
+            "reason": "low_disk_skipped",
+            "exit_code": -1,
+            "failed": [],
+            "stdout_tail": msg,
+            "free_mib": free_mib,
+            "threshold_mib": threshold_mib,
+        }
+
     cmd = ["python", "-m", "pytest", "-q"]
     if target is not None:
         cmd.append(str(target))
