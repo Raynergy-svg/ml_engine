@@ -533,6 +533,14 @@ class GateEvaluator:
             message=".*Skipping variable loading for optimizer.*",
         )
 
+        # Disk-pressure precondition (US: scanner-disk-guard, 2026-05-21).
+        # Converts the silent SIGSEGV in lightgbm/numpy/keras native frames
+        # under ENOSPC into an observable RuntimeError. Mirrors the guards
+        # in `Scanner.__init__` and `ModularEnsembleInference.load_models`
+        # (commit a8db9bf). See `src/scanner/runtime_guards.py`.
+        from .runtime_guards import assert_disk_ok_for_model_load
+        assert_disk_ok_for_model_load(context="gate_evaluator_load")
+
         # Validate joint model directory exists
         if self.use_joint_only and not self.model_dir.exists():
             raise FileNotFoundError(

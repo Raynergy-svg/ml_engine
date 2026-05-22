@@ -359,6 +359,160 @@ def test_t7b_buddy_scan_imports_clean():
 
 
 # ---------------------------------------------------------------------------
+# T8: GateEvaluator.load_models is guarded against disk pressure
+#
+# Coverage rationale: `load_models()` is the third native-load surface (after
+# Scanner.__init__ and ModularEnsembleInference.load_models). It is invoked
+# from engine.py:1692 during deferred init. The guard fires BEFORE any of the
+# `_load_*` helpers (joblib / keras / lightgbm) touch disk, converting the
+# SIGSEGV risk under ENOSPC into an observable RuntimeError that the caller
+# `_initialize_models` can catch via its existing `except Exception` branch.
+# ---------------------------------------------------------------------------
+
+
+def test_t8a_gate_evaluator_load_models_raises_runtimeerror_under_disk_pressure(
+    monkeypatch, tmp_path
+):
+    """T8a: GateEvaluator.load_models() raises RuntimeError with the
+    `gate_evaluator_load` context tag when free disk is below threshold."""
+    from src.scanner.gates import GateEvaluator
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+    _patch_disk_usage(monkeypatch, free_mib=60)
+
+    # Real GateEvaluator against a real (empty) tmp model dir. We never reach
+    # the inner _load_* calls because the disk guard short-circuits first.
+    evaluator = GateEvaluator(
+        model_dir=tmp_path,
+        use_joint_only=False,
+        use_per_pair_routing=False,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        evaluator.load_models(require_tcn=False)
+
+    msg = str(exc_info.value)
+    assert "disk pressure" in msg
+    assert "60 MiB free" in msg
+    assert "500 MiB threshold" in msg
+    assert "gate_evaluator_load" in msg, (
+        "context tag must appear so operators can trace which call site fired"
+    )
+
+
+def test_t8b_gate_evaluator_load_models_does_not_raise_disk_runtimeerror_when_disk_ok(
+    monkeypatch, tmp_path
+):
+    """T8b: GateEvaluator.load_models() does NOT raise a disk-pressure
+    RuntimeError when free disk is above threshold. The call may still
+    raise FileNotFoundError (no TCN model in tmp dir) or return a status
+    dict — we only assert the absence of the disk-pressure branch.
+    """
+    from src.scanner.gates import GateEvaluator
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+    _patch_disk_usage(monkeypatch, free_mib=10_000)
+
+    evaluator = GateEvaluator(
+        model_dir=tmp_path,
+        use_joint_only=False,
+        use_per_pair_routing=False,
+    )
+
+    # require_tcn=False prevents the FileNotFoundError that the missing
+    # TCN model would otherwise raise. With healthy disk + no models on
+    # disk, load_models should return a status dict where every value
+    # is False (no models loaded) without invoking the disk-pressure guard.
+    try:
+        status = evaluator.load_models(require_tcn=False)
+    except RuntimeError as exc:  # pragma: no cover — defensive
+        assert "disk pressure" not in str(exc), (
+            "disk-pressure RuntimeError must NOT fire when free_mib=10_000"
+        )
+        raise
+
+    # All models failed to load (none exist) but the call completed.
+    assert isinstance(status, dict)
+    assert all(v is False for v in status.values()), (
+        f"expected all models to fail to load (empty dir), got: {status}"
+    )
+
+
+def test_t8c_gate_evaluator_disk_guard_fires_before_any_model_file_is_opened(
+    monkeypatch, tmp_path
+):
+    """T8c: The disk guard fires BEFORE any of the `_load_*` helpers run.
+
+    Setup: pre-seed tmp_path with files named like real model artifacts that
+    would raise on read (zero bytes or unparseable). Then monkeypatch each
+    `_load_*` method on the evaluator instance to a tripwire that records
+    invocation. Under disk pressure, the guard must short-circuit before
+    ANY tripwire fires — proving call ordering: guard precedes model loads.
+    """
+    from src.scanner.gates import GateEvaluator
+
+    monkeypatch.delenv("BUDDY_DISK_PRESSURE_MIB", raising=False)
+    _patch_disk_usage(monkeypatch, free_mib=80)
+
+    # Seed unreadable garbage files at the artifact paths so that if the
+    # guard fails to fire, the actual `_load_*` calls would crash loudly on
+    # them. The point is to make the failure mode visible: disk guard fires
+    # = test passes via the pytest.raises; disk guard fails to fire = the
+    # tripwires below would record invocations.
+    for fname in (
+        "catboost_momentum.pkl",
+        "xgboost_momentum.pkl",
+        "lgbm_momentum.pkl",
+        "ridge_confidence.pkl",
+        "rf_risk.pkl",
+        "lgbm_risk.pkl",
+        "transformer_direction.keras",
+        "meta_labeler.pkl",
+        "tcn_volatility_regime.keras",
+    ):
+        (tmp_path / fname).write_bytes(b"")
+
+    evaluator = GateEvaluator(
+        model_dir=tmp_path,
+        use_joint_only=False,
+        use_per_pair_routing=False,
+    )
+
+    invocations: list[str] = []
+
+    def _tripwire(name: str):
+        def _f(*_a, **_k):
+            invocations.append(name)
+            return False
+        return _f
+
+    # Real-callable tripwires (NOT MagicMock). Each records its invocation
+    # so we can assert call ordering: zero invocations means the disk guard
+    # short-circuited above them, proving guard placement is correct.
+    for method_name in (
+        "_load_catboost_momentum",
+        "_load_xgboost_momentum",
+        "_load_lgbm_momentum",
+        "_load_ridge_confidence",
+        "_load_rf_risk",
+        "_load_lgbm_risk",
+        "_load_transformer",
+        "_load_meta_labeler",
+        "_load_tcn_volatility",
+    ):
+        monkeypatch.setattr(evaluator, method_name, _tripwire(method_name))
+
+    with pytest.raises(RuntimeError) as exc_info:
+        evaluator.load_models(require_tcn=False)
+
+    assert "gate_evaluator_load" in str(exc_info.value)
+    assert invocations == [], (
+        f"disk guard must fire BEFORE any _load_* helper runs, but these "
+        f"were invoked first: {invocations}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Bonus: real-disk smoke test (no monkeypatch) — confirms the guard works on
 # the actual filesystem without crashing.
 # ---------------------------------------------------------------------------
