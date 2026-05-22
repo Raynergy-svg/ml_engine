@@ -1533,6 +1533,13 @@ class ModularEnsembleInference:
         # Enforce CPU-only TF before any model ops (prevents M1 Metal memory panic)
         _configure_tf_cpu_only()
 
+        # Disk-pressure precondition (US: scanner-disk-guard, 2026-05-21).
+        # ENOSPC inside lightgbm.Booster.__setstate__ / numpy native allocs
+        # aborts with SIGSEGV; this converts the failure into a RuntimeError
+        # the caller can catch. See `src/scanner/runtime_guards.py`.
+        from src.scanner.runtime_guards import assert_disk_ok_for_model_load
+        assert_disk_ok_for_model_load(context="modular_ensemble_load")
+
         # Update instrument if provided
         if instrument:
             self.instrument = instrument

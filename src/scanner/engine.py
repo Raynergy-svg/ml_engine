@@ -254,6 +254,13 @@ class Scanner:
             if getattr(self.config, 'sub_inference_workers', 3) > 2:
                 self.config.sub_inference_workers = 2
 
+        # Disk-pressure precondition (US: scanner-disk-guard, 2026-05-21).
+        # Converts the silent SIGSEGV in lightgbm/numpy native frames under
+        # ENOSPC into an observable RuntimeError. See
+        # `src/scanner/runtime_guards.py` for the full diagnosis.
+        from .runtime_guards import assert_disk_ok_for_model_load
+        assert_disk_ok_for_model_load(context="scanner_init")
+
         # Phase 69: TF/Keras warm-up — eagerly load the ensemble models
         # before heavy Scanner init. Prevents segfault on Apple Silicon
         # (TF 2.21 + Keras 3.13) when keras.models.load_model() is called
