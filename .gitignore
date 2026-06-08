@@ -251,3 +251,6 @@ trained_data/.memory/
 # Additional rotated log patterns
 logs/*.log.*
 logs/*.stderr.log*
+
+# Throwaway debug / recovery scripts (one-off, not part of the toolchain)
+scripts/_*.py
