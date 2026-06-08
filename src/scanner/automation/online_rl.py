@@ -156,10 +156,12 @@ class OnlineWeightUpdater:
             if not isinstance(data, list):
                 return []
 
-            # Filter to completed trades only (must have outcome)
+            # Filter to completed trades only. The journal uses both legacy
+            # string outcomes ("win"/"loss") and structured OANDA sync dicts
+            # with a `trade_won` boolean.
             completed = [
                 t for t in data
-                if t.get("outcome") in ("win", "loss", "breakeven")
+                if self._outcome_label(t) in ("win", "loss", "breakeven")
             ]
 
             # Return last N
@@ -168,6 +170,25 @@ class OnlineWeightUpdater:
         except Exception as e:
             logger.debug("Online RL: failed to load journal: %s", e)
             return []
+
+    @staticmethod
+    def _outcome_label(trade: Dict[str, Any]) -> str:
+        outcome = trade.get("outcome", "")
+        if isinstance(outcome, str):
+            label = outcome.lower()
+            return label if label in ("win", "loss", "breakeven") else ""
+        if isinstance(outcome, dict):
+            if "trade_won" in outcome:
+                return "win" if bool(outcome.get("trade_won")) else "loss"
+            if "realized_pl" in outcome:
+                try:
+                    pnl = float(outcome.get("realized_pl") or 0.0)
+                except (TypeError, ValueError):
+                    pnl = 0.0
+                if abs(pnl) < 1e-9:
+                    return "breakeven"
+                return "win" if pnl > 0 else "loss"
+        return ""
 
     def _compute_agent_signals(
         self, trades: List[Dict[str, Any]]
@@ -185,7 +206,9 @@ class OnlineWeightUpdater:
         agent_total: Dict[str, int] = {}
 
         for trade in trades:
-            outcome = trade.get("outcome", "")
+            outcome = self._outcome_label(trade)
+            if outcome not in ("win", "loss", "breakeven"):
+                continue
             # Get agents that voted for this trade
             agents_for = trade.get("agents_for", [])
             agents_against = trade.get("agents_against", [])
@@ -196,6 +219,23 @@ class OnlineWeightUpdater:
                 if isinstance(agent_votes, dict):
                     for agent_name, vote in agent_votes.items():
                         if vote in (True, "for", "buy", "sell", 1):
+                            agents_for.append(agent_name)
+                        else:
+                            agents_against.append(agent_name)
+
+            if not agents_for and not agents_against:
+                nested_agents = trade.get("agents", {})
+                reasons = []
+                if isinstance(nested_agents, dict):
+                    reasons = nested_agents.get("agent_reasons") or []
+                if isinstance(reasons, list):
+                    for verdict in reasons:
+                        if not isinstance(verdict, dict):
+                            continue
+                        agent_name = str(verdict.get("name", "") or "")
+                        if not agent_name:
+                            continue
+                        if bool(verdict.get("passed", False)):
                             agents_for.append(agent_name)
                         else:
                             agents_against.append(agent_name)
