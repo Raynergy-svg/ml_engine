@@ -4,32 +4,17 @@ import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-import pytest
-
 from src.scanner.automation.state_engine import StateEngine
 from src.tui.app import BuddyApp
 from src.tui.data_provider import DashboardSnapshot
 
-# SPEC (pending OPERATOR DECISION — do not flip without sign-off): this asserts
-# action_unhalt() should clear both halted AND paused while only WARNING on
-# CRITICAL model freshness, instead of hard-blocking. Today _evaluate_unhalt_health
-# hard-blocks on `scanner is paused`, incomplete models, and STALE/CRITICAL
-# freshness (src/tui/app.py ~2462/2488/2492). Softening a halt-safety gate
-# conflicts with the documented "Halt > break" invariant and the staleness
-# trading rules. The nuance the operator must rule on: the test's CRITICAL is
-# count-driven (2/5 models) with age=0.0 (fresh) — arguably benign — but a blanket
-# demotion would also wave through genuinely stale (old) models. No implementation
-# exists in any stash; it was never written.
-pytestmark = pytest.mark.xfail(
-    reason="pending operator decision: softening the unhalt halt-safety gate "
-    "(clear-pause + warn-not-block on model freshness) conflicts with the "
-    "Halt > break invariant; no implementation exists",
-    strict=False,
-)
 
+def _build_halted_app(monkeypatch, tmp_path, *, freshness):
+    """Wire a halted+paused BuddyApp whose scanner reports the given freshness.
 
-def test_unhalt_allows_paused_and_model_warnings(monkeypatch, tmp_path):
-    """Unhalt should clear pause and warn on model gaps, not hard-block."""
+    Returns (app, engine) where engine reads/writes the monkeypatched
+    tmp state.json shared with app.action_unhalt()'s own StateEngine.
+    """
     import src.scanner.automation.state_engine as state_mod
     import src.tui.app as app_mod
 
@@ -58,14 +43,61 @@ def test_unhalt_allows_paused_and_model_warnings(monkeypatch, tmp_path):
         get_model_health=lambda: {
             "count": 2,
             "total": 5,
-            "freshness": {"status": "CRITICAL", "oldest_age_days": 0.0},
+            "freshness": freshness,
         },
     )
     app._write_brain = lambda *a, **k: None
     app._append_control_log = lambda *a, **k: None
     app.notify = lambda *a, **k: None
+    return app, engine
+
+
+def test_unhalt_allows_paused_and_model_warnings(monkeypatch, tmp_path):
+    """Unhalt clears pause and only WARNS on count-driven CRITICAL freshness.
+
+    count=2/5 with oldest_age_days=0.0 → freshness is CRITICAL because per-pair
+    coverage is incomplete, but the artifacts present are fresh. This is a
+    warning, not a safety blocker — unhalt should resume.
+    """
+    app, engine = _build_halted_app(
+        monkeypatch,
+        tmp_path,
+        freshness={"status": "CRITICAL", "oldest_age_days": 0.0},
+    )
 
     app.action_unhalt()
 
     assert engine.get_halted() is False
     assert engine.get_paused() is False
+
+
+def test_unhalt_still_blocks_on_genuinely_stale_models(monkeypatch, tmp_path):
+    """Unhalt MUST still hard-block when models are genuinely stale (age > 7d).
+
+    Same shape as the warning case, but oldest_age_days=30.0 — this is real
+    staleness, not just incomplete coverage. Halt > break: the gate must keep
+    the scanner halted (and paused) rather than resume on stale models.
+    """
+    app, engine = _build_halted_app(
+        monkeypatch,
+        tmp_path,
+        freshness={"status": "CRITICAL", "oldest_age_days": 30.0},
+    )
+
+    app.action_unhalt()
+
+    assert engine.get_halted() is True   # blocked — still halted
+    assert engine.get_paused() is True   # block returns before clearing pause
+
+
+def test_unhalt_blocks_when_freshness_age_unknown(monkeypatch, tmp_path):
+    """STALE/CRITICAL with no age is treated conservatively as a hard block."""
+    app, engine = _build_halted_app(
+        monkeypatch,
+        tmp_path,
+        freshness={"status": "STALE"},  # no oldest_age_days
+    )
+
+    app.action_unhalt()
+
+    assert engine.get_halted() is True

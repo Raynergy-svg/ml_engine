@@ -2389,7 +2389,7 @@ class BuddyApp(App):
                 )
                 return
 
-            ok, reasons = self._evaluate_unhalt_health()
+            ok, reasons, warnings = self._evaluate_unhalt_health()
             if not ok:
                 reason_text = "; ".join(reasons)
                 self._write_brain(
@@ -2411,10 +2411,26 @@ class BuddyApp(App):
                 return
 
             engine.set_halted(False)
+            # Resuming clears the pause flag too — a halted-and-paused scanner
+            # should come back fully live, not paused. (Pause is a warning in
+            # the health gate, never a blocker.)
+            try:
+                engine.set_paused(False)
+            except Exception:
+                pass
             try:
                 engine.set_last_actor("TUI_UNHALT")
             except Exception:
                 pass
+            if warnings:
+                try:
+                    self._write_brain(
+                        "[yellow]◈ unhalt warnings (resumed anyway): "
+                        + "; ".join(warnings)
+                        + "[/]"
+                    )
+                except Exception:
+                    pass
             try:
                 from src.scanner.automation.event_bus import get_event_bus
                 get_event_bus().publish("control.resume", {
@@ -2446,9 +2462,24 @@ class BuddyApp(App):
             except Exception:
                 pass
 
-    def _evaluate_unhalt_health(self) -> tuple[bool, list[str]]:
-        """Return whether it is safe to clear the halted flag."""
+    def _evaluate_unhalt_health(self) -> tuple[bool, list[str], list[str]]:
+        """Return (ok, blocking_reasons, warnings) for clearing the halted flag.
+
+        Halt > break: genuine safety failures hard-block — not live, no OANDA,
+        scanner not ready, stale/missing heartbeat, open trades, or *genuinely
+        stale* models (oldest_age_days > 7, mirroring the staleness trading
+        rules). Conditions that are recoverable or merely degraded are surfaced
+        as warnings, not blocks:
+          - scanner paused: unhalt itself clears the pause flag on resume;
+          - incomplete per-pair model coverage: degrades which pairs trade,
+            does not make resuming unsafe;
+          - a CRITICAL/STALE freshness status that is count-driven while the
+            artifacts present are fresh (oldest_age_days <= 7).
+        A freshness status of STALE/CRITICAL with an *unknown* age is treated
+        conservatively as a hard block (cannot confirm freshness).
+        """
         reasons: list[str] = []
+        warnings: list[str] = []
         snap = self._provider.snapshot
         scanner = getattr(self, "_scanner", None)
 
@@ -2459,7 +2490,8 @@ class BuddyApp(App):
         if scanner is None or not bool(getattr(scanner, "is_ready", False)):
             reasons.append("embedded scanner is not ready")
         if bool(getattr(snap, "scanner_paused", False)):
-            reasons.append("scanner is paused")
+            # Not a blocker: unhalt clears the pause flag as part of resuming.
+            warnings.append("scanner was paused — cleared on resume")
         if getattr(snap, "trades", []):
             reasons.append("open trades must be flat before unhalt")
 
@@ -2485,19 +2517,32 @@ class BuddyApp(App):
             loaded = int(health.get("count", 0) or 0)
             total = int(health.get("total", 0) or 0)
             if total > 0 and loaded < total:
-                reasons.append(f"models incomplete ({loaded}/{total} loaded)")
+                # Incomplete per-pair coverage degrades which pairs can trade;
+                # it does not make resuming unsafe. Warn, don't block.
+                warnings.append(f"models incomplete ({loaded}/{total} loaded)")
             freshness = dict(health.get("freshness", {}) or {})
             status = str(freshness.get("status", "")).upper()
             oldest = freshness.get("oldest_age_days")
             if status in {"STALE", "CRITICAL"}:
                 if oldest is None:
-                    reasons.append(f"models {status.lower()}")
+                    # Cannot confirm freshness → conservative hard block.
+                    reasons.append(f"models {status.lower()} (age unknown)")
+                elif float(oldest) > 7.0:
+                    # Genuinely stale artifacts — the staleness trading rules
+                    # (oldest_age_days > 7) hard-block resuming.
+                    reasons.append(
+                        f"models {status.lower()} (oldest {float(oldest):.0f}d > 7d)"
+                    )
                 else:
-                    reasons.append(f"models {status.lower()} (oldest {float(oldest):.0f}d)")
+                    # Status is count-driven; the artifacts present are fresh.
+                    warnings.append(
+                        f"models {status.lower()} but fresh "
+                        f"(oldest {float(oldest):.1f}d <= 7d)"
+                    )
         except Exception as exc:
             reasons.append(f"model health unavailable ({exc})")
 
-        return (len(reasons) == 0), reasons
+        return (len(reasons) == 0), reasons, warnings
 
     def _append_control_log(self, title: str, fields: dict[str, str]) -> None:
         """Append a compact control action entry to strategic_log.md."""
