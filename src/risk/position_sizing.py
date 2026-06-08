@@ -364,24 +364,22 @@ class DynamicPositionSizer:
         Returns:
             Dollar value of stop loss per unit
         """
-        # If it's an Instrument object with pip_value, use that
+        # Instrument.pip_value is the price increment (0.0001 / 0.01), not a
+        # dollar value. Convert to an approximate account-currency pip value
+        # per unit so sizing does not shrink by 100x on non-JPY pairs.
         if isinstance(instrument, Instrument):
-            if instrument.pip_value and instrument.pip_value > 0:
-                return stop_loss_pips * instrument.pip_value
-            # Fallback for FX instruments without explicit pip_value
             instrument_upper = instrument.symbol.upper().replace("_", "")
         else:
-            # String-based symbol lookup
             instrument_upper = instrument.upper().replace("_", "")
 
-        # Approximate pip value in USD for standard lots
-        # This is a simplified calculation - in practice, you'd want more precision
+        # Approximate USD pip value per unit. For USD-quoted and most cross
+        # pairs this is close to 0.0001 USD/unit/pip. JPY pairs convert the
+        # 0.01 JPY pip into USD terms; 0.000065 is a conservative round-number
+        # estimate near recent USD/JPY levels.
         if instrument_upper.endswith("JPY"):
-            # For JPY pairs, pip value is approximately $0.93 per standard lot
-            pip_value_per_unit = 0.00093
+            pip_value_per_unit = 0.000065
         else:
-            # For other pairs, pip value is approximately $10 per standard lot
-            pip_value_per_unit = 0.01
+            pip_value_per_unit = 0.0001
 
         return stop_loss_pips * pip_value_per_unit
 

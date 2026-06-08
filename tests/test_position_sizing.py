@@ -130,6 +130,54 @@ class TestDynamicPositionSizer:
         assert position.position_multiplier == 0.5
         assert position.is_valid is True
         assert "0.550 -> low level" in position.reason
+
+    def test_fx_pip_risk_per_unit_does_not_shrink_non_jpy_size(self):
+        """EUR_USD pip risk should use ~0.0001 USD/unit, not 0.01."""
+        config = PositionSizingConfig(
+            risk_per_trade_pct=0.02,
+            min_confidence_threshold=0.5,
+            low_confidence_multiplier=1.0,
+            medium_confidence_multiplier=1.0,
+            high_confidence_multiplier=1.0,
+            max_position_pct=1.0,
+            min_position_size=1000,
+        )
+        sizer = DynamicPositionSizer(config)
+
+        position = sizer.calculate_position_size(
+            account_equity=100000.0,
+            stop_loss_pips=20.0,
+            instrument="EUR_USD",
+            raw_confidence=0.70,
+        )
+
+        assert position.is_valid is True
+        assert position.units == 1000000
+        assert position.risk_amount == pytest.approx(2000.0)
+
+    def test_fx_pip_risk_per_unit_keeps_jpy_size_meaningful(self):
+        """JPY pairs should use USD-converted pip risk, not raw 0.01 price pips."""
+        config = PositionSizingConfig(
+            risk_per_trade_pct=0.02,
+            min_confidence_threshold=0.5,
+            low_confidence_multiplier=1.0,
+            medium_confidence_multiplier=1.0,
+            high_confidence_multiplier=1.0,
+            max_position_pct=1.0,
+            min_position_size=1000,
+        )
+        sizer = DynamicPositionSizer(config)
+
+        position = sizer.calculate_position_size(
+            account_equity=100000.0,
+            stop_loss_pips=20.0,
+            instrument="USD_JPY",
+            raw_confidence=0.70,
+        )
+
+        assert position.is_valid is True
+        assert position.units > 1000000
+        assert position.risk_amount == pytest.approx(position.units * 20.0 * 0.000065)
     
     def test_calculate_position_size_medium_confidence(self):
         """Test position size calculation with medium confidence."""
