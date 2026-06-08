@@ -68,6 +68,13 @@ class SerialExecutor:
         for candidate in sorted_candidates:
             pair = getattr(candidate, "pair", "UNKNOWN")
 
+            # Agent veto must happen before the broker/execution layer. The
+            # execution manager also blocks this, but serial execution should
+            # classify it as a skipped candidate, not an attempted order.
+            if not bool(getattr(candidate, "agent_passed", False)):
+                funnel.record_skip(pair, "agent_veto_pre_execution")
+                continue
+
             # Check max trades limit
             if max_trades is not None and executed_count >= max_trades:
                 funnel.record_skip(pair, "max_trades_reached")

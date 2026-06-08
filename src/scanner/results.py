@@ -134,8 +134,10 @@ class PairAnalysis:
     circuit_breakers_triggered: List[str] = field(default_factory=list)
     master_pair: Optional[str] = None
 
-    # Phase 98: Soft agent gate — when agent_passed=False but confidence is
-    # above threshold, apply penalty instead of hard-blocking.
+    # Phase 98 kept this as observability for near-miss setups, but live
+    # execution now treats agent_passed=False as a fast veto. The execution
+    # layer has always hard-blocked agent_passed=False; keeping the scanner
+    # property aligned prevents "selected for execution, then rejected" churn.
     agent_soft_penalty_applied: bool = False
 
     # 2026-05-10 (Agent B observability fix): override flag honored by the
@@ -179,7 +181,7 @@ class PairAnalysis:
         """Check if this pair has a valid trade signal.
 
         Safety invariants enforced here (last line of defense before execute_trades):
-        - agent_passed must be True OR soft agent gate applies (Phase 98)
+        - agent_passed must be True
         - model_disagreement must be <= max_model_disagreement (from config, default 0.50)
         - volatility_regime must not be UNKNOWN
 
@@ -187,10 +189,9 @@ class PairAnalysis:
         of hardcoded 0.30. When soft_uncertainty_blocking=True, disagreement between
         the hard_floor and max is penalized (confidence reduced) rather than blocked.
 
-        Phase 98: agent_passed is now a soft gate. When agent_passed=False but
-        confidence > _agent_soft_min (default 0.40), apply 0.80x penalty instead
-        of hard-blocking. The pair is tradeable if penalized confidence still
-        exceeds the minimum threshold.
+        2026-05-14: agent_passed is hard-aligned with execution. The order
+        layer rejects agent_passed=False as a final safety invariant, so the
+        scanner must veto those setups before they enter execution selection.
 
         2026-05-10 (Agent B observability fix): honors `_force_tradeable_override`
         flag set by the `is_tradeable` setter. Required by engine.py re-qualify
@@ -203,29 +204,14 @@ class PairAnalysis:
         # invariants no override can violate.
         if (
             getattr(self, "_force_tradeable_override", False)
+            and self.agent_passed
             and self.direction in {"LONG", "SHORT"}
             and self.error is None
         ):
             return True
 
         _max_disagree = float(getattr(self, "_max_model_disagreement", 0.50))
-
-        # Phase 98: Soft agent gate — penalty instead of hard block
-        _agent_soft_min = float(getattr(self, "_agent_soft_min_confidence", 0.40))
-        _agent_soft_penalty = float(getattr(self, "_agent_soft_penalty_factor", 0.80))
-        if self.agent_passed:
-            agent_ok = True
-        elif self.confidence >= _agent_soft_min:
-            # Apply penalty: confidence * 0.80 must still exceed the min threshold
-            penalized_confidence = self.confidence * _agent_soft_penalty
-            if penalized_confidence >= _agent_soft_min:
-                agent_ok = True
-                if not self.agent_soft_penalty_applied:
-                    self.agent_soft_penalty_applied = True
-            else:
-                agent_ok = False
-        else:
-            agent_ok = False
+        agent_ok = bool(self.agent_passed)
 
         return (
             self.gates_passed
@@ -250,8 +236,9 @@ class PairAnalysis:
         three sites (the `logger.info("...re-qualified")` lines never fired).
 
         Setting `True` flips `_force_tradeable_override` so the property
-        returns True (provided direction is LONG/SHORT and no error). Setting
-        `False` clears the override, restoring the base computation.
+        returns True when direction is LONG/SHORT, no error is present, and
+        agent_passed=True. Setting `False` clears the override, restoring the
+        base computation.
 
         Note: this is a one-way override for re-qualification — it does NOT
         force `gates_passed=True`. Callers that need the gate fields aligned

@@ -180,6 +180,26 @@ class TestPairAnalysis:
                                  error="Model load failed")
         assert pa.is_tradeable is False
 
+    def test_agent_veto_is_not_tradeable_even_high_confidence(self):
+        """agent_passed=False must veto before execution selection."""
+        pa = _make_pair_analysis(
+            gates_passed=True,
+            direction="LONG",
+            confidence=0.95,
+            agent_passed=False,
+        )
+        assert pa.is_tradeable is False
+
+    def test_force_tradeable_override_cannot_bypass_agent_veto(self):
+        pa = _make_pair_analysis(
+            gates_passed=True,
+            direction="LONG",
+            confidence=0.95,
+            agent_passed=False,
+        )
+        pa.is_tradeable = True
+        assert pa.is_tradeable is False
+
     def test_overall_score_range(self):
         pa = _make_pair_analysis()
         score = pa.overall_score
