@@ -25,6 +25,11 @@ from src.observability import (
     op as weave_op,
     patch_instance_methods,
 )
+from src.data.order_book import (
+    extract_order_features as _ob_order_features,
+    extract_position_features as _ob_position_features,
+    snapshot as _ob_snapshot,
+)
 from src.scanner.agents.memory import (
     cache_verdicts_for_trade_open as _cache_verdicts_for_trade_open_mem,
     get_memory_store as _get_agent_memory,
@@ -3325,8 +3330,14 @@ class ScannerAgentTeam:
                 logger.debug("order_flow: OANDA client init failed: %s", e)
                 return _neutral_verdict("OANDA client unavailable")
 
-        # ── Fetch position book (with 5-min cache) ─────────────────────────
+        # ── Compute current_price once (reused by features + persisters) ─
         now = datetime.now(timezone.utc)
+        current_price = _safe_float(
+            ctx.analysis.current_price,
+            _last_value(ctx.df_raw, "close"),
+        )
+
+        # ── Fetch position book (with 5-min cache) ─────────────────────────
         position_buckets = None
 
         cached = self._position_book_cache.get(pair)
@@ -3342,62 +3353,76 @@ class ScannerAgentTeam:
                         "data": position_buckets,
                         "timestamp": now,
                     }
+                    # Persist snapshot for future training (best-effort, never blocks).
+                    if current_price > 0:
+                        try:
+                            _ob_snapshot(pair, "position", position_buckets, current_price, timestamp=now)
+                        except Exception as _e:  # noqa: BLE001 — persist must never raise
+                            logger.debug("order_flow: position book persist failed: %s", _e)
             except Exception as e:
                 logger.debug("order_flow: position book fetch failed for %s: %s", pair, e)
 
         if not position_buckets:
             return _neutral_verdict("position book data unavailable for " + pair)
 
-        # ── Compute long_ratio from position book ──────────────────────────
+        # ── Extract graded features from the position book ─────────────────
+        # Returns dict of nine pb_* features; fallback-safe on empty input.
         try:
-            total_long = 0.0
-            total_short = 0.0
-            for bucket in position_buckets:
-                total_long += _safe_float(bucket.get("longCountPercent"), 0.0)
-                total_short += _safe_float(bucket.get("shortCountPercent"), 0.0)
-            denom = total_long + total_short
-            if denom <= 0:
-                return _neutral_verdict("position book empty for " + pair)
-            long_ratio = total_long / denom
+            position_features = _ob_position_features(
+                position_buckets,
+                current_price if current_price > 0 else 1.0,
+            )
         except Exception as e:
-            logger.debug("order_flow: long_ratio computation failed: %s", e)
+            logger.debug("order_flow: position feature extraction failed: %s", e)
             return _neutral_verdict("position book parse error")
 
-        # ── Contrarian signal from position book ───────────────────────────
-        score = 0.55
-        reason = "positioning neutral"
-        reason_code = "order_flow_neutral"
-        confidence_delta = 0.0
+        long_ratio = position_features["pb_long_ratio"]
+        total_imbalance = position_features["pb_total_imbalance"]
+        # No usable counts? Treat as data-empty.
+        if position_features["pb_n_buckets"] <= 0 or (
+            position_features["pb_near_long_pct"] == 0.0
+            and position_features["pb_near_short_pct"] == 0.0
+            and total_imbalance == 0.0
+            and long_ratio == 0.5
+        ):
+            # Could be genuinely balanced OR genuinely empty; the existing
+            # contract returned _neutral_verdict on empty totals — preserve.
+            if position_features["pb_n_buckets"] <= 0:
+                return _neutral_verdict("position book empty for " + pair)
 
+        # ── Graded contrarian signal (replaces prior binary 0.70/0.30) ────
+        # alignment > 0 = going against the crowd (good contrarian signal);
+        # alignment < 0 = going with the crowd (contrarian warning).
+        # The old binary cut at long_ratio=0.70 corresponds to
+        # |total_imbalance|≈0.40; this graded form preserves that score
+        # range at the threshold and degrades smoothly between.
+        direction_sign = 1.0 if direction == "LONG" else -1.0
+        position_alignment = -direction_sign * total_imbalance
+
+        score = _clip01(0.55 + 0.40 * position_alignment)
+        confidence_delta = 0.10 * position_alignment
+
+        crowd_long_pct = long_ratio * 100.0
+        if abs(position_alignment) < 0.15:
+            reason = "positioning balanced (crowd %.0f%% long)" % crowd_long_pct
+            reason_code = "order_flow_neutral"
+        elif position_alignment > 0:
+            reason = "against crowd (%.0f%% long, going %s, align=%+.2f)" % (
+                crowd_long_pct, direction, position_alignment,
+            )
+            reason_code = "order_flow_contrarian_aligned"
+        else:
+            reason = "with crowd (%.0f%% long, going %s, align=%+.2f)" % (
+                crowd_long_pct, direction, position_alignment,
+            )
+            reason_code = "order_flow_contrarian_warning"
+
+        # Preserve legacy metadata derivations for downstream consumers.
         crowd_is_long = long_ratio > 0.70
         crowd_is_short = long_ratio < 0.30
 
-        if crowd_is_long and direction == "LONG":
-            # Trading WITH the crowded long side — contrarian risk
-            score = 0.35
-            reason = "crowd %.0f%% long — contrarian risk for LONG" % (long_ratio * 100)
-            reason_code = "order_flow_contrarian_warning"
-            confidence_delta = -0.04
-        elif crowd_is_short and direction == "SHORT":
-            # Trading WITH the crowded short side — contrarian risk
-            score = 0.35
-            reason = "crowd %.0f%% short — contrarian risk for SHORT" % ((1.0 - long_ratio) * 100)
-            reason_code = "order_flow_contrarian_warning"
-            confidence_delta = -0.04
-        elif crowd_is_long and direction == "SHORT":
-            # Trading AGAINST the crowd — positive contrarian signal
-            score = 0.70
-            reason = "trading against crowd (%.0f%% long, going SHORT)" % (long_ratio * 100)
-            reason_code = "order_flow_contrarian_aligned"
-            confidence_delta = 0.03
-        elif crowd_is_short and direction == "LONG":
-            # Trading AGAINST the crowd — positive contrarian signal
-            score = 0.70
-            reason = "trading against crowd (%.0f%% short, going LONG)" % ((1.0 - long_ratio) * 100)
-            reason_code = "order_flow_contrarian_aligned"
-            confidence_delta = 0.03
-
         # ── Order book enhancement (optional — reduce score if flow opposes) ─
+        order_features: Dict[str, float] = {}  # defined here so metadata access is safe even on hard failure
         try:
             ob_cached = self._order_book_cache.get(pair)
             order_buckets = None
@@ -3412,34 +3437,39 @@ class ScannerAgentTeam:
                         "data": order_buckets,
                         "timestamp": now,
                     }
+                    # Persist snapshot for future training (best-effort).
+                    if current_price > 0:
+                        try:
+                            _ob_snapshot(pair, "order", order_buckets, current_price, timestamp=now)
+                        except Exception as _e:  # noqa: BLE001 — persist must never raise
+                            logger.debug("order_flow: order book persist failed: %s", _e)
 
-            if order_buckets:
-                current_price = _safe_float(
-                    ctx.analysis.current_price,
-                    _last_value(ctx.df_raw, "close"),
-                )
-                if current_price > 0:
-                    # Find buckets near current price (within 10 buckets)
-                    nearby_long = 0.0
-                    nearby_short = 0.0
-                    for bucket in order_buckets:
-                        bucket_price = _safe_float(bucket.get("price"), 0.0)
-                        if bucket_price <= 0:
-                            continue
-                        distance = abs(bucket_price - current_price) / current_price
-                        if distance < 0.005:  # ~50 pips for major pairs
-                            nearby_long += _safe_float(bucket.get("longCountPercent"), 0.0)
-                            nearby_short += _safe_float(bucket.get("shortCountPercent"), 0.0)
-
-                    # Detect large opposing order cluster
-                    if direction == "LONG" and nearby_short > nearby_long * 2.0 and nearby_short > 1.0:
-                        score = max(score - 0.10, 0.0)
-                        reason += " | heavy sell orders nearby"
-                        confidence_delta -= 0.02
-                    elif direction == "SHORT" and nearby_long > nearby_short * 2.0 and nearby_long > 1.0:
-                        score = max(score - 0.10, 0.0)
-                        reason += " | heavy buy orders nearby"
-                        confidence_delta -= 0.02
+            if order_buckets and current_price > 0:
+                # ── Graded near-price flow penalty (replaces 2.0x binary) ─
+                # ob_near_imbalance ∈ [-1, 1]: positive = heavy buy orders
+                # near current price; negative = heavy sell orders near.
+                # near_alignment > 0 = near-price flow agrees with direction;
+                # near_alignment < 0 = opposing near-price flow (penalty).
+                # The old binary cut (nearby_short > 2× nearby_long AND > 1.0)
+                # corresponds to near_imbalance ≈ -0.33; this graded form
+                # produces a comparable penalty at that threshold and degrades
+                # smoothly above/below.
+                try:
+                    order_features = _ob_order_features(order_buckets, current_price)
+                    near_imb = order_features["ob_near_imbalance"]
+                    near_alignment = -direction_sign * near_imb
+                    if near_alignment < -0.20:
+                        # Opposing near-price flow; magnitude-scaled penalty.
+                        penalty = 0.15 * min(abs(near_alignment), 1.0)
+                        score = _clip01(score - penalty)
+                        confidence_delta -= 0.05 * min(abs(near_alignment), 1.0)
+                        side_word = "sell" if direction == "LONG" else "buy"
+                        reason += " | heavy %s flow nearby (align=%+.2f)" % (side_word, near_alignment)
+                except Exception as e:
+                    logger.debug("order_flow: order feature extraction failed: %s", e)
+                    order_features = {}
+            else:
+                order_features = {}
         except Exception as e:
             logger.debug("order_flow: order book enhancement failed for %s: %s", pair, e)
             # Order book is optional — position book signal is sufficient
@@ -3460,6 +3490,14 @@ class ScannerAgentTeam:
                 "crowd_direction": "LONG" if long_ratio > 0.5 else "SHORT",
                 "contrarian_warning": crowd_is_long or crowd_is_short,
                 "institutional_risk": "HIGH" if (long_ratio > 0.75 or long_ratio < 0.25) else "LOW",
+                # Graded features (added 2026-05-13 — order-book-features wiring):
+                "position_alignment": round(position_alignment, 3),
+                "total_imbalance": round(total_imbalance, 3),
+                "near_imbalance": round(position_features.get("pb_near_imbalance", 0.0), 3),
+                "top5_long_conc": round(position_features.get("pb_top5_long_concentration", 0.0), 3),
+                "top5_short_conc": round(position_features.get("pb_top5_short_concentration", 0.0), 3),
+                "ob_near_imbalance": round(order_features.get("ob_near_imbalance", 0.0), 3),
+                "ob_total_imbalance": round(order_features.get("ob_total_imbalance", 0.0), 3),
             },
         )
 
