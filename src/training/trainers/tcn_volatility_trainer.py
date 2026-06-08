@@ -571,6 +571,14 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         if not self.is_trained:
             raise RuntimeError("Model not trained")
 
+        X = np.asarray(X, dtype=np.float32)
+        if self.scaler is not None:
+            if X.ndim == 2:
+                X = self.scaler.transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
+            elif X.ndim == 3:
+                original_shape = X.shape
+                X = self.scaler.transform(X.reshape(-1, X.shape[-1])).reshape(original_shape)
+
         # Handle input shape
         if X.ndim == 2:
             if len(X) >= self.seq_len:
@@ -590,6 +598,9 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         if isinstance(outputs, dict):
             probs = outputs['classification'][0]
             vol_change = float(outputs['regression'][0, 0])
+        elif isinstance(outputs, (list, tuple)) and len(outputs) >= 2:
+            probs = outputs[0][0]
+            vol_change = float(outputs[1][0, 0])
         else:
             probs = outputs[0]
             vol_change = 0.0

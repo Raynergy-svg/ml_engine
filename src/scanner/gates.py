@@ -335,6 +335,11 @@ class GateEvaluator:
         # TCN metadata
         self._tcn_scaler = None
         self._tcn_feature_names = None
+        self._tcn_reg_thresholds = {
+            "quiet": -0.15,
+            "stable_high": 0.15,
+            "active_high": 0.40,
+        }
 
         # Phase 2.B inference contract for transformer (2026-05-08).
         # Loaded from transformer_direction.meta.pkl by _load_transformer.
@@ -660,6 +665,9 @@ class GateEvaluator:
                         meta = _load_pickle_quietly(f)
                         self._tcn_scaler = meta.get('scaler')
                         self._tcn_feature_names = meta.get('feature_names')
+                        self._tcn_reg_thresholds = meta.get(
+                            'reg_thresholds', self._tcn_reg_thresholds
+                        )
                         logger.debug(f"TCN metadata loaded: {meta.get('metrics', {})}")
                 except Exception as meta_err:
                     logger.warning(
@@ -750,17 +758,8 @@ class GateEvaluator:
             # Add batch dimension
             X = np.expand_dims(X, axis=0)
 
-            # Predict
-            proba = _predict_with_named_input_if_needed(self._tcn_volatility, X)
-
-            # Get predicted regime and confidence
-            if len(proba.shape) > 1 and proba.shape[-1] > 1:
-                regime = int(np.argmax(proba[0]))
-                confidence = float(proba[0][regime])
-            else:
-                # Binary or regression output
-                regime = int(round(float(proba[0][0])))
-                confidence = 0.5
+            output = _predict_with_named_input_if_needed(self._tcn_volatility, X)
+            regime, confidence = self._normalize_tcn_volatility_output(output)
 
             # Determine if trade is allowed
             trade_allowed = regime >= self.min_volatility_regime
@@ -777,6 +776,46 @@ class GateEvaluator:
         except Exception as e:
             logger.warning(f"TCN Volatility evaluation failed: {e}")
             return self.REGIME_LOW, 0.0, False
+
+    def _normalize_tcn_volatility_output(self, output: Any) -> Tuple[int, float]:
+        """Normalize legacy and dual-head TCN outputs to (regime, confidence)."""
+        import numpy as np
+
+        regression = None
+        if isinstance(output, dict):
+            proba = output.get("classification")
+            regression = output.get("regression")
+        elif isinstance(output, (list, tuple)) and len(output) >= 2:
+            proba = output[0]
+            regression = output[1]
+        else:
+            proba = output
+
+        proba = np.asarray(proba)
+        if proba.ndim > 1 and proba.shape[-1] > 1:
+            probs = proba[0]
+            regime = int(np.argmax(probs))
+            confidence = float(probs[regime])
+            if regression is not None and confidence < 0.60:
+                regime = self._regime_from_tcn_regression(regression)
+            return max(0, min(3, regime)), confidence
+
+        regime = int(round(float(np.asarray(proba).reshape(-1)[0])))
+        return max(0, min(3, regime)), 0.5
+
+    def _regime_from_tcn_regression(self, regression: Any) -> int:
+        """Map forward-volatility regression output to the public 0-3 regime."""
+        import numpy as np
+
+        vol_change = float(np.asarray(regression).reshape(-1)[0])
+        thresholds = self._tcn_reg_thresholds or {}
+        if vol_change < float(thresholds.get("quiet", -0.15)):
+            return self.REGIME_LOW
+        if vol_change < float(thresholds.get("stable_high", 0.15)):
+            return self.REGIME_NORMAL
+        if vol_change < float(thresholds.get("active_high", 0.40)):
+            return self.REGIME_HIGH
+        return self.REGIME_EXTREME
 
     def _load_catboost_momentum(self) -> bool:
         """Load CatBoost momentum model (primary).
@@ -1349,11 +1388,30 @@ class GateEvaluator:
             if missing:
                 logger.debug(f"Missing {len(missing)} features for momentum model: {missing[:5]}...")
 
-            if available:
-                features = features[available]
-                logger.debug(f"Selected {len(available)}/{len(target_feature_names)} features for model")
-            else:
-                logger.warning(f"No matching features found for model, using all {len(features.columns)} features")
+            if not available:
+                # Inference contract gap: ZERO overlap between the model's expected feature_names
+                # and the runtime DataFrame columns. Refuse rather than silently feed the model
+                # all 66 columns in arbitrary order — that produces a degenerate constant
+                # prediction (the historical "88% SHORT bias" pattern; see memory observation
+                # 1352 and .claude/rules/improvement.md "Train↔Inference Contract Gates").
+                # Caller is responsible for abstaining gracefully.
+                raise ValueError(
+                    f"Inference contract gap: 0 of {len(target_feature_names)} model features "
+                    f"match DataFrame columns. Model expects: {list(target_feature_names)[:5]}... "
+                    f"DataFrame has: {list(features.columns)[:5]}..."
+                )
+
+            if len(available) * 2 < len(target_feature_names):
+                # Partial gap (>50% missing). Loud warning but proceed — some signal is better
+                # than abstain, and the caller's prediction layer will be the next thing to fail
+                # if the partial set is unusable. Once-per-instance suppression handled upstream.
+                logger.warning(
+                    f"Inference contract partial gap: {len(available)}/{len(target_feature_names)} "
+                    f"features match. Missing: {missing[:5]}... — prediction may be unreliable."
+                )
+
+            features = features[available]
+            logger.debug(f"Selected {len(available)}/{len(target_feature_names)} features for model")
 
         # Convert to numpy array
         X = features.values if hasattr(features, 'values') else features
@@ -1587,8 +1645,14 @@ class GateEvaluator:
         try:
             X = self._prepare_features_input(last_row, self._xgb_feature_names)
         except ValueError as e:
-            logger.error(f"Failed to prepare features for momentum evaluation: {e}")
-            raise
+            # Contract gap (zero feature overlap). Abstain to neutral rather than re-raising,
+            # which previously crashed the whole gate evaluation and (when caught upstream)
+            # caused the holdout to silently drop predictions. Matches the no-model
+            # neutral-return pattern below. Suppress duplicate warnings per evaluator instance.
+            if not getattr(self, "_warned_momentum_contract_gap", False):
+                logger.warning(f"Momentum gate inference contract gap, abstaining: {e}")
+                self._warned_momentum_contract_gap = True
+            return self.NEUTRAL_MOMENTUM_SCORE, False
 
         # Try CatBoost first (primary model)
         if self._catboost_momentum is not None:

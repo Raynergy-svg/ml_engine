@@ -313,6 +313,25 @@ class TestEvaluateVolatilityRegimeWithModel:
         assert regime == GateEvaluator.REGIME_LOW
         assert allowed is False
 
+    def test_dual_head_dict_output(self):
+        ev = _make_evaluator(min_vol_regime=2)
+        feature_names = [f"vol_feature_{i}" for i in range(6)]
+        ev._tcn_feature_names = feature_names
+        ev._tcn_volatility = MagicMock()
+        ev._tcn_volatility.predict.return_value = {
+            "classification": np.array([[0.05, 0.10, 0.80, 0.05]]),
+            "regression": np.array([[0.25]]),
+        }
+        df = pd.DataFrame(
+            {name: np.linspace(0.0, 1.0, 70) for name in feature_names}
+        )
+
+        regime, conf, allowed = ev.evaluate_volatility_regime(df, seq_len=60)
+
+        assert regime == GateEvaluator.REGIME_HIGH
+        assert conf == pytest.approx(0.80)
+        assert allowed is True
+
 
 # ---------------------------------------------------------------------------
 # Tests: _compute_adx
@@ -385,3 +404,81 @@ class TestGateConstants:
         assert 0.0 < GateEvaluator.ACCELERATION_THRESHOLD < 1.0
         assert 0.5 <= GateEvaluator.TRANSFORMER_THRESHOLD <= 0.8
         assert 0.5 <= GateEvaluator.META_LABELER_THRESHOLD <= 0.6
+
+
+# ---------------------------------------------------------------------------
+# Tests: Inference contract gap (no-mock, real-disk; 2026-05-28 fix)
+# ---------------------------------------------------------------------------
+class TestPrepareFeaturesContractGap:
+    """Verify _prepare_features_input refuses on zero feature overlap, and
+    evaluate_momentum abstains to neutral on the resulting ValueError rather
+    than crashing or silently feeding the model arbitrary columns. Fixes the
+    degenerate-fallback at gates.py:1395 that historically produced the
+    "88% SHORT bias" pattern (see memory observation 1352 and the
+    "Train↔Inference Contract Gates" rule in .claude/rules/improvement.md).
+    """
+
+    def _evaluator(self, tmp_path):
+        models = tmp_path / "models"
+        (models / "joint").mkdir(parents=True, exist_ok=True)
+        return GateEvaluator(
+            model_dir=models,
+            use_joint_only=True,
+        )
+
+    def test_zero_overlap_raises_contract_gap(self, tmp_path):
+        ev = self._evaluator(tmp_path)
+        df = pd.DataFrame({"foo": [1.0], "bar": [2.0]})
+        expected = ["macd_hist_momentum", "rsi_momentum", "adx"]
+        with pytest.raises(ValueError, match="contract gap"):
+            ev._prepare_features_input(df, expected)
+
+    def test_partial_gap_warns_but_proceeds(self, tmp_path, caplog):
+        ev = self._evaluator(tmp_path)
+        df = pd.DataFrame({
+            "macd_hist_momentum": [0.5],
+            "rsi_momentum": [0.6],
+            "extra_col": [1.0],
+        })
+        # 2 of 5 match — below the 50% threshold → loud warning, still proceeds.
+        expected = ["macd_hist_momentum", "rsi_momentum", "adx", "atr_pct_10", "obv"]
+        with caplog.at_level("WARNING"):
+            X = ev._prepare_features_input(df, expected)
+        assert X.shape == (1, 2)
+        assert any("partial gap" in r.message for r in caplog.records), \
+            f"expected partial-gap warning, got: {[r.message for r in caplog.records]}"
+
+    def test_full_overlap_no_warn(self, tmp_path, caplog):
+        ev = self._evaluator(tmp_path)
+        df = pd.DataFrame({"a": [1.0], "b": [2.0], "c": [3.0]})
+        with caplog.at_level("WARNING"):
+            X = ev._prepare_features_input(df, ["a", "b", "c"])
+        assert X.shape == (1, 3)
+        assert not any("contract" in r.message.lower() for r in caplog.records)
+
+    def test_evaluate_momentum_abstains_on_contract_gap(self, tmp_path):
+        ev = self._evaluator(tmp_path)
+        # _xgb_feature_names is normally set by load_models(); simulate the
+        # post-load state where the model expects names that the runtime
+        # DataFrame doesn't have.
+        ev._xgb_feature_names = ["macd_hist_momentum", "rsi_momentum"]
+        df = pd.DataFrame({"foo": [1.0], "bar": [2.0]})  # zero overlap
+        score, accel = ev.evaluate_momentum(df)
+        assert score == ev.NEUTRAL_MOMENTUM_SCORE
+        assert accel is False
+
+    def test_evaluate_momentum_contract_gap_warning_suppressed_second_call(
+        self, tmp_path, caplog
+    ):
+        ev = self._evaluator(tmp_path)
+        ev._xgb_feature_names = ["macd_hist_momentum", "rsi_momentum"]
+        df = pd.DataFrame({"foo": [1.0]})
+        with caplog.at_level("WARNING"):
+            ev.evaluate_momentum(df)
+            ev.evaluate_momentum(df)
+        # Both calls return neutral; warning should fire exactly once.
+        gap_warnings = [
+            r for r in caplog.records if "contract gap" in r.message.lower()
+        ]
+        assert len(gap_warnings) == 1, \
+            f"expected one suppressed-after-first contract-gap warning, got {len(gap_warnings)}"
