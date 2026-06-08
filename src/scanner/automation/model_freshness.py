@@ -19,10 +19,10 @@ and returns a structured "training calendar" Claude can reason over:
   }
 
 Status thresholds:
-  - FRESH:  oldest model ≤ 7 days
-  - AGING:  oldest 7–14 days  (warn but don't escalate)
-  - STALE:  oldest > 14 days  (PostTradeDiagnostics flag, Claude trigger)
-  - CRITICAL: oldest > 30 days (immediate self-heal Claude spawn)
+  - FRESH:  oldest model ≤ 3 days
+  - AGING:  oldest 3–7 days  (warn but don't escalate)
+  - STALE:  oldest > 7 days  (PostTradeDiagnostics flag, retrain trigger)
+  - CRITICAL: oldest > 10 days (immediate self-heal Claude spawn)
 """
 from __future__ import annotations
 
@@ -37,13 +37,15 @@ from typing import Any, Dict, List, Optional, Sequence
 
 # Threshold defaults — tuned for forex weekly retraining cadence.
 # Forex regime drift is real on a weekly timescale; default Mon+Fri
-# retraining means models should never be more than ~3-4 days old in
-# steady state. Anything beyond a week is a degraded state.
+# retraining means models should usually be under ~3-4 days old in steady
+# state. AGING is noisy-but-tradable; STALE aligns with the scanner's
+# >7d staleness uncertainty hard-block so a profitable 6d-old model does
+# not halt merely because the displayed rounded age says "6d".
 #
 # Override via env: BUDDY_FRESHNESS_AGING_DAYS / STALE_DAYS / CRITICAL_DAYS
 AGING_DAYS = int(os.environ.get("BUDDY_FRESHNESS_AGING_DAYS", "3"))
-STALE_DAYS = int(os.environ.get("BUDDY_FRESHNESS_STALE_DAYS", "5"))
-CRITICAL_DAYS = int(os.environ.get("BUDDY_FRESHNESS_CRITICAL_DAYS", "7"))
+STALE_DAYS = int(os.environ.get("BUDDY_FRESHNESS_STALE_DAYS", "7"))
+CRITICAL_DAYS = int(os.environ.get("BUDDY_FRESHNESS_CRITICAL_DAYS", "10"))
 
 MODELS_DIR = Path("trained_data/models")
 
@@ -369,6 +371,10 @@ def get_model_freshness_for_pairs(
         pass
 
     pair_names = [p["pair"] for p in pairs_with_transformer]
+    missing_active_sources = (
+        sorted(set(active_source_pairs) - set(pair_names))
+        if active_source_pairs else []
+    )
     extra: Dict[str, Any] = {
         "pairs": pair_names,
         "pair_count": len(pair_names),
@@ -386,6 +392,8 @@ def get_model_freshness_for_pairs(
         extra["excluded_workbench"] = sorted(excluded_workbench)
     if excluded_no_transformer:
         extra["excluded_no_transformer"] = sorted(excluded_no_transformer)
+    if missing_active_sources:
+        extra["missing_active_model_sources"] = missing_active_sources
 
     groups.append(ModelGroup(
         name="per_pair_models",
@@ -437,11 +445,20 @@ def get_model_freshness_for_pairs(
         for g in train_groups
         if g.age_days is not None and g.age_days > STALE_DAYS
     ]
+    warnings = []
+    if missing_active_sources:
+        warnings.append(
+            "per_pair_models_missing ("
+            + ", ".join(missing_active_sources)
+            + ")"
+        )
 
     return {
         "groups": [g.to_dict() for g in groups],
         "oldest_age_days": round(oldest, 1) if oldest is not None else None,
         "stale_models": stale_list,
+        "warnings": warnings,
+        "missing_active_pair_models": missing_active_sources,
         "status": status,
         "rollup_scope": (
             "active_pair_models" if active_pair_sources_have_models

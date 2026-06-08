@@ -9,6 +9,7 @@ losing-streak reflection trigger.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -27,20 +28,21 @@ def tmp_models(tmp_path, monkeypatch):
 # ── Model freshness lookup ─────────────────────────────────────────────
 
 
-def _iso(days_ago: float) -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+def _live_pair_model(tmp_models: Path, pair: str = "EUR_USD", days_ago: float = 0) -> Path:
+    """Create the active per-pair model artifact used by freshness rollup."""
+    model_path = tmp_models / "trained_data" / "models" / pair / "transformer_direction.keras"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    model_path.write_bytes(b"fake keras payload")
+    when = (datetime.now(timezone.utc) - timedelta(days=days_ago)).timestamp()
+    os.utime(model_path, (when, when))
+    return model_path
 
 
 def test_freshness_fresh_when_under_3_days(tmp_models):
     """New thresholds for forex weekly cadence: FRESH ≤3d."""
     from src.scanner.automation.model_freshness import get_model_freshness
 
-    (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(2)})
-    )
-    (tmp_models / "trained_data" / "models" / "joint" / "joint_training_meta.json").write_text(
-        json.dumps({"trained_at": _iso(1)})
-    )
+    _live_pair_model(tmp_models, days_ago=2)
 
     f = get_model_freshness()
     assert f["status"] == "FRESH"
@@ -50,48 +52,47 @@ def test_freshness_fresh_when_under_3_days(tmp_models):
 
 
 def test_freshness_aging_at_4_days(tmp_models):
-    """AGING band: 3-5d (warn but no auto-trigger)."""
+    """AGING band: 3-7d (warn but no auto-trigger)."""
     from src.scanner.automation.model_freshness import get_model_freshness
 
-    (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(4)})
-    )
-    (tmp_models / "trained_data" / "models" / "joint" / "joint_training_meta.json").write_text(
-        json.dumps({"trained_at": _iso(2)})
-    )
+    _live_pair_model(tmp_models, days_ago=4)
 
     f = get_model_freshness()
     assert f["status"] == "AGING"
-    assert f["stale_models"] == []  # AGING is below STALE_DAYS (5)
+    assert f["stale_models"] == []  # AGING is below STALE_DAYS (7)
 
 
-def test_freshness_stale_at_6_days(tmp_models):
-    """STALE band: 5-7d. Now triggers auto-retrain by default (forex)."""
+def test_freshness_aging_at_6_days(tmp_models):
+    """6d models should stay AGING, not halt a profitable bot."""
     from src.scanner.automation.model_freshness import get_model_freshness
 
-    (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(6)})
-    )
-    (tmp_models / "trained_data" / "models" / "joint" / "joint_training_meta.json").write_text(
-        json.dumps({"trained_at": _iso(1)})
-    )
+    _live_pair_model(tmp_models, days_ago=6)
+
+    f = get_model_freshness()
+    assert f["status"] == "AGING"
+    assert f["stale_models"] == []
+
+
+def test_freshness_stale_above_7_days(tmp_models):
+    """STALE band: >7d. Now aligns with the scanner staleness hard-block."""
+    from src.scanner.automation.model_freshness import get_model_freshness
+
+    _live_pair_model(tmp_models, days_ago=8)
 
     f = get_model_freshness()
     assert f["status"] == "STALE"
-    assert any("modular_ensemble" in s for s in f["stale_models"])
+    assert any("per_pair_models" in s for s in f["stale_models"])
 
 
-def test_freshness_critical_above_7_days(tmp_models):
-    """User's exact failure mode — models 27d old (now CRITICAL)."""
+def test_freshness_critical_above_10_days(tmp_models):
+    """Critical band for live per-pair models."""
     from src.scanner.automation.model_freshness import get_model_freshness
 
-    (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(27)})
-    )
+    _live_pair_model(tmp_models, days_ago=27)
 
     f = get_model_freshness()
     assert f["status"] == "CRITICAL"
-    assert f["oldest_age_days"] > 7
+    assert f["oldest_age_days"] > 10
 
 
 def test_freshness_unknown_when_no_metadata(tmp_models):
@@ -146,12 +147,10 @@ def test_freshness_format_for_prompt():
 
 
 def test_diagnostics_flags_stale_models_as_warning(tmp_models):
-    """6 days = STALE band → warning issue."""
+    """8 days = STALE band → warning issue."""
     from src.scanner.feedback.diagnostics import PostTradeDiagnostics
 
-    (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(6)})
-    )
+    _live_pair_model(tmp_models, days_ago=8)
     diag = PostTradeDiagnostics()
     result = diag.run()
     freshness_issues = [
@@ -163,12 +162,10 @@ def test_diagnostics_flags_stale_models_as_warning(tmp_models):
 
 
 def test_diagnostics_flags_critical_age(tmp_models):
-    """8+ days = CRITICAL → critical severity + retrain action."""
+    """11+ days = CRITICAL → critical severity + retrain action."""
     from src.scanner.feedback.diagnostics import PostTradeDiagnostics
 
-    (tmp_models / "trained_data" / "models" / "modular_ensemble.meta.json").write_text(
-        json.dumps({"trained_at": _iso(10)})
-    )
+    _live_pair_model(tmp_models, days_ago=11)
     result = PostTradeDiagnostics().run()
     freshness_issues = [
         i for i in result.get("issues", [])
@@ -241,6 +238,7 @@ def test_losing_streak_fires_at_threshold(iso_journal):
         (trade_id, mode, prompt)
     )
     t._should_fire_self_heal = lambda: False
+    t._pending_diag = {"recommended_actions": ["Investigate losing streak"]}
 
     from types import SimpleNamespace
     t.on_cycle_complete(
@@ -280,6 +278,7 @@ def test_losing_streak_requires_consecutive(iso_journal):
     )
     t._invoke = lambda prompt, trade_id, mode, timeout: fired.append(trade_id)
     t._should_fire_self_heal = lambda: False
+    t._pending_diag = {"recommended_actions": ["Investigate losing streak"]}
 
     from types import SimpleNamespace
     t.on_cycle_complete(
@@ -315,6 +314,7 @@ def test_losing_streak_dedupes_until_new_trade(iso_journal):
     )
     t._invoke = lambda prompt, trade_id, mode, timeout: fired.append(trade_id)
     t._should_fire_self_heal = lambda: False
+    t._pending_diag = {"recommended_actions": ["Investigate losing streak"]}
 
     from types import SimpleNamespace
     fake_scan = SimpleNamespace(tradeable=[], analyses=[])

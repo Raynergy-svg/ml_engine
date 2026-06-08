@@ -17,9 +17,9 @@ This module verifies the post-fix behavior:
       `shadow`, `weight_snapshots`) are excluded
   (c) per-pair dirs with no transformer_direction.keras are skipped (they
       are partial/stub dirs, not scoreable)
-  (d) the top-level `oldest_age_days` aggregate correctly takes the max
-      across ALL training groups including per_pair_models — without this,
-      a stale per-pair model could hide while joint looks fresh
+  (d) the top-level `oldest_age_days` aggregate is driven by live training
+      groups, including per_pair_models. Audit-only joint/modular metadata
+      remains visible in `groups` but does not halt live per-pair routing.
 
 NO MOCKS — real disk under tmp_path, real freshness computation, real
 file mtimes.
@@ -227,23 +227,26 @@ def test_oldest_age_days_aggregates_per_pair_when_per_pair_is_oldest(base_models
     assert res["oldest_age_days"] == pytest.approx(12.0, abs=0.5), (
         "oldest_age_days roll-up must include per_pair_models"
     )
-    # 12d > CRITICAL_DAYS (default 7) so status escalates, exposing
+    # 12d > CRITICAL_DAYS (default 10) so status escalates, exposing
     # what the pre-fix manifest was hiding.
     assert res["status"] == "CRITICAL"
 
 
-def test_oldest_age_days_aggregates_per_pair_when_other_group_is_oldest(base_models):
-    """Symmetric check: when joint is older than per_pair, the roll-up
-    still picks joint. Per-pair inclusion mustn't crowd out other groups."""
+def test_oldest_age_days_ignores_audit_only_joint_when_per_pair_is_fresher(base_models):
+    """Joint/modular freshness stays in groups but not the live roll-up."""
     # joint_gates is 3d, modular is 2d (from fixture).
-    # Per-pair is fresh — joint should still win the roll-up.
+    # Per-pair is fresh — live roll-up should follow per_pair, not joint.
     _make_pair_dir(base_models, "EUR_USD", transformer_age_days=0.0)
     _make_pair_dir(base_models, "USD_JPY", transformer_age_days=0.5)
 
     res = mf.get_model_freshness(base_models)
 
-    # joint=3d should win the roll-up over per_pair=0.5d and modular=2d.
-    assert res["oldest_age_days"] == pytest.approx(3.0, abs=0.5)
+    assert res["oldest_age_days"] == pytest.approx(0.5, abs=0.5)
+    assert res["status"] == "FRESH"
+
+    groups = {g["name"]: g for g in res["groups"]}
+    assert groups["joint_gates"]["age_days"] == pytest.approx(3.0, abs=0.5)
+    assert groups["modular_ensemble"]["age_days"] == pytest.approx(2.0, abs=0.5)
 
 
 def test_per_pair_group_appears_in_groups_list_always(base_models):
@@ -260,3 +263,20 @@ def test_per_pair_group_appears_in_groups_list_always(base_models):
     res2 = mf.get_model_freshness(base_models)
     pp_entries = [g for g in res2["groups"] if g["name"] == "per_pair_models"]
     assert len(pp_entries) == 1, "per_pair_models must be reported exactly once"
+
+
+def test_active_pairs_missing_transformer_warn_without_hard_block(base_models):
+    """Missing active anchors should warn operators without converting a
+    genuinely fresh model set into a CRITICAL halt blocker."""
+    _make_pair_dir(base_models, "EUR_USD", transformer_age_days=0.0)
+    (base_models / "USD_CAD").mkdir()
+
+    res = mf.get_model_freshness(base_models, active_pairs=["EUR_USD", "USD_CAD"])
+    pp = next(g for g in res["groups"] if g["name"] == "per_pair_models")
+
+    assert res["status"] == "FRESH"
+    assert res["missing_active_pair_models"] == ["USD_CAD"]
+    assert "USD_CAD" in pp["excluded_no_transformer"]
+    assert pp["missing_active_model_sources"] == ["USD_CAD"]
+    assert res["stale_models"] == []
+    assert res["warnings"] == ["per_pair_models_missing (USD_CAD)"]
