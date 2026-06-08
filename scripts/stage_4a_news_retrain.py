@@ -57,32 +57,16 @@ def main() -> int:
     log.info("News pca_n=%d lookback_h=%d cache=%s", args.news_pca_n, args.news_lookback_h, args.news_cache)
     log.info("=" * 60)
 
-    # 1. Fetch candles from OANDA
-    from src.utils.oanda_practice import OandaPracticeClient
-    oanda = OandaPracticeClient.from_env()
-    log.info("Fetching %d %s candles for %s", args.candles, args.granularity, args.pair)
-    candles_raw = oanda.get_candles(args.pair, granularity=args.granularity, count=args.candles)
-
+    # 1. Fetch candles via the canonical batched fetch_or_load (handles
+    #    OANDA's 5000/req cap + disk cache). Re-use of train_single_model_m1's
+    #    fetcher keeps fetch semantics identical between price-only baseline
+    #    and news-fused experiment runs.
     import pandas as pd
-    if isinstance(candles_raw, dict):
-        rows = []
-        for c in candles_raw.get("candles", []):
-            mid = c.get("mid", {})
-            rows.append({
-                "time": c.get("time"),
-                "open": float(mid.get("o", 0)),
-                "high": float(mid.get("h", 0)),
-                "low": float(mid.get("l", 0)),
-                "close": float(mid.get("c", 0)),
-                "volume": float(c.get("volume", 0)),
-            })
-        df = pd.DataFrame(rows)
-    elif isinstance(candles_raw, pd.DataFrame):
-        df = candles_raw
-    else:
-        log.error("Unexpected candles type: %s", type(candles_raw))
+    from scripts.train_single_model_m1 import fetch_or_load
+    df = fetch_or_load(args.pair, args.candles, args.granularity)
+    if df is None or df.empty:
+        log.error("fetch_or_load returned empty for %s %s", args.pair, args.granularity)
         return 1
-
     if "time" in df.columns:
         df["time"] = pd.to_datetime(df["time"], utc=True)
         df = df.set_index("time", drop=False)

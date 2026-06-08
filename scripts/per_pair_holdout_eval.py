@@ -69,10 +69,28 @@ def evaluate_one(evaluator, pair: str, oanda, candles: int, windows: int,
     except Exception as e:
         return {"pair": pair, "error": f"fetch failed: {e}"}
 
-    # Compute features
+    # Compute features.
+    #
+    # Training pipeline (scripts/train_single_model_m1.py:813) does
+    #     df_feat = apply_features(df) → FeatureEngineering.create_features(df, include_all=True)
+    # BEFORE invoking load_direction_data, which produces derived features like
+    # macd_hist_momentum, rsi_momentum, obv, macd_x_adx, etc. Without this step
+    # the holdout's runtime DataFrame is missing 44/50 of the trained model's
+    # expected feature_names, the inference contract gap fires, and the
+    # transformer abstains to (None, 0.5) for every window — which historically
+    # masqueraded as an "all-SHORT" prediction (see memory 1352).
     from src.core.modular_data_loaders import compute_normalized_features
+    from src.data.feature_engineering import FeatureEngineering
+    from src.utils import load_config
+    _CONFIG_PATH = str(
+        Path(__file__).resolve().parent.parent / "config" / "config_m1_optimized.yaml"
+    )
     try:
-        feat = compute_normalized_features(df)
+        cfg = load_config(_CONFIG_PATH)
+        df_feat = FeatureEngineering(cfg).create_features(df.copy(), include_all=True)
+        # Mirror load_direction_data's conditional: compute_normalized_features is
+        # idempotent when 'returns_1' is already present.
+        feat = df_feat if "returns_1" in df_feat.columns else compute_normalized_features(df_feat)
     except Exception as e:
         return {"pair": pair, "error": f"feature compute failed: {e}"}
 
