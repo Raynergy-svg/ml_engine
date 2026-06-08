@@ -11,11 +11,13 @@ import signal
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
 
 from src.scanner.automation.continuous import ContinuousConfig, ContinuousScanner
+from src.scanner.automation.serial_executor import SerialExecutor
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +92,50 @@ class TestContinuousScannerInit:
         cs._running = True
         cs.stop()
         assert cs._running is False
+
+
+class _RecordingExecutionManager:
+    """Real (non-mock) ExecutionManager stand-in.
+
+    The agent veto must skip an ``agent_passed=False`` candidate before the
+    broker layer is touched, so neither ``can_trade`` nor ``execute_trade``
+    should ever fire on the veto path. Both record their invocation; a
+    regressed veto would reach ``execute_trade`` and flip ``trade_calls``,
+    which the test asserts stays zero.
+    """
+
+    def __init__(self):
+        self.trade_calls = 0
+
+    def can_trade(self) -> bool:
+        return True
+
+    def execute_trade(self, *args, **kwargs):
+        self.trade_calls += 1
+        return {"success": True, "trade_id": "SHOULD_NOT_HAPPEN"}
+
+
+class TestSerialExecutorAgentVeto:
+    def test_agent_veto_skips_before_execute_single(self):
+        # Non-None real execution manager: SerialExecutor.execute() early-returns
+        # (attempted=0) when _em is None, so a None here would pass for the wrong
+        # reason. A real one forces the candidate through the actual veto path.
+        em = _RecordingExecutionManager()
+        executor = SerialExecutor(execution_manager=em)
+
+        candidate = SimpleNamespace(
+            pair="EUR_USD",
+            confidence=0.95,
+            agent_passed=False,
+        )
+
+        funnel = executor.execute([candidate], max_trades=1)
+
+        # attempted increments immediately before _execute_single; a regressed
+        # veto would make this 1. executed/trade_calls confirm no broker call.
+        assert funnel.attempted == 0
+        assert funnel.executed == 0
+        assert em.trade_calls == 0
 
 
 # ---------------------------------------------------------------------------
