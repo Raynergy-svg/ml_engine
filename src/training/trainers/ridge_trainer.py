@@ -27,6 +27,7 @@ import numpy as np
 
 from src.training.trainers.base import BaseTrainer
 from src.training.trainers.config import TrainerConfig
+from src.training.trainers.utils import atomic_pickle_dump
 
 # Import custom LR schedules early so they're registered with Keras before
 # any pickle deserialization that might contain Keras models with these schedules
@@ -402,8 +403,10 @@ class RidgeTrainer(BaseTrainer):
         }
 
     def save(self, path: str) -> None:
-        """Save confidence model with version metadata."""
+        """Save confidence model with version metadata (atomic write)."""
         import sklearn
+
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
 
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -432,10 +435,10 @@ class RidgeTrainer(BaseTrainer):
             "sklearn_version": sklearn.__version__,
             "lightgbm_version": lgbm_version,
             "saved_at": datetime.now().isoformat(),
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
 
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
+        atomic_pickle_dump(data, path)
 
         logger.info(f"Confidence model ({model_type}) saved to {path}")
 

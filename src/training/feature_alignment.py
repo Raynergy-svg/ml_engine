@@ -55,7 +55,10 @@ def save_feature_indices(
     model_path.mkdir(parents=True, exist_ok=True)
     
     indices_path = model_path / filename
-    joblib.dump({
+    # Atomic (2026-06-10): these sidecars are read by live gate routing; a
+    # mid-write interruption must not leave a truncated artifact.
+    from src.training.trainers.utils import atomic_joblib_dump
+    atomic_joblib_dump({
         'selected_indices': np.array(selected_indices),
         'n_features': len(selected_indices),
     }, indices_path)
@@ -194,7 +197,8 @@ def save_scaler_with_indices(
         'feature_indices': selected_indices,
     }
     
-    joblib.dump(save_data, scaler_path)
+    from src.training.trainers.utils import atomic_joblib_dump
+    atomic_joblib_dump(save_data, scaler_path)
     logger.info(f"Saved scaler with feature info to {scaler_path}")
     
     return scaler_path

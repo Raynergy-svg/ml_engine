@@ -11,8 +11,12 @@ This module contains:
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+import os
+import pickle
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 import warnings
@@ -52,6 +56,168 @@ LGBM_RISK_FILENAME = "lgbm_risk.pkl"
 RIDGE_CONFIDENCE_FILENAME = "ridge_confidence.pkl"
 NO_DIRECTION_DATA_ERROR = "No direction data found (tried 'direction' and 'tcn' keys)"
 WEIGHTS_LOADED_FULL_MODEL_MSG = "✓ Loaded weights via full model load"
+
+
+# =============================================================================
+# ATOMIC SAVE HELPERS (2026-06-10 training-infra audit)
+# =============================================================================
+# Every trainer save path must write to a temp file in the SAME directory and
+# os.replace() it into place. A direct open(path, "wb") that dies mid-write
+# (ENOSPC, SIGKILL) leaves a truncated artifact that per-pair gate routing
+# happily loads — the worst failure mode. os.replace() within one directory
+# is atomic on POSIX filesystems.
+
+PathLike = Union[str, "Path"]
+
+
+def _atomic_tmp_path(path: Path, preserved_suffix: str = "") -> Path:
+    """Return a sibling temp path in the same directory as ``path``.
+
+    If ``preserved_suffix`` is given and the filename ends with it, ``.tmp``
+    is inserted BEFORE that suffix. This matters for format-sniffing savers:
+    Keras refuses to save unless the path ends with ``.keras`` /
+    ``.weights.h5``, so the temp file must keep the trailing extension.
+    """
+    if preserved_suffix and path.name.endswith(preserved_suffix):
+        base = path.name[: -len(preserved_suffix)]
+        return path.with_name(f"{base}.tmp{preserved_suffix}")
+    return path.with_name(path.name + ".tmp")
+
+
+def _fsync_existing_file(file_path: Path) -> None:
+    """Best-effort fsync for files written by APIs that hide the handle
+    (e.g. ``keras.Model.save``). Failure to fsync is logged, not fatal —
+    os.replace() still guarantees we never expose a half-written file."""
+    try:
+        fd = os.open(str(file_path), os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        logger.debug(f"fsync skipped for {file_path}: {exc}")
+
+
+def atomic_pickle_dump(obj: Any, path: PathLike) -> None:
+    """Atomically pickle ``obj`` to ``path`` (tmp + flush + fsync + replace)."""
+    path = Path(path)
+    tmp = _atomic_tmp_path(path)
+    try:
+        with open(tmp, "wb") as f:
+            pickle.dump(obj, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def atomic_joblib_dump(obj: Any, path: PathLike) -> None:
+    """Atomically joblib-dump ``obj`` to ``path`` (tmp + fsync + replace)."""
+    import joblib  # lazy: only the transformer scaler saves need it
+
+    path = Path(path)
+    tmp = _atomic_tmp_path(path)
+    try:
+        joblib.dump(obj, str(tmp))
+        _fsync_existing_file(tmp)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def atomic_text_write(text: str, path: PathLike) -> None:
+    """Atomically write ``text`` to ``path`` (tmp + flush + fsync + replace)."""
+    path = Path(path)
+    tmp = _atomic_tmp_path(path)
+    try:
+        with open(tmp, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def atomic_json_dump(obj: Any, path: PathLike, **json_kwargs: Any) -> None:
+    """Atomically serialize ``obj`` as JSON to ``path``."""
+    atomic_text_write(json.dumps(obj, **json_kwargs), path)
+
+
+def atomic_keras_save(model: Any, path: PathLike, *, weights_only: bool = False) -> None:
+    """Atomically save a Keras model (or just its weights) via tmp + replace.
+
+    Keras validates the trailing extension, so the temp file inserts ``.tmp``
+    before the required suffix (``.keras`` or ``.weights.h5``), e.g.
+    ``transformer_direction.tmp.keras``.
+
+    Args:
+        model: Keras model instance.
+        path: Final destination (must end with ``.keras`` or ``.weights.h5``).
+        weights_only: If True, calls ``model.save_weights`` instead of
+            ``model.save``.
+    """
+    path = Path(path)
+    preserved = (
+        WEIGHTS_H5_SUFFIX if path.name.endswith(WEIGHTS_H5_SUFFIX) else path.suffix
+    )
+    tmp = _atomic_tmp_path(path, preserved)
+    try:
+        if weights_only:
+            model.save_weights(str(tmp))
+        else:
+            model.save(str(tmp))
+        _fsync_existing_file(tmp)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+# =============================================================================
+# METRIC HONESTY HELPER (2026-06-10 training-infra audit)
+# =============================================================================
+
+
+def train_accuracy_at_best_epoch(
+    train_acc_history: List[float],
+    val_acc_history: Optional[List[float]] = None,
+    best_epoch_idx: Optional[int] = None,
+) -> float:
+    """Return train_accuracy at the epoch whose weights were actually saved.
+
+    Trainers that restore best weights (EarlyStopping restore_best_weights=True,
+    or hand-rolled best-val-loss tracking) must NOT report
+    ``history["accuracy"][-1]`` — the last epoch is the post-overfit one, which
+    produces a phantom train/val gap on the saved checkpoint and can falsely
+    trip the operator's 10% hard ship gate (see .claude/rules/improvement.md
+    "Hard Ship Gate").
+
+    Args:
+        train_acc_history: Per-epoch training accuracy.
+        val_acc_history: Per-epoch validation accuracy. Used to locate the
+            best epoch via argmax when ``best_epoch_idx`` is not supplied.
+        best_epoch_idx: Explicit saved-epoch index for trainers that track it
+            themselves (e.g. best-val-loss keyed restore). Takes precedence
+            over ``val_acc_history``.
+
+    Returns:
+        Training accuracy at the best epoch; falls back to the last epoch when
+        the best epoch cannot be determined, and 0.0 for empty history.
+    """
+    if not train_acc_history:
+        return 0.0
+    if best_epoch_idx is not None and 0 <= best_epoch_idx < len(train_acc_history):
+        return float(train_acc_history[best_epoch_idx])
+    if best_epoch_idx is None and val_acc_history:
+        idx = int(np.argmax(val_acc_history))
+        idx = min(idx, len(train_acc_history) - 1)
+        return float(train_acc_history[idx])
+    return float(train_acc_history[-1])
 
 
 # === Pair Volatility Classification for Auto-Tuning ===

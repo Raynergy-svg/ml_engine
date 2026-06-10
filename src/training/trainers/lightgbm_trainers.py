@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import json
 import logging
 import os
 import pickle
@@ -38,6 +37,8 @@ from src.training.trainers.utils import (
     get_regime_lgbm_params,
     _create_lgbm_classifier,
     _create_lgbm_regressor,
+    atomic_json_dump,
+    atomic_pickle_dump,
 )
 
 # Import custom LR schedules early so they're registered with Keras before
@@ -362,6 +363,8 @@ class RegimeLGBMTrainer(BaseTrainer):
         Returns:
             Dict mapping regime name to saved file path
         """
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
+
         save_dir = Path(base_path) / instrument
         save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -381,10 +384,10 @@ class RegimeLGBMTrainer(BaseTrainer):
                 "n_features": self.n_features,
                 "regime": regime_name,
                 "saved_at": datetime.now().isoformat(),
+                "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
             }
 
-            with open(model_path, "wb") as f:
-                pickle.dump(data, f)
+            atomic_pickle_dump(data, model_path)
 
             saved_paths[regime_name] = model_path
             logger.info(f"Saved {regime_name} model to {model_path}")
@@ -398,9 +401,9 @@ class RegimeLGBMTrainer(BaseTrainer):
             "feature_names": self.feature_names,
             "n_features": self.n_features,
             "saved_at": datetime.now().isoformat(),
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
-        with open(meta_path, "w") as f:
-            json.dump(meta, f, indent=2, default=str)
+        atomic_json_dump(meta, meta_path, indent=2, default=str)
 
         return saved_paths
 
@@ -627,8 +630,10 @@ class LightGBMMomentumTrainer(BaseTrainer):
         }
 
     def save(self, path: str) -> None:
-        """Save LightGBM momentum models with version metadata."""
+        """Save LightGBM momentum models with version metadata (atomic write)."""
         import sklearn
+
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
 
         try:
             import lightgbm
@@ -653,10 +658,10 @@ class LightGBMMomentumTrainer(BaseTrainer):
             "sklearn_version": sklearn.__version__,
             "lightgbm_version": lgbm_version,
             "saved_at": datetime.now().isoformat(),
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
 
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
+        atomic_pickle_dump(data, path)
 
         logger.info(f"LightGBM Momentum saved to {path}")
 
@@ -864,8 +869,10 @@ class LightGBMRiskTrainer(BaseTrainer):
         }
 
     def save(self, path: str) -> None:
-        """Save LightGBM risk models with version metadata."""
+        """Save LightGBM risk models with version metadata (atomic write)."""
         import sklearn
+
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
 
         try:
             import lightgbm
@@ -889,10 +896,10 @@ class LightGBMRiskTrainer(BaseTrainer):
             "sklearn_version": sklearn.__version__,
             "lightgbm_version": lgbm_version,
             "saved_at": datetime.now().isoformat(),
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
 
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
+        atomic_pickle_dump(data, path)
 
         logger.info(f"LightGBM Risk saved to {path}")
 

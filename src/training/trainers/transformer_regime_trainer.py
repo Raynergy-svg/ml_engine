@@ -29,6 +29,8 @@ from src.training.trainers.callbacks import QuietProgressCallback, RichEpochCall
 from src.training.trainers.utils import (
     META_PKL_SUFFIX,
     MODEL_NOT_TRAINED_ERROR,
+    atomic_keras_save,
+    atomic_pickle_dump,
     create_sequences,
     get_config_seq_len,
     predict_with_named_input_if_needed,
@@ -354,11 +356,13 @@ class TransformerRegimeTrainer(BaseTrainer):
         }
 
     def save(self, path: str) -> None:
-        """Save Transformer regime model and scaler."""
+        """Save Transformer regime model and scaler (atomic writes)."""
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.model.save(str(path))
+        atomic_keras_save(self.model, path)
 
         meta = {
             "scaler": self.scaler,
@@ -369,10 +373,10 @@ class TransformerRegimeTrainer(BaseTrainer):
             "n_features": self.n_features,
             "class_names": self.class_names,
             "model_type": "transformer_regime",
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
         meta_path = path.with_suffix(META_PKL_SUFFIX)
-        with open(meta_path, "wb") as f:
-            pickle.dump(meta, f)
+        atomic_pickle_dump(meta, meta_path)
 
         logger.info(f"Transformer Regime saved to {path}")
 

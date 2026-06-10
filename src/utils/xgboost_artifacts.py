@@ -168,7 +168,11 @@ def save_native_xgboost_bundle(
             raise TypeError(f"{model_key} is not an XGBoost model: {type(model)!r}")
 
         sidecar = xgboost_sidecar_path(path, model_key, alias_map=alias_map)
-        model.save_model(str(sidecar))
+        # Atomic (2026-06-10): save to tmp-in-same-dir then os.replace so an
+        # interrupted write can't leave a truncated sidecar for routing.
+        _tmp_sidecar = sidecar.with_name(sidecar.name + ".tmp")
+        model.save_model(str(_tmp_sidecar))
+        os.replace(_tmp_sidecar, sidecar)
         model_specs[model_key] = {
             "file": sidecar.name,
             "class_name": type(model).__name__,
@@ -177,8 +181,8 @@ def save_native_xgboost_bundle(
     payload["artifact_format"] = XGBOOST_NATIVE_ARTIFACT_FORMAT
     payload["xgboost_models"] = model_specs
 
-    with open(path, "wb") as handle:
-        pickle.dump(payload, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    from src.training.trainers.utils import atomic_pickle_dump
+    atomic_pickle_dump(payload, path)
 
     return payload
 

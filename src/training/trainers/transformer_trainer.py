@@ -67,6 +67,10 @@ from src.training.trainers.utils import (
     _safe_reset_optimizer_state,
     _safe_set_learning_rate,
     _validate_weight_shapes,
+    atomic_joblib_dump,
+    atomic_keras_save,
+    atomic_pickle_dump,
+    atomic_text_write,
     compute_auto_variance_weight,
     create_ewc_loss,
     create_sequences_with_weights,
@@ -1659,14 +1663,12 @@ class TransformerDirectionTrainer(BaseTrainer):
         Args:
             model_dir: Directory to save scalers to
         """
-        import joblib
-        
         model_dir = Path(model_dir)
         
         # Save pre-selection scaler (for inference feature alignment)
         if hasattr(self, 'pre_selection_scaler_') and self.pre_selection_scaler_ is not None:
             pre_selection_path = model_dir / "pre_selection_scaler.pkl"
-            joblib.dump({
+            atomic_joblib_dump({
                 'scaler': self.pre_selection_scaler_,
                 'n_features_in_': self.pre_selection_scaler_.n_features_in_,
                 'feature_names_in_': getattr(self.pre_selection_scaler_, 'feature_names_in_', None)
@@ -1692,7 +1694,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                 "scaler-less model — inference would silently produce sub-coin-flip output."
             )
         post_selection_path = model_dir / "direction_scaler.pkl"
-        joblib.dump({
+        atomic_joblib_dump({
             'scaler': self.scaler,
             'n_features_in_': self.scaler.n_features_in_,
             'selected_indices': getattr(self, 'selected_indices_', None),
@@ -3166,8 +3168,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         # === Save both pre-selection and post-selection scalers (Fix 2.3) ===
         self._save_scalers(path.parent)
 
-        # Save Keras model in native format
-        self.model.save(str(path))
+        # Save Keras model in native format (atomic tmp+rename write)
+        atomic_keras_save(self.model, path)
 
         # === CROSS-VERSION COMPATIBILITY: Save weights and architecture separately ===
         # This allows loading on different Keras versions (2.x vs 3.x)
@@ -3175,7 +3177,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         # 1. Save weights in H5 format (portable across Keras versions)
         weights_path = path.with_suffix(WEIGHTS_H5_SUFFIX)
         try:
-            self.model.save_weights(str(weights_path))
+            atomic_keras_save(self.model, weights_path, weights_only=True)
             logger.debug(f"Saved portable weights to {weights_path}")
         except Exception as e:
             logger.warning(f"Could not save portable weights: {e}")
@@ -3184,8 +3186,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         arch_path = path.with_suffix(ARCH_JSON_SUFFIX)
         try:
             arch_json = self.model.to_json()
-            with open(arch_path, "w") as f:
-                f.write(arch_json)
+            atomic_text_write(arch_json, arch_path)
             logger.debug(f"Saved architecture to {arch_path}")
         except Exception as e:
             logger.warning(f"Could not save architecture JSON: {e}")
@@ -3238,8 +3239,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             "news_pca_n_components": self._news_pca_n_components,
         }
         meta_path = path.with_suffix(META_PKL_SUFFIX)
-        with open(meta_path, "wb") as f:
-            pickle.dump(meta, f)
+        atomic_pickle_dump(meta, meta_path)
 
         # Save EMA weights if available
         if self._use_ema and self.ema is not None and self.ema._initialized:
@@ -3253,8 +3253,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                 "step_counter": self.ema.step_counter,
             }
             ema_path = path.with_suffix(EMA_PKL_SUFFIX)
-            with open(ema_path, "wb") as f:
-                pickle.dump(ema_data, f)
+            atomic_pickle_dump(ema_data, ema_path)
             logger.info(f"📊 EMA weights saved to {ema_path}")
 
         # Save EWC state if available

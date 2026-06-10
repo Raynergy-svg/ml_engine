@@ -185,8 +185,11 @@ class RandomForestTrainer(BaseTrainer):
         }
 
     def save(self, path: str) -> None:
-        """Save Random Forest models with version metadata."""
+        """Save Random Forest models with version metadata (atomic write)."""
         import sklearn
+
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
+        from src.training.trainers.utils import atomic_pickle_dump
 
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -202,10 +205,10 @@ class RandomForestTrainer(BaseTrainer):
             # Version metadata for compatibility checks
             "sklearn_version": sklearn.__version__,
             "saved_at": datetime.now().isoformat(),
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
 
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
+        atomic_pickle_dump(data, path)
 
         logger.info(f"Random Forest saved to {path} (sklearn={sklearn.__version__})")
 

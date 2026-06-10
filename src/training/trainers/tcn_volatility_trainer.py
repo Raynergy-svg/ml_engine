@@ -49,7 +49,12 @@ from src.training.trainers.callbacks import (
     AutoAdjustCallback,
 )
 from src.training.trainers.display import TrainingDisplay
-from src.training.trainers.utils import predict_with_named_input_if_needed
+from src.training.trainers.utils import (
+    atomic_keras_save,
+    atomic_pickle_dump,
+    predict_with_named_input_if_needed,
+    train_accuracy_at_best_epoch,
+)
 
 # Import custom LR schedules early so they're registered with Keras before
 # any pickle deserialization that might contain Keras models with these schedules
@@ -442,6 +447,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         # Training loop
         best_val_loss = float('inf')
         best_weights = None
+        best_epoch_idx = -1  # epoch whose weights get restored below
         patience_counter = 0
         history = {'loss': [], 'accuracy': [], 'val_loss': [], 'val_accuracy': []}
 
@@ -486,6 +492,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_weights = self.model.get_weights()
+                best_epoch_idx = epoch  # 2026-06-10: track the saved epoch
                 patience_counter = 0
             else:
                 patience_counter += 1
@@ -527,8 +534,16 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         # Check for collapse
         all_classes_present = all(pred_dist[i] > 0.05 for i in range(4))
 
+        # 2026-06-10 fix (training-infra audit): best weights are restored from
+        # the best-val-loss epoch above — report train_accuracy at THAT epoch,
+        # not the last (potentially overfit) one. history[-1] produced a
+        # phantom train/val gap on the saved checkpoint.
+        train_accuracy_at_best = train_accuracy_at_best_epoch(
+            history['accuracy'], best_epoch_idx=best_epoch_idx
+        )
+
         self.metrics = {
-            'train_accuracy': float(history['accuracy'][-1]) if history['accuracy'] else 0.0,
+            'train_accuracy': train_accuracy_at_best,
             'val_accuracy': float(val_acc),
             'val_f1_macro': float(f1_macro),
             'val_f1_quiet': float(f1_scores[0]) if len(f1_scores) > 0 else 0.0,
@@ -637,11 +652,13 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         }
 
     def save(self, path: str) -> None:
-        """Save TCN Forward Volatility model."""
+        """Save TCN Forward Volatility model (atomic tmp+rename writes)."""
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.model.save(str(path))
+        atomic_keras_save(self.model, path)
 
         meta = {
             'scaler': self.scaler,
@@ -664,11 +681,13 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                 'focal_gamma': self.focal_gamma,
                 'focal_alpha': self.focal_alpha,
             },
+            # Inference contract: pipeline version stamp so a future pipeline
+            # change can't silently feed this model out-of-distribution input.
+            'feature_pipeline_version': FEATURE_PIPELINE_VERSION,
         }
 
         meta_path = path.with_suffix('.meta.pkl')
-        with open(meta_path, 'wb') as f:
-            pickle.dump(meta, f)
+        atomic_pickle_dump(meta, meta_path)
 
         logger.info(f"TCN Forward Volatility saved to {path}")
 

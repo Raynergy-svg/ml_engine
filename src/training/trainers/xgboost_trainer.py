@@ -199,6 +199,8 @@ class XGBoostTrainer(BaseTrainer):
         import sklearn
         import xgboost
 
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -213,6 +215,7 @@ class XGBoostTrainer(BaseTrainer):
             "sklearn_version": sklearn.__version__,
             "xgboost_version": xgboost.__version__,
             "saved_at": datetime.now().isoformat(),
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
 
         save_native_xgboost_bundle(

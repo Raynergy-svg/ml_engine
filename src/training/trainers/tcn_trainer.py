@@ -47,7 +47,11 @@ from src.training.trainers.utils import (
     _safe_reset_optimizer_state,
     _validate_weight_shapes,
     _get_numpy_dtype,
+    atomic_keras_save,
+    atomic_pickle_dump,
+    atomic_text_write,
     predict_with_named_input_if_needed,
+    train_accuracy_at_best_epoch,
 )
 
 # Import custom LR schedules early so they're registered with Keras before
@@ -756,8 +760,19 @@ class TCNTrainer(BaseTrainer):
                 cls_acc = np.mean(val_pred[mask] == cls)
                 logger.info(f"  {self.REGIME_NAMES[cls]} accuracy: {cls_acc:.1%}")
 
+        # 2026-06-10 fix (training-infra audit): EarlyStopping runs with
+        # restore_best_weights=True, so the SAVED weights come from the
+        # best-val epoch. Report train_accuracy at that epoch — history[-1]
+        # is the last (potentially overfit) epoch and produces a phantom
+        # train/val gap that can falsely trip the 10% hard ship gate.
+        # Mirrors transformer_trainer._compute_final_metrics.
+        train_accuracy_at_best = train_accuracy_at_best_epoch(
+            history.history.get("accuracy", []),
+            history.history.get("val_accuracy", []),
+        )
+
         self.metrics = {
-            "train_accuracy": float(history.history["accuracy"][-1]),
+            "train_accuracy": train_accuracy_at_best,
             "val_accuracy": float(val_acc),
             "epochs_trained": len(history.history["loss"]),
         }
@@ -804,11 +819,13 @@ class TCNTrainer(BaseTrainer):
 
         This allows loading on both Keras 2.x and 3.x environments.
         """
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Save Keras model in native format
-        self.model.save(str(path))
+        # Save Keras model in native format (atomic tmp+rename write)
+        atomic_keras_save(self.model, path)
 
         # === CROSS-VERSION COMPATIBILITY: Save weights and architecture separately ===
         # This allows loading on different Keras versions
@@ -816,7 +833,7 @@ class TCNTrainer(BaseTrainer):
         # 1. Save weights in H5 format (portable across Keras 2.x/3.x)
         weights_path = path.with_suffix(WEIGHTS_H5_SUFFIX)
         try:
-            self.model.save_weights(str(weights_path))
+            atomic_keras_save(self.model, weights_path, weights_only=True)
             logger.debug(f"Saved portable weights to {weights_path}")
         except Exception as e:
             logger.warning(f"Could not save portable weights: {e}")
@@ -825,8 +842,7 @@ class TCNTrainer(BaseTrainer):
         arch_path = path.with_suffix(ARCH_JSON_SUFFIX)
         try:
             arch_json = self.model.to_json()
-            with open(arch_path, "w") as f:
-                f.write(arch_json)
+            atomic_text_write(arch_json, arch_path)
             logger.debug(f"Saved architecture to {arch_path}")
         except Exception as e:
             logger.warning(f"Could not save architecture JSON: {e}")
@@ -852,10 +868,12 @@ class TCNTrainer(BaseTrainer):
                 "tcn_spatial_dropout": getattr(self.config, "tcn_spatial_dropout", 0.2),
                 "tcn_noise_std": getattr(self.config, "tcn_noise_std", 0.03),
             },
+            # Inference contract: pipeline version stamp so a future pipeline
+            # change can't silently feed this model out-of-distribution input.
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
         meta_path = path.with_suffix(META_PKL_SUFFIX)
-        with open(meta_path, "wb") as f:
-            pickle.dump(meta, f)
+        atomic_pickle_dump(meta, meta_path)
 
         logger.info(
             f"TCN Volatility Regime saved to {path} (with cross-version compatibility)"

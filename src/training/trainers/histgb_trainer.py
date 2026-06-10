@@ -21,6 +21,7 @@ from src.training.trainers.config import TrainerConfig
 from src.training.trainers.utils import (
     MODEL_NOT_TRAINED_ERROR,
     UNPICKLE_ESTIMATOR_WARNING,
+    atomic_pickle_dump,
 )
 
 logger = logging.getLogger(__name__)
@@ -259,7 +260,11 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
         }
 
     def save(self, path: str) -> None:
-        """Save HistGB model."""
+        """Save HistGB model (atomic tmp+rename write)."""
+        # Lazy import: keeps the heavy data-loader module out of trainer
+        # import time and avoids import cycles.
+        from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -272,10 +277,12 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
             "feature_names": self.feature_names,
             "n_features": self.n_features,
             "model_type": "histgb",
+            # Inference contract: refuse cross-version inference (see
+            # .claude/rules/improvement.md "Train↔Inference Contract Gates")
+            "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         }
 
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
+        atomic_pickle_dump(data, path)
 
         logger.info(f"HistGB saved to {path}")
 
