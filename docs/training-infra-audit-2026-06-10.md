@@ -52,6 +52,24 @@ The single highest-value fix is the balanced-accuracy / class-collapse guard on 
 - Direction-loader scaler + forward-vol scaler fit train-only; sequence label alignment consistent.
 - Dual-head TCN wiring (the forward-vol head wired 2026-06-09) is correct.
 
+## Remediation status (2026-06-10, commits 64caaa4..df15092)
+
+- ✅ **G1** fixed (13b9115) — all 5 metric readers + fail-loud dispatch + tcn quarantine/rollback.
+- ✅ **V2 + V-H1 + L1** fixed (df15092) — expectancy gate (NEW expectancy_gate.py) + balanced-acc +
+  class-collapse Gates 1b/1c; all 3 holdout fail-open paths now FAIL CLOSED; unreadable production
+  metrics hold for manual review.
+- ✅ **R1** fixed (64caaa4) — atomic saves on every trainer path + feature_alignment + xgboost bundles.
+- ✅ **V-H2** fixed (13b9115/df15092) — global seed in both ship scripts (BUDDY_TRAIN_SEED).
+- ✅ **Met2/Met3** fixed (64caaa4) — best-epoch train_acc in both TCN trainers.
+- ✅ **L-C1** fixed (f1fe506) — embargo defaults in all 4 loaders.
+- 🟡 **C1 partial** (64caaa4) — feature_pipeline_version now SAVED by all heads; load-time refusal in
+  gates._load_* still transformer-only (pending).
+- ⏳ **C2** pending — histgb inference matrix still built from TCN feature_names (modular_inference.py).
+- ⏳ **M1** pending operator decision — walk-forward: wire into ship path (fix Vp embargo first) or delete + correct claim.
+- ⏳ **Th-M/M4** pending — dead unified_thresholds/deployment_gate/validation_monitor cleanup.
+- ⏳ Adjacent (Track B flagged): callbacks.py mid-train checkpoint writes non-atomic; joint_trainer (deprecated) non-atomic.
+- ⏳ Adjacent (Track A found): train_tcn and train_tcn_vol_regime both write tcn_volatility_regime.keras (artifact ownership collision — operator call).
+
 ## Recommended remediation order
 1. **V2 + V-H1** (one commit) — balanced-accuracy + class-collapse guard + fail-closed holdout. Closes the all-SHORT-ships hole. *The one that costs money.* (Gate-policy change → operator sign-off.)
 2. **G1** — route all gap-checked trainers through `_read_trainer_metrics`, fail loud on empty. (Bug fix, restores intended gate.)
