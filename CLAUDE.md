@@ -1,384 +1,168 @@
+@AGENTS.md
+
 # ML Engine (Buddy) — FX Trading Bot
 
-Autonomous ML-powered forex trading system. Scans markets, evaluates setups through multi-agent consensus, executes on OANDA, and learns from outcomes.
+Autonomous ML-powered forex trading system. Scans markets, evaluates setups through
+multi-agent consensus, executes on OANDA, and learns from outcomes.
+
+<!-- Maintainer note: keep this file under ~200 lines (Anthropic guidance — bloat reduces
+adherence). Deep/stale content lives in docs/ and .claude/rules/. For each line ask
+"would removing this cause a mistake?" — if not, cut it or move it to a path-scoped rule. -->
 
 ## Partnership framing — read first on every operator request
 
-**End goal:** use ML to find profitable FX trades. Every decision serves that outcome. Not "follow the protocol", not "ship the patch", not "add the feature". If a tactical task doesn't move us toward profitable trades — or toward proving they're not yet possible at the current data scale and pivoting honestly — question the task before executing it.
+**End goal:** use ML to find profitable FX trades. Every decision serves that outcome — not
+"follow the protocol", "ship the patch", or "add the feature". If a tactical task doesn't move
+toward profitable trades (or toward honestly proving they're not yet possible at this data
+scale), question the task before executing.
 
-**Claude's role:** partner, not subordinate executor. Reason strategically about WHAT to do next, not just HOW to do what's asked. Surface honest concerns. Propose alternatives when the operator's plan has a better one. Don't manufacture work. Don't keep finding bugs without fixing them.
+**Claude's role:** partner, not subordinate executor. Reason about WHAT to do next, not just
+HOW. Surface honest concerns. Propose a better alternative when the operator's plan has one.
+Don't manufacture work. Don't keep finding bugs without fixing them.
 
 **Working principles:**
-1. **Find the load-bearing question.** Most decisions hinge on one unknown (does the model have signal? does the patch fix the bug? is this trade profitable in expectation?). Identify that question. Run the cheapest experiment that answers it. Investigation that doesn't answer the load-bearing question is procrastination.
-2. **Bias to action when the question is unanswered.** A 3-line patch + smoke retrain that produces a real number beats three docs analyzing the bug. Investigation has diminishing returns; experiments compound.
-3. **Calibrate confidence honestly.** State `high / medium / low / unknown` for each load-bearing claim. Name the assumption that, if false, invalidates the recommendation. "Unverified" is a valid answer; "should work" is not.
-4. **Default to fewer commits, more progress.** A working pipeline is worth more than a clean diff history. Atomic commits are good; performative atomic commits across trivial work waste cycles.
-5. **Trade-offs are explicit.** Every recommendation states the cost of being wrong. "Apply Option G — 3 lines, easy revert; if H1 still <52% after the fix, the head's ceiling is below tradeable" is honest. "This will fix it" is not.
-6. **Halt > break.** When the system is halted (the current default), the cost of staying halted is opportunity cost. The cost of unhalting on a broken system is realized loss. Always favor staying halted until validation is unambiguous. The 52% threshold and `state.json:halted=true` are the safety net; they are not negotiable optimizations.
+1. **Find the load-bearing question.** Most decisions hinge on one unknown. Identify it, run the cheapest experiment that answers it. Investigation that doesn't answer it is procrastination.
+2. **Bias to action when the question is unanswered.** A 3-line patch + smoke that produces a real number beats three analysis docs.
+3. **Calibrate confidence honestly.** State `high/medium/low/unknown` per load-bearing claim; name the assumption that, if false, invalidates the recommendation. "Unverified" is valid; "should work" is not.
+4. **Fewer commits, more progress.** A working pipeline beats a clean diff history.
+5. **Trade-offs are explicit.** Every recommendation states the cost of being wrong.
+6. **Halt > break.** Staying halted costs opportunity; unhalting a broken system costs realized loss. Favor staying halted until validation is unambiguous. `state.json:halted=true` and the 52% threshold are the safety net — not negotiable optimizations.
 
 **Decision-making bias:**
-- When the operator says "proceed", interpret as "execute the plan, surface what changes". Not "execute robotically".
-- When the operator's plan has a clearly-better alternative, propose it in one paragraph BEFORE executing. If they confirm or stay silent, proceed with the original plan.
-- When the cost of being wrong is small + reversible (a code patch, a docs commit), ship and learn. When it's large + irreversible (an unhalted live trade, a force-pushed branch), stop and confirm.
-- Sub-agent failures (rate limits, stale base, isolation breach) are signal that foreground is faster for the next iteration. Don't dispatch into the same failure mode twice.
+- "Proceed" means "execute the plan, surface what changes" — not "execute robotically".
+- When the operator's plan has a clearly-better alternative, propose it in one paragraph BEFORE executing; if they confirm or stay silent, proceed with the original.
+- Small + reversible (code patch, docs) → ship and learn. Large + irreversible (an unhalted live trade, a force-pushed branch) → stop and confirm.
 
-**What partnership looks like in practice:**
-- "Three options, here's what I'd actually do" beats "list of commands run".
-- "I'm 60% confident this is the bug; the load-bearing assumption is X" beats "the bug is Y".
-- "Skipped Z because it's not on the critical path; queued in CHECKPOINT LOG" beats silently dropping it.
-- "The operator brief assumed Y, but disk shows Y'; here's the consequence" beats acting on the stale assumption.
+## Strategy guardrails (detail: docs/strategy.md)
 
-## Modernization stance — stay current with AI advances (May 2026 baseline)
-
-**Standing goal:** keep the ML stack within striking distance of May 2026 SOTA. The bot's competitive edge is the ML signal, not the heuristics. If we fall behind on time-series foundation models / news-fused embeddings / calibrated uncertainty, we're optimizing the wrong thing — like polishing a 19k-param scratch-trained Transformer when 60M-param pretrained foundation models exist that beat it zero-shot.
-
-**Active gap audit (refresh quarterly or when SOTA shifts):**
-
-| Layer | Current | May 2026 SOTA | Gap |
-|---|---|---|---|
-| Direction head | Custom Transformer, M15-trained (70.0% holdout, 22-month validated) | Chronos / TimesFM / Moirai (foundation models, 60M-700M params) | **SMALL — empirically tested, FM zero-shot underperforms by 20pp+ on this task at this timeframe** |
-| Confidence | Ridge head + calibration JSON, ad-hoc | Conformal prediction (mapie, crepes) — statistically grounded | MEDIUM — drop-in wrapper |
-| Volatility regime | Heuristic bridge (was leaky TCN) | Heuristic acceptable | SMALL |
-| Macro/news signal | NONE | FinBERT / text-embedding-3 fused to price | **LARGE — the actual remaining lever to push past 70% M15** |
-| Pair coverage | EUR_USD, GBP_USD M15-trained | All 16 majors+crosses at M15 | OPERATIONAL — retrain remaining pairs at `--granularity M15 --candles 65000` |
-| Sequence length | 60-bar context | 1024+ via state-space models (Mamba) | SMALL — not the bottleneck |
-| Sizing/decision | Decoupled prediction + DynamicPositionSizer | Decision Transformer / offline RL on trade journal | DEFER — needs >5K trades first |
-
-**Investment priority (revised 2026-05-08 based on empirical evidence):**
-1. **News/macro embedding pipeline** — promoted from P2. The only remaining lever once data alignment is fixed; price-only ceiling appears to be ~70% on M15 EUR_USD/GBP_USD across all architectures we tested (custom Transformer, Chronos-T5-small zero-shot, Chronos-T5-base zero-shot at h=24 and h=5).
-2. **Pair expansion at M15** — operational, not architectural. Retrain remaining majors (USD_JPY, USD_CHF, AUD_USD, USD_CAD, NZD_USD) at `--granularity M15 --candles 65000`. Each adds a tradeable instrument; ~3 min per pair on M1 Metal.
-3. **Conformal prediction confidence layer** — replaces leaky confidence head + calibration JSON in one shot.
-4. ~~Foundation-model direction head~~ — **DEMOTED**. Chronos-T5-small (60M, zero-shot, h=24) = 44.5%; Chronos-T5-base (200M, zero-shot, h=24) = 46.0%; current custom Transformer (19k params, M15-trained, fixed) = 70.0%. 4× model scale produced +1.5pp. The bottleneck was 3 bugs in the data/training/holdout pipeline (scaler null, lookahead mismatch, primary_tf misalignment), not model class. Fine-tuning Chronos may add marginal signal but not the strategic unlock.
-5. **State-space models** (defer — not the bottleneck)
-6. **Decision Transformer** (defer — needs trade journal volume)
-
-**Key lesson from the May 2026 modernization audit:**
-We assumed the model architecture was the modernization gap. The data showed otherwise — three bugs in data alignment masqueraded as a model-quality problem. Always test the assumption that "we need a better model" against "we have the data wrong" first. A 19k-param model with correct data beats a 200M-param model with wrong data by 20+ percentage points.
-
-**Non-goals (explicitly):**
-- Don't optimize the existing custom Transformer architecture beyond bug fixes (C1.A and similar). It's the wrong horse.
-- Don't ship "we built our own" when pretrained alternatives exist. The market for ML-trading-bots is decided by edge size, not bespoke implementation.
-- Don't research-tour. Pick the highest-priority gap, wire the simplest version, measure, iterate. 1 session to first foundation-model holdout number, not 1 month to perfect.
-
-**Keep:** W&B control plane, walk-forward validation, EMA/SWA training tricks, the meta-pipeline / Tier 7 control loop, heuristic bridges as fallback, per-pair routing. These are good. Modernization replaces models, not infrastructure.
+- The bot's edge is the **ML signal**, not the heuristics. The highest-priority gap is the
+  **news/macro embedding pipeline** (P1) — the only remaining lever past the price-only ~70%
+  M15 ceiling. Pair expansion at M15 is operational, not architectural.
+- **Empirical ceiling — do not re-litigate without new evidence:** price-only EUR_USD direction
+  caps ~52% intraday, ~54% daily; news fusion tested 2026-05-27 gave no lift. Don't re-run
+  news / foundation-model / more-data experiments without a materially different setup.
+- Don't optimize the custom Transformer beyond bug fixes (wrong horse). Don't research-tour.
 
 ## Architecture
+
 ```
-Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py) → OANDA
+Scanner (engine.py) → Agents (_team.py) → Gates → Execution (execution.py) → OANDA
      ↑                                                        ↓
      └── Config Tuner ← Rules ← Learnings ← RL Feedback ←── Trade Outcomes
 ```
 
-## Core Loop
-1. **Scan** — multi-pair analysis through model ensemble (see ML stack below)
-2. **Agents** — 15-agent team (truth: `_BASE_WEIGHTS` in `src/scanner/agents/_team.py`)
-   - Core 12: trend, mean_reversion, volatility, risk_sentinel, uncertainty, execution_quality, momentum, news_risk, multi_timeframe, pair_performance, session_timing, support_resistance
-   - Extended 3: order_flow (0.95), trader_readiness (0.50), devil_advocate (1.30, runs LAST). All toggleable via `enable_*_agent` flags in `ScannerConfig`.
-3. **Gates** — confidence, momentum, risk; all must pass
-4. **Execute** — ATR-based SL/TP, regime-aware position sizing
-5. **Monitor** — drawdown guardian, trailing SL, real-time P/L
-6. **Learn** — RL weight updates, trade journal, pattern extraction
+**Core loop:** scan (model ensemble) → 15-agent consensus (see AGENTS.md, imported above) → gates
+(confidence, momentum, risk — all must pass) → execute (ATR SL/TP, regime-aware sizing) →
+monitor (drawdown guardian, trailing SL) → learn (RL weights, journal, patterns).
 
-## Tier 7 Autonomous Architecture (current 2026-05-01)
+**Tier 7 (autonomous control loop):** incident → propose → gate → soak → promote → close.
+**Claude is NEVER in the hot path** (per-scan, per-trade) — runtime is deterministic; Claude is
+for planning, post-mortems, brainstorming. Live driver is `EmbeddedScanner`
+(`src/tui/embedded_scanner.py`), NOT `Orchestrator` (library code only). Deep internals,
+per-pair routing, meta-pipeline, self-heal, homework system: docs/tier7-architecture.md.
 
-Closed control loop: **incident → propose → gate → soak → promote → close**. Runtime is deterministic; **Claude is NEVER in the hot path** (per-scan, per-trade). Claude is for planning, post-mortems, brainstorming only.
+## ML Stack (truth — not "TCN/Ridge/RF")
 
-### Runtime entry (single source of truth)
-- `src/bootstrap/env.py:ensure_runtime_env()` — called by `main.py:34` AND `src/tui/__main__.py:7`. Idempotent (re-init under `os.execv` Ctrl+R no-ops via marker attribute).
-- `scripts/init.sh` sources `.env.local` + `.env.local.toggles` (meta-pipeline flags live here).
-- `logs/buddy_debug.log` — every `logger.*` call, plain text, rotated 50MB×3. **First place to look** for any "did X fire?" question.
+| Head | Model | File |
+|---|---|---|
+| Direction (primary) | Tiny Transformer (d_model=16) + EMA + EWC + replay | `src/training/trainers/transformer_trainer.py` |
+| Direction baseline | sklearn HistGradientBoosting (hybrid voter) | `histgb_trainer.py` |
+| Volatility regime (4-class, dual-head) | TCN (dilated causal Conv1D) | `tcn_volatility_trainer.py` |
+| Momentum / Risk / Confidence | LightGBM (RF/Ridge = fallback only) | `lightgbm_trainers.py`, `ridge_trainer.py` |
+| Meta-labeler | XGBoost on triple-barrier labels | `src/training/meta_labeling.py` |
+| Position sizer | PPO (stable-baselines3) | `src/training/rl/position_sizer.py` |
+| Agent weights | EMA-damped multiplicative bandit | `src/scanner/agents/_team.py` |
+| Validation | Walk-forward + purged k-fold + embargo | `src/training/walkforward_validation.py` |
+| Calibration | Platt + Isotonic, recalibrated from journal | `src/risk/confidence_calibration.py` |
+| Training control plane | 7 head configs as versioned W&B artifacts | `src/training/wandb_control_plane.py` |
 
-### TUI runtime path (NOT Orchestrator)
-- `src/tui/embedded_scanner.py:EmbeddedScanner` is the live scanner driver. `Orchestrator` exists in `src/scanner/automation/orchestrator.py` but is **library code only — never instantiated in `src/tui/`** (`grep "Orchestrator(" src/tui/` = 0 matches; commit f070d39 documented this lie).
-- `EmbeddedScanner.run_one_cycle()` halt-checks via `StateEngine().get_halted()` early-return.
-- `_maybe_route_to_meta_per_cycle()` ships per-cycle diagnostics to MetaManager.
-- `_write_brain()` tees every brain-feed line to `.claude/brain/feed.jsonl`.
-- Ctrl+R via `os.execv` preserves state (state.json `safe_restart` beacon).
+Train↔inference contract (saved-meta keys, scaler discipline): docs/strategy.md and the
+enforced gates in `.claude/rules/improvement.md`.
 
-### Tier 7 per-pair gate routing (commit 649bd3d)
-- `GateEvaluator(use_per_pair_routing=True)` — auto-enabled by Scanner when ANY per-pair training subdir exists in `trained_data/models/{PAIR}/`.
-- `_get_pair_evaluator(instrument)` builds lazy per-pair sub (cached). Each sub: own model_dir → own catboost/xgboost/lightgbm momentum, ridge confidence, RF/lightgbm risk, transformer, meta-labeler. Shares parent's TCN volatility regime (single source of truth).
-- **Joint dir is DEPRECATED (2026-05-12 operator directive).** Per-pair routing is the only supported runtime path. The joint fallback in `_get_pair_evaluator` now logs `DEPRECATED joint fallback` WARNING every time it fires — see `gates.py:_get_pair_evaluator` docstring for the 4-step removal sequence. Pairs without per-pair `transformer_direction.keras` will be dropped from `active_pairs` at engine startup (filter pending); once per-pair coverage is complete, the fallback branch flips from "return self" to "refuse" (raise/None), and the joint dir loading code is deleted from `GateEvaluator.__init__` and `engine.py:_initialize_models`.
-- `modular_ensemble` (joint training meta) and `joint_gates` (joint/ dir freshness) are unconditionally excluded from `model_freshness.get_model_freshness_for_pairs` rollup as of 2026-05-12 — they're audit-only context, never gate unhalt. Visible in `freshness["groups"]` for inspection, absent from `freshness["stale_models"]` and `oldest_age_days`.
-- Disable per-pair routing via `ScannerConfig.disable_per_pair_gate_routing=True` (legacy escape hatch; will re-enable the deprecated joint path).
-- Aligns gates with `modular_inference._get_model_path` (was already per-pair-first; gates was the holdout).
+## Key files
 
-### Auto-halt loop (production-fired 2026-04-30 15:54:30)
-- AlertManager surfaces `consecutive_losses` alert.
-- Engine `_maybe_auto_halt_on_loss_streak()` triggers when value ≥ `auto_halt_consecutive_loss_threshold` (default 5).
-- Calls `StateEngine.set_halted(True)` + routes `meta_manager.intake(kind="auto_halt_loss_streak")` → ChangePackage in inbox.
-- Live evidence: `logs/buddy_debug.log` 15:54:30 — `meta_manager.intake change_id=467c350af5f0 kind=auto_halt_loss_streak`.
+- `main.py` — CLI entry · `buddy_scanner.py` — library shim + `homework` subcommand
+- `src/scanner/engine.py` — Scanner + model ensemble · `src/scanner/agents/_team.py` — agent team
+- `src/scanner/execution.py` — ExecutionManager (OANDA + RL sync + flatten_all)
+- `src/scanner/config.py` — `ScannerConfig` (toggles + thresholds + profile dicts)
+- `src/scanner/gates.py` — `GateEvaluator` (Tier 7 per-pair routing)
+- `src/risk/position_sizing.py` — `DynamicPositionSizer`
+- `trained_data/trade_journal_rl.json` — RL outcomes · `trained_data/models/agent_weights.json` — learned weights
+- **TUI:** `src/tui/app.py` (Textual, 8 screens, live/demo) · launch `./buddy`
+- **Ralph autonomous dev loop:** `scripts/ralph.sh` · `.claude/ralph/prd.json`
 
-### Meta-pipeline (deterministic, no-LLM hot path)
-- `MetaManager.intake(change_id, kind, payload)` — entry point. Throttle via `_concurrent_count()` (narrows to actively-executing stages); 2h orphan TTL prevents deadlock.
-- `DeterministicSurgeon` (commit 3692463) — proposer, generates concrete config deltas WITHOUT LLM. Closes the `use_llm=False` black hole.
-- `cycle_autonomy.py` — honors no-LLM as **hard kill** on Claude fallback (commit 3124a5c).
-- `Constitution` (C1–C7 mapped to real `ScannerConfig` fields) — `policy_check` stage.
-- `StagedDeployer.advance` — `pending → policy_check → deployed_shadow → deployed_canary → deployed_live → closed`. Soak gates: `shadow_cycles`, `canary_trades`.
-- `MetaManager.drain()` — the actual stage-advancer. **Only call site in TUI runtime is `_approve_meta_packages` in inbox_screen.py.** No other drainer wired.
+## Claude Brain (read first on every invocation)
 
-### F2 Inbox (operator approval surface)
-- Filters: `[All] [📚 Homework] [🔧 Adjustments] [🧠 Meta]` (entry_type-keyed).
-- `action_approve_all` runs three loops (homework, adjustments, meta) + calls `_PRODUCTION_MGR.drain()` inline so packages advance immediately.
-- `_read_meta_packages()` reads `.claude/meta/changes/*.json` for live ChangePackage state.
-
-### Self-heal subsystem
-- `src/scanner/feedback/self_heal.py` — handlers keyed by action_type. 12h debounce per action (`.claude/self_heal_debounce.json`).
-- `_handle_reset_gate_threshold(gate)` writes properly-shaped history entries to `.claude/config_adjustments.json["history"]`.
-- `src/scanner/feedback/diagnostics.py` — gate-overtightening trap detection + schema mismatches.
-- `AdjustmentApprover._save_approved` has shrink-guard tripwire (refuses writes that would shrink history; logs the proposed payload).
-
-### Verification surfaces (canonical, priority order)
-1. `logs/buddy_debug.log` — every `logger.*` call.
-2. `.claude/brain/feed.jsonl` — F1 brain feed mirror (Rich markup stripped).
-3. `.claude/heartbeat.json` — TUI alive marker (pid, cycle_count, scanner_alive, ts_iso ≤ 15s = alive).
-4. `.claude/state.json` — halted, mode, scan_cycle_count, safe_restart beacon.
-5. `.claude/meta/changes.jsonl` + `.claude/meta/changes/*.json` — meta ledger + per-package source-of-truth.
-6. `.claude/alert_state.json` — AlertManager state.
-7. `trained_data/virtual_trades.jsonl` + `trained_data/trade_journal_rl.json` — gate-rejected scans + closed trade outcomes.
-
-### Tier 7 key files
-- `src/bootstrap/env.py` — runtime env init
-- `src/tui/embedded_scanner.py` — live scanner driver
-- `src/scanner/automation/meta_manager.py` — MetaManager + throttle
-- `src/scanner/automation/deterministic_surgeon.py` — no-LLM proposer
-- `src/scanner/automation/cycle_autonomy.py` — no-LLM policy enforcement
-- `src/scanner/automation/staged_deployer.py` — shadow → canary → live
-- `src/scanner/automation/constitution.py` — C1–C7 gates
-- `src/scanner/feedback/self_heal.py` + `diagnostics.py` — auto-correction
-- `src/scanner/gates.py` — `GateEvaluator` with Tier 7 per-pair routing
-- `scripts/cybernetic_smoke.py` + `cybernetic_promote.py` — operator validation tools
-
-## Key Decisions
-- Soft uncertainty blocking (confidence penalty) over hard circuit breaker
-- ATR-based dynamic SL/TP, never hardcoded pips
-- Correlation filter prevents double exposure on correlated pairs
-- Minimum R:R 1.2:1 gate before execution
-- Position sizing scales to account size (5% base risk on practice)
-
-## Claude Brain (Read First on Every Invocation)
 1. `.claude/brain/briefing.md` — current situation, hypotheses, next actions
 2. `.claude/brain/session_handoff.md` — runtime state from last shutdown
 3. `.claude/brain/open_questions.md` — only if any marked URGENT
 
-Other brain files (read on demand):
-- `trade_narrative.md` — interpreted trade history
-- `strategic_log.md` — append-only decision ledger
-- `docs/supervisor_console_runbook.md` — required reading before LIVE mode
-
-## Self-Improvement (Buddy's Mechanical Layer)
-- `.claude/learnings.md` — date-stamped insights from outcomes
-- `.claude/rules/` — promoted patterns that gate behavior
-- `.claude/state.json` — session continuity
-- `.claude/config_adjustments.json` — adaptive parameter tuning
-
-## Trade Homework System (Phase 96 — apprenticeship workbench)
-Buddy is a **student** doing supervised study of past trades. Closed trades become homework; operator grades each via F2 Inbox; corrections become RL training signal.
-
-- Closed trades → `HomeworkGenerator` (heuristic-driven, **NO LLM call**) → `.claude/homework_pending.jsonl`
-- F2 Inbox: two-pane (queue + live detail). Filters: `[All] [📚 Homework] [🔧 Adjustments]`. Hotkeys: V/A/R/E/S
-- Approve/edit → `TrainingSignal` → `TrainingSignalApplicator` writes deltas to `agent_weights.json` atomically (Phase 96.5 closes the loop)
-- Bootstrap: `python buddy_scanner.py homework --generate-batch --last N`
-- Heuristic catalog: `src/scanner/automation/homework/heuristics.py` (~25 patterns / 6 categories: A Setup, B Risk, C Consensus, D Execution, E Context, F Meta)
-- Spec: `docs/superpowers/specs/2026-04-25-trade-homework-system-design.md`
-
-## ML Stack (truth — not "TCN/Ridge/RF")
-| Head | Model | File |
-|---|---|---|
-| Direction (primary) | Tiny Transformer `d_model=16, heads=2, layers=1` + EMA + EWC + replay | `src/training/trainers/transformer_trainer.py` |
-| Direction baseline | sklearn HistGradientBoosting (hybrid voter) | `src/training/trainers/histgb_trainer.py` |
-| Volatility regime (4-class) | TCN (dilated causal Conv1D) | `src/training/trainers/tcn_trainer.py` |
-| Trend/chop/MR regime (3-class) | TransformerRegime (same skeleton as direction) | `src/training/trainers/transformer_regime_trainer.py` |
-| Momentum / Risk / Confidence | LightGBM (was Ridge/RF — RF is fallback only) | `src/training/trainers/lightgbm_trainers.py`, `ridge_trainer.py` |
-| Meta-labeler | XGBoost on triple-barrier labels (López de Prado) | `src/training/meta_labeling.py` |
-| Position sizer | PPO (stable-baselines3, real RL) | `src/training/rl/position_sizer.py` |
-| Agent weights | EMA-damped multiplicative bandit (NOT RL despite the name) | `src/scanner/agents/_team.py:901-994` |
-| Validation | Walk-forward + purged k-fold + embargo | `src/training/walkforward_validation.py` |
-| Calibration | Platt + Isotonic ensemble, recalibrated from journal | `src/risk/confidence_calibration.py` |
-| Online retrain | Cooldown-protected, drift-triggered, replay buffer | `online_retrainer.py` |
-| Training control plane: W&B configs | 7 head configs as versioned W&B artifacts; ops tweak via UI/CLI; retrains pick up `:latest` automatically | `src/training/wandb_control_plane.py`, `docs/wandb_training_control_plane.md` |
-
-Latest deep audit + upgrade roadmap: `docs/ml_architecture_audit_2026-04-30.md`.
-
-## Inference contract (Phase 2.A+B — 2026-05-08)
-
-The trained model's saved meta sidecar (`transformer_direction.meta.pkl`) is a contract: it tells the inference path everything needed to reproduce the training-time feature distribution. Any drift between training and inference produces silent OOD predictions. Pre-Phase-2 the contract was implicit and broken; Phase 2.A+B made it explicit and enforced.
-
-**Required keys saved by trainer, read by `gates._load_transformer`:**
-
-| Key | Purpose |
-|---|---|
-| `feature_names` | Authoritative column order (50 named features). Inference builds X strictly via this order, not via `select_dtypes` of the compute output. |
-| `scaler` | Fitted `StandardScaler` with REAL per-column stats (not the identity-fingerprint `var_=1.0±1e-9` pattern). Subsetted from the full-feature fit via `_subset_scaler`, never refit on already-scaled data. |
-| `regime_quantiles` | `{q25, q50, q75}` from training-time ATR distribution. Inference uses these to compute `regime_low/normal/high/extreme` one-hots from the live `regime_atr_col`, reproducing the same per-row classification the model was trained on. |
-| `regime_atr_col` | Which atr feature (`atr_pct_20` or `atr_pct_14`) drove the quantiles. |
-| `feature_pipeline_version` | Semver string (`2026-05-08-v1` and onward). `gates` refuses to use models with a version that doesn't match the runtime constant in `src/core/modular_data_loaders.py`. Bump on any change to `compute_normalized_features` or `load_direction_data` feature columns. |
-
-**Inference path (post Phase 2.B):** `gates.evaluate_transformer` → `compute_normalized_features` → `_build_transformer_inference_matrix(feature_names)` → for each name, take from compute output OR compute regime one-hot from saved quantiles OR refuse (no silent zero-fill) → apply saved `scaler.transform()` → keras predict.
-
-**Tripwires:** `_assert_scaler_not_identity` fires ERROR if a fitted scaler has `var_=1.0±1e-9` for >50% of features (catches future regressions of the double-fit bug). At inference, any missing required column logs a contract gap warning and returns `(None, 0.5)`.
-
-Audit: `docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md`. Promoted gates: `.claude/rules/improvement.md` "Train↔Inference Contract Gates".
-
-## News/macro pipeline (P1 — May 2026 modernization promotion)
-
-Promoted from P2 to P1 in the May 2026 modernization roadmap (see "Modernization stance" section above). The price-only direction-prediction holdout has plateaued at ~70.0% on M15 EUR_USD/GBP_USD across architectures (custom Transformer, Chronos-T5-small/base zero-shot). News/macro fusion is the remaining lever to break 70%.
-
-- **Design doc**: `docs/superpowers/plans/2026-05-08-news-macro-signal-design.md` (sections: data-source comparison, embedder comparison, fusion architecture, time-alignment, validation strategy, sequencing, open questions)
-- **Recommendations**: ForexFactory calendar (primary) + RSS headlines (secondary) for the prototype data source; FinBERT (`ProsusAI/finbert`, 768-dim, free, M1-friendly) for the embedder; concatenation fusion at the DataFrame level (lowest blast radius on existing trainer)
-- **Integration point**: `src/core/modular_data_loaders.py:compute_normalized_features` — Phase 3 will add an optional `news_df` arg and join per-bar news features (PCA-compressed FinBERT embedding + 8-dim event-class count) after the existing 186 price features
-- **Runtime path**: untouched in P1-P3. The existing `_evaluate_news_risk` agent in `src/scanner/agents/_team.py:2344` (uses `market_intelligence.EconomicCalendar` + RSS + VADER) stays as-is; Phase 4 may *augment* it with embedded-news features but does not replace it
-- **Scaffolding (this commit)**: `src/data/news/{__init__,source,embedder,feature_alignment}.py` — abstract bases + Phase-2/3 stubs that raise `NotImplementedError` with docstrings pointing back at the design doc. Tests at `tests/test_news_pipeline_stubs.py` (17 cases, no mocks) verify the contract
-- **Phase plan**:
-  - **P1 (done)**: design + scaffolding stubs, no data, no trainer change
-  - **P2 (next session)**: implement `ForexFactoryNewsSource.fetch_events` + `FinBERTEmbedder.embed`; produce sample artifact for EUR_USD; trainer untouched
-  - **P3**: implement `align_news_to_bars`; backfill 22mo EUR_USD; thread through `compute_normalized_features`; retrain M15 EUR_USD; compare holdout to 70.0% baseline. **Decision rule**: ≥73.0% ships; 70.5-72.9% disambiguates with `text-embedding-3-large`; ≤70.5% shelves
-  - **P4**: if P3 lift confirmed, expand to remaining majors (GBP_USD, USD_JPY, USD_CHF, AUD_USD, USD_CAD, NZD_USD)
-- **Validation hypothesis**: ≥3pp M15 holdout lift over the 70.0% price-only baseline confirms news-feature signal worth shipping
-- **Open questions blocking P2**: 6 operator decisions documented in design doc §7 (e.g., reuse `market_intelligence.EconomicCalendar` vs fresh historical scraper; PCA dimensionality 32 vs 64; lookback window 4h vs 24h vs both)
-
-## Key Files
-- `main.py` — CLI entry point
-- `buddy_scanner.py` — library shim + `homework` subcommand only
-- `src/scanner/engine.py` — Scanner class with model ensemble
-- `src/scanner/agents/_team.py` — `ScannerAgentTeam` (15 agents + RL learning)
-- `src/scanner/execution.py` — `ExecutionManager` (OANDA + RL sync + flatten_all)
-- `src/scanner/config.py` — `ScannerConfig` (toggles + thresholds + profile dicts)
-- `src/scanner/automation/` — 125+ modules; `continuous.py` = watch loop, `orchestrator.py` = run_cycle
-- `src/scanner/automation/homework/` — homework subsystem (types, store, heuristics, generator, reviewer, applicator, journal_adapter)
-- `src/risk/position_sizing.py` — `DynamicPositionSizer` + regime-aware factories
-- `trained_data/trade_journal_rl.json` — outcomes for RL
-- `trained_data/models/agent_weights.json` — learned weights (regime-keyed)
-
-## TUI
-- `src/tui/app.py` — Textual TUI (8 screens, dual-mode live/demo)
-- `src/tui/theme.tcss` — cyberpunk TCSS (neon cyan/magenta/green on void black)
-- `src/tui/data_provider.py` — thread-safe OANDA bridge
-- `buddy` — launcher (auto-sources `.env.local`, activates venv)
-- Launch: `./buddy` (auto-detects `--live` if OANDA creds exist, else `--demo`)
-
-## Ralph (Autonomous Dev Loop)
-- `scripts/ralph.sh` — iterative AI agent loop for PRD stories. Routes complex stories (≥7 ACs or async/benchmark keywords) to Opus, others to Sonnet.
-- `.claude/ralph/prd.json` — active PRD; archives in `.claude/ralph/archive/`
-- `.claude/skills/prd/` and `.claude/skills/ralph/` — PRD skills
-
 ---
 
-## Working Rules — Project-Specific Imperatives
+## Working rules — project-specific imperatives
 
 ### Subagent specialization (MANDATORY)
-- **Never** use `general-purpose` subagent. Every Agent dispatch must specify a domain `subagent_type`.
-- TUI/Frontend → `Frontend Developer` · Architecture → `Software Architect` · Code review → `Code Reviewer` · Tests → `API Tester` · Docs → `Technical Writer` · Performance → `Performance Benchmarker` · Security → `Security Engineer` · Data → `Data Engineer` · DevOps → `DevOps Automator` · Codebase exploration → `Explore` · Planning → `Plan`
-- **Subagents always pick their own skills.** Brief them on the goal/constraints/done-criteria; do NOT prescribe which Superpowers skill to use. They invoke whatever skills (TDD, debugging, requesting-code-review, etc.) the task warrants. Controller's job is goal+context, not method.
-- **Parallelize by default.** Independent follow-ups dispatch in a single message with multiple Agent blocks. Sequential only when there's a real dependency.
+- **Never** use the `general-purpose` subagent. Every Agent dispatch specifies a domain `subagent_type` (TUI → Frontend Developer · Architecture → Software Architect · Review → Code Reviewer · Tests → API Tester · Docs → Technical Writer · Perf → Performance Benchmarker · Security → Security Engineer · Data → Data Engineer · Exploration → Explore · Planning → Plan).
+- Brief subagents on goal/constraints/done-criteria; **they pick their own skills**.
+- **Parallelize by default** — independent follow-ups in one message; sequential only on real dependency.
 
 ### Token discipline (chat = prose, files = code)
-- **No code blocks > 5 lines in chat replies.** Reference by file:line.
-- Design docs, schemas, dataclasses → `docs/`. Chat replies link.
-- Tables and prose summaries are fine (they compress information). Code blocks usually don't.
-- "Wrote `X` to `path/to/file` — adds Y, replaces Z" beats pasting the diff.
+- **No code blocks > 5 lines in chat replies.** Reference by `file:line`.
+- Design docs, schemas, dataclasses → `docs/`. Tables and prose summaries are fine.
+- "Wrote X to path — adds Y, replaces Z" beats pasting the diff.
 
-### Trading invariants
-- Never execute a trade with R:R < 1.2:1 (hard gate before submission)
-- Always run correlation filter before execution (prevents double exposure on correlated pairs)
-- ATR-based SL/TP only — never suggest hardcoded pip values
-- Drawdown guardian runs every scan cycle — non-negotiable
-- LOW regime `sl_mult >= 1.2` (Phase 91 promoted rule — ranging markets need wider stops)
-- Trend agent `passed=False` is a hard veto on directional trades (Phase 91)
-- Staleness uncertainty tightens to 0.35 when `oldest_age_days > 7` (Phase 91)
-- MR composite veto: MR `passed=False` + `model_disagreement > 0.25` → block_trade=True (Phase 93)
-- Never skip RL sync after a trade closes — outcomes must feed agent weights
-
-### Self-improvement & state
-- Promote a learning to a rule after 3+ observations (single-observation exceptions allowed only on catastrophic evidence; re-validate after 30 days)
-- Atomic writes for all `.claude/*.json` and `.jsonl` files (`tmp + rename` or `flock` + `fsync`)
-- JSON reads must `try/except` with graceful fallback; never crash on corrupt state files
-- Validate config keys against `ScannerConfig` field names BEFORE writing to `config_adjustments.json` (orphan keys = silent dead writes)
+### Trading invariants (hard gates)
+- Never execute a trade with R:R < 1.2:1 (TP_pips / SL_pips ≥ 1.2).
+- Always run the correlation filter before execution (prevents double exposure).
+- ATR-based SL/TP only — never hardcoded pips. SL = ATR × atr_sl_multiplier, TP = ATR × atr_tp_multiplier.
+- Drawdown guardian runs every scan cycle — non-negotiable. Max portfolio risk 15% of NAV.
+- LOW volatility regime MUST use `sl_mult ≥ 1.2` (ranging markets need wider stops, not tighter).
+- Trend agent `passed=False` is a HARD veto on directional trades.
+- When `max_component_age_days > 7`, hard-block on `uncertainty_score > 0.35` (not 0.45).
+- MR composite veto: MR `passed=False` + `model_disagreement > 0.15` → `block_trade=True`.
+- Never skip RL sync after a trade closes — outcomes must feed agent weights.
+- Full ledger + sources: `.claude/rules/trading.md`.
 
 ### Code quality non-negotiables
-- No bare `except:` or `except Exception: pass` — log and surface
-- No silent failures in financial paths — surface as trade rejections
-- Specific exception types, not `Exception`, for narrow recoverable errors
-- TypeScript types must be explicit; Python type hints on public APIs
-- Auth checks server-side, never trust client-side
-- Environment variables, never hardcoded secrets
-- **NO MOCK CODE.** No `unittest.mock`, `MagicMock`, `patch`, or test-double classes. Tests must use real `ScannerConfig`, real `ConfigAdjuster(persistence_path=tmp_path / "x.json")`, real `MetaManager`, real disk via `tmp_path`. Reason: 38 mocked tests passed while production wired `StagedDeployer` without `config_adjuster` — 11 packages went shadow→canary→live with zero actual config mutation. Mocks hid the integration gap. Going-forward rule (don't rewrite existing mocked tests retroactively, but never add new mocks; migrate when touching for other reasons).
+- No bare `except:` or `except Exception: pass` — log and surface.
+- No silent failures in financial paths — surface as trade rejections. Specific exception types for narrow recoverable errors.
+- Python type hints on public APIs; TypeScript types explicit. Auth server-side. Env vars, never hardcoded secrets.
+- **NO MOCK CODE.** No `unittest.mock`, `MagicMock`, `patch`, or test-double classes. Tests use real `ScannerConfig`, real `ConfigAdjuster(persistence_path=tmp_path/...)`, real `MetaManager`, real disk via `tmp_path`. For external APIs (OANDA, news): skip / mark `@pytest.mark.integration` / sandbox — don't mock. Don't rewrite existing mocked tests retroactively; never add a new mock; migrate when touching for other reasons. (Why: docs/incidents.md "No-Mock catastrophe".)
 
-### Refinement protocol (compact)
-On every operator request: parse the goal, identify what's broken/missing/unclear, surface ambiguity if WHAT/WHERE aren't specified, propose options before executing destructive work, confirm before flipping LIVE-mode or pushing to remote. Don't say "should work" — either explain why it works or flag uncertainty.
+### Self-improvement & state
+- Promote a learning to a rule after 3+ observations (single-observation exceptions only on catastrophic evidence; re-validate after 30 days).
+- Atomic writes for all `.claude/*.json` and `.jsonl` (tmp + rename, or flock + fsync).
+- JSON reads `try/except` with graceful fallback; never crash on corrupt state.
+- Validate config keys against `ScannerConfig` field names BEFORE writing to `config_adjustments.json` (orphan keys = silent dead writes; docs/incidents.md "$3,527 dead-write").
 
-### Honesty & verification protocol — MANDATORY
-
-Caught lying once (2026-04-30 commit f070d39 incident). This cannot happen again. Hard rules — no exceptions:
-
-**Origin of the lie**: Shipped commit f070d39 claiming "orchestrator routes per-cycle diagnostics through meta-pipeline". Unit tests on `Orchestrator._maybe_route_to_meta` passed (mocked dependencies). I told the operator the routing was wired and live. Reality: `grep "Orchestrator(" src/tui/` returns nothing — the TUI never instantiates Orchestrator, so the routing was dead code in the runtime path. Unit-test pass ≠ integration. Operator's "are you sure??" forced re-verification, only then did the gap surface.
-
-**Verification rule (every status claim, every "wired" claim)**:
-1. **Disk first**. Read the actual file/log/artifact in the current turn. Memory of an earlier tool call is NOT verification — files change, processes restart, hooks rewrite.
-2. **Memory second**. Use `mem-search` / `get_observations` (claude-mem) to check prior observations on the same component. Skip rediscovery if a prior observation already answers it.
-3. **Integration grep before "wired"**. Before saying "X fires from Y" or "wired into Y": `grep "<callable>(" src/<entry-point>/`. No instantiation found = NOT wired. Tests prove the class works in isolation; greps prove the path is reachable.
-4. **Code-on-disk vs code-running**. The running process has whatever code was on disk when the process started. After a commit, state which generation is in the running process. "Fixed in commit X" ≠ "fix is live" if the process predates the commit.
-5. **No "should work"**. Verify, or say "unverified" and stop the chain until you can.
-
-**Unified verification surfaces (always check these, in order)**:
-- `logs/buddy_debug.log` — every `logger.*` call from any module in the live process. Plain text, grep-friendly, rotated at 50MB. **First place to look** for any "did X happen?" question.
-- `.claude/brain/feed.jsonl` — exact mirror of what the operator sees in the F1 brain feed (TUI rendering events, Rich markup stripped). One line per `_write_brain` call.
-- `.claude/heartbeat.json` — TUI alive marker, ticks every 10s, includes `pid`, `cycle_count`, `scanner_alive`, `ts_iso`. `ts_iso` within 15s of "now" = TUI alive.
-- `.claude/state.json` — runtime state (`halted`, `mode`, `scan_cycle_count`, `safe_restart` beacon).
-- `.claude/meta/changes.jsonl` — meta-pipeline event ledger (one line per stage transition).
-- `.claude/meta/changes/*.json` — full ChangePackage state (per-package source-of-truth for `revert_by_id`).
-- `.claude/alert_state.json` — AlertManager state (consecutive_losses, drawdown, win_rate_drop, weight_instability).
-- `trained_data/virtual_trades.jsonl` — per-pair gate-rejected setups (one line per scan per pair, includes raw_confidence + gate_failures).
-- `trained_data/trade_journal_rl.json` — closed trade outcomes.
-
-**Honesty rule (every status report, every checklist response)**:
-- Each claim names its verification source: file path / grep query / mem observation ID. No source named = claim not made.
-- No cheerful summary language ("loop is closed", "fully verified", "everything's wired") unless every component has a named source above.
-- When operator challenges, treat as a calibration signal — re-verify from scratch, don't restate.
-- Distinguish "shipped to disk" from "running in process". Always state which.
-- Skipped verifications must be named explicitly and queued as next actions.
-
-**Confidence calibration — fess up when wrong or uncertain (promoted 2026-05-11 from operator feedback after the `gates.py:1902` mis-diagnosis incident)**:
-- I am a language model. My priors can be wrong, my pattern-matching can mis-attribute cause, and confident-sounding language can mask uncertainty I haven't earned the right to project.
-- **Specific failure mode to avoid**: presenting a fix as "the load-bearing root cause" or "the real unblock" when I've only traced ONE code path and trusted a subagent's diagnosis without independent verification across the codebase. Example incident (2026-05-11): I shipped `gates.py:1902` calibrated-threshold fix calling it "the load-bearing fix" — `modular_inference.py:1614-1619` was already reading and applying the calibrated thresholds correctly, so my fix closed a real gap in a *secondary* path but did NOT address the 88% SHORT bias. I called my fix load-bearing without grepping for parallel implementations of the same logic.
-- **Pre-commit causal-claim discipline**: before claiming "X is the load-bearing cause of Y", run `grep` for ALL places that could affect Y, not just the one the diagnosis points at. If any parallel code path already does what my fix proposes, the diagnosis is partial — say so before committing.
-- **Calibrated confidence in every status line**: every causal claim ("this caused that") must include an explicit confidence level: **HIGH / MEDIUM / LOW / UNKNOWN**. Default to MEDIUM when relying on a subagent's verdict; downgrade to LOW if any verification step was skipped. Never state HIGH on causal claims without an independent verification beyond the diagnosis source.
-- **Fess up explicitly when wrong**: when re-verification reveals a prior claim was wrong or uncertain, the next message must start with explicit acknowledgment: "I was wrong about X. The actual situation is Y. The fix I shipped does Z but does not address the root cause." No reframing, no narrative softening — name what was wrong.
-- **Distinguish "fix is correct" from "fix is causal"**: a commit can correctly address a real bug AND fail to address the load-bearing question. Don't conflate the two. The `8f5ce29` commit closes a real contract gap in the gate-time direction re-verification path; it is not the cause of the SHORT bias the operator was reporting. Both can be true.
-- **Operator pushback is signal, not friction**: when operator questions a confident claim, the expected response is "let me re-verify from scratch" not "let me re-explain what I already said". Operator usually has visibility into something I don't.
+### Refinement protocol
+On every request: parse the goal, identify what's broken/missing/unclear, surface ambiguity if WHAT/WHERE aren't specified, propose options before destructive work, confirm before flipping LIVE-mode or pushing to remote. Don't say "should work" — explain why it works or flag uncertainty.
 
 ### Improvement protocol — work the gap, don't queue it
+When fixing one thing, adjacent gaps surface (grep results, integration mismatches, dead code, lying counters, bare excepts).
+1. **Fix in the same commit** if cheap + scoped + non-destructive.
+2. **Surface as a one-line scope-question** if it expands scope.
+3. **Never sit on a finding** — an un-run grep is how the f070d39 lie shipped.
 
-When investigating or fixing one thing, adjacent gaps WILL surface (grep results, integration mismatches, dead code paths, lying counters, silent bare-excepts). Default behavior:
+Scope guardrails: don't refactor unrelated code "while I'm here"; don't change profile values, trading thresholds, or gate logic without explicit operator decision; don't rewrite working code for style; don't spawn massive multi-commit chains without checking in.
 
-1. **Fix in the same commit** if cheap + scoped + non-destructive. Examples that fit: fixing `n_master_pairs: 0` liar while landing the staleness honesty fix; fixing the "No momentum model available" holdout warning while shipping Tier 7 per-pair routing; fixing the alert log format `getattr(_alert, "type")` typo while wiring auto-halt.
-2. **Surface as one-line scope-question** if expanding scope: "noticed: X is broken adjacent to this — fix as part of this?" Operator answers, proceed once known.
-3. **Never sit on a finding**. If a grep result reveals a real bug adjacent to current work, don't note it for "later" — that's how `f070d39` happened (the integration gap was visible in a single grep but went un-run).
-
-Scope guardrails (what NOT to do autonomously):
-- Don't refactor unrelated code "while I'm here"
-- Don't change profile values, trading thresholds, or gate logic without explicit operator decision
-- Don't rewrite working code for style — only fix what's broken
-- Don't spawn massive multi-commit chains without checking in
-
-Examples of the protocol working tonight (2026-04-30):
-- While fixing Inbox approve-all (Bug A: meta handler), found Bug B (no drainer in TUI runtime) → fixed both in same commit `5ae61d7`
-- While verifying `f070d39`, found integration grep would have caught the lie → added the verification protocol rule in `88ecb52`
-- While diagnosing config_adjustments state-loss, found `_load_approved` had bare-except + no shrink guard → fixed both in `7da0470`
-- While shipping Tier 7 per-pair routing, surfaced that the same fix closes the holdout "No momentum model available" warning
+### Honesty & verification protocol
+MANDATORY, full text in `.claude/rules/honesty.md` (loads every session). In short: verify
+from disk in the current turn, integration-grep before claiming "wired", name a verification
+source for every status claim, tag causal claims HIGH/MEDIUM/LOW/UNKNOWN, and fess up
+explicitly when re-verification flips a prior claim. Operator pushback = re-verify, not re-explain.
 
 ### What we never do
-- Execute on `main` without operator consent (worktrees on request)
-- Truncate code mid-function or stub with TODO
-- Hardcode values that belong in env vars
-- Flip dry_run → live without typed confirmation
-- Use LLM in the runtime hot path (per-scan, per-trade) — Buddy's runtime is Claude-free; Claude is for planning, post-mortems, and brainstorming only
+- Execute on `main` without operator consent (worktrees on request).
+- Truncate code mid-function or stub with TODO.
+- Hardcode values that belong in env vars.
+- Flip dry_run → live without typed confirmation.
+- Use an LLM in the runtime hot path (per-scan, per-trade) — Buddy's runtime is Claude-free.
 
----
-
-## Pointers (deep dives, only when needed)
-- Operator runbook: `docs/supervisor_console_runbook.md`
-- Phase index: `.claude/ralph/archive/` (chronological)
-- Trading rules ledger: `.claude/rules/trading.md`
-- Improvement rules: `.claude/rules/improvement.md`
-- Brain index: `.claude/brain/briefing.md` (current situation always at top)
+## Pointers (deep dives, on demand)
+- Honesty/verification protocol: `.claude/rules/honesty.md`
+- Trading rules ledger: `.claude/rules/trading.md` · Improvement rules: `.claude/rules/improvement.md`
+- Strategy & modernization: `docs/strategy.md` · Tier 7 internals: `docs/tier7-architecture.md`
+- Incident record (why the rules exist): `docs/incidents.md`
+- Operator runbook: `docs/supervisor_console_runbook.md` · Brain: `.claude/brain/briefing.md`
+- Phase index: `.claude/ralph/archive/`
