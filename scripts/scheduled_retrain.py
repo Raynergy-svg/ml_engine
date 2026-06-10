@@ -299,6 +299,11 @@ def _log_and_maybe_promote(
         "ensemble_complete": holdout_metrics.get("ensemble_complete"),
         "ensemble_stale_groups": holdout_metrics.get("ensemble_stale_groups"),
         "pairs": len(pairs),
+        # Cost-aware gate metrics (promotion gates 1b/1c).
+        "balanced_accuracy": holdout_metrics.get("balanced_accuracy"),
+        "expectancy_pips": holdout_metrics.get("expectancy_pips"),
+        "profit_factor": holdout_metrics.get("profit_factor"),
+        "class_collapse": holdout_metrics.get("class_collapse"),
     }
     metadata = {
         "pairs": pairs,
@@ -375,6 +380,7 @@ def validate_holdout_accuracy(
     min_accuracy: float = 0.52,
     holdout_candles: int = 500,
     granularity: str = "H1",
+    detail_out: Optional[Dict[str, Any]] = None,
 ) -> tuple[bool, str]:
     """Validate new model accuracy on a hold-out set before promoting.
 
@@ -425,6 +431,21 @@ def validate_holdout_accuracy(
 
         correct = 0
         total = 0
+        # Cost-aware expectancy: collect (bar_index, direction) per pair and
+        # simulate ATR-bracketed trades with spread costs after the loop.
+        from src.training.expectancy_gate import (
+            combine_reports,
+            gate_decision,
+            pip_size_for,
+            simulate_trades,
+            spread_for,
+        )
+        pair_predictions: Dict[str, list] = {}
+        pair_frames: Dict[str, Any] = {}
+        # Hoisted from the per-pair loop (2026-06-10) so the post-loop
+        # expectancy simulation can reference them even when pairs skip early.
+        HOLDOUT_LOOKAHEAD = 24
+        HOLDOUT_SEQ_LEN = 60  # MUST match transformer_trainer's default
         from src.utils.oanda_practice import OandaPracticeClient
         oanda = OandaPracticeClient.from_env()
 
@@ -486,8 +507,6 @@ def validate_holdout_accuracy(
                 # whatever the test slice's LONG/SHORT class balance happened to
                 # be — NOT the trained model. We now pass proper rolling 60-bar
                 # windows so the transformer actually evaluates each prediction.
-                HOLDOUT_LOOKAHEAD = 24
-                HOLDOUT_SEQ_LEN = 60  # MUST match transformer_trainer's default
                 n_errors = 0
                 for i in range(HOLDOUT_SEQ_LEN, min(len(features) - HOLDOUT_LOOKAHEAD, 200 + HOLDOUT_SEQ_LEN)):  # start after warmup
                     row = features.iloc[i - HOLDOUT_SEQ_LEN + 1 : i + 1]  # 60-bar context window
@@ -505,6 +524,8 @@ def validate_holdout_accuracy(
                                 total += 1
                                 if pred_dir == actual_dir:
                                     correct += 1
+                                pair_predictions.setdefault(pair, []).append((i, pred_dir))
+                                pair_frames[pair] = test_df
                     except Exception as _eval_err:
                         n_errors += 1
                         if n_errors <= 3:
@@ -519,16 +540,53 @@ def validate_holdout_accuracy(
                 logger.debug(f"Hold-out validation skipped for {pair}: {e}")
 
         if total < 20:
-            msg = f"Hold-out validation: insufficient samples ({total}). Proceeding with caution."
-            logger.warning(msg)
-            return True, msg  # Don't block if we can't validate
+            # FAIL CLOSED (2026-06-10): "Proceeding with caution" previously
+            # returned True here — an un-validatable model promoted. Absence
+            # of evidence is not evidence of fitness (the 2/3-pass deploy gate
+            # that shipped val_acc=0.4839 must not recur).
+            msg = (
+                f"Hold-out validation [{granularity}]: insufficient samples "
+                f"({total} < 20) — FAIL CLOSED, promotion blocked."
+            )
+            logger.error(msg)
+            return False, msg
 
         accuracy = correct / total
-        passed = accuracy >= min_accuracy
+
+        # ── Cost-aware expectancy + balanced-accuracy gate ───────────────
+        # Raw accuracy alone let an all-SHORT predictor pass as "70% holdout"
+        # on a SHORT-heavy slice. Simulate the actual predictions as ATR-
+        # bracketed trades with per-pair spread costs and gate on per-trade
+        # expectancy, balanced accuracy, and class collapse.
+        reports = []
+        for p, preds in pair_predictions.items():
+            frame = pair_frames.get(p)
+            if frame is None or not preds:
+                continue
+            reports.append(simulate_trades(
+                frame.reset_index(drop=True), preds,
+                spread_pips=spread_for(p), pip_size=pip_size_for(p),
+                max_hold_bars=HOLDOUT_LOOKAHEAD,
+            ))
+        combined = combine_reports(reports)
+        exp_passed, exp_reasons = gate_decision(
+            combined, min_trades=20, min_balanced_accuracy=min_accuracy,
+        )
+        if detail_out is not None:
+            detail_out.update(combined.as_metrics())
+            detail_out["raw_accuracy"] = accuracy
+
+        passed = (accuracy >= min_accuracy) and exp_passed
         msg = (
-            f"Hold-out validation [{granularity}]: {accuracy:.1%} accuracy ({correct}/{total}) "
+            f"Hold-out validation [{granularity}]: {accuracy:.1%} accuracy ({correct}/{total}) | "
+            f"balanced={combined.balanced_accuracy:.1%} "
+            f"expectancy={combined.expectancy_pips:+.2f} pips/trade "
+            f"PF={combined.profit_factor:.2f} "
+            f"L/S={combined.long_share:.0%}/{combined.short_share:.0%} "
             f"{'PASSED' if passed else 'FAILED'} (threshold: {min_accuracy:.0%})"
         )
+        if not exp_passed:
+            msg += f" | expectancy-gate: {'; '.join(exp_reasons)}"
         if passed:
             logger.info(msg)
         else:
@@ -536,13 +594,15 @@ def validate_holdout_accuracy(
         return passed, msg
 
     except ImportError as e:
-        msg = f"Hold-out validation [{granularity}] skipped (import error): {e}"
-        logger.warning(msg)
-        return True, msg  # Don't block on import failures
+        # FAIL CLOSED: a broken import means the gate cannot run — that is a
+        # blocker, not a waiver.
+        msg = f"Hold-out validation [{granularity}] BLOCKED (import error): {e}"
+        logger.error(msg)
+        return False, msg
     except Exception as e:
-        msg = f"Hold-out validation [{granularity}] error (non-fatal): {e}"
-        logger.warning(msg)
-        return True, msg
+        msg = f"Hold-out validation [{granularity}] BLOCKED (error): {e}"
+        logger.error(msg)
+        return False, msg
 
 
 def verify_ensemble_refreshed(
@@ -740,14 +800,16 @@ def validate_holdout_multi_timeframe(
     messages: List[str] = []
 
     for gran in granularities:
+        detail: Dict[str, Any] = {}
         ok, msg = validate_holdout_accuracy(
             pairs=pairs,
             min_accuracy=min_accuracy,
             holdout_candles=holdout_candles,
             granularity=gran,
+            detail_out=detail,
         )
         acc, samples = _parse_holdout_message(msg)
-        per_tf[gran] = {"passed": ok, "accuracy": acc, "samples": samples}
+        per_tf[gran] = {"passed": ok, "accuracy": acc, "samples": samples, **detail}
         if ok and acc is not None and acc >= min_accuracy:
             passed_count += 1
         messages.append(msg)
@@ -800,6 +862,14 @@ def validate_holdout_multi_timeframe(
         "holdout_samples": primary_samples,  # samples from primary TF only
         "holdout_samples_total": tot_samples,
         "primary_timeframe": primary_tf,
+        # Cost-aware gate metrics from the PRIMARY TF (consumed by promotion
+        # policy gates 1b/1c: balanced accuracy, class collapse, expectancy).
+        "balanced_accuracy": per_tf[primary_tf].get("balanced_accuracy"),
+        "expectancy_pips": per_tf[primary_tf].get("expectancy_pips"),
+        "profit_factor": per_tf[primary_tf].get("profit_factor"),
+        "class_collapse": per_tf[primary_tf].get("class_collapse"),
+        "long_share": per_tf[primary_tf].get("long_share"),
+        "short_share": per_tf[primary_tf].get("short_share"),
     }
     combined_msg = (
         f"Multi-TF holdout: {passed_count}/{len(granularities)} timeframes passed. "
@@ -901,6 +971,12 @@ def main():
     """Main entry point for scheduled retraining."""
     parser = _build_parser()
     args = parser.parse_args()
+
+    # Reproducibility: seed python/np/tf before any training graph is built —
+    # autonomous retrains must be bisectable (same data -> same model).
+    from src.utils.seed_manager import set_global_seed
+    set_global_seed(int(os.environ.get("BUDDY_TRAIN_SEED", "42")))
+
     use_joint_legacy = os.environ.get("BUDDY_USE_JOINT_TRAINING", "0").lower() in ("1", "true", "yes")
     training_surface = "legacy joint" if use_joint_legacy else "per-pair correlation transfer"
 

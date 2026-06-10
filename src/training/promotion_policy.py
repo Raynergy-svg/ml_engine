@@ -51,6 +51,13 @@ class PromotionDecision:
 #    viable bar.
 MIN_ABSOLUTE_ACCURACY: float = 0.52
 
+# 1c. Cost-aware expectancy floor (2026-06-10, operator profitability directive).
+#     A candidate must show NON-NEGATIVE per-trade expectancy after spread
+#     costs on the holdout's ATR-bracketed trade simulation
+#     (src/training/expectancy_gate.py). Accuracy is a proxy; this is the
+#     objective. 0.0 = "must at least pay for its own spread".
+MIN_EXPECTANCY_PIPS: float = 0.0
+
 # 2. Relative delta — candidate must beat production by at least this much.
 #    Source: rules/trading.md lines 28-30 — on 2026-04-02 Buddy promoted 3 rules
 #    after observing 0.02 threshold shifts produce measurable outcome changes.
@@ -131,6 +138,47 @@ def should_promote(
             diag,
         )
 
+    # ── Gate 1b: balanced accuracy + class collapse (2026-06-10) ─
+    # Raw accuracy let an all-SHORT predictor pass as "70% holdout" on a
+    # SHORT-heavy slice (balanced ≈ 0.50). When the holdout supplies these
+    # metrics, gate hard on them; when absent (legacy callers) the gate is
+    # inert for backward compat — the holdout itself now computes them.
+    bal_acc = _safe_float(candidate.get("balanced_accuracy"))
+    if bal_acc is not None:
+        diag["balanced_accuracy"] = bal_acc
+        if bal_acc < MIN_ABSOLUTE_ACCURACY:
+            return PromotionDecision(
+                False,
+                f"balanced accuracy {bal_acc:.4f} < floor {MIN_ABSOLUTE_ACCURACY:.4f} "
+                f"(raw accuracy {cand_acc:.4f} is class-imbalance-inflated)",
+                diag,
+            )
+    if candidate.get("class_collapse") is True:
+        diag["class_collapse"] = True
+        return PromotionDecision(
+            False,
+            f"class collapse: predictions are one-sided "
+            f"(long={candidate.get('long_share')}, short={candidate.get('short_share')}) — "
+            f"degenerate predictor, not a tradeable edge",
+            diag,
+        )
+
+    # ── Gate 1c: cost-aware expectancy (2026-06-10) ──────────────
+    # The promotion question is "profitable after costs?", not "accurate?".
+    # expectancy_pips comes from the holdout's ATR-bracketed simulation with
+    # per-pair spread costs (src/training/expectancy_gate.py). Inert when the
+    # metric is absent (legacy callers).
+    exp_pips = _safe_float(candidate.get("expectancy_pips"))
+    if exp_pips is not None:
+        diag["expectancy_pips"] = exp_pips
+        if exp_pips < MIN_EXPECTANCY_PIPS:
+            return PromotionDecision(
+                False,
+                f"expectancy {exp_pips:+.2f} pips/trade < {MIN_EXPECTANCY_PIPS:+.2f} — "
+                f"not profitable after spread costs; accuracy without expectancy is noise",
+                diag,
+            )
+
     # ── Gate 2: sample size ─────────────────────────────────────
     cand_n = _safe_int(candidate.get("holdout_samples") or candidate.get("n_samples"))
     if cand_n is None or cand_n < MIN_HOLDOUT_SAMPLES:
@@ -193,11 +241,14 @@ def should_promote(
 
     prod_acc = _safe_float(production.get("accuracy"))
     if prod_acc is None:
-        # Production metadata is corrupt — fail safe: promote candidate because
-        # the prod metrics are untrustworthy anyway.
+        # FAIL CLOSED (2026-06-10, was fail-open): "promote because we can't
+        # read the incumbent" auto-ships a candidate against an unknown
+        # baseline. Hold for manual review instead — the operator can promote
+        # explicitly after inspecting the corrupt production metadata.
         return PromotionDecision(
-            True,
-            "production metrics unreadable; promoting candidate by default",
+            False,
+            "production metrics unreadable — holding candidate for MANUAL review "
+            "(fail closed; inspect/repair the production artifact metadata)",
             diag,
         )
 
