@@ -86,20 +86,48 @@ def _read_trainer_metrics(trainer) -> dict:
     return {}
 
 
+def _snapshot_existing_artifacts(model_path) -> "Path | None":
+    """Copy the current live artifacts sharing a model's stem into a rollback
+    dir BEFORE a retrain overwrites them.
+
+    Returns the rollback dir so a later quarantine (gap > HARD_MAX_GAP) can
+    restore the prior known-good model to the live dir, or None if no live
+    artifacts exist yet. Copies (never moves) so the in-progress retrain still
+    sees its own working files; the rollback dir lives in a `_rollback/`
+    subdir whose name does NOT share the model stem, so the quarantine glob
+    below never sweeps it up.
+    """
+    path = Path(model_path)
+    siblings = [p for p in path.parent.glob(f"{path.stem}*") if p.is_file()]
+    if not siblings:
+        return None
+    ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    rollback_dir = path.parent / "_rollback" / f"{path.stem}-{ts}"
+    rollback_dir.mkdir(parents=True, exist_ok=True)
+    for s in siblings:
+        shutil.copy2(s, rollback_dir / s.name)
+    return rollback_dir
+
+
 def _quarantine_if_overshipped(
     saved_paths: list,
     train_acc: float,
     val_acc: float,
     instrument: str,
     model_name: str,
+    restore_dir=None,
 ) -> dict:
     """Enforce the operator's hard 10% train-val gap ship rule.
 
     If gap > HARD_MAX_GAP, move every saved artifact (e.g. .keras + sidecar
     .meta.pkl + .ema.pkl + .ewc.pkl + .arch.json + .weights.h5) to a
     timestamped quarantine subdirectory so Tier 7 per-pair routing cannot
-    pick it up. Returns ``{"quarantined": bool, "gap": float,
-    "quarantine_dir": str|None}`` for the RESULT line.
+    pick it up. When ``restore_dir`` is provided (from
+    ``_snapshot_existing_artifacts``), the prior known-good artifacts are
+    restored into the live pair dir so routing keeps serving the last model
+    that passed the gate instead of being left with no model. Returns
+    ``{"quarantined": bool, "gap": float, "quarantine_dir": str|None}`` for
+    the RESULT line.
     """
     gap = abs(train_acc - val_acc)
     if gap <= HARD_MAX_GAP:
@@ -109,8 +137,10 @@ def _quarantine_if_overshipped(
     qdir = (MODELS_DIR / instrument / "_quarantine" / f"{model_name}-{ts}")
     qdir.mkdir(parents=True, exist_ok=True)
     moved = []
+    live_dir = None
     for p in saved_paths:
         path = Path(p)
+        live_dir = path.parent
         # Match every sidecar that shares the file's stem in the pair dir.
         stem = path.stem
         for sibling in path.parent.glob(f"{stem}*"):
@@ -118,10 +148,19 @@ def _quarantine_if_overshipped(
                 dest = qdir / sibling.name
                 sibling.rename(dest)
                 moved.append(str(dest))
+    restored = 0
+    if restore_dir is not None and live_dir is not None:
+        rb = Path(restore_dir)
+        if rb.is_dir():
+            for f in rb.iterdir():
+                if f.is_file():
+                    shutil.copy2(f, live_dir / f.name)
+                    restored += 1
     logger.error(
         f"🚫 SHIP-BLOCKED: {instrument}/{model_name} gap={gap:.4f} > {HARD_MAX_GAP} "
         f"(train={train_acc:.4f}, val={val_acc:.4f}). Quarantined {len(moved)} "
-        f"file(s) → {qdir}. Operator rule: no models shipped > 10% gap."
+        f"file(s) → {qdir}; restored {restored} prior artifact(s) to live dir. "
+        f"Operator rule: no models shipped > 10% gap."
     )
     return {"quarantined": True, "gap": gap, "quarantine_dir": str(qdir)}
 
@@ -613,51 +652,88 @@ def train_transformer_regime(instrument: str, df_feat: pd.DataFrame, params: dic
 
 
 def train_tcn_vol_regime(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
-    """TCN Volatility Regime Trainer — volatility regime with 3D sequence input."""
+    """Forward-volatility TCN regime head (dual-head: classification + regression).
+
+    Trains the 4-class volatility-regime classifier alongside a forward-vol
+    %-change regression head. The regression output + ``reg_thresholds`` are the
+    inference contract the gate's ``_normalize_tcn_volatility_output`` reads
+    (commit b9bec7e) to recover the regime when classification confidence is
+    low. The forward-sequence loader returns 3D ``(batch, seq_len, features)``
+    arrays already, plus the regression targets, sample/class weights, and a
+    fitted scaler — so this function only wires the loader → trainer → save →
+    gap-gate path. Modules (not names) are imported so tests can monkeypatch
+    the loader and trainer.
+    """
     from src.training.trainers.config import TrainerConfig
-    from src.training.trainers.tcn_volatility_trainer import TCNVolatilityRegimeTrainer
-    from src.training.trainers.utils import create_sequences
-    from src.core.modular_data_loaders import load_volatility_regime_data
+    from src.training.trainers import tcn_volatility_trainer as trainer_mod
+    from src.core import modular_data_loaders as loaders
+
+    seq_len = params["seq_len"]
+    dilations = params.get("tcn_dilations", [1, 2, 4, 8, 16])
+
+    vol_data = loaders.load_forward_volatility_data(df_feat, seq_len=seq_len)
+    if not vol_data:
+        return {"error": "No forward volatility data"}
 
     cfg = TrainerConfig(
         epochs=200, batch_size=params["batch_size"], learning_rate=params["lr"],
-        patience=params["patience"], seq_len=params["seq_len"], min_epochs=30,
+        patience=params["patience"], seq_len=seq_len, min_epochs=30,
         use_replay_buffer=False, overfit_threshold=0.04, max_acceptable_gap=MAX_GAP,
     )
-
-    vol_data = load_volatility_regime_data(df_feat)
-    if not vol_data:
-        return {"error": "No volatility regime data"}
+    # TrainerConfig has tcn_kernel_size as a field but not the residual-block
+    # count or filter width; the trainer reads both via getattr. Set them as
+    # attributes (non-frozen dataclass). Residual blocks = number of dilations.
+    cfg.tcn_kernel_size = params["tcn_kernel_size"]
+    cfg.tcn_num_residual_blocks = len(dilations)
 
     save_dir = MODELS_DIR / instrument
     save_dir.mkdir(parents=True, exist_ok=True)
+    save_path = save_dir / "tcn_volatility_regime.keras"
 
-    # The volatility-regime data loader returns 2D (N, n_features). The
-    # TCNVolatilityRegimeTrainer.train() (unlike TCNTrainer.train()) does not
-    # sequence internally — it explicitly requires (batch, seq_len, features).
-    # Apply create_sequences() here to match the same sequencing the direction-
-    # TCN trainer applies, then hand 3D arrays to the regime trainer.
-    seq_len = params["seq_len"]
-    X_train = vol_data["X_train"]
-    X_val = vol_data["X_val"]
-    y_train = vol_data["y_train"]
-    y_val = vol_data["y_val"]
-    if X_train.ndim == 2:
-        X_train_seq, y_train_seq = create_sequences(X_train, y_train, seq_len)
-        X_val_seq, y_val_seq = create_sequences(X_val, y_val, seq_len)
-    else:
-        X_train_seq, y_train_seq = X_train, y_train
-        X_val_seq, y_val_seq = X_val, y_val
+    # Snapshot the prior live model BEFORE overwrite so a gap-gate quarantine
+    # can roll back to the last known-good artifacts instead of leaving the
+    # pair with no volatility-regime model.
+    snapshot_dir = _snapshot_existing_artifacts(save_path)
 
-    trainer = TCNVolatilityRegimeTrainer(cfg)
-    trainer.train(X_train_seq, y_train_seq,
-                  X_val_seq, y_val_seq,
-                  seq_len=seq_len)
-    trainer.save(str(save_dir / "tcn_volatility_regime.keras"))
+    trainer = trainer_mod.TCNVolatilityRegimeTrainer(cfg)
+    trainer.train(
+        vol_data["X_train"], vol_data["y_train"],
+        vol_data["X_val"], vol_data["y_val"],
+        feature_names=vol_data.get("feature_names"),
+        class_weights=vol_data.get("class_weights"),
+        seq_len=seq_len,
+        y_train_reg=vol_data.get("y_train_reg"),
+        y_val_reg=vol_data.get("y_val_reg"),
+        w_train=vol_data.get("w_train"),
+        w_val=vol_data.get("w_val"),
+    )
 
-    metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
+    # Attach the inference contract bits the gate reads back from the model.
+    if vol_data.get("reg_thresholds"):
+        trainer.reg_thresholds = vol_data["reg_thresholds"]
+    if vol_data.get("lookahead") is not None:
+        trainer.lookahead = vol_data["lookahead"]
+    if vol_data.get("scaler") is not None:
+        trainer.scaler = vol_data["scaler"]
+    trainer.save(str(save_path))
+
+    metrics = getattr(trainer, "metrics", {}) or {}
+    train_acc = float(metrics.get("train_accuracy", 0.0) or 0.0)
+    val_acc = float(metrics.get("val_accuracy", 0.0) or 0.0)
+
+    q = _quarantine_if_overshipped(
+        [save_path], train_acc=train_acc, val_acc=val_acc,
+        instrument=instrument, model_name="tcn_volatility_regime",
+        restore_dir=snapshot_dir,
+    )
     gc_cleanup()
-    return {"val_acc": metrics.get("val_accuracy", 0)}
+    return {
+        "train_acc": train_acc,
+        "val_acc": val_acc,
+        "gap": q["gap"],
+        "quarantined": q["quarantined"],
+        "quarantine_dir": q.get("quarantine_dir"),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -677,6 +753,24 @@ MODEL_TRAINERS = {
 
 # Direction-critical models that get gap-checked
 GAP_CHECKED_MODELS = {"transformer", "tcn", "histgb"}
+
+# Models that `--model all` must NOT train in the standard per-pair sweep.
+# tcn_vol_regime is a forward-volatility regression head trained explicitly
+# on demand (it has its own loader + dual-head trainer), not part of the
+# default direction/momentum/risk batch.
+_MODEL_ALL_SKIP = {"tcn_vol_regime"}
+
+
+def _model_names_for_request(model: str) -> list:
+    """Expand a ``--model`` request into the concrete trainer names to run.
+
+    ``"all"`` → every registered trainer except the aliases in
+    ``_MODEL_ALL_SKIP``. Any specific name passes through unchanged (so
+    ``tcn_vol_regime`` can still be trained explicitly).
+    """
+    if model == "all":
+        return [m for m in MODEL_TRAINERS if m not in _MODEL_ALL_SKIP]
+    return [model]
 
 
 def _preflight_check(args) -> None:
@@ -814,7 +908,7 @@ def main():
     del df
     gc.collect()
 
-    models_to_train = list(MODEL_TRAINERS.keys()) if args.model == "all" else [args.model]
+    models_to_train = _model_names_for_request(args.model)
     results = []
 
     for model_name in models_to_train:
