@@ -57,7 +57,7 @@ Meta-rules governing how Buddy learns and evolves.
 - For clocks: pass real timestamps or use real `datetime.now()`. Time-based tests use small thresholds, not frozen time.
 - If the code-under-test cannot be tested without mocks, the code is too coupled — refactor it. The existing mocked test suite stays as-is (don't rewrite retroactively); never add a new mock; migrate when touching a test file for other reasons.
 
-Source: 1 catastrophic observation (commit 41eec2e meta-pipeline shipped with `_adjuster=None` for two weeks; 11 packages auto-promoted with no actuation; only surfaced via end-to-end log audit because the test suite was mock-blind).
+Source: 1 catastrophic observation — see `docs/incidents.md` "No-Mock catastrophe".
 
 ## Config Validation Gates (promoted 2026-03-23, from 6 observations)
 - ALWAYS validate config values at load time (range checks, type checks, required fields)
@@ -103,7 +103,7 @@ The inference path must reproduce the training pipeline's feature distribution e
 - ALWAYS subset (don't refit) a fitted StandardScaler when applying feature selection. `transformer_trainer._subset_scaler(scaler, indices)` returns a fresh StandardScaler with `mean_/scale_/var_` narrowed to the selected columns; applied to RAW selected features at inference, it reproduces the same per-column standardization the model was trained on. This is mathematically only safe because StandardScaler is per-column independent — other transforms (PCA, ICA, anything with cross-column terms) cannot be subset this way and need a different feature-selection-then-fit ordering.
 - BEFORE shipping a model, verify the saved scaler stats look real: `var_` should NOT be 1.0 ± 1e-9 across all features; binary one-hot columns should have `mean_ ≈ p` and `scale_ ≈ √(p(1-p))`, not `mean_=0, scale_=1`. The latter pattern means the column was constant-zero at training, which means the feature pipeline silently zeroed it (e.g. broken time-extraction, regime augmentation skipped).
 
-Source: 1 catastrophic observation — Phase 1 audit on 2026-05-08 found `trained_data/models/EUR_USD/transformer_direction.meta.pkl` (trained 2026-05-08 00:15) had `scaler.var_ = 1.0` exactly across all 50 features, the literal fingerprint of a fitted-on-already-scaled-data refit. The "70% M15 holdout" celebrated tonight was the all-SHORT fallback predictor's accuracy on a SHORT-heavy test slice; the trained transformer never actually evaluated. Re-validate after 30 days of live data with the Phase 2.A+B fixed pipeline.
+Source: 1 catastrophic observation — see `docs/incidents.md` "C1 train↔inference scaler skew" and `docs/strategy.md` "Inference contract". Re-validate after 30 days of live data with the Phase 2.A+B pipeline.
 
 ## Hard Ship Gate — 10% Train/Val Gap (promoted 2026-05-13, operator directive)
 "No models is to be shipped higher than 10% gap" — operator rule 2026-05-13. The training stack already has helpers to manage the gap (EarlyStopping, EMA, class-balanced loss, label smoothing, auto-dropout, SWA), but enforcement at the ship boundary was broken on two layers prior to this rule:
@@ -119,45 +119,9 @@ Source: 1 catastrophic observation — Phase 1 audit on 2026-05-08 found `traine
 
 Source: 2026-05-13 operator directive after the 2026-05-12 5-pair M15 retrain produced val_acc=4.7-18.9% with balanced_acc≈50% across all 5 pairs. Root-cause investigation surfaced TWO compounding bugs: the missing-weight forwarding fixed in commit `1a05e75`, AND the broken gap-gate read/write paths fixed here.
 
-### 2026-05-18 HistGB capacity-shrink experiment (RUN AFTER DISK FREED)
-
-Context: 2026-05-13 post commit `983892a` (HistGB train_acc honest-reporting fix), USD_JPY M15/25k smoke produced `train=96.11% / val=48.82% / gap=47.29%`. The gap is real (not a metric bug), driven by HistGB's default capacity being too high for forex M15 features. Capacity-shrink change shipped to `src/training/trainers/histgb_trainer.py` on `main` (defaults only; `TrainerConfig` getattr overrides still supported for future sweeps).
-
-Change summary (old -> new):
-- `max_iter` 200 -> 100
-- `max_depth` 8 -> 4
-- `learning_rate` 0.05 -> 0.03
-- `l2_regularization` 0.1 -> 1.0
-- `min_samples_leaf` (sklearn-default 20) -> 50 (now explicit)
-- `max_leaf_nodes` (sklearn-default 31) -> 15 (now explicit)
-- `n_iter_no_change` 20 -> 10
-- `validation_fraction` 0.15 -> 0.2
-
-Validation plan when disk is freed (`/System/Volumes/Data` was 91% full / 19 GiB free on 2026-05-18 — do not run training under ENOSPC, the model-save would risk corrupting a per-pair `histgb_direction.pkl` and the gate routing reads from there):
-
-```
-python scripts/train_single_model_m1.py \
-    --pair USD_JPY \
-    --model histgb_direction \
-    --granularity M15 \
-    --candles 25000
-```
-
-Expected RESULT line shape: `train_acc=0.58-0.65, val_acc=0.50-0.55, gap<0.10, quarantined=false`.
-
-Decision rules:
-- `gap < 0.10` AND `val_acc > 0.51`: SHIP, mark experiment successful, run the same smoke on EUR_USD + GBP_USD for confirmation, then on remaining majors.
-- `gap < 0.10` AND `val_acc ~= 0.50`: capacity-shrink fixed the gap but the features have no signal at this scale (HistGB is now a coinflip). Validates that price-only HistGB is not a tradeable head; the model can ship inside the ensemble (it's already a baseline only) but the news/macro P1 lever is the next move per CLAUDE.md.
-- `gap > 0.10` AND `gap < 0.20`: a single-knob nudge closes it. Drop `max_iter` to 60 OR drop `max_depth` to 3. Re-run.
-- `gap > 0.20`: capacity is still too high. Halve `max_iter` AGAIN (to 50), set `max_depth=3`, `max_leaf_nodes=8`. Re-run. If still > 0.20, the data has a leakage issue rather than a capacity issue — investigate `compute_normalized_features` (rolling stats may include the target bar).
-
-Reverse plan if any of the above fails: every changed knob is a single literal swap in `histgb_trainer.py:53-83` (the dataclass-default block). Revert with one `git revert` on the experiment commit.
-
-Confidence calibration (per .claude/rules/improvement.md "Confidence calibration"):
-- HIGH confidence the gap will drop BELOW 20%. Capacity has been cut hard along five independent axes; the train side cannot overfit as before.
-- MEDIUM confidence the gap will drop BELOW 10% on first try without a second pass. The exact magnitude of the gap reduction depends on noise floor of M15 forex.
-- LOW-MEDIUM confidence `val_acc` will materially improve. HistGB on price-only forex M15 has a hard ceiling around 50% (matches the Chronos zero-shot 44-46% empirical data in CLAUDE.md Modernization stance) — capacity-shrink closes the gap by lowering train_acc, not necessarily by raising val_acc.
-- UNKNOWN whether the same hyperparams generalize across all majors. Need per-pair smokes on at least EUR_USD + GBP_USD before treating as the default.
+## Pending experiments
+Dated experiment runbooks (e.g. the 2026-05-18 HistGB capacity-shrink plan) live in
+`docs/experiments-log.md` — this rules file holds promoted rules only, not one-off run plans.
 
 ## Joint Fallback Deprecation Gates (promoted 2026-05-12, operator directive)
 The joint training output (`trained_data/models/joint/`, plus root-level `modular_ensemble.meta.json`) is deprecated as a runtime fallback. Per-pair routing is the only supported gate / inference path going forward.
