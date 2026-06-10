@@ -2445,6 +2445,7 @@ def load_tcn_data(
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     lookahead: int = 6,
     threshold: float = 0.001,
+    gap: Optional[int] = None,
 ) -> Dict[str, np.ndarray]:
     """
     Load data for TCN model (explicit loader, not an alias).
@@ -2460,15 +2461,24 @@ def load_tcn_data(
         split: (train_frac, val_frac, test_frac)
         lookahead: Number of bars ahead for direction label
         threshold: Minimum price change (as fraction) to assign clear label
+        gap: Embargo gap (in bars) between train/val and val/test splits.
+            Defaults to None → `lookahead`, so the forward direction label
+            cannot span the split boundary (audit finding L-C1). Pass 0
+            explicitly to disable for A/B comparison.
 
     Returns:
         Dict with X_train, y_train, w_train, X_val, y_val, w_val,
         X_test, y_test, w_test, feature_names, label_stats, scaler
     """
+    # Default the embargo gap to the label lookahead so existing call
+    # sites get the embargo automatically (L-C1 fix).
+    if gap is None:
+        gap = lookahead
     logger.info(f"Loading TCN data (threshold={threshold:.3%}, lookahead={lookahead})...")
+    logger.info(f"TCN embargo gap={gap} bars between splits (label lookahead={lookahead})")
 
     # Reuse direction data loader with TCN-specific parameters
-    result = load_direction_data(df, split, lookahead, threshold)
+    result = load_direction_data(df, split, lookahead, threshold, gap=gap)
 
     # Add TCN-specific metadata
     result['model_type'] = 'tcn'
@@ -2829,6 +2839,7 @@ def load_forward_volatility_data(
     active_threshold: float = 0.60,   # ACTIVE_NEXT: 60th-85th (emphasize opportunity)
     extreme_threshold: float = 0.85,  # EXTREME_NEXT: >85th percentile
     min_change_for_clear: float = 0.05,  # 5% vol change minimum for clear label
+    gap: Optional[int] = None,
 ) -> Dict[str, np.ndarray]:
     """
     Load data for TCN Forward Volatility model: 4-class PREDICTION.
@@ -2861,6 +2872,12 @@ def load_forward_volatility_data(
         active_threshold: Percentile threshold for ACTIVE_NEXT (default 0.60)
         extreme_threshold: Percentile threshold for EXTREME_NEXT (default 0.85)
         min_change_for_clear: Minimum vol change to count as "clear" label
+        gap: Embargo gap (in SEQUENCES) between train/val and val/test splits.
+            Defaults to None → `lookahead`, since the label of sequence i is
+            forward-realized `lookahead` bars past the sequence end, so the
+            last train sequences' labels read price action inside the val
+            window without an embargo (audit finding L-C1). Pass 0
+            explicitly to disable for A/B comparison.
 
     Returns:
         Dict with X_train, y_train, w_train (weights), regression targets, etc.
@@ -3107,20 +3124,40 @@ def load_forward_volatility_data(
     train_end_seq = int(n_seq * train_frac)
     val_end_seq = int(n_seq * (train_frac + val_frac))
 
+    # === EMBARGO (L-C1 fix) ===
+    # The label of sequence i lives at bar i+seq_len-1 and is realized over
+    # the NEXT `lookahead` bars (np.roll(atr_percentile, -lookahead) above).
+    # Adjacent sequences therefore share forward label windows: without a
+    # gap, the last train sequences' labels are computed from price action
+    # that the first val sequences also see (and same at the val/test
+    # boundary). Embargo choice: keep train/val/test END boundaries fixed
+    # and start val at train_end_seq + gap, test at val_end_seq + gap —
+    # i.e. the embargoed sequences are dropped from the HEAD of val/test,
+    # mirroring temporal_split(gap=...) semantics. With gap = lookahead,
+    # the last train label window ends at bar train_end_seq+seq_len+lookahead-2
+    # and the first val label is at bar train_end_seq+gap+seq_len-1, so the
+    # windows no longer overlap. Return contract unchanged (same keys,
+    # fewer boundary rows in val/test).
+    if gap is None:
+        gap = lookahead
+    logger.info(f"Forward volatility embargo gap={gap} sequences between splits (label lookahead={lookahead})")
+    val_start_seq = min(train_end_seq + gap, val_end_seq)
+    test_start_seq = min(val_end_seq + gap, n_seq)
+
     X_train = X_seq[:train_end_seq]
     y_train_class = y_class_seq[:train_end_seq]
     y_train_reg = y_reg_seq[:train_end_seq]
     w_train = w_seq[:train_end_seq]
 
-    X_val = X_seq[train_end_seq:val_end_seq]
-    y_val_class = y_class_seq[train_end_seq:val_end_seq]
-    y_val_reg = y_reg_seq[train_end_seq:val_end_seq]
-    w_val = w_seq[train_end_seq:val_end_seq]
+    X_val = X_seq[val_start_seq:val_end_seq]
+    y_val_class = y_class_seq[val_start_seq:val_end_seq]
+    y_val_reg = y_reg_seq[val_start_seq:val_end_seq]
+    w_val = w_seq[val_start_seq:val_end_seq]
 
-    X_test = X_seq[val_end_seq:]
-    y_test_class = y_class_seq[val_end_seq:]
-    y_test_reg = y_reg_seq[val_end_seq:]
-    w_test = w_seq[val_end_seq:]
+    X_test = X_seq[test_start_seq:]
+    y_test_class = y_class_seq[test_start_seq:]
+    y_test_reg = y_reg_seq[test_start_seq:]
+    w_test = w_seq[test_start_seq:]
 
     # =========================================================================
     # CLASS WEIGHTS (inverse frequency, computed on training set only)
@@ -3183,6 +3220,7 @@ def load_forward_volatility_data(
         'class_weights': class_weight_dict,
         'seq_len': seq_len,
         'lookahead': lookahead,
+        'embargo_gap': gap,
         'n_classes': 4,
         'class_names': class_names,
         'label_stats': label_stats,
@@ -3383,7 +3421,7 @@ def load_rf_data(
     drawdown_horizon: int = 10,
     instrument: Optional[str] = None,
     include_instrument_features: bool = False,
-    gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
+    gap: Optional[int] = None,  # Embargo gap between splits; None → drawdown_horizon (L-C1 fix)
 ) -> Dict[str, np.ndarray]:
     """
     Load data for Random Forest model: Risk assessment.
@@ -3399,13 +3437,20 @@ def load_rf_data(
         drawdown_horizon: Bars ahead to measure drawdown
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
-        gap: Number of samples to skip between train/val and val/test to prevent
-            temporal autocorrelation leakage (default 0)
+        gap: Embargo gap (in bars) between train/val and val/test splits.
+            Defaults to None → `drawdown_horizon`, since the drawdown label is
+            forward-realized over that horizon and would otherwise leak across
+            the split boundary (audit finding L-C1). Pass 0 explicitly to
+            disable for A/B comparison.
 
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
     """
+    # Default the embargo gap to the forward label horizon (L-C1 fix).
+    if gap is None:
+        gap = drawdown_horizon
     logger.info(f"Loading Random Forest data (risk assessment, drawdown_horizon={drawdown_horizon}, gap={gap})...")
+    logger.info(f"RF embargo gap={gap} bars between splits (drawdown_horizon={drawdown_horizon})")
 
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
@@ -3573,7 +3618,7 @@ def load_ridge_data(
     confidence_window: int = 10,
     instrument: Optional[str] = None,
     include_instrument_features: bool = False,
-    gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
+    gap: Optional[int] = None,  # Embargo gap between splits; None → lookahead_bars (L-C1 fix)
     journal_path: Optional[str] = None,
     label_mode: Literal["real", "pseudo", "blend"] = "blend",
     lookahead_bars: int = 24,
@@ -3606,8 +3651,11 @@ def load_ridge_data(
         confidence_window: window for early-rows drop (kept for backward compat)
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
-        gap: Number of samples to skip between train/val and val/test to prevent
-            temporal autocorrelation leakage (default 0)
+        gap: Embargo gap (in rows) between train/val and val/test splits.
+            Defaults to None → `lookahead_bars`, since the triple-barrier
+            pseudo-label walks up to that many bars forward and would
+            otherwise leak across the split boundary (audit finding L-C1).
+            Pass 0 explicitly to disable for A/B comparison.
         journal_path: optional path override for the live trade journal. Default
             uses live + archives via `load_all_journal_trades`.
         label_mode: 'real' (journal-only), 'pseudo' (triple-barrier-only), or
@@ -3624,11 +3672,15 @@ def load_ridge_data(
         and `label_metadata` (dict with n_real, n_pseudo, n_unavailable,
         class balances).
     """
+    # Default the embargo gap to the triple-barrier forward horizon (L-C1 fix).
+    if gap is None:
+        gap = lookahead_bars
     logger.info(
         "Loading Ridge data (REALIZED confidence labels, label_mode=%s, "
         "lookahead=%d, sl_mult=%.2f, tp_mult=%.2f, gap=%d)...",
         label_mode, lookahead_bars, sl_atr_mult, tp_atr_mult, gap,
     )
+    logger.info("Ridge embargo gap=%d bars between splits (lookahead_bars=%d)", gap, lookahead_bars)
 
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
@@ -3809,6 +3861,7 @@ def load_volatility_regime_data(
     thresholds: List[float] = None,
     instrument: Optional[str] = None,
     include_instrument_features: bool = False,
+    gap: Optional[int] = None,
 ) -> Dict[str, np.ndarray]:
     """
     Load data for TCN volatility regime classification.
@@ -3826,6 +3879,10 @@ def load_volatility_regime_data(
         thresholds: Percentile boundaries [LOW/NORMAL, NORMAL/HIGH, HIGH/EXTREME]
         instrument: Optional pair name for instrument encoding
         include_instrument_features: If True, append instrument one-hot encoding
+        gap: Embargo gap (in bars) between train/val and val/test splits.
+            Defaults to None → `vol_horizon_bars` (24), the forward-realized
+            label horizon, so boundary labels cannot leak across splits
+            (audit finding L-C1). Pass 0 explicitly to disable for A/B.
 
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
@@ -3912,14 +3969,23 @@ def load_volatility_regime_data(
     # the new generator. Both are length-3 fractions in [0, 1].
     cut_quantiles = tuple(thresholds)
 
-    # Temporal split FIRST (mirrors the train-only normalization pattern
-    # at modular_data_loaders.py:3050-3058). We need train_idx to fit the
-    # cut points without cross-split leakage.
-    train_idx_pre, val_idx_pre, test_idx_pre = temporal_split(len(X), *split)
-
     # vol_horizon_bars: parity with the confidence head's lookahead
     # (operator-confirmed default 24 bars for H1 = 1 day).
     vol_horizon_bars = 24
+
+    # Embargo gap between splits: labels are forward-realized over
+    # vol_horizon_bars, so without a gap the last train labels read price
+    # action inside the val window (and val labels inside test). Default
+    # the gap to the label horizon (audit finding L-C1); gap=0 reachable
+    # by passing 0 explicitly.
+    if gap is None:
+        gap = vol_horizon_bars
+    logger.info(f"Volatility regime embargo gap={gap} bars between splits (label horizon={vol_horizon_bars})")
+
+    # Temporal split FIRST (mirrors the train-only normalization pattern
+    # at modular_data_loaders.py:3050-3058). We need train_idx to fit the
+    # cut points without cross-split leakage.
+    train_idx_pre, val_idx_pre, test_idx_pre = temporal_split(len(X), *split, gap=gap)
 
     raw_labels, label_metadata = compute_realized_volatility_regime_labels(
         df_for_labels,
@@ -3963,8 +4029,9 @@ def load_volatility_regime_data(
 
     # Re-derive temporal split AFTER the sentinel drop (the row count
     # changed, so the original split indices are stale). The dropped rows
-    # were at the tail, so the split fractions remain valid.
-    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    # were at the tail, so the split fractions remain valid. Same embargo
+    # gap as the pre-split (forward labels span vol_horizon_bars).
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split, gap=gap)
 
     # Log class distribution (post-drop, post-realized labels)
     unique, counts = np.unique(y, return_counts=True)
@@ -4005,6 +4072,7 @@ def load_volatility_regime_data(
         'instrument': instrument,
         'label_metadata': label_metadata,
         'vol_horizon_bars': vol_horizon_bars,
+        'embargo_gap': gap,
     }
 
     logger.info(f"Volatility regime data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
