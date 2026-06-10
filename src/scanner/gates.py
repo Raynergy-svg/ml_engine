@@ -1269,6 +1269,12 @@ class GateEvaluator:
         self._transformer_regime_quantiles = meta.get("regime_quantiles")
         self._transformer_regime_atr_col = meta.get("regime_atr_col") or "atr_pct_20"
         self._transformer_pipeline_version = meta.get("feature_pipeline_version")
+        # 2026-06-10: the artifact's OWN sequence length. Per-pair models train
+        # with per-pair seq_len (90/120 via MASTER_PARAMS), not the legacy 60.
+        # evaluate_transformer must slice to THIS, or keras raises a shape
+        # error that the except-path silently converts to abstain (None, 0.5)
+        # — measured 351/351 abstentions on a healthy USD_JPY seq_len=90 model.
+        self._transformer_seq_len = meta.get("seq_len")
         # 2026-05-11: per-pair calibrated direction threshold. Soft-required
         # (missing on pre-Phase-2 artifacts → fall back to 0.5 at predict time).
         self._transformer_output_calibration = meta.get("output_calibration")
@@ -2041,6 +2047,13 @@ class GateEvaluator:
         if self._transformer is None:
             return None, 0.5
 
+        # The saved artifact's seq_len overrides the caller default — per-pair
+        # models train at 90/120 bars; feeding 60 raises a keras shape error
+        # that the except-path converts to a silent abstain.
+        _meta_seq_len = getattr(self, "_transformer_seq_len", None)
+        if _meta_seq_len:
+            seq_len = int(_meta_seq_len)
+
         try:
             if len(features) < seq_len:
                 logger.debug(f"Insufficient data for Transformer: {len(features)} < {seq_len}")
@@ -2082,10 +2095,16 @@ class GateEvaluator:
 
             proba = _predict_with_named_input_if_needed(self._transformer, X)
 
-            if len(proba.shape) > 1 and proba.shape[1] > 1:
-                prob_long = float(proba[0, 1])
+            # 2026-06-10: robust scalar extraction. The model emits a (1, 1)
+            # sigmoid array; float(proba[0]) hands NumPy>=2 a (1,)-shaped array
+            # which raises "only 0-dimensional arrays can be converted" — the
+            # except-path then converted EVERY healthy prediction to an abstain
+            # (refusal layer #5 of the 2026-06-10 all-SHORT investigation).
+            _arr = np.asarray(proba)
+            if _arr.ndim > 1 and _arr.shape[-1] > 1:
+                prob_long = float(_arr.reshape(-1, _arr.shape[-1])[0, 1])
             else:
-                prob_long = float(proba[0])
+                prob_long = float(_arr.reshape(-1)[0])
 
             # 2026-05-11: honor the per-pair calibrated decision threshold the
             # trainer saved (median of validation raw predictions). Pre-fix the
@@ -2384,10 +2403,22 @@ class GateEvaluator:
         )
         transformer_passed = transformer_prob >= min_transformer_prob if transformer_direction else True
 
-        # Meta-labeler requires a direction from transformer or fallback
-        direction = transformer_direction or ("LONG" if momentum > 0.5 else "SHORT")
-        meta_confidence = self.evaluate_meta_labeler(features, direction)
+        # Meta-labeler needs SOME direction hypothesis to score; use the
+        # momentum lean for that internal query only.
+        _meta_query_direction = transformer_direction or ("LONG" if momentum > 0.5 else "SHORT")
+        meta_confidence = self.evaluate_meta_labeler(features, _meta_query_direction)
         meta_passed = meta_confidence >= min_meta_confidence if self._meta_labeler else True
+
+        # HARD RULE (2026-06-10): an abstaining transformer must NOT become a
+        # directional trade vote. The previous fallback
+        #     direction = transformer_direction or ("LONG" if momentum > 0.5 else "SHORT")
+        # was the all-SHORT factory: per-pair transformers abstain on contract
+        # gaps (train/serve feature skew), momentum sits <= 0.5 chronically,
+        # and every holdout/live direction collapsed to SHORT (600/600 and
+        # 200/200 measured 2026-06-10). No transformer signal -> direction=None
+        # -> no directional trade. Silent failures in financial paths must
+        # surface as trade rejections, not coin-rule trades.
+        direction = transformer_direction
 
         # Combined pass status
         # Basic gates must all pass

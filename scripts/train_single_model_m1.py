@@ -449,11 +449,22 @@ def train_transformer(instrument: str, df_feat: pd.DataFrame, params: dict) -> d
     # (utils.py:304-307) → 100% of sequences pass the "clear" filter → 60%
     # unclear (y=0.5) samples leak into Keras binary_accuracy as SHORT and
     # drag val_accuracy to ~17% with balanced_acc=50% (chance).
+    # The full inference contract must reach the saved meta — the trainer only
+    # persists what train() receives via kwargs. Without these three the
+    # artifact saves version/regime_quantiles/regime_atr_col as None, gates'
+    # regime one-hot reconstruction fails, and the transformer abstains
+    # (None, 0.5) on EVERY inference window (measured 140/140 on 2026-06-10).
+    from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
     trainer.train(dir_data["X_train"], dir_data["y_train"],
                   dir_data["X_val"], dir_data["y_val"],
                   w_train=dir_data.get("w_train"),
                   w_val=dir_data.get("w_val"),
-                  feature_names=dir_data.get("feature_names"))
+                  feature_names=dir_data.get("feature_names"),
+                  feature_pipeline_version=dir_data.get(
+                      "feature_pipeline_version", FEATURE_PIPELINE_VERSION
+                  ),
+                  regime_quantiles=dir_data.get("regime_quantiles"),
+                  regime_atr_col=dir_data.get("regime_atr_col"))
 
     save_path = save_dir / "transformer_direction.keras"
     trainer.save(str(save_path))

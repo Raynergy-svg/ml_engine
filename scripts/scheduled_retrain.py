@@ -445,7 +445,11 @@ def validate_holdout_accuracy(
         # Hoisted from the per-pair loop (2026-06-10) so the post-loop
         # expectancy simulation can reference them even when pairs skip early.
         HOLDOUT_LOOKAHEAD = 24
-        HOLDOUT_SEQ_LEN = 60  # MUST match transformer_trainer's default
+        # Window must cover the LARGEST per-pair seq_len (MASTER_PARAMS uses
+        # 90-120, not the legacy 60). gates.evaluate_transformer slices the
+        # tail to the artifact's own saved seq_len, so oversupplying rows is
+        # safe; undersupplying silently abstains.
+        HOLDOUT_SEQ_LEN = 150
         from src.utils.oanda_practice import OandaPracticeClient
         oanda = OandaPracticeClient.from_env()
 
@@ -487,7 +491,33 @@ def validate_holdout_accuracy(
 
                 # Use last holdout_candles as test set
                 test_df = candles_df.tail(holdout_candles)
-                features = compute_normalized_features(test_df)
+                # TRAIN/SERVE PARITY (2026-06-10): training runs
+                # FeatureEngineering.create_features(include_all=True) BEFORE
+                # the loaders (train_single_model_m1.apply_features), so saved
+                # feature_names contain engineered columns (obv, returns_lag_*,
+                # macd_x_adx, day_cos, ...) that compute_normalized_features
+                # alone never produces. Without this enrichment 37/50 contract
+                # columns are missing, the transformer abstains (None, 0.5) on
+                # EVERY window, and the holdout silently measured the momentum
+                # fallback. Mirrors the committed fix in per_pair_holdout_eval.
+                try:
+                    from src.data.feature_engineering import FeatureEngineering
+                    from src.utils import load_config
+                    _cfg = load_config(str(PROJECT_ROOT / "config" / "config_m1_optimized.yaml"))
+                    _enriched = FeatureEngineering(_cfg).create_features(
+                        test_df.copy(), include_all=True
+                    )
+                    features = (
+                        _enriched if "returns_1" in _enriched.columns
+                        else compute_normalized_features(_enriched)
+                    )
+                except Exception as _fe_err:
+                    logger.warning(
+                        "Holdout %s: feature enrichment failed (%s); falling back "
+                        "to compute_normalized_features (transformer may abstain)",
+                        pair, _fe_err,
+                    )
+                    features = compute_normalized_features(test_df)
                 if features is None or features.empty:
                     logger.debug("Holdout %s: features empty after compute_normalized_features", pair)
                     continue
