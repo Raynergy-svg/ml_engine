@@ -493,16 +493,29 @@ def train_tcn(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
     save_dir = MODELS_DIR / instrument
     save_dir.mkdir(parents=True, exist_ok=True)
 
+    save_path = save_dir / "tcn_volatility_regime.keras"
+    snapshot_dir = _snapshot_existing_artifacts(save_path)
+
     trainer = TCNTrainer(cfg)
     trainer.train(tcn_data["X_train"], tcn_data["y_train"],
                   tcn_data["X_val"], tcn_data["y_val"])
-    trainer.save(str(save_dir / "tcn_volatility_regime.keras"))
+    trainer.save(str(save_path))
 
-    metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
-    train_acc = metrics.get("train_accuracy", 0)
-    val_acc = metrics.get("val_accuracy", 0)
+    # "tcn" is GAP_CHECKED: the legacy get_metrics() reader silently returned {}
+    # (no trainer defines it) -> gap=0 -> the 10%/6% gates were permanent no-ops.
+    metrics = _read_trainer_metrics(trainer)
+    train_acc = float(metrics.get("train_accuracy", 0) or 0)
+    val_acc = float(metrics.get("val_accuracy", 0) or 0)
+    q = _quarantine_if_overshipped(
+        [save_path], train_acc=train_acc, val_acc=val_acc,
+        instrument=instrument, model_name="tcn_volatility_regime",
+        restore_dir=snapshot_dir,
+    )
     gc_cleanup()
-    return {"train_acc": train_acc, "val_acc": val_acc, "gap": abs(train_acc - val_acc)}
+    return {
+        "train_acc": train_acc, "val_acc": val_acc, "gap": q["gap"],
+        "quarantined": q["quarantined"], "quarantine_dir": q.get("quarantine_dir"),
+    }
 
 
 def train_lgbm_momentum(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
@@ -523,7 +536,7 @@ def train_lgbm_momentum(instrument: str, df_feat: pd.DataFrame, params: dict) ->
     trainer.train(data["X_train"], data["y_train"], data["X_val"], data["y_val"])
     trainer.save(str(save_dir / "lgbm_momentum.pkl"))
 
-    metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
+    metrics = _read_trainer_metrics(trainer)
     gc_cleanup()
     return {"train_acc": metrics.get("train_accuracy", 0), "val_acc": metrics.get("val_accuracy", 0)}
 
@@ -546,7 +559,7 @@ def train_lgbm_risk(instrument: str, df_feat: pd.DataFrame, params: dict) -> dic
     trainer.train(data["X_train"], data["y_train"], data["X_val"], data["y_val"])
     trainer.save(str(save_dir / "lgbm_risk.pkl"))
 
-    metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
+    metrics = _read_trainer_metrics(trainer)
     gc_cleanup()
     return {"train_acc": metrics.get("train_accuracy", 0), "val_acc": metrics.get("val_accuracy", 0)}
 
@@ -569,7 +582,7 @@ def train_ridge(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
     trainer.train(data["X_train"], data["y_train"], data["X_val"], data["y_val"])
     trainer.save(str(save_dir / "ridge_confidence.pkl"))
 
-    metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
+    metrics = _read_trainer_metrics(trainer)
     gc_cleanup()
     return {"train_acc": metrics.get("train_accuracy", 0), "val_acc": metrics.get("val_accuracy", 0)}
 
@@ -646,7 +659,7 @@ def train_transformer_regime(instrument: str, df_feat: pd.DataFrame, params: dic
                   dir_data["X_val"], dir_data["y_val"])
     trainer.save(str(save_dir / "transformer_regime.keras"))
 
-    metrics = trainer.get_metrics() if hasattr(trainer, "get_metrics") else {}
+    metrics = _read_trainer_metrics(trainer)
     gc_cleanup()
     return {"val_acc": metrics.get("val_accuracy", 0)}
 
@@ -870,6 +883,13 @@ def main():
     )
     args = parser.parse_args()
 
+    # Reproducibility: seed python/np/tf BEFORE any graph construction so two
+    # retrains of identical data ship identical models (the 10% gap-gate at
+    # the boundary must not be an RNG coin-flip). Seed recorded in
+    # training_status.json via _write_status_json.
+    from src.utils.seed_manager import set_global_seed
+    set_global_seed(int(os.environ.get("BUDDY_TRAIN_SEED", "42")))
+
     # Pre-flight gate — HARD STOP if disk low or OANDA unreachable (exit 2)
     _preflight_check(args)
 
@@ -935,9 +955,21 @@ def main():
                     f"{HARD_MAX_GAP} (quarantined → {result.get('quarantine_dir')})"
                 )
             elif model_name in GAP_CHECKED_MODELS:
-                result["passed"] = gap <= MAX_GAP
-                status = "✓ PASS" if result["passed"] else "✗ FAIL"
-                logger.info(f"{status}: {model_name} gap={gap:.4f} (max={MAX_GAP})")
+                # Fail loud on the legacy gap=0 liar: a gap-checked model whose
+                # metric-read path returned nothing must NOT ship green
+                # (improvement.md Hard Ship Gate: "gap=0 pattern means the
+                # metric-read path is broken — fail loud").
+                if not result.get("train_acc") and not result.get("val_acc"):
+                    result["passed"] = False
+                    result["error"] = "empty metrics for gap-checked model (metric-read path broken)"
+                    logger.error(
+                        f"✗ METRICS-EMPTY: {model_name} reported train_acc=val_acc=0; "
+                        f"refusing PASS — fix the trainer's self.metrics population."
+                    )
+                else:
+                    result["passed"] = gap <= MAX_GAP
+                    status = "✓ PASS" if result["passed"] else "✗ FAIL"
+                    logger.info(f"{status}: {model_name} gap={gap:.4f} (max={MAX_GAP})")
             else:
                 result["passed"] = True
                 logger.info(f"✓ DONE: {model_name} (no gap check)")
