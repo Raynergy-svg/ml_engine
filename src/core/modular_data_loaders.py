@@ -40,7 +40,15 @@ logger = logging.getLogger(__name__)
 # 2026-05-08-v1: introduces explicit train↔inference contract (regime_quantiles,
 #                regime_atr_col, feature_names ordering authoritative). See
 #                docs/superpowers/plans/2026-05-08-pipeline-reconciliation-phase1-audit.md
-FEATURE_PIPELINE_VERSION = "2026-05-08-v1"
+# 2026-06-10-v2: window-invariant feature semantics — obv is now a rolling
+#                100-bar z-score of raw OBV (was frame-anchored cumsum);
+#                cum_returns / cum_log_returns are trailing-100-bar rolling
+#                returns (were frame-anchored cumprod/cumsum). Anchored
+#                features made inference window-length-dependent: identical
+#                bars flipped 26/26 LONG <-> 26/26 SHORT on anchor length
+#                alone (backtest-harness finding, commit a2cfc48). Models
+#                saved under v1 must refuse to load under v2 and vice versa.
+FEATURE_PIPELINE_VERSION = "2026-06-10-v2"
 
 
 # =============================================================================

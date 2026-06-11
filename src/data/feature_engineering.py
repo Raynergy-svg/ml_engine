@@ -102,10 +102,20 @@ class FeatureEngineering:
             0.015 * tp.rolling(window=20).std()
         )
 
-        # On-Balance Volume (OBV)
-        df["obv"] = (
-            (np.sign(df["close"].diff()) * df["volume"]).fillna(0).cumsum()
-        )
+        # On-Balance Volume — WINDOW-INVARIANT form (2026-06-10).
+        # Raw OBV is a cumsum anchored to the frame start: its VALUE depends on
+        # where the series begins, so any inference window shorter than the
+        # training frame feeds the scaler an arbitrary offset (measured: same
+        # bars flipped 26/26 LONG <-> 26/26 SHORT purely on anchor length;
+        # mean|delta| = 10x the column std). A rolling z-score cancels the
+        # anchor exactly (a constant offset shifts value and rolling mean
+        # equally). min_periods == window so partially-anchored head rows are
+        # NaN (and dropped), never silently anchor-dependent. Feature pipeline
+        # version bumped for this semantics change.
+        _obv_raw = (np.sign(df["close"].diff()) * df["volume"]).fillna(0).cumsum()
+        _obv_m = _obv_raw.rolling(100, min_periods=100).mean()
+        _obv_s = _obv_raw.rolling(100, min_periods=100).std().replace(0.0, np.nan)
+        df["obv"] = (_obv_raw - _obv_m) / _obv_s
 
         # Money Flow Index (MFI)
         typical_price = (df["high"] + df["low"] + df["close"]) / 3
@@ -380,9 +390,13 @@ class FeatureEngineering:
         df["high_low_ratio"] = df["high"] / df["low"]
         df["close_open_ratio"] = df["close"] / df["open"]
 
-        # Cumulative features
-        df["cum_returns"] = (1 + df["returns"]).cumprod() - 1
-        df["cum_log_returns"] = df["log_returns"].cumsum()
+        # Rolling-window returns — WINDOW-INVARIANT replacements (2026-06-10)
+        # for the former frame-anchored cumprod/cumsum "cumulative" features
+        # (same anchoring bug class as raw OBV; see the OBV comment). New
+        # semantics: compounded / summed return over the trailing 100 bars.
+        _roll_log = df["log_returns"].rolling(100, min_periods=100).sum()
+        df["cum_returns"] = np.exp(_roll_log) - 1
+        df["cum_log_returns"] = _roll_log
 
         return df
 
@@ -800,18 +814,23 @@ class FeatureEngineering:
         # Handle inf/nan
         df = df.replace([np.inf, -np.inf], np.nan)
 
-        # Log transform skewed features (volatility, ATR)
-        # This helps with the long-tail distribution
+        # Log transform skewed features (volatility, ATR).
+        # WINDOW-INVARIANT + CAUSAL form (2026-06-10): the previous
+        # normalization used the FULL-FRAME mean — anchor-dependent (value
+        # changes with how much history the frame holds; caught by
+        # tests/test_feature_window_invariance.py at 6-11% relative deviation)
+        # AND future-peeking (each row normalized by a statistic that includes
+        # later bars). A trailing rolling mean is both invariant and causal;
+        # min_periods == window so partial-window head rows are NaN, not
+        # silently anchored.
         if 'atr' in df.columns:
-            atr_mean = df['atr'].mean()
-            if atr_mean > 0:
-                df['atr_log'] = np.log1p(df['atr'] / atr_mean)
+            _atr_m = df['atr'].rolling(200, min_periods=200).mean()
+            df['atr_log'] = np.log1p(df['atr'] / _atr_m.where(_atr_m > 0))
 
         for col in ['volatility_5', 'volatility_10', 'volatility_20']:
             if col in df.columns:
-                col_mean = df[col].mean()
-                if col_mean > 0:
-                    df[f'{col}_log'] = np.log1p(df[col] / col_mean)
+                _m = df[col].rolling(200, min_periods=200).mean()
+                df[f'{col}_log'] = np.log1p(df[col] / _m.where(_m > 0))
 
         return df
 
