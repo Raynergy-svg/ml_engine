@@ -23,7 +23,8 @@
 #         LOOP_REVIEW=0       disable the reviewer pass
 #
 # Flags verified against `claude --help` on this machine 2026-06-11:
-# --permission-mode (incl. dontAsk), --allowedTools, --output-format, --bare, --model.
+# --permission-mode (incl. dontAsk), --allowedTools, --output-format, --model.
+# (--bare exists but breaks credential resolution when nested — do not re-add.)
 
 set -uo pipefail
 REPO="${1:-$(pwd)}"
@@ -86,7 +87,7 @@ fi
 
 # Auth preflight: the nested `claude -p` needs keychain access (fails inside
 # sandboxed shells). Fail fast for pennies instead of burning an iteration.
-claude -p "auth preflight — reply OK" --model "$MODEL" --bare \
+claude -p "auth preflight — reply OK" --model "$MODEL" \
   --output-format json > .loop/preflight.json 2>>loop.log
 python3 -c 'import json;d=json.load(open(".loop/preflight.json"));raise SystemExit(1 if d.get("is_error") else 0)' \
   || { echo "Claude CLI auth preflight FAILED (see .loop/preflight.json) — run from a non-sandboxed shell."; exit 6; }
@@ -112,7 +113,9 @@ EOF
 # Anthropic headless guidance: detect failure via is_error (not exit code alone),
 # track spend via total_cost_usd. Raw JSON kept per call in .loop/ for audit.
 run_claude() {  # $1=label  $2=allowed tools  $3=prompt   → prints result text
-  claude -p "$3" --model "$MODEL" --bare \
+  # NOTE: --bare omitted deliberately — it breaks credential resolution on this
+  # CLI version ("Not logged in", verified 2026-06-12). Reproducibility cost accepted.
+  claude -p "$3" --model "$MODEL" \
     --permission-mode dontAsk --allowedTools "$2" \
     --output-format json > ".loop/${1}.json" 2>>loop.log
   python - "$1" <<'PY'
