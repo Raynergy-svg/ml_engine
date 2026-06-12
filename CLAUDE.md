@@ -36,11 +36,18 @@ Don't manufacture work. Don't keep finding bugs without fixing them.
 ## Strategy guardrails (detail: docs/strategy.md)
 
 - The bot's edge is the **ML signal**, not the heuristics. The highest-priority gap is the
-  **news/macro embedding pipeline** (P1) — the only remaining lever past the price-only ~70%
-  M15 ceiling. Pair expansion at M15 is operational, not architectural.
-- **Empirical ceiling — do not re-litigate without new evidence:** price-only EUR_USD direction
-  caps ~52% intraday, ~54% daily; news fusion tested 2026-05-27 gave no lift. Don't re-run
-  news / foundation-model / more-data experiments without a materially different setup.
+  **news/macro embedding pipeline** (P1) — the only remaining lever, now evidence-backed.
+  Pair expansion at M15 is operational, not architectural.
+- **Empirical ceiling — do not re-litigate without new evidence:** price-only M15 has **no
+  shippable edge**. 2026-06-10 verdict (commit dad8624): USD_JPY/EUR_USD/GBP_USD all land
+  ~52% val with >10% gap once anchored features were fixed — the earlier "~70%/56% healthy"
+  numbers were the anchored-OBV artifact. Daily ~54%. News fusion tested 2026-05-27 gave no
+  lift. Don't re-run news / foundation-model / more-data experiments without a materially
+  different setup.
+- **Runtime is fail-closed and that is correct:** zero live transformer artifacts (all
+  quarantined by the 10% gap gate). `direction=None` abstention is deliberate — never re-add
+  a momentum/default fallback (removed in 1704d30) or zero-fill missing features to make
+  predictions flow.
 - Don't optimize the custom Transformer beyond bug fixes (wrong horse). Don't research-tour.
 
 ## Architecture
@@ -61,6 +68,14 @@ for planning, post-mortems, brainstorming. Live driver is `EmbeddedScanner`
 (`src/tui/embedded_scanner.py`), NOT `Orchestrator` (library code only). Deep internals,
 per-pair routing, meta-pipeline, self-heal, homework system: docs/tier7-architecture.md.
 
+## Commands (copy-paste ready)
+
+- Tests: `python -m pytest tests/ -q --tb=short -x` — CI parity; no-mock policy applies
+- Lint: `python -m flake8 src/ --config=.flake8` — flake8 7.3.0 pinned in CI
+- Backtest: `python scripts/backtest_harness.py --instrument USD_JPY` — cost-aware; errors
+  cleanly when no live transformer artifact exists (expected in the current fail-closed state)
+- TUI: `./buddy` · Full retrain: `bash scripts/run_full_training.sh` · Ralph: `bash scripts/ralph.sh --tool claude 30`
+
 ## ML Stack (truth — not "TCN/Ridge/RF")
 
 | Head | Model | File |
@@ -75,6 +90,8 @@ per-pair routing, meta-pipeline, self-heal, homework system: docs/tier7-architec
 | Validation | Walk-forward + purged k-fold + embargo | `src/training/walkforward_validation.py` |
 | Calibration | Platt + Isotonic, recalibrated from journal | `src/risk/confidence_calibration.py` |
 | Training control plane | 7 head configs as versioned W&B artifacts | `src/training/wandb_control_plane.py` |
+| Backtest + promotion gate | Cost-aware sequential (fill at NEXT bar open, SL-first intra-bar) | `src/training/backtest_harness.py`, `src/scanner/backtest_gate.py` |
+| Feature pipeline contract | v2 window-invariant (`FEATURE_PIPELINE_VERSION`); v1 artifacts refuse to load | `src/core/modular_data_loaders.py` + canary `tests/test_feature_window_invariance.py` |
 
 Train↔inference contract (saved-meta keys, scaler discipline): docs/strategy.md and the
 enforced gates in `.claude/rules/improvement.md`.

@@ -254,3 +254,10 @@ logs/*.stderr.log*
 
 # Throwaway debug / recovery scripts (one-off, not part of the toolchain)
 scripts/_*.py
+
+# agent-loop working extract (kit is installed at scripts/agent-loop/)
+/tmp/agent-loop-extract/
+agent-loop.zip
+.loop/
+STATE.md
+loop.log

@@ -15,20 +15,20 @@ news-fused embeddings / calibrated uncertainty, we're optimizing the wrong thing
 
 | Layer | Current | SOTA | Gap |
 |---|---|---|---|
-| Direction head | Custom Transformer, M15 (70.0% holdout, 22-mo validated) | Chronos / TimesFM / Moirai (60M-700M params) | **SMALL — FM zero-shot underperforms by 20pp+ at this timeframe (empirically tested)** |
+| Direction head | Custom Transformer, M15 — **no shippable artifact** (2026-06-10: the 70.0%/56.4% holdouts were the anchored-OBV artifact; honest v2 retrain ~52% val, >10% gap, quarantined) | Chronos / TimesFM / Moirai (60M-700M params) | **SMALL — FM zero-shot underperforms by 20pp+ at this timeframe (empirically tested)** |
 | Confidence | Ridge head + calibration JSON, ad-hoc | Conformal prediction (mapie, crepes) | MEDIUM — drop-in wrapper |
 | Volatility regime | Heuristic bridge (was leaky TCN) | Heuristic acceptable | SMALL |
-| Macro/news signal | NONE | FinBERT / text-embedding-3 fused to price | **LARGE — the actual remaining lever past 70% M15** |
+| Macro/news signal | NONE | FinBERT / text-embedding-3 fused to price | **LARGE — the only remaining lever; price-only M15 has no shippable edge (2026-06-10 verdict, dad8624)** |
 | Pair coverage | EUR_USD, GBP_USD M15-trained | All 16 majors+crosses at M15 | OPERATIONAL — retrain at `--granularity M15 --candles 65000` |
 | Sequence length | 60-bar context | 1024+ via state-space models (Mamba) | SMALL — not the bottleneck |
 | Sizing/decision | Decoupled prediction + DynamicPositionSizer | Decision Transformer / offline RL on journal | DEFER — needs >5K trades first |
 
 ### Investment priority (revised 2026-05-08 on empirical evidence)
 
-1. **News/macro embedding pipeline** — the only remaining lever once data alignment is fixed; price-only ceiling appears to be ~70% on M15 EUR_USD/GBP_USD across all tested architectures.
+1. **News/macro embedding pipeline** — the only remaining lever once data alignment is fixed; price-only M15 confirmed unshippable 2026-06-10 (USD_JPY/EUR_USD/GBP_USD ~52% val with >10% gap after the anchored-feature fix — prior ~70% was the OBV artifact).
 2. **Pair expansion at M15** — operational, not architectural. Retrain remaining majors at `--granularity M15 --candles 65000`. ~3 min/pair on M1 Metal.
 3. **Conformal prediction confidence layer** — replaces leaky confidence head + calibration JSON in one shot.
-4. ~~Foundation-model direction head~~ — **DEMOTED**. Chronos-T5-small (60M, zero-shot, h=24) = 44.5%; Chronos-T5-base (200M, h=24) = 46.0%; current custom Transformer (19k params, M15, fixed) = 70.0%. 4× model scale produced +1.5pp. The bottleneck was 3 data/training/holdout bugs (scaler null, lookahead mismatch, primary_tf misalignment), not model class.
+4. ~~Foundation-model direction head~~ — **DEMOTED**. Chronos-T5-small (60M, zero-shot, h=24) = 44.5%; Chronos-T5-base (200M, h=24) = 46.0%; current custom Transformer (19k params, M15) = 70.0% as then-measured (later shown to be the anchored-OBV artifact; honest ~52%). Even against the honest baseline Chronos underperforms; 4× model scale produced +1.5pp. The bottleneck was 3 data/training/holdout bugs (scaler null, lookahead mismatch, primary_tf misalignment), not model class.
 5. **State-space models** — defer, not the bottleneck.
 6. **Decision Transformer** — defer, needs trade-journal volume.
 
@@ -50,14 +50,14 @@ Price-only EUR_USD direction caps at ~52% intraday (M15/H1/H4), faint at daily (
 
 ## News/macro pipeline (P1)
 
-The remaining lever to break the price-only ~70% M15 ceiling.
+The only remaining lever — price-only M15 confirmed unshippable 2026-06-10 (dad8624); instrumentation (cost-aware backtest + v2 feature contract) is now honest enough to measure any lift this pipeline produces.
 
 - **Design doc**: `docs/superpowers/plans/2026-05-08-news-macro-signal-design.md`
 - **Recommendations**: ForexFactory calendar (primary) + RSS headlines (secondary) for the prototype; FinBERT (`ProsusAI/finbert`, 768-dim, free, M1-friendly) embedder; concatenation fusion at the DataFrame level (lowest blast radius).
 - **Integration point**: `compute_normalized_features` in `src/core/modular_data_loaders.py` — optional `news_df` arg joining per-bar news features after the price features.
 - **Runtime path untouched in P1-P3.** The existing `_evaluate_news_risk` agent stays as-is; Phase 4 may *augment* it.
-- **Phase plan**: P1 design+stubs (done) → P2 implement `ForexFactoryNewsSource.fetch_events` + `FinBERTEmbedder.embed` → P3 implement `align_news_to_bars`, backfill 22mo EUR_USD, retrain M15, compare to 70.0%. **Decision rule**: ≥73.0% ships; 70.5-72.9% disambiguate with `text-embedding-3-large`; ≤70.5% shelves. P4 expand to remaining majors if lift confirmed.
-- **Validation hypothesis**: ≥3pp M15 holdout lift over the 70.0% price-only baseline confirms signal worth shipping.
+- **Phase plan**: P1 design+stubs (done) → P2 implement `ForexFactoryNewsSource.fetch_events` + `FinBERTEmbedder.embed` → P3 implement `align_news_to_bars`, backfill 22mo EUR_USD, retrain M15, compare to the HONEST price-only baseline (~52% val on the v2 window-invariant pipeline; re-measure at P3 time via the cost-aware backtest, not a single holdout). **Decision rule (recalibrated 2026-06-11)**: ship only on ≥3pp val lift over the re-measured price-only baseline AND a positive-expectancy cost-aware backtest that passes the 10% gap gate; 1.5-3pp lift → disambiguate with `text-embedding-3-large`; less shelves. The old ≥73.0%-vs-70.0% rule was calibrated against the anchored-OBV artifact — void. P4 expand to remaining majors if lift confirmed.
+- **Validation hypothesis**: ≥3pp M15 lift over the honest price-only baseline (~52%, v2 pipeline) + positive cost-aware expectancy confirms signal worth shipping.
 
 ## Inference contract (Phase 2.A+B)
 
