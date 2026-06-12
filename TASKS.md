@@ -3,7 +3,10 @@
 # Done-criteria are immutable once written: build to the criterion, never edit it to fit.
 # Ordered by value. Danger-Zone findings from the same audit live in REVIEW-QUEUE.md — not here.
 
-- [ ] P0 — Fix live-journal wipe hazard in `tests/test_ewma_wiring.py:419`.
+- [x] P0 — Fix live-journal wipe hazard in `tests/test_ewma_wiring.py:419`. (2026-06-12: fixture
+      added to the test signature at :410; `grep -n "temp_state_dir" tests/test_ewma_wiring.py`
+      shows it; file's 32 tests pass. Live journal verified intact — the runner's earlier full-suite
+      run was interrupted before reaching this file, by luck.)
       `test_ewma_state_persistence_handles_save_error` writes `trained_data/trade_journal_rl.json`
       via a RELATIVE path but does not take the `temp_state_dir` chdir fixture (defined :84-92),
       so running pytest from repo root overwrites the live RL journal with `[]`.

@@ -6,7 +6,7 @@ Two layers:
 """
 from __future__ import annotations
 
-import pytest
+import asyncio
 
 from src.tui.screens.command_palette_modal import (
     Command,
@@ -102,10 +102,14 @@ class TestRegistry:
 
 
 class TestModalLifecycle:
-    """Light Pilot test — modal mounts, filters, dispatches the chosen id."""
+    """Light Pilot test — modal mounts, filters, dispatches the chosen id.
 
-    @pytest.mark.asyncio
-    async def test_modal_dismisses_with_selected_id(self):
+    Sync tests driving the async Textual pilot via asyncio.run() so they
+    run on bare pytest — pytest-asyncio is not installed in the project
+    interpreter, and `async def` tests fail (not skip) without it.
+    """
+
+    def test_modal_dismisses_with_selected_id(self):
         from textual.app import App, ComposeResult
         from textual.widgets import Static
 
@@ -118,18 +122,19 @@ class TestModalLifecycle:
             def on_mount(self) -> None:
                 self.push_screen(CommandPaletteModal(), captured.append)
 
-        async with _Host().run_test(size=(80, 30)) as pilot:
-            await pilot.pause()
-            # Type to filter down to a single match, then Enter.
-            await pilot.press(*"panic")
-            await pilot.pause()
-            await pilot.press("enter")
-            await pilot.pause()
+        async def _drive() -> None:
+            async with _Host().run_test(size=(80, 30)) as pilot:
+                await pilot.pause()
+                # Type to filter down to a single match, then Enter.
+                await pilot.press(*"panic")
+                await pilot.pause()
+                await pilot.press("enter")
+                await pilot.pause()
 
+        asyncio.run(_drive())
         assert captured == ["supervisor.kill"]
 
-    @pytest.mark.asyncio
-    async def test_modal_dismisses_with_none_on_escape(self):
+    def test_modal_dismisses_with_none_on_escape(self):
         from textual.app import App, ComposeResult
         from textual.widgets import Static
 
@@ -142,9 +147,11 @@ class TestModalLifecycle:
             def on_mount(self) -> None:
                 self.push_screen(CommandPaletteModal(), captured.append)
 
-        async with _Host().run_test(size=(80, 30)) as pilot:
-            await pilot.pause()
-            await pilot.press("escape")
-            await pilot.pause()
+        async def _drive() -> None:
+            async with _Host().run_test(size=(80, 30)) as pilot:
+                await pilot.pause()
+                await pilot.press("escape")
+                await pilot.pause()
 
+        asyncio.run(_drive())
         assert captured == [None]

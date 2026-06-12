@@ -46,9 +46,25 @@ news-fused embeddings / calibrated uncertainty, we're optimizing the wrong thing
 
 ## Empirical signal ceiling (do not re-litigate without new evidence)
 
-Price-only EUR_USD direction caps at ~52% intraday (M15/H1/H4), faint at daily (53.9% balanced); GBP_USD/USD_JPY daily ~62%. News fusion tested 2026-05-27 produced no lift. **Don't re-run news / FM / more-data experiments** without a materially different setup.
+Price-only EUR_USD direction caps at ~52% intraday (M15/H1/H4), faint at daily (53.9% balanced); GBP_USD/USD_JPY daily ~62%. News fusion tested 2026-05-27 produced no lift. **The P3 news-embedding experiment (2026-06-12) also produced no shippable lift** (see below). **Don't re-run news / FM / more-data experiments** without a materially different setup.
 
-## News/macro pipeline (P1)
+## News/macro pipeline (P1) — TESTED 2026-06-12, NO SHIPPABLE LIFT (shelved)
+
+**VERDICT (2026-06-12, P3 complete):** the news/macro embedding lever — the "only remaining" one — has now been properly tested with real FinBERT semantic embeddings through the production pipeline, and it does **not** unlock M15 EUR_USD. Controlled result, same 65k CSV the price-only baseline used:
+
+| Arm | val_acc | balanced | train_acc | gap | shippable? |
+|---|---|---|---|---|---|
+| Price-only (a5748e0, baseline) | 0.5192 | — | 0.7637 | 0.2445 | no (quarantined) |
+| **News-fused (FinBERT+FF, 32-PCA)** | **0.5288** | 0.5348 | 0.8108 | **0.2820** | **no (quarantined)** |
+
+- **News lift = +0.96pp** (0.5192 → 0.5288) — within single-holdout noise, far below the +3pp ship threshold; val 52.88% < 55% required.
+- **Overfitting got WORSE, not better**: gap widened 24.45% → 28.20%. Adding 40 news columns (32 PCA @ 94% explained variance + 8 event-class counts) gave the model more memorization capacity without generalizable directional signal — exactly the failure mode for a head already overfitting at 24%.
+- **This is a trustworthy negative.** A latent bug was found+fixed first: `FeatureEngineering.create_features` returns a tz-NAIVE `DatetimeIndex`, so the news block's `fetch_events` call raised and the broad `try/except` silently degraded every prior run to price-only. Fixed in `load_direction_data` (UTC-localize the index). Verified news genuinely activated this run: 6,481 events embedded → (6481,768), 40 cols appended, `news_pca_active=true`.
+- **Repro:** `python scripts/train_news_experiment_eur_usd.py` (RESULT line + `logs/news_experiment_*.log`). Artifact auto-quarantined by the 10% gap gate; no live transformer exists (fail-closed correct).
+- **Low-value follow-ups (only if operator insists):** `news_pca_n_components=8` (8 comps already capture 93-94% variance — would trim params, unlikely to add 3pp); H1/H4 timeframe; different asset class. Note: the runtime news-inference path is still unimplemented (P4), so even a passing model couldn't serve trades without that work.
+- **Bottom line for the live-money goal:** with the last identified ML lever now tested and dry, there is no price/news M15 edge to ship. **The bot stays halted** — this is the correct outcome, not a failure to fix.
+
+### Original P1 plan (for reference — now closed by the verdict above)
 
 The only remaining lever — price-only M15 confirmed unshippable 2026-06-10 (dad8624); instrumentation (cost-aware backtest + v2 feature contract) is now honest enough to measure any lift this pipeline produces.
 

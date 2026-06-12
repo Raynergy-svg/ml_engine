@@ -5,32 +5,42 @@ Tests the create_broker() factory function and broker client instantiation.
 
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
 from src.brokers.factory import create_broker
 from src.brokers.ibkr import IBKRBroker
+from src.brokers.oanda import OandaBroker
+
+# ib_async is an optional dependency (only needed when IBKR is live).
+# Without it, IBKRBroker.connect() raises a deliberate guidance
+# ImportError (src/brokers/ibkr.py) BEFORE any connection attempt;
+# with it installed but no Gateway running, connect() raises
+# ConnectionError. Tests pin whichever failure mode this env produces.
+_HAS_IB_ASYNC = importlib.util.find_spec("ib_async") is not None
+_IBKR_NO_GATEWAY_ERROR = ConnectionError if _HAS_IB_ASYNC else ImportError
 
 
 class TestBrokerFactory:
     """Test suite for broker factory function."""
 
     def test_create_broker_oanda_valid(self) -> None:
-        """Test creating an OANDA broker with valid credentials.
+        """Test creating an OANDA broker returns the right client type.
 
-        This test uses mock credentials and expects connection to fail
-        (since we don't have a real OANDA account in test), but the factory
-        should instantiate the client successfully.
+        OandaBroker.connect() is a documented no-op (REST API —
+        authentication happens per-request), so the factory succeeds with
+        fake credentials and never touches the network. We assert the
+        factory creates the right type, which was always this test's
+        stated intent.
         """
-        # We can't actually connect without real credentials,
-        # so we expect this to raise at the connect() step.
-        # We're testing that the factory creates the right type.
-        with pytest.raises(Exception):  # Connection will fail
-            create_broker(
-                broker_type="oanda",
-                oanda_account_id="001-001-123456-001",
-                oanda_api_key="fake_key_for_testing",
-                oanda_environment="practice",
-            )
+        client = create_broker(
+            broker_type="oanda",
+            oanda_account_id="001-001-123456-001",
+            oanda_api_key="fake_key_for_testing",
+            oanda_environment="practice",
+        )
+        assert isinstance(client, OandaBroker)
 
     def test_create_broker_oanda_missing_account_id(self) -> None:
         """Test that OANDA broker requires account ID."""
@@ -56,9 +66,10 @@ class TestBrokerFactory:
         """Test creating an IBKR broker raises ConnectionError when Gateway not running.
 
         IBKRBroker is fully implemented but needs IB Gateway running.
-        Without Gateway, connect() raises ConnectionError.
+        Without Gateway, connect() raises ConnectionError; without the
+        optional ib_async package, the deliberate guidance ImportError.
         """
-        with pytest.raises(ConnectionError):
+        with pytest.raises(_IBKR_NO_GATEWAY_ERROR):
             create_broker(
                 broker_type="ibkr",
                 ibkr_host="127.0.0.1",
@@ -81,7 +92,7 @@ class TestBrokerFactory:
                 oanda_api_key="fake",
             )
 
-        with pytest.raises(ConnectionError):
+        with pytest.raises(_IBKR_NO_GATEWAY_ERROR):
             create_broker(broker_type="IBKR")
 
 
@@ -108,9 +119,13 @@ class TestIBKRBrokerReal:
         assert broker.client_id == 42
 
     def test_ibkr_broker_connect_raises_without_gateway(self) -> None:
-        """Test that IBKR broker connect() raises ConnectionError without Gateway."""
+        """Test that IBKR broker connect() raises without Gateway.
+
+        ConnectionError with ib_async installed; the deliberate guidance
+        ImportError without it (src/brokers/ibkr.py lazy import).
+        """
         broker = IBKRBroker()
-        with pytest.raises(ConnectionError):
+        with pytest.raises(_IBKR_NO_GATEWAY_ERROR):
             broker.connect()
 
     def test_ibkr_broker_disconnect(self) -> None:
@@ -154,7 +169,7 @@ class TestBrokerFactoryEdgeCases:
                 oanda_api_key="fake",
             )
 
-        with pytest.raises(ConnectionError):
+        with pytest.raises(_IBKR_NO_GATEWAY_ERROR):
             create_broker(broker_type="IbKr")
 
     def test_ibkr_broker_defaults_are_correct(self) -> None:

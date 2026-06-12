@@ -407,7 +407,7 @@ def test_ewma_state_persistence_in_sync(em, temp_state_dir):
         assert "correlation_matrix" in saved_state
 
 
-def test_ewma_state_persistence_handles_save_error(em):
+def test_ewma_state_persistence_handles_save_error(em, temp_state_dir):
     """Test sync gracefully handles EWMA state save errors."""
     em._init_ewma_correlation()
 

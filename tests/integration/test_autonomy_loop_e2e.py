@@ -191,7 +191,7 @@ def test_stage1_handler_isolates_from_subprocess_failure(iso_workspace):
 
 
 @pytest.mark.slow
-def test_stage2_real_claude_reflection_smoke(iso_workspace):
+def test_stage2_real_claude_reflection_smoke(iso_workspace, monkeypatch):
     """Spawn a REAL claude subprocess with a trivial prompt.
 
     Cost control: uses a minimal prompt (~50 tokens in) and 60s timeout.
@@ -204,6 +204,11 @@ def test_stage2_real_claude_reflection_smoke(iso_workspace):
     """
     if not shutil.which("claude"):
         pytest.skip("claude CLI not on PATH")
+
+    # The no-LLM policy chokepoint (Mythos audit 2026-05-04) blocks the
+    # spawn — and skips the reflection-log write — unless explicitly
+    # allowed. This test EXISTS to smoke the real spawn path, so opt in.
+    monkeypatch.setenv("BUDDY_META_USE_LLM", "1")
 
     from src.scanner.automation.claude_subprocess import (
         invoke_claude_reflection,

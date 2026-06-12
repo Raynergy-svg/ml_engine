@@ -292,7 +292,8 @@ def test_handler_spawns_claude_and_records_budget(tmp_workspace, sample_sync_con
     call_kwargs = fake_invoker.call_args.kwargs
     assert call_kwargs["trade_id"] == "T-1001"
     assert call_kwargs["mode"] == "lightweight"
-    assert call_kwargs["timeout_seconds"] == 60
+    # Lightweight timeout raised 60 -> 90 in commit 96fb666 (2026-04-16).
+    assert call_kwargs["timeout_seconds"] == 90
     fake_budget.record.assert_called_once_with(cost_usd=0.04, mode="lightweight")
     fake_lock.release.assert_called_once()
 
@@ -344,6 +345,9 @@ def test_claude_reflection_handler_registered_in_per_trade():
 
 def test_invoke_claude_missing_cli_captured_as_error(tmp_workspace, monkeypatch):
     """FileNotFoundError (claude CLI not on PATH) must be captured, not raised."""
+    # Get past the no-LLM policy chokepoint (default BLOCKED) so the
+    # subprocess error-capture path under test is actually reached.
+    monkeypatch.setenv("BUDDY_META_USE_LLM", "1")
     with patch("src.scanner.automation.claude_subprocess.subprocess.run") as mock_run:
         mock_run.side_effect = FileNotFoundError("claude not found")
         result = invoke_claude_reflection(
@@ -353,10 +357,13 @@ def test_invoke_claude_missing_cli_captured_as_error(tmp_workspace, monkeypatch)
     assert "claude CLI not found" in (result.error or "")
 
 
-def test_invoke_claude_timeout_captured_as_error(tmp_workspace):
+def test_invoke_claude_timeout_captured_as_error(tmp_workspace, monkeypatch):
     """Subprocess timeout must be captured as structured error, not raised."""
     import subprocess as _sub
 
+    # Get past the no-LLM policy chokepoint (default BLOCKED) so the
+    # subprocess error-capture path under test is actually reached.
+    monkeypatch.setenv("BUDDY_META_USE_LLM", "1")
     with patch("src.scanner.automation.claude_subprocess.subprocess.run") as mock_run:
         mock_run.side_effect = _sub.TimeoutExpired(cmd="claude", timeout=1)
         result = invoke_claude_reflection(

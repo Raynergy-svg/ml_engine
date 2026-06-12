@@ -33,6 +33,7 @@ else.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -44,6 +45,26 @@ from tests.scanner._breaker_helpers import (
     make_team,
     make_uncertainty_context,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolated_runtime_state(tmp_path, monkeypatch):
+    """Isolate cwd so StateEngine reads a halted=False state.json.
+
+    ``execute_trade`` re-checks ``StateEngine().get_halted()`` mid-cycle
+    (execution.py, added 2026-05-12) and ``STATE_PATH`` is cwd-relative
+    (``.claude/state.json``). Without this fixture, running pytest from the
+    repo root leaks the LIVE runtime halt flag into these tests: when the
+    live system is halted (the normal fail-closed posture), every trade is
+    rejected with ``BLOCKED: state.halted=True`` BEFORE the circuit-breaker
+    gate under test ever runs. Real file on real disk — no mocks.
+    """
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / ".claude"
+    state_dir.mkdir()
+    (state_dir / "state.json").write_text(
+        json.dumps({"halted": False, "mode": "dry_run", "schema_version": "2"})
+    )
 
 
 # ---------------------------------------------------------------------------
