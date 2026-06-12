@@ -46,7 +46,7 @@ REVIEWER_TOOLS="Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git status:
 # --- DANGER ZONE denylist (egrep patterns vs working-tree paths) ----------------
 # Includes the loop's own harness, contract, and CI — the worker must not be able
 # to edit the thing that constrains it.
-DANGER='^src/scanner/|^src/training/|^src/risk/|^\.claude/|^trained_data/|(^|/)\.env|scripts/ralph\.sh|scripts/run_full_training\.sh|^scripts/agent-loop/|^CLAUDE\.loop\.md|^CLAUDE\.md|^AGENTS\.md|^\.github/|^\.flake8|^pyproject\.toml'
+DANGER='^src/scanner/|^src/training/|^src/risk/|^src/core/|^src/data/|^\.claude/|^trained_data/|(^|/)\.env|scripts/ralph\.sh|scripts/run_full_training\.sh|^scripts/agent-loop/|^CLAUDE\.loop\.md|^CLAUDE\.md|^AGENTS\.md|^\.github/|^\.flake8|^pyproject\.toml'
 
 # --- Precheck: the ONLY hard line is practice vs live. On a demo account,
 # dry_run/live and halted/running carry no real-money risk, so we don't gate them.
