@@ -1041,14 +1041,26 @@ def test_planner_runtime_uses_local_voice_for_direct_answer(monkeypatch):
     assert response.answer == "I can scan, explain the current mode, and work from the last grounded context."
 
 
-def test_planner_runtime_uses_local_voice_for_tool_answer(monkeypatch):
+def test_planner_runtime_prefers_grounded_answer_for_direct_tool(monkeypatch):
+    """Direct-tool answers (get_status etc.) stay grounded — local voice
+    must NOT rewrite them.
+
+    Behavior changed in commit c6362f7 (2026-03-07):
+    _tool_results_prefer_grounded_answer() short-circuits the local-voice
+    rewrite when every tool result comes from a direct tool, so factual
+    status output is returned verbatim instead of an adapter paraphrase.
+    This test previously pinned the pre-c6362f7 behavior (voice rewrite).
+    """
     runtime = PlannerRuntime(config_path="config.yaml", registry=_registry(), provider=None, adapter_path="trained_data/planner/checkpoints")
     monkeypatch.setattr(runtime, "_load_local_adapter", lambda: {"fake": True})
     monkeypatch.setattr(runtime, "_generate_local_adapter_text", lambda *_args, **_kwargs: "I'm on dry-run right now on M5, with risk set from config.")
 
     response = runtime.handle_request("status", runtime_context={"granularity": "M5"})
 
-    assert response.answer == "I'm on dry-run right now on M5, with risk set from config."
+    # The adapter text must NOT leak into a direct-tool answer; the
+    # grounded status string wins.
+    assert response.answer != "I'm on dry-run right now on M5, with risk set from config."
+    assert "dry-run" in response.answer.lower()
 
 
 def test_planner_runtime_answers_plain_no_without_clarification(monkeypatch):

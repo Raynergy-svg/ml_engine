@@ -47,10 +47,22 @@ def test_answer_buddy_question_reports_grounded_workspace_state(tmp_path: Path):
     assert "Sources:" in answer
 
 
-def test_answer_buddy_question_explains_veto_path_from_code():
+def test_answer_buddy_question_explains_veto_path_from_code(tmp_path: Path):
+    # The veto-path explanation is derived from REAL engine source, so the
+    # test root symlinks the actual code files (never a hardcoded absolute
+    # path — the previous /Users/davidcertan/... literal broke when the
+    # repo moved machines). Memory stays hermetic: a fresh empty
+    # trained_data/.memory is created inside tmp_path, so the
+    # "does not persist by default" branch is deterministic regardless of
+    # what the LIVE runtime state currently holds.
+    repo_root = Path(__file__).resolve().parents[1]
+    (tmp_path / "cli").symlink_to(repo_root / "cli")
+    (tmp_path / "buddy_intelligent_mode.py").symlink_to(
+        repo_root / "buddy_intelligent_mode.py"
+    )
     answer = answer_buddy_question(
         "Why did you veto that trade?",
-        root_dir=Path("/Users/davidcertan/Desktop/ml_engine"),
+        root_dir=tmp_path,
         use_llm=False,
     )
 

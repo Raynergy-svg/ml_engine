@@ -167,8 +167,17 @@ def test_apply_clamps_to_max_delta_pct(isolated_team, tmp_path):
 
 
 def test_apply_clamps_to_valid_range(isolated_team, tmp_path):
-    """Target < 0.05 or > 10.0 must be clamped before blending."""
-    # Set trend to 0.06 so a downward push can test the 0.05 floor via delta cap
+    """Target < 0.1 or > 2.0 must be clamped before blending.
+
+    Bounds tightened from [0.05, 10.0] to [0.1, 2.0] in commit 66aca32
+    (2026-05-09), aligning apply_proposed_weights with the documented
+    AGENTS.md weight bounds and min/max_agent_weight config defaults.
+    A current weight already below the floor gets snapped UP to the floor
+    by the final range clamp, overriding the per-cycle ±5% step cap.
+    """
+    # Current weight 0.06 is below the 0.1 floor; a below-floor target
+    # (0.001) clamps to 0.1, blend → 0.072, step cap → 0.063, and the
+    # final range clamp snaps the result up to exactly the 0.1 floor.
     isolated_team._learned_weights["NORMAL"]["trend"] = 0.06
     _write_proposal(
         tmp_path / ".claude" / "proposed_weights.json",
@@ -181,11 +190,11 @@ def test_apply_clamps_to_valid_range(isolated_team, tmp_path):
     with patch.object(isolated_team, "_save_learned_weights"):
         result = isolated_team.apply_proposed_weights()
     assert result["applied"] is True
-    # target clamped to 0.05, blend = 0.06 + 0.3*(0.05-0.06) = 0.057
-    # Then per-cycle cap ±5% = ±0.003 → 0.057 is within so stays 0.057
     new_val = result["changes"]["trend"]["new"]
-    assert new_val >= 0.05
-    assert new_val < 0.06
+    assert new_val == pytest.approx(0.1), (
+        "Below-floor weights must snap to the valid_min=0.1 floor "
+        f"(66aca32 bounds). Got {new_val!r}"
+    )
 
 
 def test_apply_soft_blend_dampens_swings(isolated_team, tmp_path):

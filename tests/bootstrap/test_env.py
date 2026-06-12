@@ -34,7 +34,11 @@ def clean_env(monkeypatch):
         list(_MACOS_DEFAULTS.keys())
         + list(_TUI_DEFAULTS.keys())
         + list(_BEHAVIOR_DEFAULTS.keys())
-        + ["BUDDY_SESSION_ID", "OANDA_API_TOKEN", "BUDDY_TEST_TOGGLE"]
+        # OANDA_ACCOUNT_ID must be stripped too: ensure_runtime_env uses
+        # setdefault semantics (operator env always wins), so a value
+        # exported in the invoking shell would beat the test's .env.local
+        # and fail test_dotenv_local_sourced_for_secrets.
+        + ["BUDDY_SESSION_ID", "OANDA_API_TOKEN", "OANDA_ACCOUNT_ID", "BUDDY_TEST_TOGGLE"]
     )
     for k in keys:
         monkeypatch.delenv(k, raising=False)

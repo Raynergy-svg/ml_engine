@@ -44,7 +44,11 @@ def _patch_today(monkeypatch, weekday: int, day_iso: str = "2026-04-15"):
 # ── Decision logic ────────────────────────────────────────────────────
 
 
-def test_skips_when_status_fresh(iso):
+def test_skips_when_status_fresh(iso, monkeypatch):
+    # Pin to Wednesday: the Mon/Fri schedule trigger fires BEFORE the
+    # freshness check, so on a train day FRESH still spawns (by design).
+    # Without the pin this test is day-of-week flaky (fails Mon + Fri).
+    _patch_today(monkeypatch, weekday=2)
     from src.scanner.automation import autonomous_trainer as at
     fired = []
     result = at.maybe_spawn_autonomous_retrain(
@@ -55,7 +59,11 @@ def test_skips_when_status_fresh(iso):
     assert "FRESH" in (result["skipped_reason"] or "")
 
 
-def test_skips_when_status_aging(iso):
+def test_skips_when_status_aging(iso, monkeypatch):
+    # Same Wednesday pin as test_skips_when_status_fresh — on Mon/Fri the
+    # schedule trigger would spawn (or be masked by the single-flight
+    # guard left over from a prior test, passing this vacuously).
+    _patch_today(monkeypatch, weekday=2)
     from src.scanner.automation import autonomous_trainer as at
     fired = []
     result = at.maybe_spawn_autonomous_retrain(

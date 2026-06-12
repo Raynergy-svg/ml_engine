@@ -75,4 +75,8 @@ def test_obv_is_zscored_not_cumsum():
 
 def test_version_bumped_for_semantics_change():
     from src.core.modular_data_loaders import FEATURE_PIPELINE_VERSION
-    assert FEATURE_PIPELINE_VERSION == "2026-06-10-v2"
+    # Bumped 2026-06-12: news-fusion columns (pca_*/ec_*) can now enter X when
+    # load_direction_data receives news_source/news_embedder/pair. See the v3
+    # rationale block in modular_data_loaders.py and
+    # scripts/train_news_experiment_eur_usd.py (first real news-fused model).
+    assert FEATURE_PIPELINE_VERSION == "2026-06-12-v3"
