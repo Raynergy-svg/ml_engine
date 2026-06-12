@@ -84,6 +84,14 @@ if [ -n "$(git status --porcelain)" ]; then
   echo "Working tree dirty. Commit or stash first."; exit 1
 fi
 
+# Auth preflight: the nested `claude -p` needs keychain access (fails inside
+# sandboxed shells). Fail fast for pennies instead of burning an iteration.
+claude -p "auth preflight — reply OK" --model "$MODEL" --bare \
+  --output-format json > .loop/preflight.json 2>>loop.log
+python3 -c 'import json;d=json.load(open(".loop/preflight.json"));raise SystemExit(1 if d.get("is_error") else 0)' \
+  || { echo "Claude CLI auth preflight FAILED (see .loop/preflight.json) — run from a non-sandboxed shell."; exit 6; }
+echo "Auth preflight OK."
+
 BRANCH="agent/auto-$(date -u '+%Y%m%d-%H%M')"
 git switch -c "$BRANCH" || exit 1
 echo "Branch: $BRANCH (main untouched, scanner never started)"
@@ -152,15 +160,31 @@ verify() {
   fi
 }
 
-# Hard block: abort + revert if ANY working-tree change (tracked OR untracked)
-# touched a Danger Zone path. `git diff` alone misses new untracked files.
+_dirty_paths() {  # porcelain → bare paths (rename: new side)
+  git status --porcelain | sed 's/^ *[A-Z?!]* *//; s/.* -> //'
+}
+
+# Hard block: abort + SURGICAL revert if the WORKER introduced a change to a
+# Danger Zone path. Compares against the baseline captured just before the
+# worker ran — pytest side-effects from the snapshot/verify steps and any
+# external writer that pre-dirtied a path are NOT blamed on the worker.
+# (First failed run proved repo-wide `checkout -- . && clean -fd` deletes
+# innocent artifacts; revert now touches only the offending paths.)
 danger_check() {
   local hits
-  hits="$(git status --porcelain | sed 's/^ *[A-Z?!]* *//; s/.* -> //' | grep -E "$DANGER" || true)"
+  hits="$(_dirty_paths | grep -Fxv -f .loop/baseline 2>/dev/null | grep -E "$DANGER" || true)"
   if [ -n "$hits" ]; then
-    echo "DANGER ZONE TOUCHED — reverting and stopping:"; echo "$hits"
-    git checkout -- . ; git clean -fd
-    echo "Reverted. Branch left at last clean checkpoint: $BRANCH"
+    echo "DANGER ZONE TOUCHED (worker-attributed, vs .loop/baseline) — reverting those paths:"
+    echo "$hits"
+    printf '%s\n' "$hits" | while IFS= read -r h; do
+      [ -n "$h" ] || continue
+      if git ls-files --error-unmatch -- "$h" >/dev/null 2>&1; then
+        git checkout -- "$h"
+      else
+        rm -rf -- "$h"
+      fi
+    done
+    echo "Reverted offending paths only. Branch left at last clean checkpoint: $BRANCH"
     exit 3
   fi
 }
@@ -169,13 +193,16 @@ danger_check() {
 # with the tree intact — Anthropic's pause-on-blocker checkpoint, not silent retry.
 review_diff() {
   [ "$REVIEW" = "1" ] || return 0
-  [ -n "$(git status --porcelain)" ] || return 0
+  [ -n "$(git status --porcelain -- src/tui tests docs notebooks TASKS.md REVIEW-QUEUE.md)" ] || return 0
   local out verdict
   out="$(run_claude "review_$1" "$REVIEWER_TOOLS" "You are an independent reviewer in a fresh context — you did NOT write this change.
-Read CLAUDE.loop.md (the contract), then run: git diff && git status --porcelain
-Judge ONLY the working-tree change against the contract: zero Danger Zone paths, no
-skipped/deleted/weakened tests, no mocks, no TUI control wiring, one small coherent
-unit. Evidence over assertion — cite the diff lines that support your verdict.
+Read CLAUDE.loop.md (the contract), then run:
+  git diff -- src/tui tests docs notebooks TASKS.md REVIEW-QUEUE.md
+That safe-surface diff is the ONLY change under review — churn elsewhere (trained_data,
+.claude, logs) is pytest/runner side-effect, already policed by the runner; ignore it.
+Judge the diff against the contract: no skipped/deleted/weakened tests, no mocks, no
+TUI control wiring, one small coherent unit. Evidence over assertion — cite the diff
+lines that support your verdict.
 Your FINAL line must be exactly 'VERDICT: APPROVE' or 'VERDICT: REJECT — <one-line reason>'." \
     | tee -a loop.log)" || { echo "Reviewer call errored — pausing for human."; exit 4; }
   verdict="$(printf '%s' "$out" | grep -Eo 'VERDICT: (APPROVE|REJECT.*)' | tail -1)"
@@ -189,16 +216,23 @@ Your FINAL line must be exactly 'VERDICT: APPROVE' or 'VERDICT: REJECT — <one-
   esac
 }
 
-checkpoint() {  # $1 = commit message
-  git add -A -- ':(exclude)STATE.md' ':(exclude).loop' && git commit -q -m "$1"
+checkpoint() {  # $1 = commit message — stage SAFE-surface paths only, never repo-wide.
+  # pytest/daemon churn in trained_data, .claude, logs stays uncommitted by design.
+  git add -- src/tui tests docs notebooks TASKS.md REVIEW-QUEUE.md 2>/dev/null
+  git diff --cached --quiet && { echo "(nothing in the safe surface to commit)"; return 0; }
+  git commit -q -m "$1"
 }
 
+ERRS=0
 for i in $(seq 1 "$MAX_ITERS"); do
   echo "===================== ITERATION $i / $MAX_ITERS ====================="
   if ! budget_ok; then
     echo "Budget cap \$$MAX_COST_USD reached (.loop/cost_usd) — stopping for human."; break
   fi
   bash "$DIR/state-snapshot.ml_engine.sh" "$REPO"
+  # Baseline AFTER the snapshot's pytest run: any dirt that exists now was NOT
+  # made by the worker and must not be blamed on it (or reverted).
+  _dirty_paths > .loop/baseline
 
   PROMPT="Read CLAUDE.loop.md (your contract), STATE.md (current state incl. safety
 posture), and TASKS.md. Session-start protocol: if STATE.md shows pytest or flake8
@@ -213,8 +247,15 @@ proposal to REVIEW-QUEUE.md. If the best task is Danger Zone, do NOT edit it —
 propose in REVIEW-QUEUE.md and pick safe work. Touch only src/tui (display), tests,
 docs, notebooks. Keep changes small."
 
-  run_claude "worker_$i" "$WORKER_TOOLS" "$PROMPT" | tee -a loop.log \
-    || echo "(worker reported is_error — continuing to script-level checks)"
+  if run_claude "worker_$i" "$WORKER_TOOLS" "$PROMPT" | tee -a loop.log; then
+    ERRS=0
+  else
+    ERRS=$((ERRS + 1))
+    echo "(worker reported is_error — consecutive errors: $ERRS)"
+    if [ "$ERRS" -ge 2 ]; then
+      echo "Two consecutive worker errors — environment problem, not work problem. Stopping."; exit 5
+    fi
+  fi
 
   danger_check   # script-level guard BEFORE we even verify
 
@@ -224,6 +265,7 @@ docs, notebooks. Keep changes small."
       && echo "Iteration $i committed."
   else
     echo "Verify RED. One repair attempt..."
+    _dirty_paths > .loop/baseline   # re-baseline: verify's own pytest churn is not the repair's doing
     run_claude "repair_$i" "$WORKER_TOOLS" "Verify failed:
 $(tail -n 40 /tmp/_v)
 Fix with the smallest change. No new work, no mocks, no Danger Zone edits, never
