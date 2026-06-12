@@ -48,7 +48,16 @@ logger = logging.getLogger(__name__)
 #                bars flipped 26/26 LONG <-> 26/26 SHORT on anchor length
 #                alone (backtest-harness finding, commit a2cfc48). Models
 #                saved under v1 must refuse to load under v2 and vice versa.
-FEATURE_PIPELINE_VERSION = "2026-06-10-v2"
+# 2026-06-12-v3: news-fusion columns can now enter X. When load_direction_data
+#                is called with news_source/news_embedder/pair, it appends
+#                news_pca_n_components PCA columns + 8 event-class counts
+#                (pca_*/ec_*) AFTER the price feature block. A model trained
+#                with news features has a different input contract than a
+#                price-only v2 model, so the version bumps even though the
+#                price-only path is byte-identical to v2 — cross-version
+#                inference must refuse. First wired into a real saved+gated
+#                model by scripts/train_news_experiment_eur_usd.py (EUR_USD M15).
+FEATURE_PIPELINE_VERSION = "2026-06-12-v3"
 
 
 # =============================================================================
@@ -2166,8 +2175,18 @@ def load_direction_data(
             from src.data.news.feature_alignment import align_news_to_bars
 
             # Bar timestamps aligned to X. df has DatetimeIndex (or 'time' col).
+            # Both branches MUST yield tz-aware UTC datetimes: news_source
+            # .fetch_events rejects naive datetimes (_coerce_utc raises). The
+            # production feature pipeline (FeatureEngineering.create_features)
+            # consumes the 'time' column into a tz-NAIVE DatetimeIndex (drops
+            # the +00:00), so without this localize the news block silently
+            # fell into the except-branch and degraded every run to price-only
+            # (2026-06-12 finding). OANDA candles are UTC, so naive→UTC is the
+            # correct restoration; an already-aware index is converted to UTC.
             if isinstance(df.index, pd.DatetimeIndex):
-                _all_bar_ts = df.index.to_pydatetime().tolist()
+                _idx = df.index
+                _idx = _idx.tz_localize("UTC") if _idx.tz is None else _idx.tz_convert("UTC")
+                _all_bar_ts = _idx.to_pydatetime().tolist()
             elif "time" in df.columns:
                 _all_bar_ts = pd.to_datetime(df["time"], utc=True).dt.to_pydatetime().tolist()
             else:
