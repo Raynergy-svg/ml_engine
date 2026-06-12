@@ -1,0 +1,14 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 2662,
+  "buffer_size": 266,
+  "saved_at": "2026-05-13T21:22:13.591567",
+  "data_sources": [
+    {
+      "id": "JOINT_AUD_USD_20260513_211237_69c1a355",
+      "n_samples": 2662,
+      "timestamp": "2026-05-13T21:12:38.112505"
+    }
+  ]
+}

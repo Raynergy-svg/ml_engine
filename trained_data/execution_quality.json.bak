@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_fills": 24,
+  "total_fills": 26,
   "total_rejections": 0,
   "pairs": {
     "USD_CAD": [
@@ -119,6 +119,13 @@
         "fill_status": "partial",
         "execution_ms": 0.0,
         "timestamp": "2026-04-06T10:25:49.125225+00:00"
+      },
+      {
+        "regime": "NORMAL",
+        "slippage_pips": 0.0,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-05-13T02:44:45.461188+00:00"
       }
     ],
     "EUR_JPY": [
@@ -160,6 +167,13 @@
         "fill_status": "filled",
         "execution_ms": 0.0,
         "timestamp": "2026-04-16T02:39:58.127885+00:00"
+      },
+      {
+        "regime": "NORMAL",
+        "slippage_pips": 1.8,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-05-05T00:42:40.822104+00:00"
       }
     ],
     "EUR_AUD": [
@@ -188,5 +202,5 @@
       }
     ]
   },
-  "last_updated": "2026-04-16T03:03:37.345526+00:00"
+  "last_updated": "2026-05-13T02:44:45.461235+00:00"
 }

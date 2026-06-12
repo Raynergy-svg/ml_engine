@@ -1,0 +1,41 @@
+{
+  "candles": 65000,
+  "failed": 1,
+  "instrument": "USD_JPY",
+  "params": {
+    "batch_size": 128,
+    "dropout_rate": 0.363,
+    "l2_reg": 9.8e-05,
+    "lr": 0.000415,
+    "mixed_precision": false,
+    "patience": 25,
+    "seq_len": 90,
+    "tcn_dilations": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "tcn_kernel_size": 5,
+    "tcn_nb_filters": 256,
+    "top_features": 150
+  },
+  "passed": 0,
+  "results": [
+    {
+      "duration_s": 220.2,
+      "gap": 0.16038028218529443,
+      "instrument": "USD_JPY",
+      "model": "transformer",
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/USD_JPY/_quarantine/transformer_direction-20260611T001343Z",
+      "quarantined": true,
+      "train_acc": 0.6831075549125671,
+      "val_acc": 0.5227272727272727
+    }
+  ],
+  "timestamp": "2026-06-10 20:13:43",
+  "total_duration_s": 220.5
+}

@@ -1,0 +1,81 @@
+{
+  "confidence_label_metadata": {
+    "label_mode": "blend",
+    "leak_fix_version": "2026-04-30",
+    "n_dropped_nan": 1121,
+    "n_pseudo": 6369,
+    "n_real": 0,
+    "n_unavailable": 1131,
+    "per_instrument": {
+      "GBP_USD": {
+        "class_balance_pseudo": 0.5815669649866541,
+        "class_balance_real": null,
+        "n_pseudo": 6369,
+        "n_real": 0
+      }
+    },
+    "score_formula": "score = 20 + 75 * binary_label",
+    "score_range": [
+      20.0,
+      95.0
+    ]
+  },
+  "fine_tune_decisions": {},
+  "instruments": [
+    "GBP_USD"
+  ],
+  "metrics": {
+    "confidence": {
+      "class_balance": 0.5809780170480036,
+      "class_balance_pseudo": null,
+      "class_balance_real": null,
+      "confidence_mae": 35.88872251275764,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "label_mode": "blend",
+      "leak_fix_version": "2026-04-30",
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_pseudo_labels": 6369,
+      "n_real_labels": 0,
+      "n_total_features": 15,
+      "r2_score": -0.05426735986055786,
+      "score_formula": "score = 20 + 75 * binary_label",
+      "score_range": [
+        20.0,
+        95.0
+      ]
+    },
+    "direction": {
+      "avg_weight_norm": 2.1022491229062386,
+      "drift_detected": false,
+      "epochs_trained": 8,
+      "n_train_samples": 1936,
+      "n_val_samples": 323,
+      "total_weight_norm": 79.88546667043707,
+      "train_accuracy": 0.7887396812438965,
+      "val_accuracy": 0.47368421052631576,
+      "val_balanced_accuracy": 0.32791884490913614,
+      "val_direction_gap": 0.09173512571570824,
+      "val_down_accuracy": 0.28205128205128205,
+      "val_up_accuracy": 0.3737864077669903
+    },
+    "momentum": {
+      "acceleration_accuracy": 0.8189712758851035,
+      "model_type": "lightgbm",
+      "momentum_mae": 0.017698965643172377
+    },
+    "risk": {
+      "drawdown_mae_bps": 6.663333225126396,
+      "drawdown_mae_pct": 0.0006663333225126396,
+      "model_type": "lightgbm",
+      "streak_prob_mae": 0.03265906733915968
+    }
+  },
+  "per_instrument_metrics": {},
+  "saved_at": "2026-05-12T21:34:04.645196",
+  "training_type": "joint_multi_pair"
+}

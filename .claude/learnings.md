@@ -359,3 +359,21 @@ _This section is machine-managed — do not edit. Source: `.claude/learnings_out
 | 2026-04-16T14:22:10.529471256Z | 1243 | EUR_GBP | SHORT | 0.68 | -11.8 | sl_hit | LOW | 0.83 |  |
 
 <!-- BUDDY_OUTCOMES_END -->
+
+### Auto-extracted 2026-05-13
+- **[2026-05-13]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $381.50 → *Lower max_model_disagreement threshold*
+- **[2026-05-13]** `pair_behavior` | EUR_GBP SHORT lost: 11.5p (conf=69%) → *Track EUR_GBP directional accuracy*
+- **[2026-05-13]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $290.00 → *Lower max_model_disagreement threshold*
+- **[2026-05-13]** `pair_behavior` | NZD_USD LONG lost: 11.6p (conf=69%) → *Track NZD_USD directional accuracy*
+- **[2026-05-13]** `pair_behavior` | AUD_JPY LONG lost: 17.7p (conf=63%) → *Track AUD_JPY directional accuracy*
+- **[2026-05-13]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $534.57 → *Lower max_model_disagreement threshold*
+- **[2026-05-13]** `pair_behavior` | USD_CHF LONG lost: 16.8p (conf=65%) → *Track USD_CHF directional accuracy*
+- **[2026-05-13]** `pair_behavior` | EUR_AUD SHORT lost: 27.6p (conf=59%) → *Track EUR_AUD directional accuracy*
+- **[2026-05-13]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $114.34 → *Lower max_model_disagreement threshold*
+- **[2026-05-13]** `pair_behavior` | EUR_JPY SHORT lost: 20.8p (conf=55%) → *Track EUR_JPY directional accuracy*
+- **[2026-05-13]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $107.17 → *Lower max_model_disagreement threshold*
+- **[2026-05-13]** `pair_behavior` | AUD_JPY LONG lost: 15.5p (conf=68%) → *Track AUD_JPY directional accuracy*
+- **[2026-05-13]** `agent_accuracy` | uncertainty_was_warning for USD_CHF: score=0.80, lost $365.90 → *Lower max_uncertainty_score threshold*
+- **[2026-05-13]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $365.90 → *Lower max_model_disagreement threshold*
+- **[2026-05-13]** `pair_behavior` | USD_CHF LONG lost: 11.3p (conf=70%) → *Track USD_CHF directional accuracy*
+- **[2026-05-13]** `pair_behavior` | EUR_JPY SHORT lost: 16.5p (conf=64%) → *Track EUR_JPY directional accuracy*

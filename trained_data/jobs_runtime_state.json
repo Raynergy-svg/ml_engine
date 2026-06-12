@@ -1,0 +1,20 @@
+{
+  "ensemble_retrain_weekly": {
+    "last_error": "exit 1: 2026-05-13 21:11:40,340 [INFO] Drift-triggered retrain request found:\n2026-05-13 21:11:40,346 [INFO]   Pairs: GBP_USD, GBP_USD, USD_JPY, USD_JPY, AUD_USD, AUD_USD, NZD_USD, NZD_USD, EUR_GBP, EUR_GBP, AUD_JPY, AUD_JPY, EUR_AUD, EUR_AUD, GBP_CHF, GBP_CHF\n2026-05-13 21:11:40,346 [INFO]   Reason: DriftMonitor: 16 pair(s) showing feature/concept drift\n2026-05-13 21:11:40,346 [INFO]   Priority: normal\n2026-05-13 21:11:40,346 [INFO] Using pairs from drift trigger: GBP_USD, GBP_USD, USD_JPY, USD_JPY, AU",
+    "last_run_at": "2026-05-14T01:11:40+00:00",
+    "last_status": "failure",
+    "last_status_at": "2026-05-14T01:23:07+00:00",
+    "next_run_at_iso": "2026-05-18T10:00:00+00:00",
+    "run_count": 1,
+    "state": "active"
+  },
+  "homework_weekly": {
+    "last_error": null,
+    "last_run_at": "2026-05-14T01:11:40+00:00",
+    "last_status": "success",
+    "last_status_at": "2026-05-14T01:11:42+00:00",
+    "next_run_at_iso": "2026-05-17T02:00:00+00:00",
+    "run_count": 11,
+    "state": "active"
+  }
+}

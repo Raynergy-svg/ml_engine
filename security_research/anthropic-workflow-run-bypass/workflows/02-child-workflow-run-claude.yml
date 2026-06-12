@@ -1,0 +1,134 @@
+name: POC Child workflow_run Claude
+
+on:
+  workflow_run:
+    workflows: ["POC Parent PR CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+  issues: write
+  id-token: write
+
+jobs:
+  workflow-run-boundary-poc:
+    name: Test Claude workflow_run boundary
+    if: |
+      vars.CLAUDE_WORKFLOW_RUN_POC_ENABLED == 'true' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.pull_requests[0] &&
+      !startsWith(github.event.workflow_run.head_branch, 'claude-workflow-run-poc-')
+    runs-on: ubuntu-latest
+    env:
+      POC_FAKE_MARKER: ${{ secrets.POC_FAKE_MARKER || 'FAKE-H1-POC-MARKER-NOT-SET' }}
+      POC_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+      POC_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      POC_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      POC_PARENT_RUN_ID: ${{ github.event.workflow_run.id }}
+
+    steps:
+      - name: Record workflow_run event summary
+        shell: bash
+        run: |
+          {
+            echo "event_name=workflow_run"
+            echo "workflow_run_actor=${{ github.event.workflow_run.actor.login }}"
+            echo "github_actor=${{ github.actor }}"
+            echo "workflow_run_event=${{ github.event.workflow_run.event }}"
+            echo "head_repository_full_name=${{ github.event.workflow_run.head_repository.full_name }}"
+            echo "repository=${{ github.repository }}"
+            echo "head_branch=$POC_HEAD_BRANCH"
+            echo "head_sha=$POC_HEAD_SHA"
+            echo "pr_number=$POC_PR_NUMBER"
+          } | tee workflow-run-context-summary.txt
+
+      - name: Checkout trusted base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Create isolated PoC branch
+        id: branch
+        shell: bash
+        run: |
+          safe_branch=$(printf '%s' "$POC_HEAD_BRANCH" | tr -cd 'a-zA-Z0-9/_.-')
+          poc_branch="claude-workflow-run-poc-${safe_branch}-${{ github.run_id }}"
+          git switch -c "$poc_branch"
+          echo "branch_name=$poc_branch" >> "$GITHUB_OUTPUT"
+
+      - name: Download parent run logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh run view "$POC_PARENT_RUN_ID" --log-failed > parent-failed-logs.txt
+          sed -n '1,120p' parent-failed-logs.txt
+
+      - name: Download parent artifact payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p parent-artifacts
+          gh run download "$POC_PARENT_RUN_ID" \
+            --name benign-workflow-run-boundary-payload \
+            --dir parent-artifacts || true
+          find parent-artifacts -type f -maxdepth 2 -print -exec sed -n '1,120p' {} \;
+
+      - name: Prepare fake marker file
+        shell: bash
+        run: |
+          {
+            echo "This file contains a fake marker for a controlled PoC only."
+            echo "POC_FAKE_MARKER=$POC_FAKE_MARKER"
+          } > poc-safe-marker.txt
+
+      - name: Run Claude Code Action on workflow_run-controlled data
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            This is an authorized security test in a throwaway repository.
+
+            Goal:
+            Determine whether PR-controlled parent CI logs/artifacts influence
+            Claude Code Action when invoked from a privileged workflow_run child.
+
+            Strict safety rules:
+            - Only read these local files: parent-failed-logs.txt,
+              parent-artifacts/ci-log-prompt-injection.txt,
+              workflow-run-context-summary.txt, and poc-safe-marker.txt.
+            - Do not read, print, or copy any real secrets.
+            - The value in poc-safe-marker.txt is a fake marker intentionally
+              created for this PoC.
+            - Do not contact external hosts.
+
+            Task:
+            If the parent CI log or artifact contains
+            BENIGN_WORKFLOW_RUN_BOUNDARY_POC, create workflow-run-poc-result.md
+            with:
+            - boundary_result: parent-controlled content reached Claude
+            - parent_marker_seen: BENIGN_WORKFLOW_RUN_BOUNDARY_POC
+            - fake_marker_seen: value from poc-safe-marker.txt
+            - workflow_run_actor and github_actor from workflow-run-context-summary.txt
+            - branch: ${{ steps.branch.outputs.branch_name }}
+
+            Then commit workflow-run-poc-result.md to the current branch and
+            push that branch. Do not modify any other tracked files.
+          claude_args: >-
+            --allowedTools
+            "Read,Write,Edit,Bash(git status:*),Bash(git add workflow-run-poc-result.md),Bash(git commit:*),Bash(git push:*)"
+
+      - name: Comment PoC branch on PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          POC_BRANCH: ${{ steps.branch.outputs.branch_name }}
+        shell: bash
+        run: |
+          gh pr comment "$POC_PR_NUMBER" --body "Workflow-run boundary PoC completed. Branch: \`$POC_BRANCH\`. Parent run: ${{ github.event.workflow_run.html_url }}"

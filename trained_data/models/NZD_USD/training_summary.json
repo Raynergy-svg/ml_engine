@@ -1,0 +1,92 @@
+{
+  "candles": 65000,
+  "failed": 3,
+  "instrument": "NZD_USD",
+  "params": {
+    "batch_size": 128,
+    "dropout_rate": 0.363,
+    "l2_reg": 9.8e-05,
+    "lr": 0.000415,
+    "mixed_precision": false,
+    "patience": 25,
+    "seq_len": 90,
+    "tcn_dilations": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "tcn_kernel_size": 5,
+    "tcn_nb_filters": 256,
+    "top_features": 150
+  },
+  "passed": 4,
+  "results": [
+    {
+      "duration_s": 299.3,
+      "gap": 0.11091012874076744,
+      "instrument": "NZD_USD",
+      "model": "transformer",
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/NZD_USD/_quarantine/transformer_direction-20260513T233834Z",
+      "quarantined": true,
+      "train_acc": 0.6168516278266907,
+      "val_acc": 0.5059414990859232
+    },
+    {
+      "duration_s": 499.1,
+      "gap": 0,
+      "instrument": "NZD_USD",
+      "model": "tcn",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 510.8,
+      "instrument": "NZD_USD",
+      "model": "lgbm_momentum",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 521.6,
+      "instrument": "NZD_USD",
+      "model": "lgbm_risk",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 531.3,
+      "instrument": "NZD_USD",
+      "model": "ridge",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 544.0,
+      "gap": 0.35705147963780826,
+      "instrument": "NZD_USD",
+      "model": "histgb",
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/NZD_USD/_quarantine/histgb_direction-20260513T234238Z",
+      "quarantined": true,
+      "train_acc": 0.8673978584052396,
+      "val_acc": 0.5103463787674314
+    },
+    {
+      "duration_s": 553.7,
+      "error": "Expected 3D input (batch, seq_len, features), got (45273, 16)",
+      "instrument": "NZD_USD",
+      "model": "tcn_vol_regime",
+      "passed": false
+    }
+  ],
+  "timestamp": "2026-05-13 19:42:49",
+  "total_duration_s": 554.1
+}

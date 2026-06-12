@@ -1,0 +1,14 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 461,
+  "buffer_size": 46,
+  "saved_at": "2026-05-13T21:22:16.441546",
+  "data_sources": [
+    {
+      "id": "JOINT_EUR_GBP_20260513_211909_aabb56a4",
+      "n_samples": 461,
+      "timestamp": "2026-05-13T21:19:09.402754"
+    }
+  ]
+}

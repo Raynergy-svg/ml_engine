@@ -1,0 +1,81 @@
+{
+  "confidence_label_metadata": {
+    "label_mode": "blend",
+    "leak_fix_version": "2026-04-30",
+    "n_dropped_nan": 1677,
+    "n_pseudo": 5797,
+    "n_real": 16,
+    "n_unavailable": 1687,
+    "per_instrument": {
+      "EUR_GBP": {
+        "class_balance_pseudo": 0.550974642056236,
+        "class_balance_real": 0.25,
+        "n_pseudo": 5797,
+        "n_real": 16
+      }
+    },
+    "score_formula": "score = 20 + 75 * binary_label",
+    "score_range": [
+      20.0,
+      95.0
+    ]
+  },
+  "fine_tune_decisions": {},
+  "instruments": [
+    "EUR_GBP"
+  ],
+  "metrics": {
+    "confidence": {
+      "class_balance": 0.5664782501843205,
+      "class_balance_pseudo": null,
+      "class_balance_real": null,
+      "confidence_mae": 37.00201631847613,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "label_mode": "blend",
+      "leak_fix_version": "2026-04-30",
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_pseudo_labels": 5797,
+      "n_real_labels": 16,
+      "n_total_features": 15,
+      "r2_score": -0.10405068949803753,
+      "score_formula": "score = 20 + 75 * binary_label",
+      "score_range": [
+        20.0,
+        95.0
+      ]
+    },
+    "direction": {
+      "avg_weight_norm": 2.1187234198550953,
+      "drift_detected": false,
+      "epochs_trained": 8,
+      "n_train_samples": 461,
+      "n_val_samples": 54,
+      "total_weight_norm": 80.51148995449361,
+      "train_accuracy": 0.6073752641677856,
+      "val_accuracy": 0.5,
+      "val_balanced_accuracy": 0.7755102040816326,
+      "val_direction_gap": 0.44897959183673475,
+      "val_down_accuracy": 0.5510204081632653,
+      "val_up_accuracy": 1.0
+    },
+    "momentum": {
+      "acceleration_accuracy": 0.8383433533734135,
+      "model_type": "lightgbm",
+      "momentum_mae": 0.019596661790000587
+    },
+    "risk": {
+      "drawdown_mae_bps": 3.4076125920668265,
+      "drawdown_mae_pct": 0.0003407612592066827,
+      "model_type": "lightgbm",
+      "streak_prob_mae": 0.03629410257036635
+    }
+  },
+  "per_instrument_metrics": {},
+  "saved_at": "2026-05-13T21:21:59.422344",
+  "training_type": "joint_multi_pair"
+}

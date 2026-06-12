@@ -1,0 +1,51 @@
+{
+  "type": "transferred",
+  "source_pair": "AUD_USD",
+  "target_pair": "NZD_USD",
+  "correlation": 0.7331654682712331,
+  "transfer_config": {
+    "lr_factor": 0.03,
+    "encoder_layers_frozen": 2,
+    "epochs": 50,
+    "use_ewc": true,
+    "ewc_lambda": 100.0
+  },
+  "metrics": {
+    "momentum": {
+      "momentum_mae": 0.020348627487862786,
+      "acceleration_accuracy": 0.8316633266533067,
+      "model_type": "lightgbm"
+    },
+    "risk": {
+      "drawdown_mae_pct": 0.0010084084659343667,
+      "drawdown_mae_bps": 10.084084659343667,
+      "streak_prob_mae": 0.02871370243211504,
+      "model_type": "lightgbm"
+    },
+    "confidence": {
+      "confidence_mae": 35.23568559455424,
+      "r2_score": -0.026853587547003288,
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_total_features": 15,
+      "label_mode": "blend",
+      "n_real_labels": 4,
+      "n_pseudo_labels": 6714,
+      "class_balance_real": 0.0,
+      "class_balance_pseudo": 0.5775990467679476,
+      "class_balance": 0.5767758400680562,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "score_range": [
+        20.0,
+        95.0
+      ],
+      "score_formula": "score = 20 + 75 * binary_label",
+      "leak_fix_version": "2026-04-30"
+    }
+  },
+  "saved_at": "2026-05-13T21:22:06.854432"
+}

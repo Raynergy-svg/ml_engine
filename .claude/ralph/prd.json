@@ -530,8 +530,8 @@
       "id": "US-012",
       "title": "ConfigScreen — add keyboard BINDINGS for stage/queue/reset",
       "priority": 12,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-19T03:16:27Z",
       "depends_on": [],
       "description": "src/tui/screens/config_screen.py:254-803 has no BINDINGS list. Screen relies entirely on mouse-click of STAGE PROFILE / QUEUE FOR APPROVAL / RESET FORM buttons. Cyberpunk keyboard-driven TUI should support `s` (stage), `q` (queue), `r` (reset). Share dispatch with on_button_pressed.",
       "primary_agent": {
@@ -567,8 +567,8 @@
       "id": "US-013",
       "title": "Inbox approve-all — move to Textual @work worker with progress indicator",
       "priority": 13,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-19T10:54:03Z",
       "depends_on": [],
       "description": "src/tui/screens/inbox_screen.py:1260-1407 action_approve_all runs three loops (homework, adjustments, meta) + MetaManager.drain() inline on the main thread. With Phase 96 batch homework (17+ entries), this can lock the TUI for several seconds. Move to @work(thread=True) worker; emit progress via call_from_thread.",
       "primary_agent": {
@@ -605,8 +605,8 @@
       "id": "US-014",
       "title": "Add --live CLI flag and OANDA-creds auto-detect to src/tui/app.py:run()",
       "priority": 14,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Completed by Ralph at 2026-05-19T10:56:40Z",
       "depends_on": [],
       "description": "src/tui/app.py:2402-2422 run() argparser only declares --demo. CLAUDE.md and docs/supervisor_console_runbook.md §1 describe dual-mode --live/--demo with auto-detect via OANDA creds. `./buddy --live` from the documented launch path fails with argparse error.",
       "primary_agent": {

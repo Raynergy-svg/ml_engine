@@ -1,0 +1,136 @@
+[
+  {
+    "trade_id": "1306",
+    "episode_id": "1d088040-4c19-4621-a703-92d5e52cb0f6",
+    "timestamp": "2026-05-13T00:39:55.903116+00:00",
+    "pair": "USD_CHF",
+    "direction": "LONG",
+    "confidence": 0.5642886195736511,
+    "entry_price": 0.78065,
+    "sl_price": 0.77946,
+    "tp_price": 0.78286,
+    "sl_pips": 11.9,
+    "tp_pips": 22.1,
+    "rr_ratio": 1.86,
+    "risk_reward": 1.86,
+    "lots": 1.5,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 11,
+      "agent_total": 14,
+      "agent_passed": true,
+      "weighted_vote_score": 0.9036,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.72,
+          "passed": true,
+          "weight": 0.4196710674532618,
+          "reason": "trend neutral (ADX 53)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.27874629080118546,
+          "passed": true,
+          "weight": 0.26498791065602784,
+          "reason": "RSI neutral (RSI 45.4)",
+          "reason_code": "mean_reversion_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "volatility",
+          "score": 0.45787491279386144,
+          "passed": false,
+          "weight": 0.2523321709411672,
+          "reason": "volatility mixed (normal, 2.6 pips)",
+          "reason_code": "volatility_mixed",
+          "confidence_delta": -0.01,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 0.9936547726194497,
+          "passed": true,
+          "weight": 0.34908770937996025,
+          "reason": "risk acceptable (0.63% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.7740332515605799,
+          "passed": true,
+          "weight": 0.13943468482130902,
+          "reason": "uncertainty contained (0.23)",
+          "reason_code": "uncertainty_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.2259667484394201,
+            "confidence_variance": 0.28830562369951684,
+            "model_disagreement": 0.0,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "NORMAL",
+      "atr_pips": 2.6145818798976905,
+      "uncertainty_score": 0.2259667484394201,
+      "model_disagreement": 0.0,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 1.0,
+        "tp_mult": 1.5
+      }
+    },
+    "spread_pips": 1.5,
+    "group_momentum": null,
+    "gate_details": {
+      "scores": {
+        "direction_score": 0.36682414710521694,
+        "confidence_score": 0.5266910879430435,
+        "momentum_score": 1.0,
+        "risk_score": 0.8736547726194497,
+        "used_learned_weights": false,
+        "ensemble_weights": {
+          "direction": 0.35,
+          "confidence": 0.3,
+          "momentum": 0.2,
+          "risk": 0.15
+        }
+      },
+      "core_score": 0.6174439937626566,
+      "final_score": 0.5556995943863909
+    },
+    "ridge_features": null,
+    "outcome": null,
+    "fill_price": 0.78065,
+    "expected_price": 0.78065,
+    "slippage_pips": 0.0
+  }
+]

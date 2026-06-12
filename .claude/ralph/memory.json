@@ -6,82 +6,82 @@
     "file": ".claude/ralph/prd.json",
     "phase": "ralph/tui-audit-2026-05-13",
     "total_stories": 14,
-    "passed_stories": 11,
+    "passed_stories": 14,
     "story_status": {
       "US-001": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Replace random.uniform spread fake in TradesDrillDown with live OANDA spread"
       },
       "US-002": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Replace hardcoded regime + back-derived ATR in TradesDrillDown with live values"
       },
       "US-003": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Add AbortConfirmModal to action_supervisor_abort"
       },
       "US-004": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Wire _start_veto_countdown to event_bus.signal.pending subscription"
       },
       "US-005": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Narrow global a/c/r BINDINGS so screen-local hotkeys take precedence"
       },
       "US-006": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Require non-empty Reject note in InboxScreen RejectModal"
       },
       "US-007": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Wire JournalScreen DataTable row-selected handler to GateTraceModal"
       },
       "US-008": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "F9 Jobs screen \u2014 replace silent ImportError swallow with visible toast"
       },
       "US-009": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Diagnostics screen \u2014 fix stale TCN/Ridge/RF strings and add psutil-missing banne"
       },
       "US-010": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Empty-state UX \u2014 F1 NAV sparkline, F5 expectancy stats, F5 P/L sparkline"
       },
       "US-011": {
         "passed": true,
-        "completed_at": "2026-05-14T00:52:38.900179+00:00",
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "data_provider \u2014 OANDA auto-reconnect on transient disconnect"
       },
       "US-012": {
-        "passed": false,
-        "completed_at": null,
+        "passed": true,
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "ConfigScreen \u2014 add keyboard BINDINGS for stage/queue/reset"
       },
       "US-013": {
-        "passed": false,
-        "completed_at": null,
+        "passed": true,
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Inbox approve-all \u2014 move to Textual @work worker with progress indicator"
       },
       "US-014": {
-        "passed": false,
-        "completed_at": null,
+        "passed": true,
+        "completed_at": "2026-06-10T20:24:27.435235+00:00",
         "title": "Add --live CLI flag and OANDA-creds auto-detect to src/tui/app.py:run()"
       }
     },
     "last_story_completed": "US-001",
-    "last_updated": "2026-05-14T00:52:38.900179+00:00",
-    "all_complete": false
+    "last_updated": "2026-06-10T20:24:27.435235+00:00",
+    "all_complete": true
   },
   "loop_history": {
     "total_phases_completed": 29,

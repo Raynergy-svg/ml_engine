@@ -1,0 +1,13 @@
+{
+  "candles": 5000,
+  "gate": 0.52,
+  "lookahead": 24,
+  "results": [
+    {
+      "error": "fetch failed: OANDA API error 400: Invalid value specified for 'instrument'",
+      "pair": "EUR_USD_news"
+    }
+  ],
+  "ts": "2026-05-13T02:11:41.803597+00:00",
+  "windows": 1500
+}

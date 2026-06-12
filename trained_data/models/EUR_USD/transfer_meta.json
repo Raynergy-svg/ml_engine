@@ -6,8 +6,9 @@
     "EUR_USD",
     "GBP_USD",
     "USD_CHF",
-    "AUD_USD"
+    "AUD_USD",
+    "EUR_GBP"
   ],
   "correlation_threshold": 0.7,
-  "saved_at": "2026-05-04T18:53:31.365071"
+  "saved_at": "2026-05-13T06:10:29.993515"
 }

@@ -1,35 +1,13 @@
 {
-  "type": "transferred",
-  "source_pair": "EUR_USD",
-  "target_pair": "AUD_USD",
-  "correlation": 0.7943553056503666,
-  "transfer_config": {
-    "lr_factor": 0.03,
-    "encoder_layers_frozen": 2,
-    "epochs": 50,
-    "use_ewc": true,
-    "ewc_lambda": 100.0
-  },
-  "metrics": {
-    "momentum": {
-      "momentum_mae": 0.029739293846890842,
-      "acceleration_accuracy": 0.8096192384769539,
-      "model_type": "lightgbm"
-    },
-    "risk": {
-      "drawdown_mae_pct": 0.00225621213189049,
-      "drawdown_mae_bps": 22.5621213189049,
-      "streak_prob_mae": 0.029600385872183457,
-      "model_type": "lightgbm"
-    },
-    "confidence": {
-      "confidence_mae": 0.4224602422916635,
-      "r2_score": 0.9930298122631767,
-      "model_type": "lightgbm",
-      "n_estimators": 100,
-      "n_important_features": 14,
-      "n_total_features": 15
-    }
-  },
-  "saved_at": "2026-05-04T18:55:56.437291"
+  "type": "master",
+  "pair": "AUD_USD",
+  "group_id": "AUD_USD",
+  "correlated_pairs": [
+    "AUD_USD",
+    "NZD_USD",
+    "AUD_JPY",
+    "EUR_AUD"
+  ],
+  "correlation_threshold": 0.7,
+  "saved_at": "2026-05-13T21:19:08.687234"
 }

@@ -1,6 +1,6 @@
 {
-  "candles": 25000,
-  "failed": 3,
+  "candles": 65000,
+  "failed": 1,
   "instrument": "GBP_JPY",
   "params": {
     "batch_size": 128,
@@ -25,23 +25,29 @@
   "passed": 5,
   "results": [
     {
-      "duration_s": 374.6,
-      "gap": 0,
+      "duration_s": 245.1,
+      "gap": 0.031248751270325892,
       "instrument": "GBP_JPY",
       "model": "transformer",
       "passed": true,
-      "train_acc": 0,
-      "val_acc": 0
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.5185437798500061,
+      "val_acc": 0.549792531120332
     },
     {
-      "duration_s": 379.2,
-      "error": "TCN labels must be integers 0-3, but found: [0.5].\nLabel distribution: {0.0: 5322, 0.5: 5795, 1.0: 6239}\nFix: Ensure load_volatility_regime_data() is used when training TCN volatility filter.",
+      "duration_s": 2433.1,
+      "gap": 0.02989441672444859,
       "instrument": "GBP_JPY",
       "model": "tcn",
-      "passed": false
+      "passed": true,
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.36376887559890747,
+      "val_acc": 0.3338744588744589
     },
     {
-      "duration_s": 384.1,
+      "duration_s": 2444.5,
       "instrument": "GBP_JPY",
       "model": "lgbm_momentum",
       "passed": true,
@@ -49,7 +55,7 @@
       "val_acc": 0
     },
     {
-      "duration_s": 388.8,
+      "duration_s": 2454.8,
       "instrument": "GBP_JPY",
       "model": "lgbm_risk",
       "passed": true,
@@ -57,7 +63,7 @@
       "val_acc": 0
     },
     {
-      "duration_s": 393.0,
+      "duration_s": 2464.0,
       "instrument": "GBP_JPY",
       "model": "ridge",
       "passed": true,
@@ -65,29 +71,17 @@
       "val_acc": 0
     },
     {
-      "duration_s": 402.5,
-      "gap": 0,
+      "duration_s": 2476.4,
+      "gap": 0.39230331043809635,
       "instrument": "GBP_JPY",
       "model": "histgb",
-      "passed": true,
-      "train_acc": 0,
-      "val_acc": 0
-    },
-    {
-      "duration_s": 1037.4,
-      "error": "Classification metrics can't handle a mix of continuous and binary targets",
-      "instrument": "GBP_JPY",
-      "model": "transformer_regime",
-      "passed": false
-    },
-    {
-      "duration_s": 1043.3,
-      "error": "Expected 3D input (batch, seq_len, features), got (17290, 16)",
-      "instrument": "GBP_JPY",
-      "model": "tcn_vol_regime",
-      "passed": false
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/GBP_JPY/_quarantine/histgb_direction-20260514T041902Z",
+      "quarantined": true,
+      "train_acc": 0.8823062081489048,
+      "val_acc": 0.49000289771080846
     }
   ],
-  "timestamp": "2026-03-24 10:30:10",
-  "total_duration_s": 1043.7
+  "timestamp": "2026-05-14 00:19:03",
+  "total_duration_s": 2476.9
 }

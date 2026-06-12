@@ -1,0 +1,51 @@
+{
+  "type": "transferred",
+  "source_pair": "EUR_GBP",
+  "target_pair": "GBP_CHF",
+  "correlation": -0.7378637916903827,
+  "transfer_config": {
+    "lr_factor": 0.03,
+    "encoder_layers_frozen": 2,
+    "epochs": 50,
+    "use_ewc": true,
+    "ewc_lambda": 100.0
+  },
+  "metrics": {
+    "momentum": {
+      "momentum_mae": 0.019262162777527667,
+      "acceleration_accuracy": 0.8209752839011356,
+      "model_type": "lightgbm"
+    },
+    "risk": {
+      "drawdown_mae_pct": 0.0005798248242742171,
+      "drawdown_mae_bps": 5.79824824274217,
+      "streak_prob_mae": 0.029577973167924383,
+      "model_type": "lightgbm"
+    },
+    "confidence": {
+      "confidence_mae": 36.753646457659826,
+      "r2_score": -0.07098258748287423,
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_total_features": 15,
+      "label_mode": "blend",
+      "n_real_labels": 0,
+      "n_pseudo_labels": 5988,
+      "class_balance_real": null,
+      "class_balance_pseudo": 0.5232130928523714,
+      "class_balance": 0.5504652827487473,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "score_range": [
+        20.0,
+        95.0
+      ],
+      "score_formula": "score = 20 + 75 * binary_label",
+      "leak_fix_version": "2026-04-30"
+    }
+  },
+  "saved_at": "2026-05-13T21:22:16.449747"
+}

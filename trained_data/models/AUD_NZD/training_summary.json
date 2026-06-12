@@ -1,0 +1,86 @@
+{
+  "candles": 65000,
+  "failed": 3,
+  "instrument": "AUD_NZD",
+  "params": {
+    "batch_size": 128,
+    "dropout_rate": 0.42,
+    "l2_reg": 0.000208,
+    "lr": 0.000376,
+    "mixed_precision": true,
+    "patience": 20,
+    "seq_len": 90,
+    "tcn_dilations": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "tcn_kernel_size": 7,
+    "tcn_nb_filters": 256,
+    "top_features": 100
+  },
+  "passed": 3,
+  "results": [
+    {
+      "duration_s": 87.8,
+      "gap": 0.26839168780279266,
+      "instrument": "AUD_NZD",
+      "model": "transformer",
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/AUD_NZD/_quarantine/transformer_direction-20260514T003324Z",
+      "quarantined": true,
+      "train_acc": 0.7260923385620117,
+      "val_acc": 0.45770065075921906
+    },
+    {
+      "duration_s": 4096.7,
+      "gap": 0.06686976377920911,
+      "instrument": "AUD_NZD",
+      "model": "tcn",
+      "passed": false,
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.3672870099544525,
+      "val_acc": 0.3004172461752434
+    },
+    {
+      "duration_s": 4110.6,
+      "instrument": "AUD_NZD",
+      "model": "lgbm_momentum",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4124.1,
+      "instrument": "AUD_NZD",
+      "model": "lgbm_risk",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4136.1,
+      "instrument": "AUD_NZD",
+      "model": "ridge",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4150.9,
+      "gap": 0.5019572826130685,
+      "instrument": "AUD_NZD",
+      "model": "histgb",
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/AUD_NZD/_quarantine/histgb_direction-20260514T014107Z",
+      "quarantined": true,
+      "train_acc": 0.9667760459392944,
+      "val_acc": 0.464818763326226
+    }
+  ],
+  "timestamp": "2026-05-13 21:41:08",
+  "total_duration_s": 4151.4
+}

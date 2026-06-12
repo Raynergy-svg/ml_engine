@@ -1,5 +1,5 @@
 {
-  "candles": 25000,
+  "candles": 65000,
   "failed": 2,
   "instrument": "EUR_GBP",
   "params": {
@@ -22,28 +22,32 @@
     "tcn_nb_filters": 256,
     "top_features": 150
   },
-  "passed": 6,
+  "passed": 4,
   "results": [
     {
-      "duration_s": 545.8,
-      "gap": 0,
+      "duration_s": 101.0,
+      "gap": 0.2399413993223658,
       "instrument": "EUR_GBP",
       "model": "transformer",
-      "passed": true,
-      "train_acc": 0,
-      "val_acc": 0
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/EUR_GBP/_quarantine/transformer_direction-20260514T023631Z",
+      "quarantined": true,
+      "train_acc": 0.7750357389450073,
+      "val_acc": 0.5350943396226415
     },
     {
-      "duration_s": 964.4,
-      "gap": 0,
+      "duration_s": 3731.3,
+      "gap": 0.039450739123061906,
       "instrument": "EUR_GBP",
       "model": "tcn",
       "passed": true,
-      "train_acc": 0,
-      "val_acc": 0
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.44557034969329834,
+      "val_acc": 0.40611961057023643
     },
     {
-      "duration_s": 971.0,
+      "duration_s": 3742.3,
       "instrument": "EUR_GBP",
       "model": "lgbm_momentum",
       "passed": true,
@@ -51,7 +55,7 @@
       "val_acc": 0
     },
     {
-      "duration_s": 976.7,
+      "duration_s": 3752.6,
       "instrument": "EUR_GBP",
       "model": "lgbm_risk",
       "passed": true,
@@ -59,7 +63,7 @@
       "val_acc": 0
     },
     {
-      "duration_s": 981.7,
+      "duration_s": 3761.8,
       "instrument": "EUR_GBP",
       "model": "ridge",
       "passed": true,
@@ -67,29 +71,17 @@
       "val_acc": 0
     },
     {
-      "duration_s": 990.6,
-      "gap": 0,
+      "duration_s": 3773.5,
+      "gap": 0.44949404761904754,
       "instrument": "EUR_GBP",
       "model": "histgb",
-      "passed": true,
-      "train_acc": 0,
-      "val_acc": 0
-    },
-    {
-      "duration_s": 1510.2,
-      "error": "Classification metrics can't handle a mix of continuous and binary targets",
-      "instrument": "EUR_GBP",
-      "model": "transformer_regime",
-      "passed": false
-    },
-    {
-      "duration_s": 1515.8,
-      "error": "Expected 3D input (batch, seq_len, features), got (17290, 16)",
-      "instrument": "EUR_GBP",
-      "model": "tcn_vol_regime",
-      "passed": false
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/EUR_GBP/_quarantine/histgb_direction-20260514T033744Z",
+      "quarantined": true,
+      "train_acc": 0.9576785714285714,
+      "val_acc": 0.5081845238095238
     }
   ],
-  "timestamp": "2026-03-24 10:55:33",
-  "total_duration_s": 1516.2
+  "timestamp": "2026-05-13 23:37:44",
+  "total_duration_s": 3774.0
 }

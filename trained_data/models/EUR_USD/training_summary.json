@@ -1,0 +1,41 @@
+{
+  "candles": 65000,
+  "failed": 1,
+  "instrument": "EUR_USD",
+  "params": {
+    "batch_size": 128,
+    "dropout_rate": 0.363,
+    "l2_reg": 9.8e-05,
+    "lr": 0.000415,
+    "mixed_precision": false,
+    "patience": 25,
+    "seq_len": 90,
+    "tcn_dilations": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "tcn_kernel_size": 5,
+    "tcn_nb_filters": 256,
+    "top_features": 150
+  },
+  "passed": 0,
+  "results": [
+    {
+      "duration_s": 166.3,
+      "gap": 0.2444897196749699,
+      "instrument": "EUR_USD",
+      "model": "transformer",
+      "passed": false,
+      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/EUR_USD/_quarantine/transformer_direction-20260610T185849Z",
+      "quarantined": true,
+      "train_acc": 0.7637279629707336,
+      "val_acc": 0.5192382432957637
+    }
+  ],
+  "timestamp": "2026-06-10 14:58:50",
+  "total_duration_s": 166.6
+}

@@ -1,0 +1,5 @@
+{"timestamp": "2026-05-12T23:27:20.836107+00:00", "agent": "mean_reversion", "old_weight": 0.7764, "new_weight": 0.7754, "delta": -0.001, "reason": "signal=-1.00 from 10 trades \u2192 delta=-0.0010", "trade_count": 10}
+{"timestamp": "2026-05-12T23:27:20.836107+00:00", "agent": "risk_sentinel", "old_weight": 1.109, "new_weight": 1.108, "delta": -0.001, "reason": "signal=-1.00 from 10 trades \u2192 delta=-0.0010", "trade_count": 10}
+{"timestamp": "2026-05-12T23:27:20.836107+00:00", "agent": "uncertainty", "old_weight": 0.9664, "new_weight": 0.9654, "delta": -0.001, "reason": "signal=-1.00 from 10 trades \u2192 delta=-0.0010", "trade_count": 10}
+{"timestamp": "2026-05-12T23:27:20.836107+00:00", "agent": "volatility", "old_weight": 0.8242, "new_weight": 0.8232, "delta": -0.001, "reason": "signal=-1.00 from 10 trades \u2192 delta=-0.0010", "trade_count": 10}
+{"timestamp": "2026-05-12T23:27:20.836107+00:00", "agent": "execution_quality", "old_weight": 0.9977, "new_weight": 0.9967, "delta": -0.001, "reason": "signal=-1.00 from 10 trades \u2192 delta=-0.0010", "trade_count": 10}

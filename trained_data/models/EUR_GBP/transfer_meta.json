@@ -1,0 +1,11 @@
+{
+  "type": "master",
+  "pair": "EUR_GBP",
+  "group_id": "EUR_GBP",
+  "correlated_pairs": [
+    "EUR_GBP",
+    "GBP_CHF"
+  ],
+  "correlation_threshold": 0.7,
+  "saved_at": "2026-05-13T21:21:59.424092"
+}
