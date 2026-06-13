@@ -18,7 +18,14 @@
 # Danger Zone paths at the script level (defense in depth on top of the allowlist).
 #
 # Usage:  ./agent-loop.sh /path/to/ml_engine  [max_iterations]
-# Env:    CLAUDE_LOOP_MODEL   (default claude-fable-5 — operator directive)
+# Env:    CLAUDE_LOOP_MODEL   (default claude-opus-4-8 — INTERIM).
+#         Operator wants claude-fable-5, but as of 2026-06-12 the US government issued an
+#         export-control directive suspending Fable 5 + Mythos 5 for ALL customers
+#         (https://www.anthropic.com/news/fable-mythos-access). It 404s for everyone until
+#         restored — not a CLI/account problem. Opus 4.8 is the most capable AVAILABLE
+#         model and the right interim driver for the factor financial logic.
+#         >>> When Fable access is restored: set CLAUDE_LOOP_MODEL=claude-fable-5 (or flip
+#         >>> the default below back). All other Anthropic models are unaffected meanwhile.
 #         LOOP_MAX_COST_USD   (default 20 — hard cumulative spend cap)
 #         LOOP_REVIEW=0       disable the reviewer pass
 #
@@ -29,7 +36,7 @@
 set -uo pipefail
 REPO="${1:-$(pwd)}"
 MAX_ITERS="${2:-8}"
-MODEL="${CLAUDE_LOOP_MODEL:-claude-fable-5}"
+MODEL="${CLAUDE_LOOP_MODEL:-claude-opus-4-8}"
 MAX_COST_USD="${LOOP_MAX_COST_USD:-20}"
 REVIEW="${LOOP_REVIEW:-1}"
 cd "$REPO" || { echo "Cannot cd to $REPO"; exit 1; }
