@@ -195,7 +195,7 @@ class VotingHistoryPanel(Static):
 
         # Header
         if self._scan_id > 0 or self._pair:
-            t.append(f"  Scan", style=_DIM)
+            t.append("  Scan", style=_DIM)
             if self._scan_id:
                 t.append(f" #{self._scan_id}", style=f"bold {_DATA}")
             if self._pair:
@@ -207,7 +207,6 @@ class VotingHistoryPanel(Static):
             name = str(vote.get("name", "???"))
             short = _AGENT_SHORT_NAMES.get(name, name[:6])
             passed = bool(vote.get("passed", False))
-            score = float(vote.get("score", 0.0))
             reason_code = str(vote.get("reason_code", ""))
 
             # Determine signal text from reason code or direction
@@ -233,16 +232,16 @@ class VotingHistoryPanel(Static):
         if self._result:
             result_upper = self._result.upper()
             if "WIN" in result_upper:
-                t.append(f"  Result: ", style=_DIM)
-                t.append(f"TRADE -> WIN", style=f"bold {_POSITIVE}")
+                t.append("  Result: ", style=_DIM)
+                t.append("TRADE -> WIN", style=f"bold {_POSITIVE}")
             elif "LOSS" in result_upper:
-                t.append(f"  Result: ", style=_DIM)
-                t.append(f"TRADE -> LOSS", style=f"bold {_NEGATIVE}")
+                t.append("  Result: ", style=_DIM)
+                t.append("TRADE -> LOSS", style=f"bold {_NEGATIVE}")
             elif "SKIP" in result_upper or "REJECT" in result_upper:
-                t.append(f"  Result: ", style=_DIM)
-                t.append(f"REJECTED", style=f"bold {_WARNING}")
+                t.append("  Result: ", style=_DIM)
+                t.append("REJECTED", style=f"bold {_WARNING}")
             else:
-                t.append(f"  Result: ", style=_DIM)
+                t.append("  Result: ", style=_DIM)
                 t.append(f"{result_upper}", style=f"bold {_DATA}")
 
         return t
@@ -458,7 +457,7 @@ class WeightInspector(Static):
         if not agents:
             t.append("  No RL weight history yet\n", style=_DIM)
             t.append(
-                f"  (waiting for first sync → writes weight_history.jsonl)\n",
+                "  (waiting for first sync → writes weight_history.jsonl)\n",
                 style=_DIM,
             )
             return t

@@ -109,7 +109,6 @@ class CandlestickChart(Static):
 
         candles = self._candles
         height = self._chart_height
-        num_candles = len(candles)
 
         # Compute global price range
         all_prices = []

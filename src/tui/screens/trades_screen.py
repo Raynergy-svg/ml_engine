@@ -11,7 +11,6 @@ Drop-in replacement for PlaceholderContent in the Trades TabPane.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -151,7 +150,7 @@ class DrillDownPanel(Static):
         # -- Header line --
         pnl_color = _POSITIVE if tr.pnl_pips >= 0 else _NEGATIVE
         pnl_sign = "+" if tr.pnl_pips >= 0 else ""
-        t.append(f"  PAIR DRILL-DOWN: ", style=_DIM)
+        t.append("  PAIR DRILL-DOWN: ", style=_DIM)
         t.append(f"{tr.pair}", style=f"bold {_PRIMARY}")
         t.append(f"  {pnl_sign}${tr.pnl_pips:,.0f}", style=f"bold {pnl_color}")
         t.append("\n")

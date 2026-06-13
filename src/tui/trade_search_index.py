@@ -22,7 +22,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
 

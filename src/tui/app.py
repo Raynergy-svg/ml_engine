@@ -9,10 +9,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import random
 import re
-import sys
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -122,6 +120,7 @@ def _emit_signal_veto(
         except Exception:
             pass
     return True
+
 
 # ── Simulated Data (demo mode) ──────────────────────────────────────
 
@@ -538,7 +537,6 @@ class ReflectionLogReader:
 
     def run(self) -> None:
         """Main loop. Call from a thread; exits when stop_flag is set."""
-        import time as _time
         while not self._stop.is_set():
             try:
                 if not self._log_path.exists():
@@ -994,8 +992,10 @@ class BuddyApp(App):
                                 auto_scroll=True,
                             )
                         with Vertical(id="brain-stream"):
-                            yield Label("⟨ BUDDY'S BRAIN ⟩  [stream of consciousness]",
-                                       classes="panel-title")
+                            yield Label(
+                                "⟨ BUDDY'S BRAIN ⟩  [stream of consciousness]",
+                                classes="panel-title",
+                            )
                             # Tier 1 T4: transient phase indicator — tells the
                             # operator what the scanner is doing RIGHT NOW
                             # (scanning / gate-check / executing / idle). Sits
@@ -1008,8 +1008,10 @@ class BuddyApp(App):
                             # T3: cumulative work-unit counter (cycles · pairs · gates · trades).
                             # Shares ScanCounters instance with EmbeddedScanner.counters.
                             yield StatsBar(counters=self._counters, id="stats-bar")
-                            yield RichLog(id="brain-log", highlight=True, markup=True,
-                                         max_lines=500, auto_scroll=True)
+                            yield RichLog(
+                                id="brain-log", highlight=True, markup=True,
+                                max_lines=500, auto_scroll=True,
+                            )
 
             with TabPane("◈ Inbox", id="inbox"):
                 yield InboxScreen(
@@ -2228,7 +2230,6 @@ class BuddyApp(App):
             return
         try:
             from src.tui.snapshot import (
-                build_snapshot,
                 copy_to_clipboard,
                 write_and_copy,
             )

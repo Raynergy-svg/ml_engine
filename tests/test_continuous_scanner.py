@@ -148,9 +148,20 @@ class TestSignalHandler:
         cs = ContinuousScanner(scanner)
         cs._running = True
         cs._setup_signal_handler()
-        # Simulate SIGINT
-        handler = signal.getsignal(signal.SIGINT)
-        handler(signal.SIGINT, None)
+        try:
+            # Simulate SIGINT. The handler's first-signal contract
+            # (continuous.py `_setup_signal_handler`) is: stop() for graceful
+            # shutdown, THEN re-raise KeyboardInterrupt so the blocking loop
+            # unwinds. Calling it bare lets that KeyboardInterrupt escape into
+            # pytest, which aborts the entire session at this test (observed
+            # 2026-06-12: run died here with ~85% of the suite never executed).
+            handler = signal.getsignal(signal.SIGINT)
+            with pytest.raises(KeyboardInterrupt):
+                handler(signal.SIGINT, None)
+        finally:
+            # The setup replaced the process-wide SIGINT/SIGTERM handlers;
+            # restore them so later tests (and pytest itself) aren't polluted.
+            cs._restore_signal_handlers()
         assert cs._running is False
 
 

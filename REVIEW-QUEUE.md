@@ -52,3 +52,24 @@ surface (src/scanner, src/risk, .claude, CI) — human or supervised-session wor
     (`continuous.py:1426` in the traceback) — the suite never completed, so the failure list
     in STATE.md was a truncated snapshot. If the runner imposes a hard timeout on the
     state-snapshot pytest, consider raising it or noting truncation in STATE.md.
+    *(2026-06-12 21:41 update: recurred — same `continuous.py:1426` KeyboardInterrupt signature
+    at 58.43s with `1152 passed, 23 skipped, 4 xfailed` and zero failures listed; STATE.md
+    recorded "pytest FAIL (exit 2)" purely from the interrupt exit code. Still open.)*
+
+*(2026-06-12 21:41 status: items 11 and 12 are RESOLVED — operator installed flake8 7.3.0 +
+pytest-asyncio into the base interpreter at ~17:40; evidence: STATE.md 21:41 snapshot contains
+real flake8 violation output, impossible if the module were missing.)*
+
+## P2 — lint fix outside the loop's SAFE surface (2026-06-12 21:41 red-base iteration)
+
+15. `src/utils/oanda_practice.py:23` — flake8 `F821 undefined name 'Path'`. The annotation
+    `path: "Path"` references `Path`, which is only imported inside `_load_project_dotenv()`
+    (line 68), never at module scope. Runtime-harmless today (`from __future__ import
+    annotations` at :6 means the annotation is never evaluated), but it keeps `flake8 src/`
+    permanently red and would break under `typing.get_type_hints()`. `src/utils/**` is outside
+    the loop's SAFE surface (src/tui, tests, docs, notebooks), so proposing instead of editing.
+    Exact patch (behavior-neutral, import-only):
+    add `from pathlib import Path` to the module-level imports after `from typing import ...`
+    (line 10), and drop the quotes on the annotation (`path: Path`). pathlib is stdlib and
+    side-effect-free; no execution/risk/signal logic is touched. Until this lands, the loop's
+    flake8 gate will show exactly 1 residual error from this file.

@@ -127,8 +127,8 @@ def _alerts_section() -> str:
             if isinstance(entry, dict):
                 lines.append(
                     f"  {entry.get('alert_type', entry.get('type', '?'))}: "
-                    f"value={entry.get('value','?')} "
-                    f"sev={entry.get('severity','?')}"
+                    f"value={entry.get('value', '?')} "
+                    f"sev={entry.get('severity', '?')}"
                 )
             else:
                 lines.append(f"  {entry}")
@@ -150,8 +150,8 @@ def _meta_pipeline_section() -> str:
             out.append(f"ledger entries: {len(rows)}")
             for r in rows[-5:]:
                 out.append(
-                    f"  ts={str(r.get('ts',''))[:19]} "
-                    f"cid={(r.get('change_id','') or '')[:12]} "
+                    f"  ts={str(r.get('ts', ''))[:19]} "
+                    f"cid={(r.get('change_id', '') or '')[:12]} "
                     f"stage={r.get('stage')} event={r.get('event')} "
                     f"kind={r.get('kind')}"
                 )
@@ -190,7 +190,7 @@ def _config_adjustments_section() -> str:
         last = history[-1]
         lines.append(
             f"last history:   key={last.get('key')} "
-            f"new={last.get('new_value')} ts={str(last.get('timestamp',''))[:19]}"
+            f"new={last.get('new_value')} ts={str(last.get('timestamp', ''))[:19]}"
         )
     return _section("Config adjustments", lines)
 
@@ -236,8 +236,8 @@ def _virtual_trades_section() -> str:
         try:
             r = json.loads(raw)
             parsed.append(
-                f"{str(r.get('ts',''))[:19]} {r.get('pair','?')} "
-                f"conf={r.get('raw_confidence', r.get('confidence','?'))} "
+                f"{str(r.get('ts', ''))[:19]} {r.get('pair', '?')} "
+                f"conf={r.get('raw_confidence', r.get('confidence', '?'))} "
                 f"fails={r.get('gate_failures', '?')}"
             )
         except (json.JSONDecodeError, AttributeError):
@@ -278,9 +278,9 @@ def _reflection_log_section(*, max_lines: int = 30) -> str:
             ts = str(r.get("updated_at") or r.get("ts", ""))
             events.append((
                 ts,
-                f"[meta]  {ts[:19]} cid={(r.get('change_id','') or '')[:12]} "
-                f"stage={r.get('stage','?')} event={r.get('event','?')} "
-                f"kind={r.get('kind','?')}",
+                f"[meta]  {ts[:19]} cid={(r.get('change_id', '') or '')[:12]} "
+                f"stage={r.get('stage', '?')} event={r.get('event', '?')} "
+                f"kind={r.get('kind', '?')}",
             ))
         except (json.JSONDecodeError, AttributeError):
             events.append(("", f"[meta]  {raw[:200]}"))
@@ -295,9 +295,9 @@ def _reflection_log_section(*, max_lines: int = 30) -> str:
             ts = str(r.get("ts", ""))
             events.append((
                 ts,
-                f"[train] {ts[:19]} {r.get('trade_id','?')} "
-                f"success={r.get('success','?')} "
-                f"hyp={(r.get('hypothesis','') or '')[:70]!r}",
+                f"[train] {ts[:19]} {r.get('trade_id', '?')} "
+                f"success={r.get('success', '?')} "
+                f"hyp={(r.get('hypothesis', '') or '')[:70]!r}",
             ))
         except (json.JSONDecodeError, AttributeError):
             events.append(("", f"[train] {raw[:200]}"))
@@ -346,10 +346,10 @@ def _autotrain_log_section() -> str:
         try:
             r = json.loads(raw)
             parsed.append(
-                f"{str(r.get('ts',''))[:19]} "
-                f"trade_id={r.get('trade_id','?')} "
-                f"success={r.get('success','?')} "
-                f"hypothesis={(r.get('hypothesis','') or '')[:80]!r}"
+                f"{str(r.get('ts', ''))[:19]} "
+                f"trade_id={r.get('trade_id', '?')} "
+                f"success={r.get('success', '?')} "
+                f"hypothesis={(r.get('hypothesis', '') or '')[:80]!r}"
             )
         except (json.JSONDecodeError, AttributeError):
             parsed.append(raw[:200])
@@ -363,7 +363,7 @@ def _brain_feed_section() -> str:
     for raw in lines:
         try:
             r = json.loads(raw)
-            parsed.append(f"{str(r.get('ts',''))[:19]}  {r.get('msg','')[:140]}")
+            parsed.append(f"{str(r.get('ts', ''))[:19]}  {r.get('msg', '')[:140]}")
         except (json.JSONDecodeError, AttributeError):
             parsed.append(raw[:200])
     return _section("Brain feed (last %d lines)" % DEFAULT_BRAIN_LINES, parsed)

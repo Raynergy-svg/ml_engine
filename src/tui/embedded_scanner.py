@@ -25,7 +25,11 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Annotation-only (PEP 563 deferred): used by the `counters` kwarg below.
+    from src.tui.widgets.stats_bar import ScanCounters
 
 logger = logging.getLogger(__name__)
 

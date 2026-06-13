@@ -66,6 +66,8 @@ By PATH (the runner also hard-blocks any diff touching these):
   alert_state.json, and any runtime state.
 - `trained_data/**` — models, journals, backtests (mutable live state).
 - `scripts/ralph.sh`, `scripts/run_full_training.sh`, and any promotion/staging script.
+- `src/factor/ship_gate.py` — the pre-registered factor ship bar (PRD US-007). The rest
+  of `src/factor/**` is SAFE; the gate is not. Gate changes need an operator-signed commit.
 - `.env`, secrets, OANDA tokens, account IDs anywhere.
 
 By BEHAVIOR (regardless of path) — you may NEVER:
@@ -77,7 +79,27 @@ By BEHAVIOR (regardless of path) — you may NEVER:
 - Change what the ensemble decides, what gets sized, or what reaches the promotion gate.
 - Wire a TUI control to fire/cancel an order, un-halt, or flip mode/environment.
 
+## ★ PRIMARY MISSION — evolve the daily FX factor portfolio (`src/factor/**`)
+Operator decision 2026-06-13: you have **full self-evolution** of the factor strategy
+(carry + trend + value on daily FX). See `tasks/prd-fx-factor-portfolio.md` and
+`docs/factor-portfolio-results.md`. Today's honest verdict is a **FAIL** (carry+trend
+net Sharpe ≈ −0.2 on 7 USD-only majors). Work TASKS.md (FP-1…FP-5) toward a real edge.
+
+Factor-specific invariants (violating any = automatic reject):
+- **`src/factor/ship_gate.py` is OFF LIMITS** (Danger Zone). It is the pre-registered
+  pass bar (PRD US-007). NEVER edit its thresholds or logic to make a book "pass." A
+  FAIL verdict is a valid, honest outcome — report it. If you think the bar is wrong,
+  propose an operator-signed `gate-change:` in REVIEW-QUEUE.md.
+- **Causality is sacred:** no signal may use data after its own date. Preserve the
+  window-invariance and lookahead-canary tests; a new signal ships with its causality test.
+- After ANY `src/factor/` change, run `python scripts/run_factor_backtest.py` and paste
+  the final **VERDICT:** line as evidence (alongside pytest/flake8).
+- Do not delete/weaken a test or a done-criterion to move the number.
+
 ## SAFE to iterate autonomously
+- `src/factor/**` EXCEPT `ship_gate.py` — signals, data loaders, portfolio construction,
+  backtest. This is real financial logic: keep it causal, cost-aware, no-mock, deterministic.
+- `scripts/run_factor_backtest.py` — the factor entrypoint.
 - `src/tui/**` — DISPLAY only: rendering, layout, panels, charts, keybindings that are
   read-only views of P&L / positions / signals. (Control wiring → Danger Zone.)
 - `tests/**` — add/strengthen coverage. **No-mock policy: do not introduce mocks.**
@@ -93,7 +115,9 @@ By BEHAVIOR (regardless of path) — you may NEVER:
 3. Backtest (`scripts/backtest_harness.py --instrument <pair>`) ONLY if a live
    `trained_data/models/*/transformer_direction.keras` artifact exists. The runtime is
    currently fail-closed (all transformers quarantined) — the runner skips it then.
-4. NO working-tree change (tracked or untracked) touches a Danger Zone path.
+4. Factor smoke: `python scripts/run_factor_backtest.py` must RUN to completion (exit 0)
+   on the cached daily data. A FAIL **verdict** is fine — only a crash fails the gate.
+5. NO working-tree change (tracked or untracked) touches a Danger Zone path.
 Never skip, delete, or weaken a test, add a mock, relax an assertion, or edit a
 TASKS.md done-criterion to go green. If you can't go green honestly, stop and explain
 — a documented red stop beats a dishonest green.

@@ -14,7 +14,9 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 
 def _safe_float(v, default: float = 0.0) -> float:
@@ -44,9 +46,7 @@ def _is_valid_risk(v) -> bool:
     except (TypeError, ValueError):
         return False
     return not (math.isnan(fv) or math.isinf(fv)) and fv >= 0.0
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -510,9 +510,9 @@ class DataProvider:
     def _refresh_trades(self, snap: DashboardSnapshot) -> DashboardSnapshot:
         """Fetch open trades from OANDA (only OPEN, not closed history)."""
         try:
-            # Get open positions for unrealized P/L lookup
-            positions = self._broker.get_open_positions()
-            pnl_by_instrument = {p.instrument: p.unrealized_pnl for p in positions}
+            # Touch open positions (kept for connection liveness; the per-trade
+            # unrealized P/L below comes from the raw trade dicts, not this call)
+            self._broker.get_open_positions()
 
             # Fetch only OPEN trades — guard private _client access
             client = getattr(self._broker, '_client', None)

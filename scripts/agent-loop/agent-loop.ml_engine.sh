@@ -40,13 +40,18 @@ mkdir -p .loop
 # dontAsk denies everything not listed, without prompting — the agent sees the
 # denial and must adapt or write a REVIEW-QUEUE proposal. No git commit/push (the
 # runner checkpoints), no network tools, no arbitrary shell.
-WORKER_TOOLS="Read,Glob,Grep,Edit,Write,TodoWrite,Bash(python -m pytest:*),Bash(python -m flake8:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
+WORKER_TOOLS="Read,Glob,Grep,Edit,Write,TodoWrite,Bash(python -m pytest:*),Bash(python -m flake8:*),Bash(python scripts/run_factor_backtest.py:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(ls:*)"
 REVIEWER_TOOLS="Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git status:*)"
 
 # --- DANGER ZONE denylist (egrep patterns vs working-tree paths) ----------------
 # Includes the loop's own harness, contract, and CI — the worker must not be able
 # to edit the thing that constrains it.
-DANGER='^src/scanner/|^src/training/|^src/risk/|^src/core/|^src/data/|^\.claude/|^trained_data/|(^|/)\.env|scripts/ralph\.sh|scripts/run_full_training\.sh|^scripts/agent-loop/|^CLAUDE\.loop\.md|^CLAUDE\.md|^AGENTS\.md|^\.github/|^\.flake8|^pyproject\.toml'
+# NOTE: src/factor/ is INTENTIONALLY writable by the loop (operator decision
+# 2026-06-13: full self-evolution of the factor strategy). The ONE exception is
+# the ship gate — src/factor/ship_gate.py is the pre-registered pass bar (PRD
+# US-007); letting the worker move it would be reward-hacking, so it is protected
+# here and changes require an operator-signed "gate-change:" commit.
+DANGER='^src/scanner/|^src/training/|^src/risk/|^src/core/|^src/data/|^src/factor/ship_gate\.py|^\.claude/|^trained_data/|(^|/)\.env|scripts/ralph\.sh|scripts/run_full_training\.sh|^scripts/agent-loop/|^CLAUDE\.loop\.md|^CLAUDE\.md|^AGENTS\.md|^\.github/|^\.flake8|^pyproject\.toml'
 
 # --- Precheck: the ONLY hard line is practice vs live. On a demo account,
 # dry_run/live and halted/running carry no real-money risk, so we don't gate them.
@@ -161,6 +166,15 @@ verify() {
   else
     echo "backtest skipped: no live transformer artifact (fail-closed state)" >> /tmp/_v
   fi
+  # Factor-strategy smoke: the backtest + ship gate must still RUN end-to-end.
+  # A FAIL verdict is a VALID outcome and must NOT fail verify; only a crash
+  # (non-zero exit from an exception) does. Uses cached daily data — no network.
+  if ls market_data/factor/*_D.csv >/dev/null 2>&1; then
+    timeout 180 python scripts/run_factor_backtest.py >> /tmp/_v 2>&1 \
+      || { echo "factor backtest CRASHED (a crash, not a FAIL verdict)" >> /tmp/_v; return 1; }
+  else
+    echo "factor backtest skipped: no cached daily data in market_data/factor" >> /tmp/_v
+  fi
 }
 
 _dirty_paths() {  # porcelain → bare paths (rename: new side)
@@ -196,11 +210,11 @@ danger_check() {
 # with the tree intact — Anthropic's pause-on-blocker checkpoint, not silent retry.
 review_diff() {
   [ "$REVIEW" = "1" ] || return 0
-  [ -n "$(git status --porcelain -- src/tui tests docs notebooks TASKS.md REVIEW-QUEUE.md)" ] || return 0
+  [ -n "$(git status --porcelain -- src/tui src/factor scripts/run_factor_backtest.py tests docs notebooks TASKS.md REVIEW-QUEUE.md)" ] || return 0
   local out verdict
   out="$(run_claude "review_$1" "$REVIEWER_TOOLS" "You are an independent reviewer in a fresh context — you did NOT write this change.
 Read CLAUDE.loop.md (the contract), then run:
-  git diff -- src/tui tests docs notebooks TASKS.md REVIEW-QUEUE.md
+  git diff -- src/tui src/factor scripts/run_factor_backtest.py tests docs notebooks TASKS.md REVIEW-QUEUE.md
 That safe-surface diff is the ONLY change under review — churn elsewhere (trained_data,
 .claude, logs) is pytest/runner side-effect, already policed by the runner; ignore it.
 Judge the diff against the contract: no skipped/deleted/weakened tests, no mocks, no
@@ -221,7 +235,7 @@ Your FINAL line must be exactly 'VERDICT: APPROVE' or 'VERDICT: REJECT — <one-
 
 checkpoint() {  # $1 = commit message — stage SAFE-surface paths only, never repo-wide.
   # pytest/daemon churn in trained_data, .claude, logs stays uncommitted by design.
-  git add -- src/tui tests docs notebooks TASKS.md REVIEW-QUEUE.md 2>/dev/null
+  git add -- src/tui src/factor scripts/run_factor_backtest.py tests docs notebooks TASKS.md REVIEW-QUEUE.md 2>/dev/null
   git diff --cached --quiet && { echo "(nothing in the safe surface to commit)"; return 0; }
   git commit -q -m "$1"
 }
@@ -240,15 +254,32 @@ for i in $(seq 1 "$MAX_ITERS"); do
   PROMPT="Read CLAUDE.loop.md (your contract), STATE.md (current state incl. safety
 posture), and TASKS.md. Session-start protocol: if STATE.md shows pytest or flake8
 FAIL, fixing that IS this iteration's task — never build new work on a red base.
-Otherwise do ONE coherent unit of SAFE work: pick the highest-value task NOT in the
-Danger Zone, implement it, run pytest + flake8, and fix what you broke. Evidence over
-assertion: end your reply with the actual final pytest and flake8 summary lines you
-observed. Never skip, delete, or weaken a test (or edit a TASKS.md done-criterion) to
-go green. No mocks. Do NOT git commit or push — the runner checkpoints for you. You
-run under a permission allowlist; a denied tool call is signal — adapt or append a
-proposal to REVIEW-QUEUE.md. If the best task is Danger Zone, do NOT edit it —
-propose in REVIEW-QUEUE.md and pick safe work. Touch only src/tui (display), tests,
-docs, notebooks. Keep changes small."
+
+PRIMARY MISSION: evolve the daily FX factor portfolio (src/factor/, the operator-
+approved strategy — see tasks/prd-fx-factor-portfolio.md and docs/factor-portfolio-
+results.md). The honest verdict today is a FAIL (carry+trend net Sharpe ~ -0.2). Your
+job is to work the backlog toward a real edge — highest-value first.
+
+Otherwise do ONE coherent unit of work: pick the highest-value task NOT in the Danger
+Zone, implement it, then run: python -m pytest tests/ -q  AND  python -m flake8 src/
+--config=.flake8  AND, for any src/factor change, python scripts/run_factor_backtest.py.
+Paste the actual final pytest/flake8 summary lines AND the ship-gate VERDICT line you
+observed — evidence over assertion.
+
+HARD INVARIANTS (violating any = reject):
+- src/factor/ship_gate.py is OFF LIMITS (the pre-registered pass bar). NEVER edit the
+  gate thresholds or logic to make a book 'pass'. A FAIL verdict is a valid, honest
+  result — report it, don't hack it. If you believe the bar is wrong, propose it in
+  REVIEW-QUEUE.md for an operator-signed gate-change.
+- Keep every signal CAUSAL: no lookahead. Preserve the window-invariance + lookahead-
+  canary tests; if you add a signal, add its causality test too.
+- No mocks (real data/disk only). Never weaken/skip/delete a test or a TASKS done-criterion.
+- Do NOT unhalt, do NOT touch the live runtime (src/scanner|risk|training|core|data),
+  do NOT flip dry_run→live. If the best task is Danger Zone, propose in REVIEW-QUEUE.md.
+
+Writable surface: src/factor (except ship_gate.py), scripts/run_factor_backtest.py,
+src/tui (display only), tests, docs, notebooks. Do NOT git commit — the runner does.
+Keep changes small and coherent."
 
   if run_claude "worker_$i" "$WORKER_TOOLS" "$PROMPT" | tee -a loop.log; then
     ERRS=0

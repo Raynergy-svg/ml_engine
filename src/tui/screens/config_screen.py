@@ -30,7 +30,6 @@ from textual.widgets import (
     RadioButton,
     RadioSet,
     Rule,
-    Static,
     Switch,
 )
 

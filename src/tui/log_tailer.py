@@ -19,7 +19,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +131,10 @@ class LogTailer:
         return TailChunk(lines=lines, rotated=rotated)
 
 
-def tail_last_n_lines(path: Path | str, *, n: int = DEFAULT_HISTORY_LINES,
-                     per_line_cap: int = DEFAULT_PER_LINE_CAP) -> list[str]:
+def tail_last_n_lines(
+    path: Path | str, *, n: int = DEFAULT_HISTORY_LINES,
+    per_line_cap: int = DEFAULT_PER_LINE_CAP,
+) -> list[str]:
     """One-shot helper: return the last `n` non-empty lines of a file.
 
     Used by the modal on first open to seed the RichLog before the

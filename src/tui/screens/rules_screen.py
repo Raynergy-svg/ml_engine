@@ -20,7 +20,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Markdown, Static, Tree
+from textual.widgets import Input, Label, Markdown, Static, Tree
 from textual.widgets.tree import TreeNode
 
 logger = logging.getLogger(__name__)

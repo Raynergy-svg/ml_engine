@@ -6,15 +6,13 @@ Trade history, learning extraction, expectancy stats, P/L curve.
 from __future__ import annotations
 
 import json
-import random
-from datetime import datetime, timezone
 from pathlib import Path
 
 from rich.text import Text
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import DataTable, Label, RichLog, Sparkline, Static
+from textual.widgets import DataTable, Label, Sparkline, Static
 
 from src.tui.data_provider import DashboardSnapshot
 
@@ -201,8 +199,10 @@ class JournalScreen(Container):
 
         with Horizontal(id="journal-bottom"):
             with Vertical(id="journal-learnings-panel"):
-                yield Label("⟨ LEARNINGS ⟩  extracted from outcomes",
-                           classes="panel-title")
+                yield Label(
+                    "⟨ LEARNINGS ⟩  extracted from outcomes",
+                    classes="panel-title",
+                )
                 yield LearningsPanel(id="learnings-panel")
 
             with Vertical(id="journal-pnl-panel"):
@@ -301,7 +301,6 @@ class JournalScreen(Container):
             conf = agents_data.get("weighted_vote_score") or entry.get("confidence") or 0
             entry_p = entry.get("entry_price") or 0
             exit_p = entry.get("exit_price") or 0
-            exit_reason = outcome.get("exit_reason", "?")
             entry_time = entry.get("entry_time") or entry.get("timestamp") or ""
 
             result_str = "WIN" if won else "LOSS"

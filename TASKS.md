@@ -3,6 +3,44 @@
 # Done-criteria are immutable once written: build to the criterion, never edit it to fit.
 # Ordered by value. Danger-Zone findings from the same audit live in REVIEW-QUEUE.md — not here.
 
+## ★ PRIMARY MISSION — Daily FX factor portfolio (src/factor/)
+# Operator-approved strategy (tasks/prd-fx-factor-portfolio.md). Today's honest verdict
+# is a FAIL: carry+trend net Sharpe ~ -0.2 on 7 USD-only majors. Work these toward a real
+# edge. src/factor/ship_gate.py is OFF LIMITS (pre-registered bar). After ANY src/factor
+# change, run `python scripts/run_factor_backtest.py` and paste the VERDICT line as evidence.
+# A FAIL is a valid result — report it honestly, never weaken the gate to pass.
+
+- [ ] FP-1 (HIGHEST) — Cross-section breadth: add G10 CROSSES (e.g. AUD_JPY, NZD_JPY, EUR_JPY,
+      GBP_JPY, EUR_GBP, AUD_NZD, EUR_CHF) so carry/value rank over a real cross-section instead
+      of 7 USD-only legs (the current rank is mostly a disguised USD-cycle bet — this is the
+      single change most likely to lift carry's Sharpe; PRD OQ-3). Extend PAIRS/loader to fetch
+      + cache + validate the crosses; recompute signals cross-sectionally over the wider set.
+      Done: backtest runs over ≥12 instruments incl. crosses; each new instrument's history is
+      validated (≥10y, else a named warning); a window-invariance test still passes; the report
+      JSON records the full instrument list; VERDICT line pasted in the iteration reply.
+
+- [ ] FP-2 — Value factor (US-004): add src/factor/reer.py fetching BIS REER (monthly, free),
+      build value_signal into the book (already a pure function in signals.py). Causality +
+      window-invariance tests in the US-002/003 style; no mocks.
+      Done: backtest re-run WITH and WITHOUT value, both net-Sharpe numbers recorded in
+      docs/factor-portfolio-results.md; new reer.py has ≥4 no-mock tests; VERDICT line pasted.
+
+- [ ] FP-3 — Rebalance cadence study (PRD OQ-4): make rebalance cadence a parameter (weekly vs
+      monthly) and report net-of-cost Sharpe + turnover for both. Trend's 48x/yr turnover is a
+      prime cost sink. Done: a no-mock test asserts monthly turnover < weekly; results table in
+      docs/factor-portfolio-results.md; VERDICT lines for both cadences pasted.
+
+- [ ] FP-4 — Test coverage for the data layers that currently have none: src/factor/rates.py
+      and the gap/validation paths of data_loader.py. Real disk, no mocks, no network (use a
+      written tmp cache + synthetic frames). Done: tests/test_factor_rates.py with ≥5 tests green.
+
+- [ ] FP-5 — Auto-report: extend scripts/run_factor_backtest.py (or a sibling) to append a
+      dated row (date, book, net Sharpe, maxDD, +years, verdict) to a docs/factor-ledger.md
+      table on every run, so drift in the honest number is tracked over time. Done: ledger row
+      written atomically; a test covers the row formatter.
+
+## ──────────────────────────────────────────────────────────────────────────
+
 - [x] P0 — Fix live-journal wipe hazard in `tests/test_ewma_wiring.py:419`. (2026-06-12: fixture
       added to the test signature at :410; `grep -n "temp_state_dir" tests/test_ewma_wiring.py`
       shows it; file's 32 tests pass. Live journal verified intact — the runner's earlier full-suite
