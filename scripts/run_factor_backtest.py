@@ -20,8 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.factor import PAIRS, FACTOR_PIPELINE_VERSION  # noqa: E402
-from src.factor.data_loader import load_or_fetch  # noqa: E402
+from src.factor import PAIRS, ALL_PAIRS, FACTOR_PIPELINE_VERSION  # noqa: E402
+from src.factor.data_loader import load_universe  # noqa: E402
 from src.factor.rates import build_rate_diff_panel  # noqa: E402
 from src.factor.signals import (  # noqa: E402
     tsmom_signal,
@@ -37,17 +37,6 @@ from src.factor.portfolio import (  # noqa: E402
 from src.factor.backtest import run_backtest, write_report  # noqa: E402
 from src.factor.ship_gate import evaluate_gate, verdict_to_dict  # noqa: E402
 
-import pandas as pd  # noqa: E402
-
-
-def build_panels(refresh: bool):
-    closes = {}
-    for p in PAIRS:
-        df = load_or_fetch(p, refresh=refresh)
-        closes[p] = df["close"].rename(p)
-    close = pd.concat(closes.values(), axis=1, join="inner").sort_index()
-    return close
-
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -56,12 +45,20 @@ def main() -> int:
                     help="run trend (TSMOM) only")
     ap.add_argument("--no-carry", action="store_true",
                     help="skip the carry factor (FRED rate fetch)")
+    ap.add_argument("--majors-only", action="store_true",
+                    help="trade the 7 USD majors only (no G10 crosses)")
     args = ap.parse_args()
 
-    print(f"[factor] pipeline={FACTOR_PIPELINE_VERSION} pairs={PAIRS}")
-    close = build_panels(args.refresh)
-    print(f"[factor] panel: {close.shape[0]} aligned days "
-          f"{close.index[0].date()} -> {close.index[-1].date()}")
+    universe = PAIRS if args.majors_only else ALL_PAIRS
+    print(f"[factor] pipeline={FACTOR_PIPELINE_VERSION} "
+          f"universe={'majors' if args.majors_only else 'majors+crosses'} "
+          f"({len(universe)} instruments)")
+    close, _open, dropped = load_universe(universe, refresh=args.refresh)
+    if dropped:
+        print(f"[factor] dropped {len(dropped)} (insufficient history): "
+              f"{[d[0] for d in dropped]}")
+    print(f"[factor] panel: {close.shape[1]} instruments × {close.shape[0]} "
+          f"aligned days {close.index[0].date()} -> {close.index[-1].date()}")
 
     returns = close.pct_change()
     signals = []

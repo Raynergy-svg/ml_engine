@@ -1,0 +1,31 @@
+{
+  "criteria": {
+    "history_length": {
+      "passed": true,
+      "threshold": 10,
+      "value": 13
+    },
+    "max_drawdown": {
+      "passed": false,
+      "threshold": 0.25,
+      "value": 0.526903402577829
+    },
+    "net_sharpe": {
+      "passed": false,
+      "threshold": 0.4,
+      "value": -0.3507090056713031
+    },
+    "positive_years": {
+      "passed": false,
+      "threshold": 6,
+      "value": 4
+    },
+    "walk_forward": {
+      "passed": true,
+      "threshold": true,
+      "value": true
+    }
+  },
+  "passed": false,
+  "summary": "FAIL \u2014 failing criteria: net_sharpe, positive_years, max_drawdown. No deployable edge at the pre-registered bar."
+}

@@ -27,4 +27,26 @@ PAIRS = [
     "USD_CHF",
 ]
 
-__all__ = ["FACTOR_PIPELINE_VERSION", "PAIRS"]
+# FP-1: liquid G10 CROSSES (no USD leg) — they give carry/value a real
+# cross-section instead of 7 trades that all share the USD as one leg (where the
+# rank degenerates into a USD-cycle bet). Every currency here has a short-rate
+# series in rates.FRED_RATE_IDS, so carry differentials are computable for all.
+CROSSES = [
+    "EUR_JPY",
+    "GBP_JPY",
+    "AUD_JPY",
+    "NZD_JPY",
+    "CAD_JPY",
+    "CHF_JPY",
+    "EUR_GBP",
+    "EUR_CHF",
+    "EUR_AUD",
+    "GBP_AUD",
+    "AUD_NZD",
+    "EUR_CAD",
+]
+
+# Full default trading universe for the breadth backtest.
+ALL_PAIRS = PAIRS + CROSSES
+
+__all__ = ["FACTOR_PIPELINE_VERSION", "PAIRS", "CROSSES", "ALL_PAIRS"]

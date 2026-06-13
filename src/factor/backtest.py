@@ -35,7 +35,11 @@ DEFAULT_FINANCING_MARKUP_ANNUAL = 0.01  # OANDA retail markup, charged on gross
 BACKTEST_DIR = Path("trained_data/backtests")
 
 # Conservative OANDA-practice daily spreads (pips). Wider than headline quotes.
+# Crosses are meaningfully wider than majors — modeling them at the major default
+# would flatter the result, so they are listed explicitly. Anything not listed
+# falls back to 2.5 pips (a deliberately non-optimistic placeholder).
 DEFAULT_SPREADS_PIPS: Dict[str, float] = {
+    # majors
     "EUR_USD": 1.5,
     "USD_JPY": 1.5,
     "GBP_USD": 2.0,
@@ -43,7 +47,21 @@ DEFAULT_SPREADS_PIPS: Dict[str, float] = {
     "NZD_USD": 2.2,
     "USD_CAD": 2.0,
     "USD_CHF": 2.2,
+    # G10 crosses (wider books)
+    "EUR_JPY": 1.8,
+    "GBP_JPY": 3.0,
+    "AUD_JPY": 2.0,
+    "NZD_JPY": 2.6,
+    "CAD_JPY": 2.6,
+    "CHF_JPY": 3.0,
+    "EUR_GBP": 1.6,
+    "EUR_CHF": 2.0,
+    "EUR_AUD": 2.6,
+    "GBP_AUD": 4.0,
+    "AUD_NZD": 3.0,
+    "EUR_CAD": 2.6,
 }
+DEFAULT_SPREAD_FALLBACK_PIPS = 2.5
 
 
 def _pip_size(pair: str) -> float:
@@ -128,7 +146,9 @@ def run_backtest(
     half_spread_frac = {}
     last_price = close.ffill()
     for p in pairs:
-        half_spread_frac[p] = (spreads_pips.get(p, 2.0) * _pip_size(p)) / 2.0
+        half_spread_frac[p] = (
+            spreads_pips.get(p, DEFAULT_SPREAD_FALLBACK_PIPS) * _pip_size(p)
+        ) / 2.0
 
     dw = w_eff.diff().abs().fillna(w_eff.abs())  # day-1 establishes position
     spread_cost = pd.Series(0.0, index=close.index)
@@ -174,7 +194,9 @@ def run_backtest(
         total_years=len(per_year),
         walk_forward=True,
         financing_markup_annual=financing_markup_annual,
-        spreads_pips={p: spreads_pips.get(p, 2.0) for p in pairs},
+        spreads_pips={
+            p: spreads_pips.get(p, DEFAULT_SPREAD_FALLBACK_PIPS) for p in pairs
+        },
         equity_curve={str(k.date()): float(v) for k, v in eq_sampled.items()},
     )
 

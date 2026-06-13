@@ -59,6 +59,31 @@ All signals are causal (window-invariance tested); all artifacts versioned
 3. **Value factor (US-004).** Diversifies carry crashes; needs the BIS REER layer.
    Won't rescue a ~0.0 gross book alone, but belongs in the full test.
 
+## FP-1 update (2026-06-13) — G10 cross-section breadth tested
+
+Added 12 liquid G10 crosses (no USD leg) so carry/value rank over 19 instruments
+instead of 7 USD-only majors. Realistic per-cross spreads modeled (1.6–4.0 pips).
+
+| Universe | net Sharpe | gross Sharpe | max DD | +years | cost drag | verdict |
+|----------|-----------:|-------------:|-------:|-------:|----------:|--------|
+| 7 majors        | −0.22 | +0.00 | 44% | 4/13 | 2.7%/yr | FAIL |
+| 19 (majors+crosses) | −0.25 | +0.01 | 55% | **6/13** | 3.8%/yr | FAIL |
+
+**Read (HIGH confidence):** breadth helped *consistency* — positive years rose
+4→6/13 and that gate criterion now passes — but it did NOT create alpha. Net Sharpe
+is still negative, drawdown is worse, and the extra cost drag (wider cross spreads +
+more turnover) ate the marginal diversification. Decisively: **gross Sharpe is ≈ 0.00
+in both universes** — there is essentially no edge *before costs*. That is the
+load-bearing finding: the ceiling here isn't costs or breadth, it's that daily
+carry+trend on G10 has no gross premium worth harvesting at this scale/window.
+
+Implication for the remaining backlog: FP-3 (turnover/cadence) only helps when gross
+is positive — it cannot manufacture alpha from a ~0 gross signal. FP-2 (value) may
+add a little diversification but will not lift a 0.00 gross book to the 0.40 bar.
+The accumulating evidence (majors FAIL, +crosses FAIL, gross≈0) points the same way
+as the project's intraday verdict: **no deployable systematic edge at this scale.**
+The honest deliverable is that closed question plus the reusable, correct machinery.
+
 ## What did NOT change
 
 Runtime stays halted and fail-closed. No trades. No unhalt. The intraday stack is

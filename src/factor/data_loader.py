@@ -192,5 +192,43 @@ def load_panel(
     return panel
 
 
+def load_universe(
+    pairs: List[str],
+    *,
+    cache_dir: Path = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+    client: Optional[object] = None,
+    min_rows: int = MIN_ROWS,
+):
+    """Load close+open for a universe, DROPPING instruments without enough history.
+
+    Returns (close_panel, open_panel, dropped) where ``dropped`` is a list of
+    (instrument, reason). Validation failures don't crash the run — they exclude
+    the instrument with a named warning (FP-1 done-criterion). Aligns survivors
+    on their common trading calendar.
+    """
+    closes: Dict[str, pd.Series] = {}
+    opens: Dict[str, pd.Series] = {}
+    dropped = []
+    for p in pairs:
+        try:
+            df = load_or_fetch(
+                p, cache_dir=cache_dir, refresh=refresh, client=client,
+                validate=False,
+            )
+            validate_history(df, p, min_rows=min_rows)
+        except FactorDataError as exc:
+            logger.warning("FP-1: dropping %s from universe — %s", p, exc)
+            dropped.append((p, str(exc)))
+            continue
+        closes[p] = df["close"].rename(p)
+        opens[p] = df["open"].rename(p)
+    if not closes:
+        raise FactorDataError("No instruments survived validation for the universe")
+    close = pd.concat(closes.values(), axis=1, join="inner").sort_index()
+    open_ = pd.concat(opens.values(), axis=1, join="inner").sort_index()
+    return close, open_, dropped
+
+
 def utc_now_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
