@@ -626,10 +626,19 @@ class ScannerConfig:
     aggressive_scale_extreme_vol: float = 1.75
     aggressive_min_meta_confidence: float = 0.52
 
-    # RL model settings (disabled by default to avoid TF/PyTorch GPU conflicts)
-    use_rl_sizer: bool = False  # RL position sizing (PPO model)
-    use_rl_gates: bool = False  # RL gate threshold optimizer (SAC model)
     use_rl_exits: bool = False  # RL optimal exit timing (PPO model)
+
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # SOTA / NEURAL AGENT TOGGLES (Goals 1 + 2)
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # Goal 1: End-to-end deep learning signal core (replaces classical ensemble)
+    use_sota_inference: bool = False  # Use RawSequenceModel for direction + regime
+    use_hybrid_inference: bool = False  # Use HybridInference ensemble (US-008)
+    sota_model_path: str = "trained_data/models/sota_finetuned/sota_model.keras"
+    # Goal 2: Neural agent policies (replaces rule-based heuristic agents)
+    use_neural_agents: bool = False  # Use learned neural policies for agent consensus
+    neural_agent_save_dir: str = "trained_data/models/neural_agents"
+    # When both are False, the scanner falls back to the legacy rule-based system.
 
     # ATR-based SL/TP (from buddy_scanner)
     atr_sl_multiplier: float = 1.0  # SL = 1.0x ATR (default; overridden by regime_atr_multipliers)
@@ -752,6 +761,8 @@ class ScannerConfig:
     enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator (legacy flag — kept for backward compatibility)
     enable_devil_advocate_agent: bool = True  # Agent #14: Canonical _agent-suffixed toggle (supersedes enable_devil_advocate)
     enable_order_flow_agent: bool = True  # Agent #15: Order-flow / book-depth agent
+    enable_llm_macro_agent: bool = False  # Agent #16: LLM macro reasoning (US-001)
+    enable_llm_macro_shadow: bool = True   # Log LLM macro votes without affecting ensemble
     # --- Reflection / observability surfaces ---
     # BriefingSnapshotWriter (Angle 1') — deterministic per-cycle snapshot of
     # runtime state to .claude/brain/snapshot.md (NEVER touches briefing.md).

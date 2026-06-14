@@ -15,6 +15,7 @@ Launch:
 from __future__ import annotations
 
 import json
+import sys
 import logging
 import os
 import re
@@ -66,6 +67,11 @@ def _load_env_local() -> None:
 
 _load_env_local()
 
+# Ensure project root is in Python path so src.* imports resolve regardless
+# of how the server is launched (direct, mcp.json, or subprocess).
+_project_root = Path(__file__).resolve().parents[2]
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 # Sanitize known-broken values: if mcp.json injected a literal
 # "${VAR}" placeholder (because Claude Code's MCP config doesn't
@@ -264,18 +270,44 @@ def _assert_trusted_oanda_url(url: str) -> Optional[Dict[str, Any]]:
 # ------------------------------------------------------------------ #
 @mcp.tool()
 def get_system_status() -> Dict[str, Any]:
-    """Get comprehensive system status from the ScannerOrchestrator.
+    """Get lightweight system status without instantiating Orchestrator.
 
-    Returns module availability, session info, improvement trends,
-    and learning stats.
+    Reads .claude/state.json and checks module file presence for
+    dashboards and health probes. Avoids heavy W&B/PRD init.
     """
     try:
-        from src.scanner.automation.orchestrator import ScannerOrchestrator
-        orch = ScannerOrchestrator()
-        return orch.get_system_status()
-    except Exception as exc:
-        logger.warning("get_system_status failed: %r", exc)
-        return {"error": str(exc), "source": "orchestrator"}
+        state_path = Path(".claude/state.json")
+        state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    except Exception:
+        state = {}
+
+    return {
+        "system": {
+            "goal": state.get("goal", "unknown"),
+            "mode": state.get("mode", "unknown"),
+            "halted": state.get("halted", False),
+            "config_dirty": state.get("config_dirty", False),
+            "last_updated": state.get("last_updated", ""),
+        },
+        "portfolio": state.get("portfolio_snapshot", {}),
+        "modules": {
+            "agent_weights": AGENT_WEIGHTS_PATH.exists(),
+            "rl_model": RL_MODEL_PATH.exists(),
+            "feedback_log": FEEDBACK_LOG.exists(),
+            "decision_log": DECISION_LOG.exists(),
+            "learnings": LEARNINGS_PATH.exists(),
+            "journal": Path("trained_data/trade_journal_rl.json").exists(),
+            "state_engine": Path(".claude/state.json").exists(),
+        },
+        "cycles": {
+            "completed": state.get("done", []),
+            "next": state.get("next", ""),
+        },
+        "metadata": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "server": "buddy_mcp",
+        },
+    }
 
 
 # ------------------------------------------------------------------ #

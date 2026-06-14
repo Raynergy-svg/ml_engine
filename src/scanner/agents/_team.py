@@ -45,6 +45,8 @@ except Exception:
     get_model_freshness = None  # type: ignore[assignment]
 
 
+
+
 def _clip01(value: float) -> float:
     return min(max(float(value), 0.0), 1.0)
 
@@ -339,6 +341,30 @@ class ScannerAgentTeam:
         except Exception as e:
             logger.warning(f"Episodic memory initialization failed: {e} (pattern suppression disabled)")
             self._episodic_memory = None
+        # US-005: LLM Macro Agent initialization (local import to avoid circular dep)
+        self._llm_macro_agent: Any = None
+        try:
+            from src.scanner.agents.llm_macro_agent import LLMMacroAgent, LLMMacroAgentConfig
+            if getattr(self.config, "enable_llm_macro_agent", False):
+                try:
+                    shadow = getattr(self.config, "enable_llm_macro_shadow", True)
+                    self._llm_macro_agent = LLMMacroAgent(
+                        LLMMacroAgentConfig(shadow_mode=shadow)
+                    )
+                    logger.info("ScannerAgentTeam: LLM Macro Agent enabled (shadow=%s)", shadow)
+                except Exception as exc:
+                    logger.warning("ScannerAgentTeam: failed to init LLM Macro Agent: %s", exc)
+            elif getattr(self.config, "enable_llm_macro_shadow", True):
+                try:
+                    self._llm_macro_agent = LLMMacroAgent(
+                        LLMMacroAgentConfig(shadow_mode=True)
+                    )
+                    logger.info("ScannerAgentTeam: LLM Macro Agent shadow-logging enabled")
+                except Exception as exc:
+                    logger.warning("ScannerAgentTeam: failed to init LLM Macro Agent (shadow): %s", exc)
+        except Exception as exc:
+            logger.debug("ScannerAgentTeam: LLM Macro Agent import unavailable: %s", exc)
+        # Graph Attention Consensus (optional, see end of file)
 
     # --- Persistent weight management ---
 
@@ -1414,6 +1440,20 @@ class ScannerAgentTeam:
             sr_verdict = self._evaluate_support_resistance(ctx)
             if sr_verdict is not None:
                 verdicts.append(sr_verdict)
+
+        # Agent #16: LLM Macro Agent (macro reasoning via LLM)
+        _llm_enabled = getattr(self.config, "enable_llm_macro_agent", False)
+        _llm_shadow = getattr(self.config, "enable_llm_macro_shadow", True)
+        if (_llm_enabled or _llm_shadow) and self._llm_macro_agent is not None:
+            try:
+                llm_verdict = self._llm_macro_agent.evaluate(ctx)
+                if llm_verdict is not None:
+                    verdicts.append(llm_verdict)
+                    if _llm_shadow and not _llm_enabled:
+                        # In shadow-only mode, tag the verdict so downstream knows
+                        llm_verdict.metadata["shadow_only"] = True
+            except Exception as exc:
+                logger.warning("LLM Macro Agent evaluation failed: %s", exc)
 
         # Agent #15: Order Flow (OANDA order/position book contrarian signal)
         # Default True — backward compatible with configs/YAML dicts that omit the key.
