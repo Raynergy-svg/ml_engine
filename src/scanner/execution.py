@@ -704,6 +704,16 @@ class ExecutionManager:
         self._open_trade_pairs: set = set()
         self._fasttrack_stats: Dict[str, int] = {"wins": 0, "losses": 0, "total": 0}
 
+        # US-012: SAC Execution Agent for order slicing
+        self._sac_execution_agent = None
+        if getattr(self.config, 'use_sac_execution', False):
+            try:
+                from src.rl.sac_execution import SACExecutionAgent, SACConfig
+                self._sac_execution_agent = SACExecutionAgent(SACConfig())
+                logger.info('US-012: SACExecutionAgent initialized')
+            except Exception as _sac_err:
+                logger.debug('US-012: SACExecutionAgent init deferred: %s', _sac_err)
+
         # Tier 7: Event-driven post-close fan-out
         self._event_bus = None
         self._event_queue = None
@@ -3253,6 +3263,27 @@ class ExecutionManager:
                     )
                 except Exception as _er_err:
                     logger.debug("Phase 85: ExecutionRouter error: %s", _er_err)
+
+            # US-012: SAC order slicing for large orders
+            _sac = getattr(self, '_sac_execution_agent', None)
+            if _sac is not None and attempt_lots > getattr(self.config, 'sac_min_lots', 1.0):
+                try:
+                    _sac_state = np.array([
+                        1.0,  # remaining_volume_pct (first slice)
+                        10.0,  # time_horizon (placeholder)
+                        float(getattr(self.config, 'max_spread_pips', 2.0)),
+                        0.0,  # order_book_imbalance (placeholder)
+                        0.0,  # recent_price_change
+                        float(atr) * 10000 if atr else 10.0,  # volatility in pips
+                    ], dtype=np.float32)
+                    _sac_action = _sac.get_action(_sac_state)
+                    _sac_fraction = float(np.clip(_sac_action, 0.0, 1.0))
+                    _sac_units = int(attempt_units * _sac_fraction)
+                    if _sac_units >= 1000:
+                        attempt_units = _sac_units
+                        logger.info('US-012: SAC sliced order %s -> %d units (fraction=%.2f)', pair, attempt_units, _sac_fraction)
+                except Exception as _sac_slice_err:
+                    logger.debug('US-012: SAC slicing failed: %s', _sac_slice_err)
 
             for order_attempt in range(self.config.max_order_attempts):
                 order_result = self._broker.place_order(

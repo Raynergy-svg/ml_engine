@@ -174,6 +174,50 @@ class QuickBacktester:
                 error=str(e)
             )
 
+    def stress_test(
+        self,
+        df: pd.DataFrame,
+        direction: str,
+        regime: str = "NORMAL",
+        n_paths: int = 100,
+    ) -> dict:
+        """Run stress test using DiffusionMarketModel synthetic paths (US-009)."""
+        try:
+            from src.simulation.diffusion_market_model import DiffusionMarketModel, DiffusionConfig
+            diffusion = DiffusionMarketModel(DiffusionConfig(random_seed=42))
+            # Extract factor returns from price data
+            returns = df["close"].pct_change().dropna().values
+            if len(returns) < 20:
+                return {"success": False, "error": "Insufficient data for diffusion"}
+            # Fit diffusion model on returns
+            factors = returns.reshape(-1, 1)
+            diffusion.fit(factors)
+            # Generate synthetic paths
+            synthetic = diffusion.generate_paths(n_paths=n_paths, n_steps=len(returns))
+            # Evaluate strategy on synthetic paths
+            path_results = []
+            for path in synthetic:
+                path_returns = path.flatten()
+                if direction.upper() == "LONG":
+                    pnl = path_returns.sum()
+                else:
+                    pnl = (-path_returns).sum()
+                path_results.append(pnl)
+            return {
+                "success": True,
+                "regime": regime,
+                "n_paths": n_paths,
+                "mean_pnl": float(np.mean(path_results)),
+                "std_pnl": float(np.std(path_results)),
+                "var_95": float(np.percentile(path_results, 5)),
+                "var_99": float(np.percentile(path_results, 1)),
+                "max_pnl": float(np.max(path_results)),
+                "min_pnl": float(np.min(path_results)),
+            }
+        except Exception as e:
+            logger.warning("US-009: Stress test failed: %s", e)
+            return {"success": False, "error": str(e)}
+
     def run_multiple(
         self,
         results: list,

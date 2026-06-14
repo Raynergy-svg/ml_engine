@@ -1,0 +1,58 @@
+{
+  "project": "Tier7-to-SOTA-2026",
+  "branchName": "ralph/tier7-upgrade-phase5",
+  "description": "Phase 5: Autonomy \u2014 self-healing config, meta-agent strategy selection, continual learning",
+  "userStories": [
+    {
+      "id": "US-016",
+      "title": "Self-healing configuration updater",
+      "description": "As the system operator, I need an autonomous config updater that detects performance degradation and adjusts thresholds without human intervention.",
+      "acceptanceCriteria": [
+        "File src/autonomy/self_heal_config.py exists with SelfHealConfigUpdater class",
+        "Monitors recent win rate, drawdown, and Sharpe ratio",
+        "Autonomously adjusts gate thresholds and risk parameters within safe bounds",
+        "Logs all changes with before/after values and trigger reason",
+        "Requires operator approval for changes outside reversible bounds",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented 2026-06-14. File: src/autonomy/self_heal_config.py. Tests: tests/test_self_heal_config.py (4/4 pass). Stress-tested: rapid updates, extreme PnL, zero variance, missing config keys. Fixed zero-variance Sharpe bug. 11 tests passing (7 unit + 4 stress)."
+    },
+    {
+      "id": "US-017",
+      "title": "Meta-agent for strategy selection",
+      "description": "As the strategy layer, I need a meta-agent that dynamically selects which sub-strategy (trend, mean-reversion, momentum) to activate based on current regime.",
+      "acceptanceCriteria": [
+        "File src/autonomy/meta_agent.py exists with MetaStrategyAgent class",
+        "Observes regime + recent performance of each sub-strategy",
+        "Selects top-K strategies to activate per scan cycle",
+        "Tracks selection accuracy and adapts selection weights",
+        "Graceful fallback to all-strategy ensemble when uncertain",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented 2026-06-14. File: src/autonomy/meta_agent.py. Tests: tests/test_meta_agent.py (4/4 pass). Stress-tested: regime flipping, exploration saturation, no observations, extreme PnL, tied scores. Fixed zero-division in weight normalization. 8 tests passing (4 unit + 4 stress)."
+    },
+    {
+      "id": "US-018",
+      "title": "Continual learning loop",
+      "description": "As the learning system, I need a continual learning loop that updates models incrementally from new trades without catastrophic forgetting of older patterns.",
+      "acceptanceCriteria": [
+        "File src/autonomy/continual_learner.py exists with ContinualLearner class",
+        "Stores episodic memory of representative past trades",
+        "Replays old samples alongside new data during incremental updates",
+        "Elastic weight consolidation (EWC) or similar regularization",
+        "Tracks forgetting metric: performance on old validation set",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented 2026-06-14. File: src/autonomy/continual_learner.py. Tests: tests/test_continual_learner.py (7/7 pass). Stress-tested: memory overflow, NaN params, missing gradients, empty memory, rapid EWC updates. 11 tests passing (7 unit + 4 stress)."
+    }
+  ]
+}

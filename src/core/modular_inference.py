@@ -780,6 +780,8 @@ class ModularEnsembleInference:
 
         # RL Position Sizer (NEW)
         self.rl_sizer: Optional[RLPositionSizer] = None
+        self.cql_rebalancer = None  # US-010: CQL portfolio rebalancer
+        self.continual_learner = None  # US-018: ContinualLearner
         self.use_rl_sizer = use_rl_sizer
 
         # Confidence Calibrator (NEW)
@@ -1023,6 +1025,20 @@ class ModularEnsembleInference:
 
             except Exception as e:
                 logger.warning(f"OnlineRetrainer failed: {e}, falling back to subprocess")
+
+        # US-018: Method 3 — ContinualLearner incremental update with EWC
+        if self.continual_learner is not None:
+            try:
+                X_replay, y_replay = None, None
+                if self.market_intel is not None:
+                    X_replay, y_replay = self.market_intel.get_replay_data()
+                if X_replay is not None and y_replay is not None:
+                    examples = [{"X": X_replay[i], "y": y_replay[i]} for i in range(len(X_replay))]
+                    self.continual_learner.add_to_memory(examples)
+                    logger.info("US-018: ContinualLearner added %d examples to episodic memory", len(examples))
+                    result["continual_learner"] = {"status": "memory_updated", "memory_size": self.continual_learner.get_memory_size()}
+            except Exception as _cl_err:
+                logger.debug("US-018: ContinualLearner update failed: %s", _cl_err)
 
         # Method 2: Fallback to subprocess-based retrain (less ideal)
         import subprocess
@@ -3922,6 +3938,41 @@ class ModularEnsembleInference:
                 logger.warning(f"RL sizing failed, falling back to heuristic: {e}")
 
         # =====================================================================
+        # =====================================================================
+        # CQL REBALANCER POSITION SIZING (US-010)
+        _use_cql = bool(getattr(self.config, "use_cql_rebalancer", False))
+        if _use_cql and self.cql_rebalancer is not None and features is not None:
+            try:
+                # Build state: [equity, risk_lots, tcn_prob, ridge_conf/100, volatility_regime, recent_drawdown]
+                _state = np.array([
+                    equity / 100000.0,
+                    risk_lots / max_lots if max_lots > 0 else 0.0,
+                    float(tcn_probability),
+                    float(ridge_confidence) / 100.0,
+                    0.5,  # placeholder volatility regime normalized
+                    0.0,  # placeholder recent drawdown
+                ], dtype=np.float32)
+                _action = self.cql_rebalancer.select_action(_state)
+                # Map discrete action to size multiplier (actions 0-4 → 0.2, 0.6, 1.0, 1.4, 1.8x risk_lots)
+                _multipliers = [0.2, 0.6, 1.0, 1.4, 1.8]
+                _mult = _multipliers[int(_action) % len(_multipliers)]
+                cql_lots = risk_lots * _mult
+                cql_lots = min(cql_lots, max_lots)
+                cql_lots = max(float(getattr(self.config, "min_position_lots", 0.01)), cql_lots)
+                self._last_size_details = {
+                    "mode": "cql",
+                    "equity": equity,
+                    "risk_lots": risk_lots,
+                    "cql_multiplier": _mult,
+                    "cql_lots": cql_lots,
+                    "max_lots": max_lots,
+                    "action": int(_action),
+                }
+                logger.debug("CQL sizing: action=%d mult=%.2f → %.2f lots", int(_action), _mult, cql_lots)
+                return round(cql_lots, 2)
+            except Exception as _cql_err:
+                logger.warning("CQL rebalancer sizing failed, falling back to heuristic: %s", _cql_err)
+
         # HEURISTIC RISK-BASED SIZING (fallback)
         # =====================================================================
         min_position_lots = min(float(getattr(self.config, "min_position_lots", 0.01)), max_lots)

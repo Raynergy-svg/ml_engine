@@ -344,6 +344,9 @@ class Scanner:
         self._scan_cycle_count: int = 0
         self._ensemble_lock = threading.Lock()
         self._agent_team = ScannerAgentTeam(self.config)
+        self._hybrid_inference: Optional[Any] = None  # US-008: HybridInference + TimesFM
+        self._causal_feature_selector = None  # US-015: CausalFeatureSelector
+        self._causal_discovery = None  # US-013: CausalDiscovery
 
         # Init automation modules (regime tracker, chain memory, etc.)
         self._init_automation_modules()
@@ -2107,6 +2110,55 @@ class Scanner:
 
         return health
 
+    def _init_hybrid_inference(self) -> bool:
+        """Initialize HybridInference + TimesFMAdapter (US-008)."""
+        if not getattr(self.config, "use_hybrid_inference", False):
+            return False
+        if self._hybrid_inference is not None:
+            return True
+        try:
+            from src.sota_core.hybrid_inference import HybridInference, HybridInferenceConfig
+            from src.sota_core.timesfm_adapter import TimesFMAdapter
+            cfg = HybridInferenceConfig()
+            self._hybrid_inference = HybridInference(cfg)
+            adapter = TimesFMAdapter()
+            self._hybrid_inference.register_foundation(adapter)
+            logger.info("HybridInference + TimesFMAdapter initialized")
+            return True
+        except Exception as exc:
+            logger.warning("HybridInference init failed: %s", exc)
+            return False
+    def _init_causal_feature_selector(self) -> bool:
+        """Initialize CausalFeatureSelector (US-015)."""
+        if self._causal_feature_selector is not None:
+            return True
+        if not getattr(self.config, "enable_causal_filtering", False):
+            return False
+        try:
+            from src.causal.causal_feature_selector import CausalFeatureSelector, CausalFeatureSelectorConfig
+            self._causal_feature_selector = CausalFeatureSelector(CausalFeatureSelectorConfig())
+            logger.info("CausalFeatureSelector initialized")
+            return True
+        except Exception as exc:
+            logger.debug("CausalFeatureSelector init deferred: %s", exc)
+            return False
+
+
+    def _init_causal_discovery(self) -> bool:
+        """Initialize CausalDiscovery (US-013)."""
+        if self._causal_discovery is not None:
+            return True
+        if not getattr(self.config, "enable_causal_filtering", False):
+            return False
+        try:
+            from src.causal.causal_discovery import CausalDiscovery, CausalDiscoveryConfig
+            self._causal_discovery = CausalDiscovery(CausalDiscoveryConfig())
+            logger.info("CausalDiscovery initialized")
+            return True
+        except Exception as exc:
+            logger.debug("CausalDiscovery init deferred: %s", exc)
+            return False
+
     def _init_analysis_tools(self) -> None:
         """Initialize analysis and filter components."""
         if self._backtester is None:
@@ -2346,6 +2398,35 @@ class Scanner:
             df_feat = self._feature_engineer(df.copy())
             df_feat = df_feat.replace([np.inf, -np.inf], np.nan)
             df_feat = df_feat.ffill().bfill().fillna(0.0)
+            # US-015: Causal feature selection
+            if self._init_causal_feature_selector():
+                try:
+                    # Build factor returns matrix for causal selection
+                    X = df_feat.select_dtypes(include=[np.number]).values
+                    if X.shape[1] > 0 and X.shape[0] > 10:
+                        # US-013: Run causal discovery first to build graph
+                        _causal_graph = None
+                        _confidences = None
+                        if self._init_causal_discovery():
+                            try:
+                                self._causal_discovery.fit(X)
+                                _causal_graph = self._causal_discovery.get_adjacency()
+                                _confidences = self._causal_discovery.get_confidences()
+                                logger.debug("CausalDiscovery: fitted graph with %d edges", _causal_graph.sum() // 2)
+                            except Exception as _cd_err:
+                                logger.debug("CausalDiscovery fit failed: %s", _cd_err)
+                        selected_indices = self._causal_feature_selector.select(X, causal_graph=_causal_graph, confidences=_confidences)
+                        if selected_indices:
+                            numeric_cols = df_feat.select_dtypes(include=[np.number]).columns.tolist()
+                            selected_cols = [numeric_cols[i] for i in selected_indices if i < len(numeric_cols)]
+                            # Always keep close and returns if they exist
+                            for must_keep in ("close", "returns", "high", "low", "open", "volume"):
+                                if must_keep in df_feat.columns and must_keep not in selected_cols:
+                                    selected_cols.append(must_keep)
+                            df_feat = df_feat[selected_cols]
+                            logger.debug("CausalFeatureSelector: pruned to %d features", len(selected_cols))
+                except Exception as _causal_err:
+                    logger.debug("Causal feature selection failed: %s", _causal_err)
             return df_feat
         except Exception as e:
             logger.warning(f"Feature engineering failed: {e}")
@@ -2805,6 +2886,34 @@ class Scanner:
                 )
 
             return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, (details or {})
+        # === US-008: Hybrid Inference branch ===
+        if self._init_hybrid_inference():
+            try:
+                hybrid_result = self._hybrid_inference.predict(pair, df_raw)
+                if hybrid_result and hybrid_result.get("direction") in ("LONG", "SHORT"):
+                    direction = hybrid_result["direction"]
+                    confidence = float(hybrid_result.get("confidence", 0.5))
+                    regime_name = str(hybrid_result.get("regime", "NORMAL")).upper()
+                    ood = bool(hybrid_result.get("ood_detected", False))
+                    if ood:
+                        confidence *= 0.85  # soft penalty on OOD
+                        details = details or {}
+                        details["ood_penalty_applied"] = True
+                    confidence = min(max(confidence, 0.0), 1.0)
+                    tcn_conf = confidence
+                    ridge_conf = confidence
+                    gates_passed = confidence >= 0.55
+                    vol_regime_map = {"LOW": 0, "NORMAL": 1, "HIGH": 2, "EXTREME": 3}
+                    volatility_regime = vol_regime_map.get(regime_name, 1)
+                    details = details or {}
+                    details["source"] = "hybrid_ensemble"
+                    details["regime_name"] = regime_name
+                    details["ood_detected"] = ood
+                    details["weights_used"] = hybrid_result.get("weights_used", {})
+                    return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, details
+            except Exception as _hybrid_err:
+                logger.debug("%s: HybridInference error: %s", pair, _hybrid_err)
+
 
         # === SECOND: Legacy fallback volatility gate ===
         vol_allowed, volatility_regime = self._check_volatility_regime(df_feat, pair)

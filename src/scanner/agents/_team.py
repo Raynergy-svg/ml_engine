@@ -225,6 +225,7 @@ class ScannerAgentTeam:
         self._accuracy_matrix = None  # Phase 25 (US-155): injected from Scanner
         self._confidence_calibrator = None  # Phase 44 (US-280): Confidence calibration system
         self._meta_overrides: Dict[str, Dict[str, float]] = {}  # Tier 6: MetaLearner hyperparameter overrides
+        self._meta_strategy_agent = None  # US-017: MetaStrategyAgent
         self._active_weight_regime: Optional[str] = None
         self._migrate_legacy_weights()
 
@@ -316,6 +317,15 @@ class ScannerAgentTeam:
             logger.info("Phase 47: MTF confluence module initialized")
         except Exception as e:
             logger.debug(f"Phase 47: MTF confluence init deferred: {e}")
+        # US-017: MetaStrategyAgent — dynamic strategy selection per regime
+        if getattr(self.config, "enable_meta_learning", False):
+            try:
+                from src.autonomy.meta_agent import MetaStrategyAgent, MetaAgentConfig
+                self._meta_strategy_agent = MetaStrategyAgent(MetaAgentConfig())
+                logger.info("US-017: MetaStrategyAgent initialized")
+            except Exception as e:
+                logger.debug(f"US-017: MetaStrategyAgent init deferred: {e}")
+
 
         # Phase 47 (US-295): Ensemble Conflict Resolver
         self._ensemble_conflict = None
@@ -1504,6 +1514,31 @@ class ScannerAgentTeam:
                     ", ".join(v.name for v in _skipped),
                     getattr(analysis, "pair", "UNKNOWN"),
                 )
+
+        if not verdicts:
+            return analysis
+        # US-017: MetaStrategyAgent — dynamic strategy selection
+        if self._meta_strategy_agent is not None:
+            try:
+                _meta_selection = self._meta_strategy_agent.select(regime_name)
+                _selected_strategies = set(_meta_selection.get("selected_strategies", []))
+                if _selected_strategies:
+                    _meta_skipped = [v for v in verdicts if v.name not in _selected_strategies]
+                    verdicts = [v for v in verdicts if v.name in _selected_strategies]
+                    if _meta_skipped:
+                        logger.info(
+                            "MetaStrategy %s: deactivated %d agents (%s) for %s (reason=%s)",
+                            regime_name,
+                            len(_meta_skipped),
+                            ", ".join(v.name for v in _meta_skipped),
+                            getattr(analysis, "pair", "UNKNOWN"),
+                            _meta_selection.get("reason", "unknown"),
+                        )
+                    ctx.gate_details["meta_strategy_selection"] = _meta_selection
+                    if _meta_selection.get("uncertain"):
+                        ctx.gate_details["meta_strategy_uncertain"] = True
+            except Exception as _meta_err:
+                logger.debug("MetaStrategyAgent selection failed: %s", _meta_err)
 
         if not verdicts:
             return analysis

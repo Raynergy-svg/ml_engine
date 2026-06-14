@@ -3153,58 +3153,58 @@
     "trade_id": "1306"
   },
   {
-    "agents": {
-      "agent_passed": true,
-      "agent_reasons": [],
-      "agent_total": null,
-      "agent_votes": null,
-      "weighted_vote_score": null
-    },
-    "asset_class": "FX",
-    "broker": "oanda",
-    "confidence": 0.75,
-    "contract_month": null,
-    "direction": "LONG",
-    "entry_price": 1.085,
-    "episode_id": "430e7b89-bdd7-4ec0-b6ce-e28fe3236dd2",
-    "expected_price": 1.085,
-    "fill_price": 1.085,
-    "gate_details": {
-      "core_score": null,
-      "final_score": null,
-      "scores": {}
-    },
-    "gates": {
-      "confidence_passed": null,
-      "gate_summary": null,
-      "momentum_passed": null,
-      "risk_passed": null
-    },
-    "group_momentum": null,
-    "lots": 0.5,
-    "multiplier": null,
-    "outcome": null,
+    "trade_id": "test_1",
+    "episode_id": "ed47e125-5ff2-49e3-88f1-6025e39f9157",
+    "timestamp": "2026-06-13T13:24:14.086178+00:00",
     "pair": "EUR_USD",
+    "direction": "LONG",
+    "confidence": 0.75,
+    "entry_price": 1.085,
+    "sl_price": 1.0835,
+    "tp_price": 1.0875,
+    "sl_pips": 15.0,
+    "tp_pips": 25.0,
+    "rr_ratio": 1.67,
+    "risk_reward": 1.67,
+    "lots": 0.5,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": null,
+      "confidence_passed": null,
+      "risk_passed": null,
+      "gate_summary": null
+    },
+    "agents": {
+      "agent_votes": null,
+      "agent_total": null,
+      "agent_passed": true,
+      "weighted_vote_score": null,
+      "agent_reasons": []
+    },
     "regime": {
+      "volatility_regime": "NORMAL",
       "atr_pips": null,
-      "model_disagreement": 0.1,
-      "predictive_size_modifier": null,
-      "regime_atr_multipliers": null,
-      "regime_risk_modifier": null,
       "uncertainty_score": null,
-      "volatility_regime": "NORMAL"
+      "model_disagreement": 0.1,
+      "regime_risk_modifier": null,
+      "predictive_size_modifier": null,
+      "regime_atr_multipliers": null
+    },
+    "spread_pips": 0.0,
+    "group_momentum": null,
+    "gate_details": {
+      "scores": {},
+      "core_score": null,
+      "final_score": null
     },
     "ridge_features": null,
-    "risk_reward": 1.67,
-    "rr_ratio": 1.67,
-    "sl_pips": 15.0,
-    "sl_price": 1.0835,
-    "slippage_pips": 0.0,
-    "spread_pips": 0.0,
-    "tick_value": null,
-    "timestamp": "2026-05-13T02:44:45.508559+00:00",
-    "tp_pips": 25.0,
-    "tp_price": 1.0875,
-    "trade_id": "test_1"
+    "outcome": null,
+    "fill_price": 1.085,
+    "expected_price": 1.085,
+    "slippage_pips": 0.0
   }
 ]

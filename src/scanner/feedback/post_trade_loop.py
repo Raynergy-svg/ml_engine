@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import traceback
+import numpy as np
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -52,6 +53,22 @@ class PostTradeLoop:
     FEEDBACK_LOG_PATH: Path = Path("logs/trade_feedback.jsonl")
     LEARNINGS_PATH: Path = Path(".claude/learnings.md")
     ERROR_LOG_PATH: Path = Path("logs/unhandled_errors.jsonl")
+
+    def __init__(self):
+        # US-011: RLHF reward shaper
+        self._rlhf_shaper = None
+        try:
+            from src.rl.rlhf_reward import RLHFRewardShaper
+            self._rlhf_shaper = RLHFRewardShaper()
+        except Exception:
+            pass
+        # US-016: Self-healing config updater
+        self._self_heal_config_updater = None
+        try:
+            from src.autonomy.self_heal_config import SelfHealConfigUpdater
+            self._self_heal_config_updater = SelfHealConfigUpdater()
+        except Exception:
+            pass
 
     # How many recent lines of feedback log we scan for idempotency.
     IDEMPOTENCY_TAIL_LINES: int = 500
@@ -119,6 +136,19 @@ class PostTradeLoop:
                 slippage_pips=fields["slippage_pips"],
                 mae_pips=fields["mae_pips"],
             )
+            # 4b) US-011: RLHF reward shaping
+            if self._rlhf_shaper is not None and getattr(self._rlhf_shaper, "_trained", False):
+                try:
+                    # Build a simple state vector from trade features
+                    _state = np.array([
+                        fields["pnl_pips"],
+                        fields["slippage_pips"],
+                        fields["mae_pips"],
+                        float(fields["confidence"]) if fields.get("confidence") else 0.5,
+                    ], dtype=np.float32)
+                    shaped_reward = self._rlhf_shaper.shape_reward(_state, shaped_reward)
+                except Exception as _rlhf_err:
+                    logger.debug("RLHF shaping failed: %s", _rlhf_err)
 
             # 5) Append JSONL feedback record.
             self._append_feedback_record(
@@ -467,6 +497,17 @@ class PostTradeLoop:
         try:
             heal = SelfHeal()
             result = heal.apply(diag_result)
+            # US-016: Layer SelfHealConfigUpdater proposals
+            if self._self_heal_config_updater is not None:
+                try:
+                    _updater_result = self._self_heal_config_updater.update(
+                        current_config=dict(diag_result.get("config", {})),
+                        recent_trades=diag_result.get("recent_trades", []),
+                    )
+                    if isinstance(result, dict):
+                        result["config_updater"] = _updater_result
+                except Exception as _updater_err:
+                    logger.debug("SelfHealConfigUpdater error: %s", _updater_err)
             if isinstance(result, dict):
                 return result
             return {"status": "applied", "detail": repr(result)}

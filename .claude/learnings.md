@@ -43,17 +43,14 @@ Date-stamped insights extracted from trade outcomes, scan analysis, and system b
 - [2026-04-16] **PATTERN/rejection_correlation_filter_cycle_8**: Neither trained_data/correlation_state.json nor correlation.json exists on disk. Correlation filter rejects in-memory only — no persisted state to audit which groups block which pairs. Verify if filter persists state or operates ephemerally.
 - [2026-04-16] **PATTERN/quiet_cycle_N12**: scanned 15 pairs, 2 tradeable, 0 executed — post-rule-tightening gates correctly filtering with stale models; 4th consecutive zero-execution cycle confirms hard blocks are working as intended- [2026-04-15] **PATTERN/stale_model_total_directional_failure**: 10/10 closed trades lost via sl_hit with MFE=0 (price NEVER moved in predicted direction). modular_ensemble age=28d, joint_gates age=22d. Models trained on March market regime are predicting directions in an April regime that has fundamentally shifted. The RL agent weight layer adapted (updated today) but cannot fix wrong directional predictions from stale upstream models — RL tunes *which agents to trust*, not *what the models predict*. Total PL=-$2,637. **Root cause: model staleness, not agent miscalibration.**
 
-- [2026-04-15] [PROMOTED] **PATTERN/soft_uncertainty_penalty_insufficient_during_model_drift**: Uncertainty agent flagged 8/10 trades (uncertainty>0.45) and model_disagreement=0.5 on 6/10 trades, but the soft penalty only reduced confidence by ~0.13 (from ~0.69 to ~0.56) — still above the 0.50 execution threshold. During extended model staleness, soft penalties cannot compensate for fundamentally wrong directional models. The uncertainty agent correctly identified the problem but lacked the authority to block execution. **Implication: need a hard-block threshold for uncertainty during CRITICAL model freshness.**
 
 ### Self-Heal #2: 3 More Losses (Cycle 2, Trades 1220/1199/1195) — 2026-04-15
 
 - [2026-04-15] **PATTERN/pending_config_adjustments_never_applied**: Cycle 1 proposed 4 CRITICAL config adjustments (max_model_disagreement=0.25, max_uncertainty_score=0.40, weighted_vote_threshold=0.85, min_confidence raise). ALL remain in "pending" state with total_adjustments=0. The self-heal loop diagnosed the problem correctly but the config consumption pipeline is broken — proposals sit in config_adjustments.json but nothing reads and applies them. **Implication: the entire self-heal feedback loop is open-circuit. Fix the consumer side of config_adjustments.json or the reflection system is write-only dead code.**
 
-- [2026-04-15] [PROMOTED] **PATTERN/trend_agent_fail_does_not_block_execution**: Trade 1220 EUR_AUD had ADX=1 (no trend whatsoever). Trend agent correctly returned passed=False. Yet the trade executed with WVS=0.76 because other agents (risk_sentinel, execution_quality) compensated. A trend-following directional trade entered with ADX=1 is fundamentally unsound regardless of what other agents think. **Implication: trend agent failure should be a hard-block for directional trades, not just a WVS weight reduction.**
 
 - [2026-04-15] **PATTERN/model_staleness_persists_through_partial_retrain**: transformer_direction_best.keras was updated at 19:03 UTC today, but modular_ensemble.meta.json still shows trained_at=2026-03-18. The autonomous trainer partially ran (transformer only?) but did not retrain the full ensemble. Per-pair models (EUR_USD, GBP_USD, etc.) all show mtimes from March 19-24. The system is trading on 22-28 day old ensemble predictions. **Implication: autonomous_trainer must verify ALL model groups are refreshed, not just the transformer checkpoint.**
 
-- [2026-04-15] [PROMOTED] **PATTERN/low_regime_sl_too_tight_for_ranging_market**: Trade 1220 in LOW regime had SL/ATR=1.17x (19.6 pips SL on 16.8 ATR). LOW regime applies sl_mult=0.8, which TIGHTENS the SL further in a ranging market where price noise is high relative to directional movement. This is backwards — LOW volatility ranging markets need WIDER relative SL to survive chop. **Implication: LOW regime sl_mult should be >= 1.2, not 0.8.**
 
 - [2026-04-15] **PATTERN/autonomous_trainer_status_unknown_after_completion**: Retrain spawned at 19:01 UTC, ran 22.3min, completed at 19:24 UTC, but last_status=unknown. The trainer process likely completed but the status-polling mechanism did not capture success/failure. Without verified retraining success, the system may continue trading on stale models indefinitely. **Implication: autonomous_trainer must verify model meta.json timestamps changed post-retrain, not just that the subprocess exited.**
 
@@ -263,11 +260,8 @@ Key closures this session:
 - **[2026-04-04]** `exit_accountability` | exit_accountability_correct_reject: mean_reversion voted NO, USD_CHF LONG lost via sl_hit (-13.6p) — agent was right → *Maintain or boost mean_reversion weight for rejection accuracy*
 
 ### Auto-extracted 2026-04-06
-- **[2026-04-06]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $381.50 → *Lower max_model_disagreement threshold* [PROMOTED]
 - **[2026-04-06]** `pair_behavior` | EUR_GBP SHORT lost: 11.5p (conf=69%) → *Track EUR_GBP directional accuracy*
-- **[2026-04-06]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $381.50 → *Lower max_model_disagreement threshold* [PROMOTED]
 - **[2026-04-06]** `pair_behavior` | EUR_GBP SHORT lost: 11.5p (conf=69%) → *Track EUR_GBP directional accuracy*
-- **[2026-04-06]** `agent_accuracy` | disagreement_predicted_loss: disagreement=0.50, lost $290.00 → *Lower max_model_disagreement threshold* [PROMOTED]
 - **[2026-04-06]** `pair_behavior` | NZD_USD LONG lost: 11.6p (conf=69%) → *Track NZD_USD directional accuracy*
 - **[2026-04-06]** `exit_accountability` | exit_accountability_correct_reject: mean_reversion voted NO, NZD_USD LONG lost via sl_hit (-11.6p) — agent was right → *Maintain or boost mean_reversion weight for rejection accuracy*
 

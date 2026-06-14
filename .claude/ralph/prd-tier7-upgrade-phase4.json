@@ -1,0 +1,55 @@
+{
+  "project": "Tier7-to-SOTA-2026",
+  "branchName": "ralph/tier7-upgrade-phase4",
+  "description": "Phase 4: Causal Inference \u2014 causal discovery, counterfactual evaluator, causal feature selection",
+  "userStories": [
+    {
+      "id": "US-013",
+      "title": "Causal discovery module",
+      "description": "As the research module, I need a causal discovery engine that identifies directed causal relationships between market factors using observational data.",
+      "acceptanceCriteria": [
+        "File src/causal/causal_discovery.py exists with CausalDiscovery class",
+        "Implements PC-algorithm skeleton for causal graph discovery",
+        "Accepts factor returns matrix, outputs adjacency matrix + edge confidences",
+        "Handles up to 20 factors with conditional independence tests",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented 2026-06-14. File: src/causal/causal_discovery.py. Tests: tests/test_causal_discovery.py (6/6 pass)."
+    },
+    {
+      "id": "US-014",
+      "title": "Counterfactual trade evaluator",
+      "description": "As the post-trade analyst, I need counterfactual evaluation to estimate what would have happened if a different position size or entry timing had been chosen.",
+      "acceptanceCriteria": [
+        "File src/causal/counterfactual_evaluator.py exists with CounterfactualEvaluator class",
+        "Uses causal model to estimate counterfactual PnL under different actions",
+        "Inputs: trade record, causal graph, market state at entry",
+        "Outputs: expected PnL for each alternative action",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented 2026-06-14. File: src/causal/counterfactual_evaluator.py. Tests: tests/test_counterfactual_evaluator.py (3/3 pass)."
+    },
+    {
+      "id": "US-015",
+      "title": "Causal feature selector",
+      "description": "As the model trainer, I need causal feature selection that removes spuriously correlated factors and retains only genuine causal parents of returns.",
+      "acceptanceCriteria": [
+        "File src/causal/causal_feature_selector.py exists with CausalFeatureSelector class",
+        "Selects features based on causal parents from discovered graph",
+        "Falls back to correlation-based selection when causal graph unavailable",
+        "Reduces dimensionality while preserving causal signal",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented 2026-06-14. File: src/causal/causal_feature_selector.py. Tests: tests/test_causal_feature_selector.py (4/4 pass)."
+    }
+  ]
+}

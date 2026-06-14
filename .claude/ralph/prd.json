@@ -1,642 +1,494 @@
 {
-  "project": "Buddy TUI",
-  "phase": "audit-2026-05-13",
-  "title": "TUI Correctness & Safety — Audit Backlog (May 2026)",
-  "branchName": "ralph/tui-audit-2026-05-13",
-  "description": "TUI Correctness & Safety — close 14 gaps surfaced by the 2026-05-13 code audit",
-  "goal": "Close the trading-correctness, safety-control, and operator-visibility gaps the 2026-05-13 src/tui/ code audit surfaced. The bot is currently halted. Every story here is a precondition for safe unhalt OR a visibility fix the operator needs to make the unhalt decision honestly. Doc-defined backlog is empty (all spec'd TUI features shipped); this PRD is the audit's residual debt — fakes that look live, modals that don't fire, hotkey collisions that could destroy live trades, silent reconnect failures, sparse error surfaces.",
-  "context": "2026-05-13 audit (one Plan-agent pass across src/tui/app.py + 17 screens + 8 widgets + data_provider.py + theme.tcss) found ~20 gaps. Top 14 ranked by impact: D1 fake random.uniform spread in TradesDrillDown (operator's flatten decision relies on a lie), A6 _start_veto_countdown defined but never called (US-511 pre-trade abort window is dead in live mode), A4 action_supervisor_abort has no confirmation modal (one mis-key vetoes live execution), A5/D4/H1 global a/c/r hotkey shadowing (could trigger destructive global action when operator believes they're acting on current screen), L3 OANDA disconnect mid-session leaves TUI calling dead client (no auto-reconnect; operator forced into Ctrl+R restart). All fixes are reversible, additive, and exercise the existing TUI invariants without touching the trading hot path.",
-  "dependencies": [
-    ".claude/rules/trading.md",
-    ".claude/rules/improvement.md",
-    "CLAUDE.md (TUI + Working Rules sections)",
-    "docs/supervisor_console_runbook.md"
-  ],
-  "global_mandates": {
-    "agent_policy": [
-      "FORBIDDEN: 'general-purpose' agent. Any sub-agent call MUST specify a subagent_type from the agent_roster below.",
-      "Every story MUST invoke a primary specialist for IMPLEMENTATION and a distinct specialist for REVIEW.",
-      "Ralph MUST NOT mark a story complete until both implementation and review agents have signed off in `notes` with timestamp.",
-      "If a story needs a capability not in the roster, Ralph MUST HALT and escalate rather than defaulting to general-purpose."
-    ],
-    "code_quality": [
-      "NO MOCK CODE. No unittest.mock, MagicMock, patch, or test-double class. Tests use real ScannerConfig, real ConfigAdjuster(persistence_path=tmp_path / 'x.json'), real disk via tmp_path. (.claude/rules/improvement.md No-Mock Rule, promoted 2026-05-01)",
-      "All JSON file writes MUST be atomic: write to .tmp, then os.rename. (.claude/rules/improvement.md JSON Safety Gates)",
-      "All JSON file reads MUST be wrapped in try/except with graceful fallback to empty dict/list.",
-      "NEVER use bare except: or except Exception: pass — always log + re-raise or return explicit error status.",
-      "All OANDA API calls MUST use exponential backoff (base 1s, max 30s, jitter) with explicit timeouts (connect=5s, read=30s). NEVER retry on 4xx — only 5xx/timeout/connection errors.",
-      "Specific exception types, not Exception, for narrow recoverable errors.",
-      "Type hints on all new public APIs. mypy must remain clean on touched files."
-    ],
-    "tui_policy": [
-      "All destructive actions (kill, mode→live, abort signal, reject adjustment) MUST show a confirmation modal with typed confirmation or double-tap.",
-      "All TUI writes to backend state MUST be audit-logged to .claude/brain/strategic_log.md with ISO timestamp, actor='TUI', action, before/after values.",
-      "State flags (halted, scanner_paused, mode) MUST persist in .claude/state.json and survive TUI restart.",
-      "TUI MUST NEVER block the event loop on OANDA calls — use Textual @work workers.",
-      "Live-mode widgets MUST NEVER display synthetic/random values. If real data is unavailable, show '—' or 'no data' placeholder, never a plausible-looking number."
-    ],
-    "completion_discipline": [
-      "A story is NOT complete until ALL validation_commands exit 0 AND all definition_of_done checks pass.",
-      "Ralph MUST emit <promise>COMPLETE_STORY_{id}</promise> only AFTER validation_commands have been executed and evidence logged in notes.",
-      "A story that cannot pass validation MUST have passes stay false and notes updated with blocker reason.",
-      "No story may be marked complete based on 'should work' reasoning — only on recorded evidence."
-    ]
-  },
-  "agent_roster": {
-    "note": "Subagent_type values match .claude/agents/*.md file stems. Verified 2026-05-13.",
-    "primary_implementation": {
-      "frontend_developer": {
-        "subagent_type": "engineering-frontend-developer",
-        "use_for": "All Textual TUI screens, widgets, hotkeys, modals, TCSS theming, BINDINGS lists"
-      },
-      "senior_developer": {
-        "subagent_type": "engineering-senior-developer",
-        "use_for": "data_provider.py wiring, OANDA reconnect logic, dataclass extensions, event-bus subscriptions"
-      },
-      "backend_architect": {
-        "subagent_type": "engineering-backend-architect",
-        "use_for": "Service boundaries when a fix needs threading through scanner→data_provider→TUI"
-      }
-    },
-    "review": {
-      "code_reviewer": {
-        "subagent_type": "engineering-code-reviewer",
-        "use_for": "Mandatory review of every code change. Checks: no-mock, atomic writes, no bare except, type hints, error handling.",
-        "required_for": "EVERY story"
-      },
-      "security_engineer": {
-        "subagent_type": "engineering-security-engineer",
-        "use_for": "Review of any path that moves money, halts trading, or vetoes a signal (US-003, US-004, US-005)"
-      }
-    },
-    "testing": {
-      "api_tester": {
-        "subagent_type": "testing-api-tester",
-        "use_for": "OANDA integration tests (reconnect, live spread fetch)"
-      },
-      "reality_checker": {
-        "subagent_type": "testing-reality-checker",
-        "use_for": "Final sign-off — 'does this actually do what the story says when ./buddy --demo boots and the operator presses the key?'"
-      }
-    }
-  },
+  "branchName": "ralph/buddy-gap-resolution-phase5",
+  "description": "Auto-generated gap resolution PRD. Source: prd-tier7-upgrade-phase4.json. Detected 139 integration gaps across 4 categories. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "project": "ML_Engine",
   "userStories": [
     {
+      "acceptanceCriteria": [
+        "Add self.state_engine.save_state() to graceful shutdown in continuous.py",
+        "Add self.memory_manager.save_state() to graceful shutdown in continuous.py",
+        "Add self.pair_transfer.save_state() to graceful shutdown in continuous.py",
+        "Add self.threshold_optimizer.save_state() to graceful shutdown in continuous.py",
+        "Add self.regime_broadcaster.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-001",
-      "title": "Replace random.uniform spread fake in TradesDrillDown with live OANDA spread",
+      "notes": "",
+      "passes": false,
       "priority": 1,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T16:00:29Z",
-      "depends_on": [],
-      "description": "src/tui/screens/trades_screen.py:527 currently sets drill-down spread to `random.uniform(0.8, 2.5)` — a synthetic value injected into the LIVE-mode UI. Operator may decide to flatten based on this. Extend src/tui/data_provider.py TradeRow with a `live_spread_pips: float | None` field, populate it from OANDA's /v3/accounts/{id}/pricing endpoint inside _refresh_trades, and read it in TradesScreen drill-down. When OANDA pricing is unavailable, show '—' (NEVER fall back to random).",
-      "primary_agent": {
-        "name": "Senior Developer",
-        "subagent_type": "engineering-senior-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Frontend Developer",
-          "subagent_type": "engineering-frontend-developer",
-          "role": "Wire TradeRow.live_spread_pips into the drill-down panel render"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Verify atomic OANDA call, no bare except, no synthetic fallback"
-        }
-      ],
-      "acceptanceCriteria": [
-        "src/tui/data_provider.py TradeRow dataclass has new field `live_spread_pips: float | None = None`.",
-        "_refresh_trades populates live_spread_pips via OANDA pricing endpoint with 5s connect / 30s read timeout and exponential backoff on 5xx/timeout.",
-        "src/tui/screens/trades_screen.py:527 NO LONGER calls random.uniform; reads trade.live_spread_pips.",
-        "When live_spread_pips is None, drill-down shows '—' (not a placeholder number).",
-        "grep -n 'random.uniform' src/tui/screens/trades_screen.py returns 0 matches.",
-        "Test at tests/test_tui_trades_drill_down.py verifies: (a) None spread renders '—', (b) populated spread renders correctly. Uses real TradeRow dataclass, NO MOCKS.",
-        "Typecheck passes: `python -m mypy src/tui/data_provider.py src/tui/screens/trades_screen.py` exits 0."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && ! grep -n 'random.uniform' src/tui/screens/trades_screen.py",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_trades_drill_down.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/data_provider.py src/tui/screens/trades_screen.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked with evidence in notes.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off with timestamp.",
-        "No print() debug statements in touched files."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-001</promise>"
+      "title": "Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster"
     },
     {
+      "acceptanceCriteria": [
+        "Add self.agent_accuracy_matrix.save_state() to graceful shutdown in continuous.py",
+        "Add self.health_registry.save_state() to graceful shutdown in continuous.py",
+        "Add self.agent_lifecycle.save_state() to graceful shutdown in continuous.py",
+        "Add self.signal_timing.save_state() to graceful shutdown in continuous.py",
+        "Add self.model_calibration.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-002",
-      "title": "Replace hardcoded regime + back-derived ATR in TradesDrillDown with live values",
+      "notes": "",
+      "passes": false,
       "priority": 2,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T16:09:07Z",
-      "depends_on": [],
-      "description": "src/tui/screens/trades_screen.py:526 hardcodes `regime='NORMAL'` and :528 back-derives ATR from SL distance (circular — SL is derived from ATR upstream). agents_screen.py:633-637 already uses _LiveRegimeProbe for live regime; reuse that pattern. Pipe ATR from src/tui/data_provider.py ScanEnrichment.atr_value into TradeRow.live_atr_pips.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Verify no synthetic fallback; '—' on missing data"
-        }
-      ],
-      "acceptanceCriteria": [
-        "src/tui/screens/trades_screen.py imports and uses _LiveRegimeProbe from agents_screen (or a shared helper if extracted) — no string 'NORMAL' literal.",
-        "TradeRow.live_atr_pips populated from ScanEnrichment.atr_value via existing apply_scan_enrichment pipe.",
-        "Drill-down ATR display reads trade.live_atr_pips; back-derived `sl_dist * 10000` math is deleted.",
-        "Missing regime or ATR renders '—' (not the previous fakes).",
-        "grep -n \"regime=.NORMAL.\" src/tui/screens/trades_screen.py returns 0 matches.",
-        "Test at tests/test_tui_trades_drill_down.py verifies regime and ATR come from data sources (extends US-001 test file).",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && ! grep -nE \"regime=[\\\"']NORMAL[\\\"']\" src/tui/screens/trades_screen.py",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_trades_drill_down.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/trades_screen.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-002</promise>"
+      "title": "Wire save_state() into graceful shutdown for: agent_accuracy_matrix, health_registry, agent_lifecycle, signal_timing, model_calibration"
     },
     {
+      "acceptanceCriteria": [
+        "Add self.execution_router.save_state() to graceful shutdown in continuous.py",
+        "Add self.execution_quality_optimizer.save_state() to graceful shutdown in continuous.py",
+        "Add self.training_augmenter.save_state() to graceful shutdown in continuous.py",
+        "Add self.model_bandit.save_state() to graceful shutdown in continuous.py",
+        "Add self.affinity_portfolio.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-003",
-      "title": "Add AbortConfirmModal to action_supervisor_abort",
+      "notes": "",
+      "passes": false,
       "priority": 3,
-      "passes": true,
-      "notes": "Manually marked complete by operator after Ralph hit Claude rate limit (resets 16:40 EDT). Iter3 shipped the code; iter4-30 burned trying to verify. Independent verification 2026-05-13T16:27Z: 13/13 tests pass tests/test_tui_abort_modal.py, mypy clean on src/tui/app.py.",
-      "depends_on": [],
-      "description": "src/tui/app.py:1923-1972 action_supervisor_abort directly publishes control.signal_veto with no confirmation. docs/supervisor_console_runbook.md §3.4 specifies a modal that confirms which signal will be aborted (pair, direction, age in replay buffer). Build AbortConfirmModal analogous to KillModal, push via push_screen with callback.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Security Engineer",
-          "subagent_type": "engineering-security-engineer",
-          "role": "Confirm no modal-bypass path, no race between modal open and event publication"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "New module/class AbortConfirmModal (mirrors KillModal pattern in src/tui/screens/).",
-        "Modal displays the most recent pending signal from event_bus replay buffer: pair, direction, signal age in seconds.",
-        "Modal accepts ENTER to confirm or ESC to cancel.",
-        "action_supervisor_abort opens the modal via push_screen with a callback that publishes control.signal_veto ONLY on confirm.",
-        "If no signal.pending in replay buffer, modal shows 'no pending signal' and does not publish.",
-        "Audit log line written to .claude/brain/strategic_log.md on confirm (ISO timestamp, actor='TUI', action='supervisor_abort', pair, signal_id).",
-        "Test at tests/test_tui_abort_modal.py uses real EventBus + tmp_path strategic_log; verifies confirm publishes, cancel does not, no signal renders empty modal. NO MOCKS.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_abort_modal.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer AND Security Engineer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-003</promise>"
+      "title": "Wire save_state() into graceful shutdown for: execution_router, execution_quality_optimizer, training_augmenter, model_bandit, affinity_portfolio"
     },
     {
+      "acceptanceCriteria": [
+        "Add self.position_manager.save_state() to graceful shutdown in continuous.py",
+        "Add self.temporal_attention.save_state() to graceful shutdown in continuous.py",
+        "Add self.dynamic_risk_allocator.save_state() to graceful shutdown in continuous.py",
+        "Add self.execution_quality_tracker.save_state() to graceful shutdown in continuous.py",
+        "Add self.attention_feedback.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-004",
-      "title": "Wire _start_veto_countdown to event_bus.signal.pending subscription",
+      "notes": "",
+      "passes": false,
       "priority": 4,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T21:19:17Z",
-      "depends_on": [],
-      "description": "src/tui/app.py:1974-1995 defines _start_veto_countdown which renders an `EXECUTING {pair} in {n}s… A to abort` countdown banner. `grep _start_veto_countdown src/tui/app.py` returns only its definition — no callers. US-511 pre-trade veto window is dead in live mode. Subscribe to event_bus signal.pending in on_mount; call _start_veto_countdown per event with the configured veto window duration (default 5s, configurable via ScannerConfig.pre_trade_veto_seconds).",
-      "primary_agent": {
-        "name": "Senior Developer",
-        "subagent_type": "engineering-senior-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Security Engineer",
-          "subagent_type": "engineering-security-engineer",
-          "role": "Confirm the abort window cannot be bypassed by rapid signal arrival; confirm countdown teardown is idempotent"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "BuddyTUI.on_mount subscribes to event_bus signal.pending events via a Textual @work async worker.",
-        "Each signal.pending event invokes self._start_veto_countdown(pair, direction, duration_s) with duration from getattr(config, 'pre_trade_veto_seconds', 5).",
-        "If a second signal.pending arrives before the prior countdown ends, the prior countdown is cancelled cleanly (no zombie timers).",
-        "Countdown banner is mounted via existing brain-feed widget OR a new pinned banner widget (Frontend Developer picks; document choice in notes).",
-        "On abort (`a` key during countdown window), the published event is control.signal_veto with signal_id; on countdown completion without abort, no event is published (scanner proceeds independently).",
-        "Test at tests/test_tui_veto_countdown.py uses real EventBus, publishes signal.pending, asserts _start_veto_countdown is called within 100ms. NO MOCKS.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_veto_countdown.py -v",
-        "cd /Users/buddy/Documents/ml_engine && grep -n '_start_veto_countdown' src/tui/app.py | wc -l | awk '$1 >= 2 { exit 0 } { exit 1 }'",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer AND Security Engineer signed off.",
-        "strategic_log.md entry: 'US-004 complete — pre-trade veto countdown wired to event_bus'."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-004</promise>"
+      "title": "Wire save_state() into graceful shutdown for: position_manager, temporal_attention, dynamic_risk_allocator, execution_quality_tracker, attention_feedback"
     },
     {
+      "acceptanceCriteria": [
+        "Add self.model_router.save_state() to graceful shutdown in continuous.py",
+        "Add self.causal_filter.save_state() to graceful shutdown in continuous.py",
+        "Add self.module_activation.save_state() to graceful shutdown in continuous.py",
+        "Add self.replay_validator.save_state() to graceful shutdown in continuous.py",
+        "Add self.pair_regime_agent_matrix.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-005",
-      "title": "Narrow global a/c/r BINDINGS so screen-local hotkeys take precedence",
+      "notes": "",
+      "passes": false,
       "priority": 5,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T21:28:09Z",
-      "depends_on": [],
-      "description": "Hotkey shadowing across three screens (A5, D4, H1): global `a` (app.py:833 → action_supervisor_abort) collides with F2 Inbox `a` (Approve, inbox_screen.py:509); global `c` (app.py:846 → copy_snapshot) collides with F3 Trades `c` (Close Trade, trades_screen.py:351); global `r` does not collide directly, but F7 Rules `r` (rules_screen.py:198 refresh_files) collides with F2 Inbox `r` (Reject). Resolution: in BuddyTUI.action_supervisor_abort, action_copy_snapshot, action_refresh_rules — early-return if the currently-focused tab is the screen that owns the local binding (F2 for `a`/`r`, F3 for `c`).",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Security Engineer",
-          "subagent_type": "engineering-security-engineer",
-          "role": "Confirm no destructive global action fires when operator believes they're on a local screen"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "action_supervisor_abort checks self._active_tab_id (or equivalent) and returns early WITHOUT publishing control.signal_veto when the F2 Inbox tab is active.",
-        "action_copy_snapshot returns early when F3 Trades tab is active (lets trades_screen.action_close_selected_trade handle `c`).",
-        "action_refresh_rules (global `r` if it exists; or whichever global binding `r` maps to) returns early when F2 Inbox OR F7 Rules tab is active.",
-        "All three early-returns emit a single brain-feed line: 'hotkey {key} routed to {tab} screen handler'.",
-        "Test at tests/test_tui_hotkey_routing.py boots a real BuddyTUI in headless Textual mode, switches tabs, fires each key, asserts the global handler did NOT publish to event_bus when the screen-local handler should win. NO MOCKS.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_hotkey_routing.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer AND Security Engineer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-005</promise>"
+      "title": "Wire save_state() into graceful shutdown for: model_router, causal_filter, module_activation, replay_validator, pair_regime_agent_matrix"
     },
     {
+      "acceptanceCriteria": [
+        "Change enable_trader_readiness_agent default to True in ScannerConfig",
+        "Change enable_llm_macro_agent default to True in ScannerConfig",
+        "Change enable_llm_trade_analysis default to True in ScannerConfig",
+        "Change enable_meta_manager default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "id": "US-006",
-      "title": "Require non-empty Reject note in InboxScreen RejectModal",
+      "notes": "",
+      "passes": false,
       "priority": 6,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T21:36:07Z",
-      "depends_on": [],
-      "description": "src/tui/screens/inbox_screen.py:222-239 RejectModal accepts empty rejection note. CLAUDE.md (Phase 96 homework workflow) and runbook line 466 specify the note is mandatory for the heuristic-promotion / RL ingestion pipeline. Empty rejections silently lose feedback signal.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "RejectModal Submit button is disabled when the Input is empty or whitespace-only.",
-        "Submit attempt with whitespace-only input shows inline validation message 'note required' and does NOT dismiss the modal.",
-        "ESC still cancels cleanly with no rejection emitted.",
-        "Test at tests/test_tui_inbox_reject_modal.py drives the modal headless and asserts: (a) empty submit blocked, (b) whitespace submit blocked, (c) non-empty submit emits TrainingSignal with note. NO MOCKS.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_inbox_reject_modal.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/inbox_screen.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-006</promise>"
+      "title": "Enable config flags for wired modules: trader_readiness_agent, llm_macro_agent, llm_trade_analysis, meta_manager"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'dynamic_sl_tp' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_explainer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'multi_horizon_fusion' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'claude_subprocess' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'group_momentum' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-007",
-      "title": "Wire JournalScreen DataTable row-selected handler to GateTraceModal",
+      "notes": "",
+      "passes": false,
       "priority": 7,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T21:42:09Z",
-      "depends_on": [],
-      "description": "src/tui/screens/journal_screen.py:177 maintains self._row_trade_ids (`parallel to journal-table rows for gate-trace lookup`) but there is no on_data_table_row_selected handler that pushes GateTraceModal. F3 Trades has this; F5 Journal does not. Runbook §6 + §9 incident-response checklist says 'Read the gate trace for the last trade that opened before the kill' — currently requires switching to F3 and finding the row, which is awkward post-kill (trades are flat). Mirror the trades_screen.py:409-437 pattern.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "JournalScreen.on_data_table_row_selected fires when a journal row is clicked or selected via cursor + enter.",
-        "Handler looks up trade_id from self._row_trade_ids[row_key] and calls self.app.push_screen(GateTraceModal(trade_id=tid)).",
-        "If trade_id not found (stale row), shows toast 'gate trace unavailable for this trade'.",
-        "Test at tests/test_tui_journal_gate_trace.py loads a sample journal row, fires row-selected, asserts GateTraceModal is mounted with correct trade_id. NO MOCKS.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_journal_gate_trace.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/journal_screen.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-007</promise>"
+      "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, multi_horizon_fusion, claude_subprocess, group_momentum"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'position_timeout' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hermes_daily_brief' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'entropy_sizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'approval_queue' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'retrain_trigger' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-008",
-      "title": "F9 Jobs screen — replace silent ImportError swallow with visible toast",
+      "notes": "",
+      "passes": false,
       "priority": 8,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T21:48:48Z",
-      "depends_on": [],
-      "description": "src/tui/app.py:1539-1560 _open_jobs_screen swallows ImportError + OSError + ValueError with bare-style `return` — operator presses F9 and nothing happens, no notify, no brain-log entry. Looks broken. Replace bare swallow with self.notify('Jobs screen unavailable: {reason}', severity='warning') + brain-feed line.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer",
-          "role": "Confirm no bare except remains; specific exception types named"
-        }
-      ],
-      "acceptanceCriteria": [
-        "_open_jobs_screen catches ImportError, OSError, ValueError as separately-named clauses (not lumped) — each emits a distinct toast message that names the underlying cause.",
-        "All three paths also write a brain-feed line via self._write_brain at WARNING severity.",
-        "No bare `except:` and no `except Exception: pass` in the touched function.",
-        "Test at tests/test_tui_jobs_screen_error.py monkey-patches the registry import to raise ImportError, fires F9, asserts toast was published. (Real TUI app, NO mock of TUI internals — only of the import is allowed; the import path itself is at the boundary so this is the rare exception.)",
-        "If even the import-level monkey-patch feels like a mock violation, an alternative acceptance: rename ScheduledJobsRegistry to a fake-but-real-disk path that raises OSError via missing dir, then test passes that path.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && ! grep -nE 'except\\s*(Exception)?\\s*:\\s*pass' src/tui/app.py",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_jobs_screen_error.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-008</promise>"
+      "title": "Register modules in dispatcher/orchestrator: position_timeout, hermes_daily_brief, entropy_sizer, approval_queue, retrain_trigger"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'policy_types' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'microstructure_regime' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'broker_transport' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'kelly_portfolio' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hermes_watchdog' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-009",
-      "title": "Diagnostics screen — fix stale TCN/Ridge/RF strings and add psutil-missing banner",
+      "notes": "",
+      "passes": false,
       "priority": 9,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T21:56:27Z",
-      "depends_on": [],
-      "description": "Two diagnostics issues. (I1) src/tui/screens/diagnostics_screen.py:799-813 _seed_error_log hardcodes 'Models loaded: TCN + Ridge + RF ensemble ready' — stale; CLAUDE.md ML Stack section (line 187-200) now uses Transformer + LightGBM + XGBoost. Operator in demo sees a lie. (I2) :567-579 when psutil ImportError fires, System Vitals panel synthesizes CPU/memory/disk with random.uniform — operator could think system is healthy when there is no measurement. Replace with red 'psutil missing — vitals unavailable' banner.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "_seed_error_log strings updated to match current ML stack: 'Direction: Transformer ready', 'Confidence/Momentum/Risk: LightGBM ready', 'Meta-labeler: XGBoost ready'. (Or, simpler: delete the seed entirely and let the live feed populate it.)",
-        "psutil ImportError path no longer calls random.uniform; instead, the System Vitals panel widget renders a single Static element with class 'error-banner' and text 'psutil missing — install with `pip install psutil` to see vitals'.",
-        "grep -n 'TCN.*Ridge.*RF' src/tui/screens/diagnostics_screen.py returns 0 matches.",
-        "grep -nE 'random.uniform' src/tui/screens/diagnostics_screen.py returns 0 matches inside the psutil-missing branch (other random calls in demo mode are acceptable).",
-        "Test at tests/test_tui_diagnostics_screen.py asserts seed strings match current stack; asserts psutil-missing branch renders the banner Static. NO MOCKS for diagnostics logic; import-boundary patch of psutil is the only allowed monkeypatch.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && ! grep -nE 'TCN.*Ridge.*RF' src/tui/screens/diagnostics_screen.py",
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_diagnostics_screen.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/diagnostics_screen.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-009</promise>"
+      "title": "Register modules in dispatcher/orchestrator: policy_types, microstructure_regime, broker_transport, kelly_portfolio, hermes_watchdog"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'adaptive_lr' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'confidence_calibrator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'capacity_model' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'memory_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_outcome_predictor' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-010",
-      "title": "Empty-state UX — F1 NAV sparkline, F5 expectancy stats, F5 P/L sparkline",
+      "notes": "",
+      "passes": false,
       "priority": 10,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T22:06:28Z",
-      "depends_on": [],
-      "description": "Three empty-state gaps. (B2) src/tui/app.py:1360-1362 F1 NAV sparkline retains stale data when snap.nav_history is empty — no 'no data' indicator. (F1) src/tui/screens/journal_screen.py:22-82 ExpectancyPanel shows 'Best Trade $0.00' in green when no trades exist — green is misleading. (F2) :201-204 P/L sparkline silent on empty journal with no label. All three: when underlying data is empty, render a clear neutral-colored '—' or 'no closed trades yet' placeholder.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "F1 NAV sparkline (app.py:1360-1362): when snap.nav_history is empty OR all-zeros, render Static 'NAV history pending' in neutral color (theme's $text-muted) instead of stale sparkline.",
-        "F5 ExpectancyPanel: when no closed trades, all $-formatted stat fields render '—' in $text-muted, not '$0.00' in green.",
-        "F5 P/L sparkline (journal_screen.py:201-204): when data is empty, render 'no closed trades' Static instead of empty Sparkline.",
-        "Test at tests/test_tui_empty_states.py builds three real fixtures: empty NAV history, empty journal, mixed. Asserts each placeholder renders. NO MOCKS — use real DashboardSnapshot, real journal file in tmp_path.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_empty_states.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py src/tui/screens/journal_screen.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-010</promise>"
+      "title": "Register modules in dispatcher/orchestrator: adaptive_lr, confidence_calibrator, capacity_model, memory_manager, trade_outcome_predictor"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'outcome_backfill' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_transfer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'threshold_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_model_selector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'reflection_events' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-011",
-      "title": "data_provider — OANDA auto-reconnect on transient disconnect",
+      "notes": "",
+      "passes": false,
       "priority": 11,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-13T22:11:55Z",
-      "depends_on": [],
-      "description": "src/tui/data_provider.py:189-209 connect() is only called once at boot. If OANDA disconnects mid-session, _do_live_refresh keeps calling a dead client. Header shows OANDA OFF but no auto-reconnect; operator forced to Ctrl+R. Add reconnect-with-backoff inside _do_live_refresh when self.oanda_connected is False: attempt connect() at increasing intervals (5s, 10s, 30s, 60s, capped 60s).",
-      "primary_agent": {
-        "name": "Senior Developer",
-        "subagent_type": "engineering-senior-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "API Tester",
-          "subagent_type": "testing-api-tester",
-          "role": "Drive a disconnect/reconnect cycle against the OANDA practice endpoint"
-        },
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "data_provider tracks self._reconnect_attempts: int and self._next_reconnect_at: datetime.",
-        "_do_live_refresh, when self.oanda_connected is False, attempts self._oanda.connect() only if now() >= self._next_reconnect_at.",
-        "Backoff schedule: 5s, 10s, 30s, 60s, 60s, 60s … (cap at 60s after 4 attempts). Reset on successful reconnect.",
-        "Each attempt logs to brain feed at INFO with attempt number and delay. Success logs at INFO 'OANDA reconnected'.",
-        "Header indicator flips OANDA OFF → OANDA ON on success.",
-        "Integration test at tests/test_tui_data_provider_reconnect.py (marked `@pytest.mark.integration` since it touches OANDA) drives: (a) connect succeeds, (b) simulate disconnect by stopping the OANDA client, (c) refresh fires reconnect attempt, (d) reconnect succeeds and header reflects it. NO MOCKS — uses real OANDA practice creds via env or skip if creds absent.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_data_provider_reconnect.py -v -m integration",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/data_provider.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0 (integration test may be skipped if OANDA creds absent; that is acceptable but must log SKIP, not FAIL).",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-011</promise>"
+      "title": "Register modules in dispatcher/orchestrator: outcome_backfill, pair_transfer, threshold_optimizer, pair_model_selector, reflection_events"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'background_activity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'post_deploy_critic' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'counterfactual_learner' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'serial_executor' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'event_handlers' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-012",
-      "title": "ConfigScreen — add keyboard BINDINGS for stage/queue/reset",
+      "notes": "",
+      "passes": false,
       "priority": 12,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-19T03:16:27Z",
-      "depends_on": [],
-      "description": "src/tui/screens/config_screen.py:254-803 has no BINDINGS list. Screen relies entirely on mouse-click of STAGE PROFILE / QUEUE FOR APPROVAL / RESET FORM buttons. Cyberpunk keyboard-driven TUI should support `s` (stage), `q` (queue), `r` (reset). Share dispatch with on_button_pressed.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "ConfigScreen has BINDINGS list with `s` → action_stage_profile, `q` → action_queue_for_approval, `r` → action_reset_form.",
-        "Each action method dispatches to the same logic as the corresponding on_button_pressed branch (extract shared helpers if needed).",
-        "Bindings show=True in Footer.",
-        "Conflict check: `r` does NOT fire when an Input widget inside ConfigScreen has focus (Textual focus normally prevents this; verify with a focus test).",
-        "Test at tests/test_tui_config_screen_bindings.py: real ConfigScreen mounted headless, fires each key, asserts the corresponding action method ran. NO MOCKS.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_config_screen_bindings.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/config_screen.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-012</promise>"
+      "title": "Register modules in dispatcher/orchestrator: background_activity, post_deploy_critic, counterfactual_learner, serial_executor, event_handlers"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'regime_broadcaster' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'agent_accuracy_matrix' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'self_model_state' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'health_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'portfolio_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-013",
-      "title": "Inbox approve-all — move to Textual @work worker with progress indicator",
+      "notes": "",
+      "passes": false,
       "priority": 13,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-19T10:54:03Z",
-      "depends_on": [],
-      "description": "src/tui/screens/inbox_screen.py:1260-1407 action_approve_all runs three loops (homework, adjustments, meta) + MetaManager.drain() inline on the main thread. With Phase 96 batch homework (17+ entries), this can lock the TUI for several seconds. Move to @work(thread=True) worker; emit progress via call_from_thread.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
-      "acceptanceCriteria": [
-        "action_approve_all decorated or refactored to use Textual @work(thread=True).",
-        "Worker emits progress updates via self.app.call_from_thread(self._approve_all_progress, current, total).",
-        "_approve_all_progress updates a ProgressBar widget mounted at the top of the Inbox screen (shown during approve-all, hidden afterward).",
-        "On completion, ProgressBar shows 'approved N items' for 3s then auto-hides.",
-        "TUI main thread remains responsive: a follow-up keypress (e.g., F1) during a 10-item approve-all is processed within 100ms (manual test in DoD; automated test in next bullet).",
-        "Test at tests/test_tui_inbox_approve_all_worker.py: builds 5 real homework entries in tmp_path, fires action_approve_all, asserts main loop is non-blocked (uses Textual's run_test harness with a concurrent F1 keypress). NO MOCKS.",
-        "Typecheck passes."
-      ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_inbox_approve_all_worker.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/screens/inbox_screen.py"
-      ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
-      ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-013</promise>"
+      "title": "Register modules in dispatcher/orchestrator: regime_broadcaster, agent_accuracy_matrix, self_model_state, health_registry, portfolio_optimizer"
     },
     {
-      "id": "US-014",
-      "title": "Add --live CLI flag and OANDA-creds auto-detect to src/tui/app.py:run()",
-      "priority": 14,
-      "passes": true,
-      "notes": "Completed by Ralph at 2026-05-19T10:56:40Z",
-      "depends_on": [],
-      "description": "src/tui/app.py:2402-2422 run() argparser only declares --demo. CLAUDE.md and docs/supervisor_console_runbook.md §1 describe dual-mode --live/--demo with auto-detect via OANDA creds. `./buddy --live` from the documented launch path fails with argparse error.",
-      "primary_agent": {
-        "name": "Frontend Developer",
-        "subagent_type": "engineering-frontend-developer"
-      },
-      "supporting_agents": [
-        {
-          "name": "Code Reviewer",
-          "subagent_type": "engineering-code-reviewer"
-        }
-      ],
       "acceptanceCriteria": [
-        "run() argparser declares mutually exclusive group: --live and --demo.",
-        "When neither flag is given, run() calls check_oanda_credentials() (existing helper if present, or new minimal one reading OANDA_API_KEY + OANDA_ACCOUNT_ID from env); if both present → live, else → demo.",
-        "When --live is given without OANDA creds, run() prints a clear error to stderr and exits 2.",
-        "Test at tests/test_tui_run_cli.py uses argparse directly (no TUI boot) and asserts: (a) --live sets live=True, (b) --demo sets live=False, (c) no flag + creds → live, (d) no flag - creds → demo, (e) --live - creds → SystemExit. NO MOCKS — env vars set/unset via monkeypatch.setenv (acceptable: env is a system boundary).",
-        "Typecheck passes."
+        "Register 'adjustment_validator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'session_snapshot' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_funnel' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trading_events' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'alert_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
-      "validation_commands": [
-        "cd /Users/buddy/Documents/ml_engine && python -m pytest tests/test_tui_run_cli.py -v",
-        "cd /Users/buddy/Documents/ml_engine && python -c \"import argparse; from src.tui.app import run; print('IMPORT_OK')\"",
-        "cd /Users/buddy/Documents/ml_engine && python -m mypy src/tui/app.py"
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-014",
+      "notes": "",
+      "passes": false,
+      "priority": 14,
+      "title": "Register modules in dispatcher/orchestrator: adjustment_validator, session_snapshot, execution_funnel, trading_events, alert_manager"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'dynamic_hedging' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_drawdown' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'agent_lifecycle' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'signal_timing' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trading_event_bus' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
-      "definition_of_done": [
-        "All acceptance criteria ticked.",
-        "All validation_commands exit 0.",
-        "Code Reviewer signed off."
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-015",
+      "notes": "",
+      "passes": false,
+      "priority": 15,
+      "title": "Register modules in dispatcher/orchestrator: dynamic_hedging, dynamic_drawdown, agent_lifecycle, signal_timing, trading_event_bus"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'chain_memory' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_calibration' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'adversarial_trainer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
-      "completion_signal": "<promise>COMPLETE_STORY_US-014</promise>"
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-016",
+      "notes": "",
+      "passes": false,
+      "priority": 16,
+      "title": "Register modules in dispatcher/orchestrator: chain_memory, model_calibration, execution_router, execution_quality_optimizer, adversarial_trainer"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'state_reconciler' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'supervision_policy_engine' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'autonomous_trainer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'supervision_core' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-017",
+      "notes": "",
+      "passes": false,
+      "priority": 17,
+      "title": "Register modules in dispatcher/orchestrator: state_reconciler, supervision_policy_engine, autonomous_trainer, supervision_core, model_manager"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'hermes_digest' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_reward' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'training_augmenter' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'causal_counterfactual' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_slots' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-018",
+      "notes": "",
+      "passes": false,
+      "priority": 18,
+      "title": "Register modules in dispatcher/orchestrator: hermes_digest, regime_reward, training_augmenter, causal_counterfactual, trade_slots"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'event_queue' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_bandit' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'ensemble_disagreement' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'affinity_portfolio' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-019",
+      "notes": "",
+      "passes": false,
+      "priority": 19,
+      "title": "Register modules in dispatcher/orchestrator: event_queue, model_bandit, ensemble_disagreement, regime_tracker, affinity_portfolio"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'position_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'briefing_snapshot' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'cycle_autonomy' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'smart_execution' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'accuracy_gate' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-020",
+      "notes": "",
+      "passes": false,
+      "priority": 20,
+      "title": "Register modules in dispatcher/orchestrator: position_manager, briefing_snapshot, cycle_autonomy, smart_execution, accuracy_gate"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'temporal_attention' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'orchestrator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'constitution' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_risk_allocator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hermes_state' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-021",
+      "notes": "",
+      "passes": false,
+      "priority": 21,
+      "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, constitution, dynamic_risk_allocator, hermes_state"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'supervision_tick' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'validation_stats' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'lead_lag_detector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'continuous' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'market_impact' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-022",
+      "notes": "",
+      "passes": false,
+      "priority": 22,
+      "title": "Register modules in dispatcher/orchestrator: supervision_tick, validation_stats, lead_lag_detector, continuous, market_impact"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'pair_affinity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'seasonality' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trading_control_plane' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'learnings_outcomes' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'close_diagnostician' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-023",
+      "notes": "",
+      "passes": false,
+      "priority": 23,
+      "title": "Register modules in dispatcher/orchestrator: pair_affinity, seasonality, trading_control_plane, learnings_outcomes, close_diagnostician"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'deterministic_surgeon' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'feature_attention' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'supervision_runtime' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hierarchical_risk_parity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-024",
+      "notes": "",
+      "passes": false,
+      "priority": 24,
+      "title": "Register modules in dispatcher/orchestrator: deterministic_surgeon, feature_attention, supervision_runtime, hierarchical_risk_parity, execution_quality_tracker"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'attention_feedback' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'brain_caps' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'observational_learning' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'causal_filter' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-025",
+      "notes": "",
+      "passes": false,
+      "priority": 25,
+      "title": "Register modules in dispatcher/orchestrator: attention_feedback, brain_caps, observational_learning, model_router, causal_filter"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'module_activation' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'concept_drift' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trigger_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'drift_monitor' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'crisis_generator' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-026",
+      "notes": "",
+      "passes": false,
+      "priority": 26,
+      "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, trigger_registry, drift_monitor, crisis_generator"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'drift_projector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'event_history' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'phase_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'session_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_regime_agent_matrix' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-027",
+      "notes": "",
+      "passes": false,
+      "priority": 27,
+      "title": "Register modules in dispatcher/orchestrator: drift_projector, event_history, phase_manager, session_registry, pair_regime_agent_matrix"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'api_retry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'meta_types' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-028",
+      "notes": "",
+      "passes": false,
+      "priority": 28,
+      "title": "Register modules in dispatcher/orchestrator: api_retry, meta_types"
+    },
+    {
+      "acceptanceCriteria": [
+        "Wire 'outcome_backfill' output into observation_consumer or learning_engine",
+        "Wire 'state_reconciler' output into observation_consumer or learning_engine",
+        "Wire 'briefing_snapshot' output into observation_consumer or learning_engine",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
+      "id": "US-029",
+      "notes": "",
+      "passes": false,
+      "priority": 29,
+      "title": "Connect feedback consumers for: outcome_backfill, state_reconciler, briefing_snapshot"
     }
   ]
 }

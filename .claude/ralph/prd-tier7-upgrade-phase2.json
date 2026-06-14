@@ -1,0 +1,58 @@
+{
+  "project": "Tier7-to-SOTA-2026",
+  "branchName": "ralph/tier7-upgrade-phase2",
+  "description": "Phase 2: Foundation Model Integration — TimesFM/Chronos adapter, hybrid inference fallback, and diffusion-based market simulation",
+  "userStories": [
+    {
+      "id": "US-007",
+      "title": "TimesFM foundation model adapter",
+      "description": "As the scanner, I need a drop-in foundation model that replaces the custom CNN-Transformer with a pre-trained time-series model (TimesFM) fine-tuned via LoRA.",
+      "acceptanceCriteria": [
+        "File src/sota_core/timesfm_adapter.py exists with TimesFMAdapter class",
+        "Loads TimesFM-base from HuggingFace (open weights)",
+        "Accepts raw OHLCV input (same contract as RawSequenceModel)",
+        "Outputs direction probability + regime probability",
+        "LoRA fine-tuning script: scripts/finetune_timesfm.py",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Hybrid inference with fallback safety",
+      "description": "As the scanner, I need a hybrid inference layer that ensembles foundation model + custom model + XGBoost, with OOD detection fallback.",
+      "acceptanceCriteria": [
+        "File src/sota_core/hybrid_inference.py exists with HybridInference class",
+        "Ensemble: foundation model + custom CNN-Transformer + XGBoost",
+        "OOD detection: input reconstruction error > 2σ → fallback to custom model",
+        "Drop-in replacement for SOTAInference.predict()",
+        "Config flag: use_hybrid_inference",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Diffusion-based market simulation",
+      "description": "As the backtest engine, I need a diffusion model that generates synthetic market paths for stress testing the factor portfolio.",
+      "acceptanceCriteria": [
+        "File src/simulation/diffusion_market_model.py exists",
+        "Architecture: latent diffusion model trained on daily factor returns",
+        "Generate N synthetic paths given a seed and regime context",
+        "Validation: KS test + autocorrelation matching against real returns",
+        "Use cases: stress test, synthetic training data augmentation",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

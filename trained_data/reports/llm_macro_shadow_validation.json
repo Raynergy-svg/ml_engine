@@ -1,0 +1,58 @@
+[
+  {
+    "event_name": "July 2024 BoJ Hike",
+    "event_date": "2024-07-31",
+    "pair": "USD_JPY",
+    "regime_shift_probability": 0.4,
+    "direction_bias": "SHORT",
+    "confidence": 0.5,
+    "passed_threshold": false,
+    "key_drivers": [
+      "degraded_mode_heuristic"
+    ],
+    "tone_score": -0.3333333333333333,
+    "notes": "LLM unavailable; heuristic fallback used"
+  },
+  {
+    "event_name": "September 2024 Fed Cut",
+    "event_date": "2024-09-18",
+    "pair": "EUR_USD",
+    "regime_shift_probability": 0.2,
+    "direction_bias": "LONG",
+    "confidence": 0.5,
+    "passed_threshold": false,
+    "key_drivers": [
+      "degraded_mode_heuristic"
+    ],
+    "tone_score": -0.3333333333333333,
+    "notes": "LLM unavailable; heuristic fallback used"
+  },
+  {
+    "event_name": "March 2023 SVB Collapse",
+    "event_date": "2023-03-10",
+    "pair": "USD_JPY",
+    "regime_shift_probability": 0.5,
+    "direction_bias": "SHORT",
+    "confidence": 0.5,
+    "passed_threshold": false,
+    "key_drivers": [
+      "degraded_mode_heuristic"
+    ],
+    "tone_score": 0.0,
+    "notes": "LLM unavailable; heuristic fallback used"
+  },
+  {
+    "event_name": "February 2022 Russia-Ukraine Invasion",
+    "event_date": "2022-02-24",
+    "pair": "USD_CHF",
+    "regime_shift_probability": 0.5,
+    "direction_bias": "LONG",
+    "confidence": 0.5,
+    "passed_threshold": false,
+    "key_drivers": [
+      "degraded_mode_heuristic"
+    ],
+    "tone_score": 0.0,
+    "notes": "LLM unavailable; heuristic fallback used"
+  }
+]

@@ -238,7 +238,7 @@ class DashboardSnapshot:
     # Supervisor state (US-504)
     scanner_paused: bool = False
     halted: bool = False
-    mode: str = "dry_run"
+    mode: str = "live"
     max_component_age_days: float = 0.0
     config_profile: str = "smart"
     config_values: dict = field(default_factory=dict)

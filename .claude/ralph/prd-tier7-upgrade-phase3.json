@@ -1,0 +1,58 @@
+{
+  "project": "Tier7-to-SOTA-2026",
+  "branchName": "ralph/tier7-upgrade-phase3",
+  "description": "Phase 3: Offline RL — CQL portfolio rebalancer, RLHF alignment, SAC execution agent",
+  "userStories": [
+    {
+      "id": "US-010",
+      "title": "CQL portfolio rebalancer",
+      "description": "As the portfolio manager, I need an offline RL rebalancer using Conservative Q-Learning (CQL) that learns from historical trade outcomes without online interaction.",
+      "acceptanceCriteria": [
+        "File src/rl/cql_rebalancer.py exists with CQLRebalancer class",
+        "Implements CQL loss: standard Q-loss + conservative penalty",
+        "Trains on replay buffer of (state, action, reward, next_state, done) tuples",
+        "State: portfolio weights + market regime + recent returns",
+        "Action: discrete rebalancing decisions (HOLD, REBALANCE_10pct, etc.)",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "RLHF reward shaping for trading policy",
+      "description": "As the policy trainer, I need RLHF feedback integration so expert trader preferences shape the reward function.",
+      "acceptanceCriteria": [
+        "File src/rl/rlhf_reward.py exists with RLHFRewardShaper class",
+        "Accepts pairwise trade comparisons (A vs B) from expert feedback",
+        "Trains a reward model to predict preference probability",
+        "Integrates shaped reward into PPO/SAC training loop",
+        "Fallback to base reward when RLHF data is sparse",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "SAC execution agent for order slicing",
+      "description": "As the execution engine, I need a Soft Actor-Critic agent that optimally slices large orders to minimize market impact.",
+      "acceptanceCriteria": [
+        "File src/rl/sac_execution.py exists with SACExecutionAgent class",
+        "State: remaining volume, time horizon, spread, order book imbalance",
+        "Action: continuous fraction of remaining volume to execute",
+        "Reward: negative implementation shortfall + penalty for high impact",
+        "Replay buffer with prioritized experience replay",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

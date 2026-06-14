@@ -1,0 +1,112 @@
+{
+  "project": "Tier7-to-SOTA-2026",
+  "branchName": "ralph/tier7-upgrade-phase1",
+  "description": "Phase 1: LLM Macro Agent + Knowledge Graph + RAG — closes the biggest SOTA gap by wiring 37 existing agent prompts into runtime tool-use",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "LLM Macro Agent runtime scaffold",
+      "description": "As the scanner, I need an LLM agent that queries macro APIs and emits structured AgentVerdicts so it can vote in the ensemble.",
+      "acceptanceCriteria": [
+        "File src/scanner/agents/llm_macro_agent.py exists with LLMMacroAgent class",
+        "Inherits from ScannerAgentTeam agent pattern (emits AgentVerdict)",
+        "Uses Instructor + Pydantic for structured output (not free-text)",
+        "Tool-use: queries FRED API for policy rates, BIS for REER",
+        "Response cached per (prompt_id, date) to avoid API costs",
+        "Shadow mode: votes are logged but do NOT affect ensemble score",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Macro Knowledge Graph static scaffold",
+      "description": "As the LLM Macro Agent, I need a structured graph of macro relationships so I can reason about contagion and regime shifts.",
+      "acceptanceCriteria": [
+        "File src/intelligence/macro_knowledge_graph.py exists",
+        "Static graph with entities: central_banks, currencies, economies, commodities",
+        "Relations: hikes_rates → appreciates_against, cuts_rates → depreciates_against, geopolitical_shock → safe_haven_flow",
+        "Graph is queryable by entity name and relation type",
+        "JSON serialization for persistence",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "RAG module for historical macro analogies",
+      "description": "As the LLM Macro Agent, I need retrieval-augmented generation so I can cite historical analogies in my reasoning.",
+      "acceptanceCriteria": [
+        "File src/intelligence/macro_rag.py exists",
+        "Ingests: FOMC statements, ECB minutes, BoJ minutes (plaintext)",
+        "Chunking: paragraph-level with overlap",
+        "Embedding: uses lightweight sentence-transformers (all-MiniLM-L6-v2)",
+        "Vector store: flat numpy index (no external DB dependency)",
+        "Retrieval: top-k similar chunks for a query string",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Central bank audio tone processor",
+      "description": "As the scanner, I need to extract sentiment and hesitation from central bank press conference audio so the LLM agent has multi-modal input.",
+      "acceptanceCriteria": [
+        "File src/intelligence/cb_audio_processor.py exists",
+        "Ingests audio file or URL (Powell/Ueda/Bailey pressers)",
+        "Whisper-large-v3 transcription (optional dependency — graceful fallback if unavailable)",
+        "Tone metrics: speaking_rate, pause_frequency, pitch_variance (via librosa)",
+        "Hesitation detection: filler-word count, false-start count",
+        "Output: normalized dovish/hawkish/neutral score (-1 to +1)",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Integration with ScannerAgentTeam",
+      "description": "As the scanner, I want the LLM Macro Agent to participate in ensemble voting when enabled, with full observability.",
+      "acceptanceCriteria": [
+        "ScannerConfig gains enable_llm_macro_agent: bool = False",
+        "ScannerAgentTeam.evaluate() calls LLMMacroAgent when flag is True",
+        "Shadow mode: when flag is False but enable_llm_macro_shadow=True, votes are logged to journal with tag 'shadow_llm'",
+        "Weave tracing: LLM latency, token usage, tool-call success rate",
+        "Error handling: API failure → fallback to neutral verdict, no crash",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Historical shadow validation",
+      "description": "As the operator, I want to know if the LLM Macro Agent would have correctly warned before known macro events.",
+      "acceptanceCriteria": [
+        "Script scripts/validate_llm_macro_shadow.py exists",
+        "Runs the agent against historical events (July 2024 BoJ hike, Sept 2024 Fed cut, etc.)",
+        "Outputs: agent verdict, reasoning, retrieved analogies, tone scores",
+        "Comparison: did the agent signal regime_shift_probability > 0.7 before the event?",
+        "Report written to trained_data/reports/llm_macro_shadow_validation.md",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
