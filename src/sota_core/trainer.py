@@ -66,10 +66,17 @@ class SOTATrainer:
     # ------------------------------------------------------------------
     @staticmethod
     def _load_candles_csv(csv_path: str) -> Optional[pd.DataFrame]:
-        """Load canonical OHLCV from CSV."""
+        """Load canonical OHLCV from CSV or Parquet."""
         try:
-            df = pd.read_csv(csv_path, parse_dates=["time"])
-            df = df.set_index("time").sort_index()
+            path = Path(csv_path)
+            if path.suffix.lower() == ".parquet":
+                df = pd.read_parquet(csv_path)
+                if "time" in df.columns:
+                    df = df.set_index("time")
+                df = df.sort_index()
+            else:
+                df = pd.read_csv(csv_path, parse_dates=["time"])
+                df = df.set_index("time").sort_index()
             for col in ("open", "high", "low", "close"):
                 df[col] = pd.to_numeric(df[col], errors="coerce")
             df["volume"] = pd.to_numeric(df.get("volume", 0), errors="coerce").fillna(0)
@@ -193,7 +200,7 @@ class SOTATrainer:
             for idx in indices:
                 x = X[idx].copy()  # (seq_len, 5)
                 # Random timestep masking
-                mask_positions = np.random.rand(cfg.seq_len) < cfg.mask_rate
+                mask_positions = np.random.rand(self.model.cfg.seq_len) < cfg.mask_rate
                 recon_target = x.copy()
                 x[mask_positions] = 0.0  # zero-mask (model learns to fill in)
 
