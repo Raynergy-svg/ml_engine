@@ -202,8 +202,8 @@ class HarvestScheduler:
     # OANDA fetch
     # ------------------------------------------------------------------
     def _fetch_chunk(self, pair: str, count: int) -> Optional[pd.DataFrame]:
-        broker_symbol = pair.replace("_", "/")  # OANDA uses EUR/USD
-        instrument = get_registry().get(broker_symbol)
+        broker_symbol = pair  # OANDA v20 API expects underscore format (EUR_USD)
+        instrument = get_registry().get_optional(broker_symbol)
         if instrument is None:
             # Fallback: build generic FX instrument
             instrument = Instrument.fx(
