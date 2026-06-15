@@ -1,0 +1,28 @@
+{
+  "candles": 25000,
+  "completed_at_utc": "2026-06-15T22:42:52.758133+00:00",
+  "duration_s": 206.5,
+  "errors": [],
+  "failed_count": 1,
+  "git_commit": "dad8624",
+  "granularity": "H1",
+  "instrument": "EUR_USD",
+  "model_filter": "transformer",
+  "passed_count": 0,
+  "quarantined_count": 1,
+  "results": [
+    {
+      "duration_s": 205.5,
+      "gap": 0.16590382286572947,
+      "instrument": "EUR_USD",
+      "model": "transformer",
+      "passed": false,
+      "quarantine_dir": "/home/user/ml_engine/trained_data/models/EUR_USD/_quarantine/transformer_direction-20260615T224250Z",
+      "quarantined": true,
+      "train_acc": 0.7006486654281616,
+      "val_acc": 0.5347448425624322
+    }
+  ],
+  "schema_version": 1,
+  "started_at_utc": "2026-06-15T22:39:26.267496+00:00"
+}

@@ -1,0 +1,40 @@
+{
+  "candles": 25000,
+  "failed": 0,
+  "instrument": "USD_CAD",
+  "params": {
+    "batch_size": 128,
+    "dropout_rate": 0.468,
+    "l2_reg": 1.3e-05,
+    "lr": 0.000552,
+    "mixed_precision": false,
+    "patience": 25,
+    "seq_len": 120,
+    "tcn_dilations": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "tcn_kernel_size": 5,
+    "tcn_nb_filters": 128,
+    "top_features": 150
+  },
+  "passed": 1,
+  "results": [
+    {
+      "duration_s": 91.8,
+      "gap": 0.02662222852151863,
+      "instrument": "USD_CAD",
+      "model": "transformer",
+      "passed": true,
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.5183513164520264,
+      "val_acc": 0.544973544973545
+    }
+  ],
+  "timestamp": "2026-06-15 22:56:27",
+  "total_duration_s": 92.7
+}

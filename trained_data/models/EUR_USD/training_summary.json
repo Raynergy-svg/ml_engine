@@ -1,0 +1,41 @@
+{
+  "candles": 25000,
+  "failed": 1,
+  "instrument": "EUR_USD",
+  "params": {
+    "batch_size": 128,
+    "dropout_rate": 0.363,
+    "l2_reg": 9.8e-05,
+    "lr": 0.000415,
+    "mixed_precision": false,
+    "patience": 25,
+    "seq_len": 90,
+    "tcn_dilations": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "tcn_kernel_size": 5,
+    "tcn_nb_filters": 256,
+    "top_features": 150
+  },
+  "passed": 0,
+  "results": [
+    {
+      "duration_s": 205.5,
+      "gap": 0.16590382286572947,
+      "instrument": "EUR_USD",
+      "model": "transformer",
+      "passed": false,
+      "quarantine_dir": "/home/user/ml_engine/trained_data/models/EUR_USD/_quarantine/transformer_direction-20260615T224250Z",
+      "quarantined": true,
+      "train_acc": 0.7006486654281616,
+      "val_acc": 0.5347448425624322
+    }
+  ],
+  "timestamp": "2026-06-15 22:42:52",
+  "total_duration_s": 206.5
+}

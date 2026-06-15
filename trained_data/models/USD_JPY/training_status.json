@@ -1,0 +1,28 @@
+{
+  "candles": 25000,
+  "completed_at_utc": "2026-06-15T22:51:19.254513+00:00",
+  "duration_s": 441.2,
+  "errors": [],
+  "failed_count": 0,
+  "git_commit": "dad8624",
+  "granularity": "H1",
+  "instrument": "USD_JPY",
+  "model_filter": "transformer",
+  "passed_count": 1,
+  "quarantined_count": 0,
+  "results": [
+    {
+      "duration_s": 440.2,
+      "gap": 0.007933343589378472,
+      "instrument": "USD_JPY",
+      "model": "transformer",
+      "passed": true,
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.554338276386261,
+      "val_acc": 0.5622716199756395
+    }
+  ],
+  "schema_version": 1,
+  "started_at_utc": "2026-06-15T22:43:58.060399+00:00"
+}

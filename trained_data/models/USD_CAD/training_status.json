@@ -1,0 +1,28 @@
+{
+  "candles": 25000,
+  "completed_at_utc": "2026-06-15T22:56:27.632578+00:00",
+  "duration_s": 92.7,
+  "errors": [],
+  "failed_count": 0,
+  "git_commit": "dad8624",
+  "granularity": "H1",
+  "instrument": "USD_CAD",
+  "model_filter": "transformer",
+  "passed_count": 1,
+  "quarantined_count": 0,
+  "results": [
+    {
+      "duration_s": 91.8,
+      "gap": 0.02662222852151863,
+      "instrument": "USD_CAD",
+      "model": "transformer",
+      "passed": true,
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.5183513164520264,
+      "val_acc": 0.544973544973545
+    }
+  ],
+  "schema_version": 1,
+  "started_at_utc": "2026-06-15T22:54:54.920186+00:00"
+}
