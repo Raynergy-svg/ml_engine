@@ -374,6 +374,24 @@ class ScannerAgentTeam:
                     logger.warning("ScannerAgentTeam: failed to init LLM Macro Agent (shadow): %s", exc)
         except Exception as exc:
             logger.debug("ScannerAgentTeam: LLM Macro Agent import unavailable: %s", exc)
+
+        # ── Neural Agent Team (lazy bridge) ────────────────────────────────
+        # When use_neural_agents=True, we keep a reference to NeuralAgentTeam
+        # so trade outcomes can be bridged into neural replay buffers.
+        self._neural_team = None
+        self._neural_update_counter = 0
+        self._trade_verdict_cache: Dict[str, Any] = {}
+        _neural_enabled = getattr(self.config, "use_neural_agents", False)
+        if _neural_enabled:
+            try:
+                from src.scanner.agents.neural import NeuralAgentTeam
+                self._neural_team = NeuralAgentTeam(self.config)
+                logger.info(
+                    "ScannerAgentTeam: NeuralAgentTeam initialized (%s mode)",
+                    "shadow" if getattr(self.config, "shadow_neural_agents", True) else "live",
+                )
+            except Exception as exc:
+                logger.warning("ScannerAgentTeam: NeuralAgentTeam init failed: %s", exc)
         # Graph Attention Consensus (optional, see end of file)
 
     # --- Persistent weight management ---
@@ -1916,6 +1934,16 @@ class ScannerAgentTeam:
             except Exception as _dt_err:
                 logger.debug(f"Phase 55: Disagreement penalty skipped: {_dt_err}")
 
+        # ── Neural agent shadow evaluation (non-voting, for replay learning) ──
+        if getattr(self, "_neural_team", None) is not None:
+            try:
+                for _n_name, _n_agent in self._neural_team.agents.items():
+                    _n_verdict = _n_agent.evaluate(ctx)
+                    if _n_verdict is not None:
+                        verdicts.append(_n_verdict)
+            except Exception as _n_err:
+                logger.debug("Neural shadow evaluation skipped: %s", _n_err)
+
         analysis.agent_reasons = [v.to_dict() for v in verdicts]
         analysis.agent_reason_codes = list(dict.fromkeys(v.reason_code for v in verdicts if v.reason_code))
         analysis.why_trade = [v.reason for v in verdicts if v.passed and v.reason]
@@ -3434,6 +3462,13 @@ class ScannerAgentTeam:
                             _ob_snapshot(pair, "position", position_buckets, current_price, timestamp=now)
                         except Exception as _e:  # noqa: BLE001 — persist must never raise
                             logger.debug("order_flow: position book persist failed: %s", _e)
+                        # Also write to harvest parquet for bulk training
+                        try:
+                            from src.data.harvest import HarvestScheduler
+                            hs = HarvestScheduler()
+                            hs.harvest_position_book(pair)
+                        except Exception:
+                            pass  # Best-effort
             except Exception as e:
                 logger.debug("order_flow: position book fetch failed for %s: %s", pair, e)
 
@@ -3788,13 +3823,20 @@ class ScannerAgentTeam:
             },
         )
 
+    def cache_trade_verdicts(self, episode_id: str, verdicts: list) -> None:
+        """Cache agent verdicts for later neural bridge retrieval."""
+        if not episode_id:
+            return
+        self._trade_verdict_cache[episode_id] = {"verdicts": list(verdicts)}
+
     def record_trade_outcome(
         self, episode_id: str, outcome: str, pnl_pips: float
     ) -> bool:
-        """Record trade outcome to episodic memory for pattern learning.
+        """Record trade outcome to episodic memory and neural agents.
 
         Called after a trade closes to update episodic memory with outcome.
-        This feeds historical pattern data that gates future similar setups.
+        When neural agents are enabled, also pushes experience tuples into
+        each agent's replay buffer for gradient-based learning.
 
         Args:
             episode_id: UUID returned from record_setup (stored during entry)
@@ -3804,17 +3846,67 @@ class ScannerAgentTeam:
         Returns:
             True if outcome was recorded, False if episode not found or episodic memory disabled
         """
-        if self._episodic_memory is None:
-            return False
-        try:
-            return self._episodic_memory.record_outcome(
-                episode_id=episode_id,
-                outcome=outcome,
-                pnl_pips=float(pnl_pips),
-            )
-        except Exception as e:
-            logger.warning(f"Failed to record trade outcome to episodic memory: {e}")
-            return False
+        recorded = False
+        if self._episodic_memory is not None:
+            try:
+                recorded = self._episodic_memory.record_outcome(
+                    episode_id=episode_id,
+                    outcome=outcome,
+                    pnl_pips=float(pnl_pips),
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record trade outcome to episodic memory: {e}")
+
+        # ── Bridge to neural agents ────────────────────────────────────────
+        # If neural agents are active, push this trade's experience into
+        # each agent's prioritized replay buffer for online learning.
+        _neural_enabled = getattr(self.config, "use_neural_agents", False)
+        if _neural_enabled and hasattr(self, "_neural_team") and self._neural_team is not None:
+            try:
+                self._bridge_outcome_to_neural(episode_id, outcome, pnl_pips)
+            except Exception as e:
+                logger.debug(f"Neural agent outcome bridge failed: {e}")
+
+        # Evict to prevent unbounded growth
+        self._trade_verdict_cache.pop(episode_id, None)
+
+        return recorded
+
+    def _bridge_outcome_to_neural(
+        self, episode_id: str, outcome: str, pnl_pips: float
+    ) -> None:
+        """Push trade outcome into each neural agent's replay buffer.
+
+        Requires the episode to have cached verdicts (written during scan).
+        If no cached verdicts, silently returns.
+        """
+        if self._neural_team is None:
+            return
+
+        # Retrieve cached verdicts for this episode
+        # (assumes the scan cycle cached them in a trade-entry buffer)
+        cached = getattr(self, "_trade_verdict_cache", {}).get(episode_id)
+        if cached is None:
+            return
+
+        trade_won = outcome == "WIN"
+        for vd in cached.get("verdicts", []):
+            agent_name = vd.get("name")
+            agent = self._neural_team.agents.get(agent_name)
+            if agent is None:
+                continue
+            try:
+                agent.record_outcome(vd, trade_won)
+            except Exception as e:
+                logger.debug(f"Neural agent {agent_name} outcome recording failed: {e}")
+
+        # Persist trainer state periodically
+        if getattr(self, "_neural_update_counter", 0) % 50 == 0:
+            try:
+                self._neural_team.trainer.save_policies()
+            except Exception as e:
+                logger.debug(f"Neural agent periodic save failed: {e}")
+        self._neural_update_counter = getattr(self, "_neural_update_counter", 0) + 1
 
 
 # ==========================================================================

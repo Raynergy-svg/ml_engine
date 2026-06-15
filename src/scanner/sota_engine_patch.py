@@ -48,7 +48,10 @@ def patch_scanner_for_sota(scanner: Any) -> None:
             logger.warning(f"Failed to patch SOTA inference: {e}")
 
     # --- Goal 2: Neural Agent Team ---
-    if getattr(cfg, "use_neural_agents", False):
+    # Only fully replace ScannerAgentTeam with NeuralAgentTeam when shadow mode
+    # is disabled. In shadow mode, ScannerAgentTeam hosts the neural agents
+    # internally so rule-based voting continues while neural policies learn.
+    if getattr(cfg, "use_neural_agents", False) and not getattr(cfg, "shadow_neural_agents", True):
         try:
             new_team = resolve_agent_team(cfg)
             if new_team is not None:

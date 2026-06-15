@@ -344,6 +344,12 @@ class Scanner:
         self._scan_cycle_count: int = 0
         self._ensemble_lock = threading.Lock()
         self._agent_team = ScannerAgentTeam(self.config)
+        # SOTA integration patch (replaces inference engine / agent team when config toggles are True)
+        try:
+            from src.scanner.sota_engine_patch import patch_scanner_for_sota
+            patch_scanner_for_sota(self)
+        except Exception as _sota_patch_err:
+            logger.debug("SOTA engine patch skipped: %s", _sota_patch_err)
         self._hybrid_inference: Optional[Any] = None  # US-008: HybridInference + TimesFM
         self._causal_feature_selector = None  # US-015: CausalFeatureSelector
         self._causal_discovery = None  # US-013: CausalDiscovery
@@ -6200,6 +6206,7 @@ class Scanner:
         regime: str,
         pnl_pips: float,
         trade_won: bool,
+        episode_id: str = "",
         duration_bars: int = 0,
         gate_values: Optional[Dict[str, float]] = None,
         agent_verdicts: Optional[List[Dict[str, Any]]] = None,
@@ -6279,6 +6286,16 @@ class Scanner:
                 self._model_bandit.update_reward(model, pnl_pips)
             except Exception as e:
                 logger.debug(f"ModelBandit outcome error: {e}")
+
+        # Bridge trade outcome to agent team for neural replay and episodic memory
+        if self._agent_team is not None and episode_id:
+            try:
+                if agent_verdicts:
+                    self._agent_team.cache_trade_verdicts(episode_id, agent_verdicts)
+                _outcome_str = "WIN" if trade_won else "LOSS"
+                self._agent_team.record_trade_outcome(episode_id, _outcome_str, pnl_pips)
+            except Exception as e:
+                logger.debug(f"Agent team outcome bridge error: {e}")
 
         # Attention feedback: reinforce timeframe quality based on trade outcome
         if self._attention_feedback is not None and agent_verdicts:

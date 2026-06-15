@@ -826,6 +826,7 @@ class CalibrationHandler:
                 gate_values=gate_vals,
                 agent_verdicts=agents_info.get("agent_reasons"),
                 model=entry.get("model", "ensemble"),
+                episode_id=entry.get("episode_id", ""),
             )
         return True
 

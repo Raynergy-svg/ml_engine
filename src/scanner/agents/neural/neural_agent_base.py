@@ -178,7 +178,7 @@ class NeuralAgentBase(ABC):
             reason_code=reason_code,
             confidence_delta=confidence_delta,
             block_trade=block_trade,
-            metadata={"raw_score": score_raw},
+            metadata={"raw_score": score_raw, "features": features.tolist()},
         )
 
     def _fallback_verdict(self, ctx: AgentDecisionContext, reason_code: str) -> AgentVerdict:
@@ -207,6 +207,8 @@ class NeuralAgentBase(ABC):
         # Correctness: (voted FOR and won) OR (voted AGAINST and lost)
         target = 1.0 if (passed == trade_won) else 0.0
         features = verdict_metadata.get("features")
+        if features is None:
+            features = verdict_metadata.get("metadata", {}).get("features")
         if features is None:
             return
 

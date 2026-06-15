@@ -113,6 +113,11 @@ class ContinuousScanner:
         self._journal_cache: list = []
         self._journal_mtime: float = 0.0
 
+        # Code-repair (self-heal) error-frequency tracker. Moved from class
+        # scope into __init__ so each scanner instance has its own dict rather
+        # than a shared mutable class attribute.
+        self._error_frequency: Dict[str, int] = {}
+
         # US-004: Peak NAV tracker persists across cycles for real drawdown detection.
         self._peak_nav: float = 0.0
         atexit.register(self._save_peak_nav)
@@ -1090,8 +1095,6 @@ class ContinuousScanner:
         return self._scan_count
 
     # ── Code Repair (Self-Heal) ────────────────────────────────────────
-    _error_frequency: Dict[str, int] = {}
-
     _SKIP_REPAIR_ERRORS = frozenset({
         "ConnectionError", "TimeoutError", "requests.exceptions.ConnectionError",
         "requests.exceptions.Timeout", "requests.exceptions.ReadTimeout",
@@ -1131,8 +1134,8 @@ class ContinuousScanner:
         self._error_frequency[error_sig] = self._error_frequency.get(error_sig, 0) + 1
         freq = self._error_frequency[error_sig]
         if freq < 2:
-            logger.info("code_repair.deferred", error_sig=error_sig, frequency=freq,
-                        reason="waiting for 2nd occurrence")
+            logger.info("code_repair.deferred: error_sig=%s frequency=%s reason=%s",
+                        error_sig, freq, "waiting for 2nd occurrence")
             return
 
         context = ""
@@ -1163,22 +1166,22 @@ class ContinuousScanner:
                     timeout_seconds=180,
                 )
                 if r.success:
-                    logger.info("code_repair.success", error_sig=error_sig,
-                                files=r.files_edited, fix=r.fix_description[:200])
+                    logger.info("code_repair.success: error_sig=%s files=%s fix=%s",
+                                error_sig, r.files_edited, r.fix_description[:200])
                     if console:
                         console.print(f"  [green]Self-heal applied: {r.fix_description[:100]}[/green]")
                     self._error_frequency.pop(error_sig, None)
                 elif r.reverted:
-                    logger.warning("code_repair.reverted", error_sig=error_sig, reason=r.error)
+                    logger.warning("code_repair.reverted: error_sig=%s reason=%s", error_sig, r.error)
                     if console:
                         console.print(f"  [red]Self-heal fix reverted (tests failed)[/red]")
                 elif r.needs_human:
-                    logger.warning("code_repair.needs_human", error_sig=error_sig,
-                                   diagnosis=r.root_cause)
+                    logger.warning("code_repair.needs_human: error_sig=%s diagnosis=%s",
+                                   error_sig, r.root_cause)
                     if console:
                         console.print(f"  [yellow]Self-heal: needs human — {r.root_cause[:80]}[/yellow]")
                 else:
-                    logger.warning("code_repair.failed", error_sig=error_sig, error=r.error)
+                    logger.warning("code_repair.failed: error_sig=%s error=%s", error_sig, r.error)
             except Exception as repair_err:
                 logger.debug("code_repair.worker_error: %s", repair_err)
 

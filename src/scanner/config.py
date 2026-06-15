@@ -449,6 +449,108 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "max_correlated_exposure_pct": 0.10,
         "correlation_filter_threshold": 0.70,
     },
+    # ── SOTA A/B Profile ────────────────────────────────────────────
+    # Activates the SOTA raw-sequence model (instead of legacy ensemble)
+    # and neural agents (in shadow mode until bootstrap threshold met).
+    # Use for backtesting and gradual rollout only.
+    "sota_ab": {
+        "blocked_pairs": [],
+        # SOTA toggles
+        "use_sota_inference": True,
+        "use_neural_agents": True,
+        "shadow_neural_agents": True,
+        "neural_agent_min_samples": 500,
+        # Conservative baseline from "balanced" to avoid compounding new-model risk
+        "sub_inference_min_confidence": 0.30,
+        "min_agent_consensus_ratio": 0.50,
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.60,
+        "devil_advocate_warn_threshold": 0.40,
+        "soft_uncertainty_blocking": True,
+        # Risk & sizing (balanced defaults)
+        "enable_dynamic_risk_allocation": True,
+        "enable_kelly_sizing": True,
+        "enable_entropy_sizing": True,
+        "enable_market_impact": True,
+        "enable_affinity_portfolio": True,
+        "enable_dynamic_hedging": True,
+        "enable_dynamic_sl_tp": True,
+        "enable_live_position_management": True,
+        "enable_position_timeout": True,
+        # Execution
+        "enable_smart_execution": True,
+        "enable_execution_routing": True,
+        "enable_execution_quality_optimizer": True,
+        "enable_execution_quality_tracking": True,
+        "execution_strategy": "TWAP",
+        # Intelligence & learning
+        "enable_model_calibration": True,
+        "enable_model_bandit": True,
+        "enable_model_routing": True,
+        "enable_confidence_calibration": True,
+        "enable_concept_drift_detection": True,
+        "enable_ensemble_disagreement": True,
+        "enable_trade_outcome_prediction": True,
+        "enable_trade_explainability": True,
+        "enable_lead_lag_detection": True,
+        "enable_observational_learning": True,
+        # Agents & signals
+        "enable_multi_timeframe_agent": True,
+        "enable_pair_performance_agent": True,
+        "enable_session_timing_agent": True,
+        "enable_support_resistance_agent": True,
+        "enable_news_risk_agent": True,
+        "enable_momentum_agent": True,
+        "enable_trader_readiness_agent": False,
+        "enable_order_flow_agent": True,
+        "enable_devil_advocate_agent": True,
+        # Reflection
+        "briefing_snapshot_every_n_cycles": 12,
+        "disable_briefing_snapshot": False,
+        # Features & attention
+        "enable_feature_attention": True,
+        "enable_temporal_attention": True,
+        "enable_causal_filtering": True,
+        "enable_microstructure_regime": True,
+        "enable_multi_horizon_fusion": True,
+        # Infrastructure
+        "enable_memory_manager": True,
+        "enable_health_registry": True,
+        "enable_module_activation": True,
+        "enable_agent_lifecycle": True,
+        "enable_observation_consumer": True,
+        "enable_replay_validator": True,
+        "enable_agent_accuracy_matrix": True,
+        "enable_pair_regime_agent_matrix": True,
+        "enable_signal_timing": True,
+        "enable_threshold_optimizer": True,
+        "enable_attention_feedback": True,
+        "enable_pair_transfer": True,
+        "enable_regime_broadcast": True,
+        "enable_regime_reward": True,
+        "enable_adversarial_training": True,
+        "enable_adaptive_lr": True,
+        "enable_synthetic_crisis": True,
+        "enable_training_augmentation": True,
+        "enable_agent_trade_promotion": True,
+        # Graph & HRP
+        "use_hrp": True,
+        "use_heterogeneous_agents": True,
+        "enable_graph_attention": True,
+        # RL
+        "use_rl_sizer": True,
+        "use_rl_gates": True,
+        "use_rl_exits": True,
+        # Meta-cybernetic
+        "enable_meta_manager": False,
+        "meta_manager_max_concurrent": 1,
+        "meta_manager_constitution_path": ".claude/rules/constitution.json",
+        "meta_manager_use_llm": False,
+        "staged_deploy_shadow_cycles": 20,
+        "staged_deploy_canary_trades": 10,
+        # Backtesting window for validation
+        "backtest_months": 3,
+    },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
 
@@ -637,6 +739,8 @@ class ScannerConfig:
     sota_model_path: str = "trained_data/models/sota_finetuned/sota_model.keras"
     # Goal 2: Neural agent policies (replaces rule-based heuristic agents)
     use_neural_agents: bool = False  # Use learned neural policies for agent consensus
+    shadow_neural_agents: bool = True  # Shadow mode: neural agents produce verdicts but don't vote
+    neural_agent_min_samples: int = 500  # Min trade outcomes before promoting neural agent to live vote
     neural_agent_save_dir: str = "trained_data/models/neural_agents"
     # When both are False, the scanner falls back to the legacy rule-based system.
 
@@ -846,6 +950,7 @@ class ScannerConfig:
     # on as few as 3 simulated trades (the floor in backtest_gate.py:210),
     # producing false-negative blocks on otherwise viable signals.
     enable_backtest_gate: bool = True
+    backtest_months: int = 3  # Validation window for SOTA A/B backtesting
 
     # --- Dynamic SL/TP Optimization (US-080) ---
     # Phase 29 (US-179): Enabled by default — stable and tested in smart profile
