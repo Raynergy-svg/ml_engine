@@ -568,3 +568,14 @@ fx_validation:
     max_streak_prob_mae: 0.15
     min_data_size: 2000
     max_class_imbalance: 0.7
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SOTA / NEURAL AGENT SWITCHES — flipped 2026-06-15
+# ═══════════════════════════════════════════════════════════════════════════════
+sota:
+  use_sota_inference: true
+  sota_model_path: "trained_data/models/sota_finetuned/sota_model.keras"
+
+neural_agents:
+  use_neural_agents: true
+  neural_agent_save_dir: "trained_data/models/neural_agents"
