@@ -1,0 +1,61 @@
+# Subagent: SOTA Sanity Tester
+
+## Task
+Run the SOTA RawSequenceModel overfit sanity test to validate training infrastructure.
+
+## Context
+- You are in /Users/buddy/Documents/ml_engine
+- PYTHONPATH must include /Users/buddy/Documents/ml_engine
+- The SOTA model is at src/sota_core/raw_sequence_model.py
+- Training script: scripts/train_sota.py
+
+## Exact Commands
+1. Verify model compiles on a dummy tensor:
+   cd /Users/buddy/Documents/ml_engine
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python -c "
+   import numpy as np
+   import sys; sys.path.insert(0, 'src')
+   from sota_core.raw_sequence_model import RawSequenceModel, ModelConfig
+   cfg = ModelConfig(seq_len=128, d_model=128, num_layers=3, num_heads=4)
+   model = RawSequenceModel(cfg)
+   model.build()
+   x = np.zeros((1, 128, 5), dtype=np.float32)
+   out_dir, out_regime = model.model.predict(x, verbose=0)
+   assert out_dir.shape == (1, 1), f'direction shape mismatch: {out_dir.shape}'
+   assert out_regime.shape == (1, 4), f'regime shape mismatch: {out_regime.shape}'
+   print('Tensor test PASSED')
+   "
+
+2. Check if training data exists:
+   ls trained_data/harvest/*.parquet 2>/dev/null || echo "No harvest data yet"
+   ls trained_data/csv/*.csv 2>/dev/null | head -5 || echo "No legacy CSVs"
+
+3. Run training script dry-run to validate script structure:
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python scripts/train_sota.py --dry-run
+
+4. If data exists, run a mini overfit sanity test:
+   - Use only 1,000 training windows
+   - Run for 20 epochs
+   - Assert train MSE < 0.15 and val MSE < 0.25
+   - You may need to create a wrapper script or modify train_sota.py temporarily with reduced parameters
+   - IMPORTANT: If you modify train_sota.py, save the original first and restore it after
+
+## Success Criteria
+- Tensor compilation test passes (output shapes correct)
+- Dry-run discovers data sources correctly
+- Overfit test shows decreasing loss (if data available)
+- No TensorFlow/Keras crashes
+
+## Report Format
+Save your report to /Users/buddy/Documents/ml_engine/tmp/subagents/sanity_report.md with:
+- Tensor test result
+- Data availability status
+- Dry-run output summary
+- Overfit test results (loss curves)
+- Any errors or warnings
+
+## Constraints
+- DO NOT modify source code UNLESS necessary for the mini-test, and restore after
+- DO NOT commit anything
+- DO NOT push to remote
+- Report honestly - if data is missing, state that clearly

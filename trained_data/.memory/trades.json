@@ -1,6 +1,6 @@
 [
   {
-    "timestamp": "2026-05-13T02:44:45.484064+00:00",
+    "timestamp": "2026-06-15T21:44:13.321435+00:00",
     "instrument": "EUR_USD",
     "direction": "long",
     "confidence": 0.75,
@@ -38,7 +38,7 @@
       "agent_passed": true,
       "confidence": 0.75,
       "model_disagreement": 0.1,
-      "scan_time": "2026-05-13T02:44:45.476461+00:00",
+      "scan_time": "2026-06-15T21:44:13.319395+00:00",
       "spread_pips": 0.0,
       "volatility_regime": "NORMAL"
     }

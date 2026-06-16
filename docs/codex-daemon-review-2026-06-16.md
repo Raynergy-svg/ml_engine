@@ -137,3 +137,58 @@ incumbent baseline, the model-path contract (`bugs-4`/`neural-5`), and the promo
   follow-up surfaced while refuting `safety-0`; harden so a `StateEngine` failure fails closed.
 - **Working tree is uncommitted** on `codex/sota-activation-execution`; runtime `mode=dry_run`,
   `halted=false`. The applied fixes are on disk but not in the running process until restart.
+
+## Review of codex d3e7e59 (F821 fixes) — 2026-06-16
+
+Commit `d3e7e59` ("fix(scanner): resolve 21 F821 undefined-name runtime bugs") is advertised as a
+pure lint fix. It is not behavior-neutral. Three of the bindings it adds **un-gate
+previously-dead code** — blocks that used to raise `NameError` and get swallowed by a local
+`except` now execute. Two of those touch live order-sizing / SL-TP data. Verdicts below are
+adjudicated against disk (`d3e7e59` confirmed via `git log`; line numbers re-read in the current
+tree).
+
+### Verdict on the engine.py empty-default (call-out)
+
+**`features = {}` / `agent_result = {}` at `engine.py:3605-3606` → REAL, behavior-NEUTRAL, NOT
+safe-to-autofix.** Confidence: **HIGH** (verified on disk this turn — defaults present at 3605-3606;
+`regime_name = "UNKNOWN"` at 3604).
+
+The empty-dict defaults are correct crash-prevention and **do not regress live trading**: the US-094
+explainability block (`engine.py:4276`, mutates `confidence`) and US-098 entropy-sizing block
+(`engine.py:4441`, mutates `risk_pct`) both guard on truthiness (`if _explain_features:` /
+`if _agent_votes:`), so empty dicts make them no-ops — identical net behavior to the prior
+`NameError`-swallow path. **The real defect the fix masks is permanently-dead code:** bare
+`features` / `agent_result` are never assigned a real value anywhere in `_scan_pair`, and the US-098
+"primary" fallback `self._last_agent_verdicts` is **never assigned anywhere in `src/`** — so BOTH
+US-098 branches are dead, not just the `elif` the finding originally claimed. Both subsystems can
+never fire. Not safe-to-autofix because the only real remediation (wire the real feature/consensus
+data) would newly activate a `confidence` penalty and a `risk_pct` multiplier — trade-decision data,
+operator-gated. Treat as cleanup, not a blocker; a `debug→warning` log when these blocks hit empty
+inputs would make the dead paths visible.
+
+### Applied for operator (highest-risk first)
+
+| id | file:line | severity | verdict | why it's operator-gated |
+|----|-----------|----------|---------|--------------------------|
+| safety-0 | `engine.py:4104-4138` (root: default `3604` + regime resolved `4474`) | **high** | REAL, not autofix · **HIGH** | The `regime_name="UNKNOWN"` default activates a stale-ordered Dynamic SL/TP block that runs with a **fabricated `regime="NORMAL"`** because the true regime isn't resolved until `4474` (~350 lines below). `_apply_early_tighten` (`dynamic_sl_tp.py`) contracts SL by 0.90× under "NORMAL" when confidence<0.50, but the LOW table is no-tighten (1.00×) by design — so a true-LOW setup told "NORMAL" gets an SL contraction that **violates the hard invariant "LOW regime MUST use sl_mult ≥ 1.2"** (`trading.md`). Mutated `sl_pips`/`tp_pips` reach `PairAnalysis(...)` at `4645-4646` → broker. Fail-open masked by the lint fix. Fix: move the block below `4474`, or gate on `regime_name != "UNKNOWN"`; add a LOW-regime no-tighten test. |
+| correctness-0 | `execution.py:22` (import) → block `3314-3332` | medium | REAL, not autofix · **HIGH** | Module-level `import numpy as np` is the correct F821 fix, but it un-gates the US-012 SAC order-slicing block (`np.array`/`np.clip`/`attempt_units = _sac_units`, 1000-unit floor). Pre-commit `np` was undefined → `NameError` swallowed → slicing always skipped, orders went at full size. Post-commit the block can shrink live order size. **Correction to the finding (downgrades, doesn't refute):** `use_sac_execution` is NOT a declared `ScannerConfig` field and is in no profile dict — the only `True` setter in the repo is a test MagicMock, so `_sac_execution_agent is None` in every real path and the block short-circuits. **Latent activation, not currently-live.** Keep the import; gate/comment/validate the `attempt_units` mutation before the flag is ever wired. |
+| correctness-1 / safety-1 | `engine.py:3605-3606` | low | REAL, behavior-neutral, not autofix · **HIGH** | See call-out above. Wiring the real data would activate `confidence`/`risk_pct` mutation → operator decision. |
+
+### Flagged-for-operator (summary)
+
+- **safety-0** — SL/TP optimizer runs on a fabricated regime; can violate the LOW-regime SL floor. **Highest priority.**
+- **correctness-0** — numpy import latently un-gates the SAC order-sizer; dormant only because `use_sac_execution` is unwired.
+- **correctness-1 / safety-1** — empty-dict defaults mask two permanently-dead SOTA subsystems (US-094 explainability, US-098 entropy sizing); `_last_agent_verdicts` is never assigned.
+
+### Refuted / no-change-needed
+
+| id | file:line | verdict | basis |
+|----|-----------|---------|-------|
+| correctness-2 | `engine.py:6860` | REAL but no defect — `pair_list`→`pairs` rename is correct (`pairs` is the always-bound param of `scan_with_analysis@6408`; `pair_list` undefined in scope). Flagged only to record it was checked. |
+| correctness-3 / safety-2 | `execution.py:3282` | **NOT a defect.** `atr_pips = atr / _get_pip_value(...)` is semantically correct (matches the established pips idiom) and consumed ONLY by the observational `should_use_smart_execution(...)` debug-log block — does not flow into `place_order`, `sl_price`/`tp_price`, or `attempt_units`. Halt guard runs earlier (`2091-2106`) and is untouched. Caveat: halt-guard line numbers not independently re-confirmed this turn; isolation argument holds regardless. |
+| correctness-4 | `sota_core/inference.py:79` | REAL, inert, autofix-safe — `List[float]`→`list[float]` (PEP 585) resolves F821 (`List` not imported); `from __future__ import annotations` at line 16 + Python ≥3.9 make it safe. No runtime effect. **APPLIED status: no-op by spec** (fix-spec says "no change needed"); `py_compile` OK; the 2 flake8 F401 warnings on `inference.py:19/21` are pre-existing (file untouched, confirmed by clean `git diff`), not introduced here. |
+
+**Net:** the F821 commit is correct as a lint fix but bundles **one high-severity fail-open** (safety-0,
+SL/TP under a fake regime) and **one latent order-sizer activation** (correctness-0, SAC). Neither is
+safe to autofix — both touch trade-decision/SL data and need operator sign-off. The engine.py
+empty-defaults are neutral today but conceal two dead SOTA subsystems.

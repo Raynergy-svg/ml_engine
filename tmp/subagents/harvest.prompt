@@ -1,0 +1,48 @@
+# Subagent: Data Harvest Engineer
+
+## Task
+Run the ML Engine's automated data harvest backfill for all currency pairs.
+
+## Context
+- You are in /Users/buddy/Documents/ml_engine
+- The codebase is a Python-based ML trading system
+- PYTHONPATH must include /Users/buddy/Documents/ml_engine for imports to work
+- The harvest script: src/data/harvest.py
+
+## Exact Commands
+1. Verify the script exists and is syntactically valid:
+   python -m py_compile src/data/harvest.py
+
+2. Run dry-run first to validate connectivity:
+   cd /Users/buddy/Documents/ml_engine
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python -m src.data.harvest --dry-run --pair EUR_USD
+
+3. If dry-run succeeds, run full backfill:
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python -m src.data.harvest --backfill-all --granularity M15
+
+## Expected Behavior
+- Script fetches historical M15 candles from OANDA for all pairs
+- Rate limit: 100ms between requests (20 req/sec max)
+- Data saved to trained_data/harvest/{pair}_M15.parquet
+- Position book snapshots saved to trained_data/harvest/{pair}_positionbook.parquet
+- If any pair fails 3 times in a row, it logs and skips
+
+## Success Criteria
+- Dry-run completes without errors
+- Backfill harvests at least some bars for each pair
+- Parquet files are created and non-empty
+
+## Report Format
+Save your report to /Users/buddy/Documents/ml_engine/tmp/subagents/harvest_report.md with:
+- Summary of what you did
+- Dry-run results
+- Per-pair harvest statistics
+- Any errors encountered
+- Total disk usage of trained_data/harvest/
+
+## Constraints
+- DO NOT modify any source code
+- DO NOT commit anything
+- DO NOT push to remote
+- Only run existing scripts
+- If the script fails, report the error and stop

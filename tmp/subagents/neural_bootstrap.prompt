@@ -1,0 +1,87 @@
+# Subagent: Neural Agent Bootstrap Tester
+
+## Task
+Verify the neural agent training infrastructure and run synthetic bootstrap tests.
+
+## Context
+- You are in /Users/buddy/Documents/ml_engine
+- PYTHONPATH must include /Users/buddy/Documents/ml_engine
+- Neural agents: src/scanner/agents/neural/
+- Training script: scripts/train_neural_agents.py
+- Replay buffer: src/scanner/agents/neural/neural_agent_base.py
+
+## Exact Commands
+1. Verify neural agent imports work:
+   cd /Users/buddy/Documents/ml_engine
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python -c "
+   import sys; sys.path.insert(0, 'src')
+   from src.scanner.agents.neural.policies import TrendPolicy
+   from src.scanner.agents.neural.neural_agent_base import NeuralAgentConfig
+   print('Neural agent imports OK')
+   "
+
+2. Run synthetic replay test:
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python -c "
+   import sys, numpy as np
+   sys.path.insert(0, 'src')
+   from src.scanner.agents.neural.policies import TrendPolicy
+   from src.scanner.agents._team import AgentDecisionContext
+   from src.scanner.results import PairAnalysis
+   import pandas as pd
+
+   class FakeConfig:
+       min_samples_for_update = 10
+       score_threshold = 0.5
+       block_threshold = 0.3
+       hidden_units = [32]
+       dropout = 0.1
+       learning_rate = 1e-3
+       max_replay_size = 500
+       online_epochs = 5
+       base_weight = 1.0
+       online_batch_size = 32
+       validation_split = 0.2
+       early_stop_patience = 3
+
+   policy = TrendPolicy(FakeConfig())
+   analysis = PairAnalysis(pair='EUR_USD', direction='LONG', current_price=1.0850)
+   np.random.seed(0)
+   df_raw = pd.DataFrame(np.random.randn(30, 5), columns=['open','high','low','close','volume'])
+   ctx = AgentDecisionContext(analysis=analysis, df_raw=df_raw, df_feat=df_raw, gate_details={}, config=FakeConfig())
+   verdict = policy.evaluate(ctx)
+
+   print('Verdict name:', verdict.name)
+   print('Metadata has features:', 'features' in verdict.metadata)
+
+   vd = verdict.to_dict()
+   for i in range(25):
+       policy.record_outcome(vd, trade_won=(i%2==0))
+   print('Buffer size:', len(policy._replay_buffer))
+
+   loss = policy._online_update()
+   print('Loss after update:', loss)
+   print('Synthetic replay test PASSED')
+   "
+
+3. Check train_neural_agents.py dry-run:
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python scripts/train_neural_agents.py --dry-run
+
+## Success Criteria
+- Neural agent imports succeed
+- Synthetic replay buffer fills and online update runs
+- Loss decreases or stabilizes
+- train_neural_agents.py loads without import errors
+
+## Report Format
+Save your report to /Users/buddy/Documents/ml_engine/tmp/subagents/neural_bootstrap_report.md with:
+- Import test result
+- Synthetic replay test details
+- Buffer sizes and loss values
+- Dry-run output
+- Any errors
+
+## Constraints
+- DO NOT modify source code
+- DO NOT commit anything
+- DO NOT push to remote
+- If tests fail, report clearly what failed and why

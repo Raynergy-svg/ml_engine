@@ -1538,7 +1538,7 @@ class ScannerAgentTeam:
         # US-017: MetaStrategyAgent — dynamic strategy selection
         if self._meta_strategy_agent is not None:
             try:
-                _meta_selection = self._meta_strategy_agent.select(regime_name)
+                _meta_selection = self._meta_strategy_agent.select(_regime_name)
                 _selected_strategies = set(_meta_selection.get("selected_strategies", []))
                 if _selected_strategies:
                     _meta_skipped = [v for v in verdicts if v.name not in _selected_strategies]
@@ -1546,7 +1546,7 @@ class ScannerAgentTeam:
                     if _meta_skipped:
                         logger.info(
                             "MetaStrategy %s: deactivated %d agents (%s) for %s (reason=%s)",
-                            regime_name,
+                            _regime_name,
                             len(_meta_skipped),
                             ", ".join(v.name for v in _meta_skipped),
                             getattr(analysis, "pair", "UNKNOWN"),

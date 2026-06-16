@@ -2172,8 +2172,8 @@ class TransformerDirectionTrainer(BaseTrainer):
                 pair=getattr(self, "_current_pair", "joint"),
                 model_save_path=str(Path(self.config.checkpoint_dir) / "transformer_direction.keras"),
                 config={"epochs": self.config.epochs, "batch_size": self.config.batch_size,
-                        "n_features": x_train.shape[-1] if hasattr(x_train, 'shape') else 0,
-                        "n_train_samples": len(x_train) if hasattr(x_train, '__len__') else 0},
+                        "n_features": x_val_filtered.shape[-1] if hasattr(x_val_filtered, 'shape') else 0,
+                        "n_train_samples": len(x_val_filtered) if hasattr(x_val_filtered, '__len__') else 0},
             )
             callbacks.append(_wb_cb)
         except Exception as _wb_err:

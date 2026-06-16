@@ -1,0 +1,49 @@
+# Subagent: SOTA Model Retrainer (Encoder Fix Verification)
+
+## Task
+Re-run the full SOTA training pipeline using the fixed encoder weight transfer code.
+The previous run failed to transfer pre-trained encoder weights into fine-tuning.
+This run verifies the fix works end-to-end.
+
+## Context
+- You are in /Users/buddy/Documents/ml_engine
+- PYTHONPATH=/Users/buddy/Documents/ml_engine
+- Training script: scripts/train_sota.py
+- Harvested data: trained_data/harvest/*.parquet (15 pairs)
+- Previous pretrain weights are INVALID (saved with wrong namespace) — they will be overwritten
+
+## Exact Commands
+1. Delete old invalid pretrain weights:
+   rm -f trained_data/models/sota_pretrain/pretrain_weights.weights.h5
+
+2. Run Phase 1 pre-training:
+   cd /Users/buddy/Documents/ml_engine
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python scripts/train_sota.py --pretrain-only
+
+3. Verify pretrain weights exist:
+   ls -lh trained_data/models/sota_pretrain/pretrain_weights.weights.h5
+
+4. Run Phase 2 fine-tuning:
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python scripts/train_sota.py --finetune-only
+
+5. Check final model:
+   ls -lh trained_data/models/sota_finetuned/sota_model.keras
+
+## Expected Behavior
+- Phase 1: val_loss should decrease monotonically
+- Phase 2: direction accuracy should be BETTER than ~50% (previous coin-flip result)
+- If encoder transfer works, accuracy should climb above 55% within first few epochs
+- No Keras 3 crashes (class_weight already removed, skip_mismatch no longer needed)
+
+## If Training Crashes
+- Report the error with traceback
+- Do NOT modify source code unless it's a trivial obvious bug
+- If it's a bug you can fix quickly (one-liner), fix it and continue
+
+## Report Format
+Save your report to /Users/buddy/Documents/ml_engine/tmp/subagents/sota_retrain_report.md with:
+- Phase 1 results (epochs, best val_loss)
+- Phase 2 results (epochs, final accuracy, direction_loss)
+- Comparison to previous run
+- Any issues encountered
+- Verdict: did encoder transfer work?

@@ -3154,8 +3154,8 @@
   },
   {
     "trade_id": "test_1",
-    "episode_id": "ed47e125-5ff2-49e3-88f1-6025e39f9157",
-    "timestamp": "2026-06-13T13:24:14.086178+00:00",
+    "episode_id": "2ec2b623-dccb-4154-9d28-4cbef5dd1e6c",
+    "timestamp": "2026-06-15T21:44:13.309978+00:00",
     "pair": "EUR_USD",
     "direction": "LONG",
     "confidence": 0.75,
@@ -3166,7 +3166,7 @@
     "tp_pips": 25.0,
     "rr_ratio": 1.67,
     "risk_reward": 1.67,
-    "lots": 0.5,
+    "lots": 1.0,
     "broker": "oanda",
     "asset_class": "FX",
     "contract_month": null,
@@ -3194,7 +3194,7 @@
       "predictive_size_modifier": null,
       "regime_atr_multipliers": null
     },
-    "spread_pips": 0.0,
+    "spread_pips": 3.0,
     "group_momentum": null,
     "gate_details": {
       "scores": {},

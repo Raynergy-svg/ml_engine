@@ -1,0 +1,49 @@
+# Subagent: SOTA Model Trainer
+
+## Task
+Train the SOTA RawSequenceModel using harvested data. Run Phase 1 pre-training + Phase 2 fine-tuning.
+
+## Context
+- You are in /Users/buddy/Documents/ml_engine
+- PYTHONPATH=/Users/buddy/Documents/ml_engine
+- Training script: scripts/train_sota.py
+- Harvested data: trained_data/harvest/*.parquet (15 pairs × 5000 M15 bars each)
+- Model saves to: trained_data/models/sota_finetuned/sota_model.keras
+- Expected time: ~2 hours on M1 Metal
+
+## Exact Commands
+1. Verify data exists:
+   ls trained_data/harvest/*.parquet | wc -l
+
+2. Run full training pipeline:
+   cd /Users/buddy/Documents/ml_engine
+   PYTHONPATH=/Users/buddy/Documents/ml_engine python scripts/train_sota.py
+
+3. If training is too slow, try with reduced settings or CPU fallback:
+   - If Metal crashes, the script should auto-fallback to CPU
+   - If it takes too long, note the epoch and estimated remaining time
+
+## Expected Artifacts
+- trained_data/models/sota_pretrain/ (Phase 1 weights)
+- trained_data/models/sota_finetuned/sota_model.keras (Phase 2 weights)
+- Training logs showing loss curves
+
+## Success Criteria
+- Phase 1 val MSE decreases monotonically for first 10 epochs
+- Phase 2 model file exists at expected path
+- No TensorFlow crashes
+
+## Report Format
+Save your report to /Users/buddy/Documents/ml_engine/tmp/subagents/sota_train_report.md with:
+- Data discovery summary
+- Phase 1 training results
+- Phase 2 training results
+- Any errors or adjustments needed
+- Recommendations for next steps
+
+## Constraints
+- DO NOT modify model architecture
+- DO NOT change source code unless the script crashes and you need to fix an obvious bug
+- If you modify code, restore original afterward
+- Save model weights to expected paths
+- Report honestly if training takes too long or fails
