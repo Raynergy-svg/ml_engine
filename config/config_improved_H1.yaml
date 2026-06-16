@@ -579,3 +579,11 @@ sota:
 neural_agents:
   use_neural_agents: true
   neural_agent_save_dir: "trained_data/models/neural_agents"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LLM MACRO AGENT — flipped 2026-06-16
+# ═══════════════════════════════════════════════════════════════════════════════
+llm_macro:
+  enable_llm_macro_agent: true
+  llm_macro_shadow_mode: true
+  llm_macro_model: "claude-sonnet-4-6"

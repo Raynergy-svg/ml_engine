@@ -865,7 +865,7 @@ class ScannerConfig:
     enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator (legacy flag — kept for backward compatibility)
     enable_devil_advocate_agent: bool = True  # Agent #14: Canonical _agent-suffixed toggle (supersedes enable_devil_advocate)
     enable_order_flow_agent: bool = True  # Agent #15: Order-flow / book-depth agent
-    enable_llm_macro_agent: bool = False  # Agent #16: LLM macro reasoning (US-001)
+    enable_llm_macro_agent: bool = True  # Agent #16: LLM macro reasoning (US-001)
     enable_llm_macro_shadow: bool = True   # Log LLM macro votes without affecting ensemble
     # --- Reflection / observability surfaces ---
     # BriefingSnapshotWriter (Angle 1') — deterministic per-cycle snapshot of
