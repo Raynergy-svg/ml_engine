@@ -82,6 +82,7 @@ class ContinuousConfig:
     granularity: str = "H1"
     enable_maintenance: bool = True
     max_scans: Optional[int] = None  # None = unlimited
+    dry_run: bool = False  # US-013: evaluate but do NOT send orders to broker
     enable_tick_capture: bool = True
 
 

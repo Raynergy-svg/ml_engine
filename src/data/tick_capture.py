@@ -136,6 +136,12 @@ class TickCaptureDaemon:
             "flushes": 0,
             "started_at": None,
         }
+        # US-011: Health tracking
+        self._last_tick_time: Optional[float] = None
+        self._ticks_this_minute: int = 0
+        self._last_minute_ts: float = 0.0
+        self._health_alerts: int = 0
+        self._stream_status: str = "starting"  # starting | running | stalled | dead
 
     @classmethod
     def from_env(cls, **kwargs) -> "TickCaptureDaemon":
@@ -160,16 +166,50 @@ class TickCaptureDaemon:
         """Signal shutdown and perform final flush."""
         logger.info("TickCaptureDaemon shutting down...")
         self._shutdown = True
+        self._stream_status = "dead"
         self.client.shutdown()
         time.sleep(0.5)
         self._do_flush()
 
+    def get_health(self) -> Dict[str, Any]:
+        """US-011: Return health metrics for monitoring."""
+        now = time.time()
+        idle_seconds = (now - self._last_tick_time) if self._last_tick_time else 999.0
+        # Determine stream status heuristically
+        if self._stream_status == "starting":
+            status = "starting"
+        elif idle_seconds > 15.0:
+            status = "stalled"
+        elif idle_seconds > 5.0:
+            status = "slow"
+        else:
+            status = "running"
+        return {
+            "stream_status": status,
+            "ticks_received_total": self._stats["ticks_received"],
+            "ticks_per_minute": self._ticks_this_minute,
+            "idle_seconds": round(idle_seconds, 1),
+            "last_tick_time": self._last_tick_time,
+            "flushes": self._stats["flushes"],
+            "ticks_written": self._stats["ticks_written"],
+            "started_at": self._stats["started_at"],
+        }
+
     def _stream_loop(self, instruments: List[str]) -> None:
         """Consume stream and buffer ticks."""
+        self._stream_status = "running"
         for tick in self.client.stream_ticks(instruments, snapshot=True):
             if self._shutdown:
                 break
             self._stats["ticks_received"] += 1
+            self._last_tick_time = time.time()
+            # US-011: Per-minute tick counter
+            now = time.time()
+            if now - self._last_minute_ts >= 60.0:
+                self._last_minute_ts = now
+                self._ticks_this_minute = 1
+            else:
+                self._ticks_this_minute += 1
             should_flush = self.buffer.append(tick)
             if should_flush:
                 self._do_flush()

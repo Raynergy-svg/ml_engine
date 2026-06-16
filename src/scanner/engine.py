@@ -7443,6 +7443,7 @@ class Scanner:
         self,
         analyses: List[PairAnalysis],
         max_trades: Optional[int] = None,
+        mode: str = "live",
     ) -> List[ExecutionResult]:
         """Execute trades for tradeable pairs.
 
@@ -7499,6 +7500,42 @@ class Scanner:
         if not tradeable:
             logger.info("No tradeable pairs to execute")
             return []
+
+        # US-013: Dry-run mode — simulate trades without broker submission
+        if mode == "dry_run":
+            results = []
+            for a in tradeable:
+                logger.info("DRY-RUN simulated: %s %s conf=%.3f", a.pair, a.direction, a.confidence)
+                results.append(ExecutionResult(
+                    success=True,
+                    trade_id=f"DRYRUN-{a.pair}-{datetime.now(timezone.utc).strftime('%H%M%S')}",
+                    pair=a.pair,
+                    direction=a.direction,
+                    lots=getattr(a, "recommended_lots", 0.0),
+                    entry_price=a.current_price,
+                    mode="dry_run",
+                ))
+                # Write dry-run journal entry
+                try:
+                    from pathlib import Path
+                    import json
+                    entry = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "pair": a.pair,
+                        "direction": a.direction,
+                        "confidence": a.confidence,
+                        "current_price": a.current_price,
+                        "atr": a.atr,
+                        "mode": "dry_run",
+                    }
+                    _dr_path = Path("trained_data/dry_run_journal.jsonl")
+                    _dr_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(_dr_path, "a") as _jf:
+                        _jf.write(json.dumps(entry) + "\n")
+
+                except Exception:
+                    pass
+            return results
 
         # Phase 29 (US-178): Validate each trade's parameters before execution
         validated = []
