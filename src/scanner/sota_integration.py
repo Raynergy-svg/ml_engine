@@ -66,6 +66,7 @@ def resolve_inference_engine(
             min_volatility_regime=int(getattr(config, "min_volatility_regime", 0)),
             tcn_required=bool(getattr(config, "require_tcn_volatility", False)),
             final_score_threshold=float(getattr(config, "final_score_threshold", 0.45)),
+            min_meta_confidence=float(getattr(config, "meta_labeler_threshold", 0.52)),
         )
         return ModularEnsembleInference(config=legacy_cfg)
     except Exception as e:

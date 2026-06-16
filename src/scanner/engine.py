@@ -1924,6 +1924,7 @@ class Scanner:
                 enable_meta_labeling=False,
                 overlay_meta_enabled=False,
                 final_score_threshold=float(self.config.final_score_threshold),
+                min_meta_confidence=float(self.config.meta_labeler_threshold),
             )
 
             self._modular_ensemble = ModularEnsembleInference(

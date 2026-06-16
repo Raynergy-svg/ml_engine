@@ -130,3 +130,40 @@ All findings below are `high` confidence and `touches_trading_semantics=true`. T
 - **§5.1 (B1) and §5.2 (B4) carry reconciliation/behavioral risk:** the two `_run_learning_loop` bodies differ materially, so a naive "delete the dead def" would silently discard the richer learning/risk/sizing behavior. The operator must decide which feature set is canonical before any deletion.
 - **§5.7 (F6) carries a known breaking risk:** the interim `raise` will break per-pair-less instruments until the `engine.py` startup filter (deprecation step 3 in `improvement.md`) ships. Do not apply the raise standalone.
 - The pre-existing flake8 baseline for `continuous.py` (8 warnings, incl. the `F811` duplicate-definition for the B1/B4 finding) was tolerated as-is and not "fixed while here," per scope discipline.
+
+---
+
+## Reconciliation applied (2026-06-15, orchestrated)
+
+Orchestrated VERIFY → APPLY → VALIDATE pass over four of the §5 deferred specs (B1, F1, F2, F5). Adversarial validation ran independently of the appliers. **Status: uncommitted on branch `agent/auto-20260613-1322`; system remains halted (`state.json:halted=true`).** Each fix below was applied to disk, py_compile-checked, flake8-diffed against HEAD (zero net-new violations), and validated; no trading-value literal was changed by any edit.
+
+> **Branch caveat (MEDIUM):** the F1 and validation agents reported the working tree on `codex/sota-activation-execution` @ `f9be70f`, not `agent/auto-20260613-1322` shown in the session-start snapshot. The operator should confirm the edits landed on the intended branch before committing.
+
+### What LANDED
+
+| ID | File:line | Diff summary | Confidence |
+|----|-----------|--------------|:--:|
+| **B1** | `src/scanner/automation/continuous.py` (deleted the stripped `_run_learning_loop` at old `:2271`–`:2370`) | −100 / +0. Deleted the *stripped* duplicate `_run_learning_loop` body; the **rich** def at `:1969` (all 13 external deps + the 5a–5f integration set verified present on disk) is now the sole live implementation. py_compile PASS; F811 gone; zero net-new flake8. | HIGH |
+| **F1** | `src/scanner/engine.py:1927` and `src/scanner/sota_integration.py:69` | +2 lines. Mapped `ScannerConfig.meta_labeler_threshold` → `InferenceConfig.min_meta_confidence` (the field the meta-labeling gate reads at `modular_inference.py:4812`) at both the primary (`_init_modular_ensemble`) and legacy-fallback construction points. Both defaults are `0.52` → **behavior unchanged until the operator tunes the knob**; knob validated to `[0.50, 0.60]` at `config.py:1258`. py_compile PASS; flake8 unchanged (30 pre-existing). | HIGH |
+| **F2** | `scripts/train_single_model_m1.py:511, 547, 570` | +3 lines (one per call). Threaded `feature_names=<loader>.get("feature_names")` into `train_tcn` (TCN), `train_lgbm_momentum`, and `train_lgbm_risk` — all three trainers accept `feature_names` as the 5th param (signatures verified) and their loaders return it. Training-only path; no TypeError risk. py_compile PASS; flake8 identical to HEAD (11 pre-existing, none on touched lines). | HIGH |
+
+### What was SKIPPED / corrected (and why)
+
+- **F2 — Ridge (`:593`) and HistGB (`:626`): SKIPPED.** Both trainers *accept* `feature_names` but never use it downstream (Ridge stores it as `self.feature_names` only; sklearn `HistGradientBoostingClassifier` has no feature-names parameter). Threading it would be dead/cosmetic code. Matches the F2 verify finding ("CANNOT FIX (2 trainers)").
+- **F5 — gap-gate quarantine for `lgbm_momentum` / `lgbm_risk` / `ridge`: SKIPPED (applier overrode the F5 verify JSON, validated as correct).** The F5 verify JSON claimed these heads "DO compute both train_acc and val_acc." Independent source inspection of the trainers refuted this: their `metrics` dicts contain **no `train_accuracy`/`val_accuracy`** (`LightGBMMomentumTrainer` → `{momentum_mae, acceleration_accuracy, model_type}`; `LightGBMRiskTrainer` → pure-MAE drawdown metrics; `RidgeTrainer` → `{confidence_mae, r2_score, …}`). They are **regression heads** — `gap` is semantically meaningless. Adding the quarantine call would resolve `train_acc` to `0` and reproduce the exact phantom-`gap=0` no-op the gap-gate fix was created to kill. `GAP_CHECKED_MODELS = {"transformer","tcn","histgb"}` correctly excludes them. **No edit made; the conservative no-gate choice is the correct one.** (`transformer_regime` likewise stays un-gated by design — multi-class regime classifier returning only `val_acc`.)
+- **Nothing was REVERTED.** No file was left broken by these edits; all flake8 deltas are pre-existing baseline noise (A/B-confirmed via stash), and no numeric trading value changed — so no revert was warranted.
+
+### Validation (light tests only — no TF/Metal training triggered)
+
+- `py_compile` on all four touched files: **PASS**.
+- Targeted suite (config, inference-config, meta-labeling-core, sota-integration, continuous-scanner, config-validation): **119 passed**.
+- 7 failures (`test_scanner_config.py` ×4, `test_meta_labeler_integration.py` ×3) are **pre-existing** — reproduced identically at HEAD with the fixes stashed out (stale `0.55` assertions vs the `0.52` source default; one `__sklearn_tags__`/`unittest.mock` incompatibility). None touch the edited lines.
+
+### Still-deferred specs (operator decision — NOT applied this pass)
+
+- **F4-contract-version-asymmetry** (§5.5) — STILL DEFERRED. Only the transformer head enforces `feature_pipeline_version` at load; TCN / Ridge / RF-risk / meta-labeler heads (`gates.py:627/1127/1173/1329`) load meta.pkl with no version check. Spec in §5.5 is ready; applying it changes refusal behavior on the momentum/confidence/risk/meta paths (trading-semantic) → operator approval required.
+- **F6-orphans-joint** (§5.7) — STILL DEFERRED. Joint fallback (`gates.py:469–483`, `:2325–2348`) remains reachable; the interim `raise` carries a known breaking risk for per-pair-less instruments until the `engine.py` startup filter (deprecation step 3 in `.claude/rules/improvement.md`) lands. Sequence behind the deprecation steps, not standalone.
+
+### Known follow-up surfaced (out of scope this pass)
+
+- **Double `_run_learning_loop` invocation** at `continuous.py:1960` and `:1963` (pre-existing at HEAD; this is the §5.2/B4 duplicate-call finding). With B1's deletion now promoting the **rich** loop to live, those two adjacent calls run the rich learning loop **twice per scan cycle** — double trade analysis / promotion checks / config tuning. The applier correctly left it out of the single-deletion B1 scope; it is the next mechanical fix (§5.2 step 3) once the operator signs off.

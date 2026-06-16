@@ -509,7 +509,8 @@ def train_tcn(instrument: str, df_feat: pd.DataFrame, params: dict) -> dict:
 
     trainer = TCNTrainer(cfg)
     trainer.train(tcn_data["X_train"], tcn_data["y_train"],
-                  tcn_data["X_val"], tcn_data["y_val"])
+                  tcn_data["X_val"], tcn_data["y_val"],
+                  feature_names=tcn_data.get("feature_names"))
     trainer.save(str(save_path))
 
     # "tcn" is GAP_CHECKED: the legacy get_metrics() reader silently returned {}
@@ -544,7 +545,8 @@ def train_lgbm_momentum(instrument: str, df_feat: pd.DataFrame, params: dict) ->
     save_dir.mkdir(parents=True, exist_ok=True)
 
     trainer = LightGBMMomentumTrainer(cfg)
-    trainer.train(data["X_train"], data["y_train"], data["X_val"], data["y_val"])
+    trainer.train(data["X_train"], data["y_train"], data["X_val"], data["y_val"],
+                  feature_names=data.get("feature_names"))
     trainer.save(str(save_dir / "lgbm_momentum.pkl"))
 
     metrics = _read_trainer_metrics(trainer)
@@ -567,7 +569,8 @@ def train_lgbm_risk(instrument: str, df_feat: pd.DataFrame, params: dict) -> dic
     save_dir.mkdir(parents=True, exist_ok=True)
 
     trainer = LightGBMRiskTrainer(cfg)
-    trainer.train(data["X_train"], data["y_train"], data["X_val"], data["y_val"])
+    trainer.train(data["X_train"], data["y_train"], data["X_val"], data["y_val"],
+                  feature_names=data.get("feature_names"))
     trainer.save(str(save_dir / "lgbm_risk.pkl"))
 
     metrics = _read_trainer_metrics(trainer)
