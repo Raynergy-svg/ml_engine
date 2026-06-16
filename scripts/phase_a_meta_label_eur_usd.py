@@ -184,39 +184,43 @@ def _to_1d_labels(y) -> np.ndarray:
     return y.reshape(-1).astype(np.float32)
 
 
-def _primary_batch_proba(trainer, X) -> np.ndarray:
-    """Per-sample P(up) from the primary transformer over a full batch.
+def _primary_seq_scores(trainer, X, y, w):
+    """Out-of-sample primary P(up) over windowed sequences, with aligned labels.
 
-    Reproduces trainer.predict()'s scale+select path (transformer_trainer.py
-    3016–3042) but vectorised, because trainer.predict() only scores a single
-    trailing window. Uses the trainer's OWN fitted scaler/selected_indices — this
-    is what prevents the Bug-A "predict without scaler" failure mode.
+    The direction loader returns 2-D (n, features); the trainer windows it into
+    (n_seq, seq_len, features) and keeps only clear-label sequences (weight > 0).
+    We replicate that EXACT path via the trainer's own builder, so the meta-labeler
+    trains on the same OOS predictions the model actually makes. Uses the trainer's
+    fitted scaler + selected_indices (prevents the Bug-A unscaled-inference failure).
+
+    Returns (proba, x_seq_clear, y_seq_clear) — aligned at the sequence level.
     """
+    from src.training.trainers.utils import create_sequences_with_weights
     if getattr(trainer, "scaler", None) is None:
-        raise RuntimeError("Primary trainer has no fitted scaler — refusing to "
-                           "score (would reproduce the unscaled-inference bug).")
+        raise RuntimeError("Primary trainer has no fitted scaler — refusing to score "
+                           "(would reproduce the unscaled-inference bug).")
     X = np.asarray(X)
-    flat = X.reshape(-1, X.shape[-1])
     model_F = trainer.model.input_shape[-1]
-    cur_F = flat.shape[-1]
-    if cur_F > model_F:
+    if X.shape[-1] > model_F:
         sel = getattr(trainer, "selected_indices", None)
         if sel is not None and len(sel) == model_F:
-            flat = flat[:, sel]
+            X = X[:, sel]
         else:
-            logger.warning(f"Feature count {cur_F}>{model_F}; using first {model_F}.")
-            flat = flat[:, :model_F]
-    flat_scaled = trainer.scaler.transform(flat)
-    Xs = flat_scaled.reshape(*X.shape[:-1], flat_scaled.shape[-1])
-    out = trainer.model.predict(Xs, verbose=0)
+            logger.warning(f"Feature count {X.shape[-1]}>{model_F}; using first {model_F}.")
+            X = X[:, :model_F]
+    x_scaled = trainer.scaler.transform(X)
+    seq_len = int(trainer.seq_len)
+    w = np.ones(len(x_scaled), np.float32) if w is None else np.asarray(w)
+    x_seq, y_seq, w_seq = create_sequences_with_weights(
+        x_scaled, np.asarray(y), w, seq_len)
+    clear = np.asarray(w_seq) > 0          # clear-label mask — same filter the trainer uses
+    x_seq, y_seq = x_seq[clear], _to_1d_labels(y_seq[clear])
+    out = trainer.model.predict(x_seq, verbose=0)
     if isinstance(out, dict):
         out = out.get("direction", out.get("output_0", next(iter(out.values()))))
     out = np.asarray(out)
-    if out.ndim == 2 and out.shape[1] == 2:
-        proba = out[:, 1]
-    else:
-        proba = out.reshape(-1)
-    return proba.astype(np.float32)
+    proba = out[:, 1] if (out.ndim == 2 and out.shape[1] == 2) else out.reshape(-1)
+    return proba.astype(np.float32), x_seq, y_seq.astype(np.float32)
 
 
 # ── Experiment ────────────────────────────────────────────────────────────────
@@ -250,7 +254,7 @@ def run_experiment():
         logger.error("load_direction_data returned empty — aborting.")
         return
     X_train = np.asarray(dir_data["X_train"])  # primary trains on raw labels below
-    X_val, y_val = np.asarray(dir_data["X_val"]), _to_1d_labels(dir_data["y_val"])
+    X_val = np.asarray(dir_data["X_val"])  # labels are windowed inside _primary_seq_scores
     logger.info(f"X_train={X_train.shape}  X_val={X_val.shape}  "
                 f"features={len(dir_data.get('feature_names', []))}")
 
@@ -279,12 +283,16 @@ def run_experiment():
     logger.info(f"Primary metrics: train={pmetrics.get('train_accuracy'):.4f} "
                 f"val={pmetrics.get('val_accuracy'):.4f}")
 
-    # 3. Primary scores ALL of X_val out-of-sample, then split val into meta-dev / test.
-    val_proba = _primary_batch_proba(trainer, X_val)
-    n_val = len(X_val)
+    # 3. Primary scores X_val OUT-OF-SAMPLE as clear-label sequences; split meta-dev / test.
+    val_proba, val_X, val_y = _primary_seq_scores(
+        trainer, X_val, dir_data["y_val"], dir_data.get("w_val"))
+    n_val = len(val_proba)
+    if n_val < 200:
+        logger.error(f"Only {n_val} clear val sequences — too few for a meta estimate; aborting.")
+        return
     n_dev = int(n_val * META_DEV_FRACTION)
-    dev_X, dev_p, dev_y = X_val[:n_dev], val_proba[:n_dev], y_val[:n_dev]
-    test_X, test_p, test_y = X_val[n_dev:], val_proba[n_dev:], y_val[n_dev:]
+    dev_X, dev_p, dev_y = val_X[:n_dev], val_proba[:n_dev], val_y[:n_dev]
+    test_X, test_p, test_y = val_X[n_dev:], val_proba[n_dev:], val_y[n_dev:]
     # within meta-dev: mt_train fits the meta-model, mt_val tunes it (both OOS for primary)
     n_mt = int(len(dev_X) * (1 - META_INTERNAL_VAL_FRACTION))
     mt_X, mt_p, mt_y = dev_X[:n_mt], dev_p[:n_mt], dev_y[:n_mt]
@@ -296,7 +304,7 @@ def run_experiment():
     labeler, mmetrics = train_meta_labeler(
         X_train=mt_X, y_train=mt_y, X_val=mv_X, y_val=mv_y,
         primary_probs_train=mt_p, primary_probs_val=mv_p,
-        config=None, verbose=True, pair_name=INSTRUMENT,
+        config=None, verbose=True,
     )
 
     # 5. Evaluate on `test` (pure holdout, scored once).
