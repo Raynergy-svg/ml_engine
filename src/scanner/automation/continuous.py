@@ -56,6 +56,7 @@ class ContinuousConfig:
     granularity: str = "H1"
     enable_maintenance: bool = True
     max_scans: Optional[int] = None  # None = unlimited
+    enable_tick_capture: bool = True
 
 
 class ContinuousScanner:
@@ -90,6 +91,9 @@ class ContinuousScanner:
         self._shutdown_started = False
         self._signal_count = 0
         self._original_signal_handlers: Dict[int, Any] = {}
+
+        # Tick capture daemon (US-001)
+        self._tick_capture_daemon = None
 
         # Cycle-level autonomy (periodic / self-heal / rejection) — same
         # triggers as EmbeddedScanner so `main.py scan --watch` also gets
@@ -339,6 +343,31 @@ class ContinuousScanner:
         self._setup_signal_handler()
 
         self._scan_count = 0
+
+        # US-001: Start tick capture daemon
+        if self.config.enable_tick_capture:
+            try:
+                from src.data.tick_capture import TickCaptureDaemon
+                from src.utils.oanda_streaming import OandaStreamClient
+                pairs = self.config.pairs or []
+                if pairs:
+                    client = OandaStreamClient.from_env()
+                    self._tick_capture_daemon = TickCaptureDaemon(client=client)
+                    # Start in background thread so scan loop isn't blocked
+                    import threading
+                    tc_thread = threading.Thread(
+                        target=self._tick_capture_daemon.start,
+                        args=(pairs,),
+                        daemon=True,
+                        name="tick-capture"
+                    )
+                    tc_thread.start()
+                    logger.info("Tick capture daemon started for %d pair(s)", len(pairs))
+                else:
+                    logger.info("Tick capture skipped: no pairs configured")
+            except Exception as tc_err:
+                logger.warning("Tick capture daemon failed to start: %s", tc_err)
+                self._tick_capture_daemon = None
 
         # Backup critical state files on watch mode start
         try:
@@ -1253,6 +1282,15 @@ class ContinuousScanner:
                 logger.info("Shutdown: cleared %d cache entries", freed)
         except Exception as _cache_err:
             logger.debug("Shutdown: cache clear failed: %s", _cache_err)
+
+        # US-001: Stop tick capture daemon
+        if self._tick_capture_daemon is not None:
+            try:
+                self._tick_capture_daemon.shutdown()
+                logger.info("Shutdown: tick capture daemon stopped")
+            except Exception as _tc_err:
+                logger.debug("Shutdown: tick capture daemon stop failed: %s", _tc_err)
+            self._tick_capture_daemon = None
 
         # Step 4: Persist module states
         # Phase 22 (US-138) + Phase 29 (US-175): Persist all module states on graceful shutdown

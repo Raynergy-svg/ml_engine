@@ -158,3 +158,41 @@ class NeuralAgentTeam:
 
     def _weight_for(self, agent_name: str) -> float:
         return self._BASE_WEIGHTS.get(agent_name, 1.0)
+
+    # ------------------------------------------------------------------
+    # Compatibility bridge for engine.py record_trade_outcome_phase18
+    # (US-004: NeuralAgentTeam learns from live trade outcomes)
+    # ------------------------------------------------------------------
+    def cache_trade_verdicts(self, episode_id: str, verdicts: List[Dict[str, Any]]) -> None:
+        """Cache agent verdicts by episode_id for later outcome binding."""
+        if not hasattr(self, "_trade_verdict_cache"):
+            self._trade_verdict_cache: Dict[str, Dict[str, Any]] = {}
+        if episode_id:
+            self._trade_verdict_cache[episode_id] = {"verdicts": list(verdicts)}
+
+    def record_trade_outcome(
+        self,
+        episode_id: str,
+        outcome: str,
+        pnl_pips: float,
+    ) -> bool:
+        """Record trade outcome and trigger policy updates.
+
+        Compatible interface with ScannerAgentTeam.record_trade_outcome
+        so engine.py::record_trade_outcome_phase18 works unchanged.
+        """
+        if not hasattr(self, "_trade_verdict_cache"):
+            return False
+        cached = self._trade_verdict_cache.get(episode_id)
+        if not cached:
+            return False
+        verdicts = cached.get("verdicts", [])
+        trade_won = outcome in ("WIN", "BREAKEVEN")
+        try:
+            self.update_weights_from_outcome(verdicts, trade_won)
+        except Exception as e:
+            logger.warning("NeuralAgentTeam outcome update failed: %s", e)
+            return False
+        # Evict to prevent unbounded growth
+        self._trade_verdict_cache.pop(episode_id, None)
+        return True
