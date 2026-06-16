@@ -14,8 +14,8 @@
                 "All introduced symbols are either imported or defined locally in the fixed scopes",
                 "No regressions in existing test suite (pytest tests/scanner/ passes)"
             ],
-            "passes": false,
-            "notes": ""
+            "passes": true,
+            "notes": "Completed by Ralph (Dex) on 2026-06-16."
         },
         {
             "id": "US-002",
@@ -28,8 +28,8 @@
                 "Existing OANDA harvest path remains unchanged (--source defaults to oanda)",
                 "Unit test added: tests/data/test_harvest_scheduler_dukascopy.py"
             ],
-            "passes": false,
-            "notes": ""
+            "passes": true,
+            "notes": "Completed by Ralph (Dex) on 2026-06-16."
         },
         {
             "id": "US-003",
@@ -43,8 +43,8 @@
                 "At least 5 redundant standalone scripts are deleted and their functionality is reachable via harness",
                 "CI passes: pytest tests/training/"
             ],
-            "passes": false,
-            "notes": ""
+            "passes": true,
+            "notes": "Completed by Ralph (Dex) on 2026-06-16."
         },
         {
             "id": "US-004",
@@ -58,8 +58,8 @@
                 "Unit test: both encoder types produce output tensors of identical shape for same input",
                 "No TensorFlow warnings or shape mismatches during model compilation"
             ],
-            "passes": false,
-            "notes": ""
+            "passes": true,
+            "notes": "Completed by Ralph (Dex) on 2026-06-16."
         },
         {
             "id": "US-005",
@@ -73,8 +73,8 @@
                 "Training metrics (loss, val_loss) are logged to logs/autonomous_trainer.jsonl",
                 "Dry-run flag gates actual GPU training (simulation mode for validation)"
             ],
-            "passes": false,
-            "notes": ""
+            "passes": true,
+            "notes": "Completed by Ralph (Dex) on 2026-06-16."
         }
     ]
 }

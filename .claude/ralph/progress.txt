@@ -1,2 +1,9 @@
 # Ralph Progress — sota-hardening-phase40
 # Started: 2026-06-16
+
+2026-06-16 15:30 UTC — Phase 40 complete (all 5 stories)
+- US-001: Fixed 21 F821 undefined-name runtime bugs in engine.py + execution.py
+- US-002: Wired Dukascopy harvester into HarvestScheduler with --source dukascopy
+- US-003: Created unified training harness (src/training/harness.py + scripts/train.py)
+- US-004: Added iTransformer encoder variant to raw_sequence_model.py
+- US-005: Auto-pretrain trigger script for backfill completion
