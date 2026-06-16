@@ -2127,6 +2127,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         self,
         x_val_filtered: np.ndarray,
         y_val_filtered: np.ndarray,
+        x_train_filtered: np.ndarray,
     ) -> list:
         """Create all training callbacks."""
         from tensorflow import keras
@@ -2173,7 +2174,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                 model_save_path=str(Path(self.config.checkpoint_dir) / "transformer_direction.keras"),
                 config={"epochs": self.config.epochs, "batch_size": self.config.batch_size,
                         "n_features": x_val_filtered.shape[-1] if hasattr(x_val_filtered, 'shape') else 0,
-                        "n_train_samples": len(x_val_filtered) if hasattr(x_val_filtered, '__len__') else 0},
+                        "n_train_samples": len(x_train_filtered) if hasattr(x_train_filtered, '__len__') else 0},
             )
             callbacks.append(_wb_cb)
         except Exception as _wb_err:
@@ -2867,7 +2868,7 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         # Initialize EMA and create callbacks
         self._initialize_ema()
-        callbacks = self._create_training_callbacks(x_val_filtered, y_val_filtered)
+        callbacks = self._create_training_callbacks(x_val_filtered, y_val_filtered, x_train_filtered)
 
         # === PHASE 4: DATA AUGMENTATION FOR SMALLER DATASET ===
         augment_fn = self._create_augmentation_fn()
