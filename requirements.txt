@@ -149,3 +149,4 @@ feedparser>=6.0.0  # RSS-based forex news fetching (optional, graceful fallback 
 blinker>=1.7
 cachetools>=5.0
 tenacity>=8.0
+lz4>=4.0
