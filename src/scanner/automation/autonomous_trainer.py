@@ -203,6 +203,47 @@ def is_retrain_running() -> bool:
     return _is_process_running(state.last_pid) and state.last_status == "running"
 
 
+def _check_sota_training_trigger(
+    freshness: Dict[str, Any],
+    brain_callback: Callable[[str], None],
+    threshold_bars: int = 5000,
+) -> Optional[str]:
+    """US-008: Check if accumulated tick candles warrant autonomous SOTA training.
+
+    Reads harvest parquet files to count bars since last training.
+    Returns the pair to train on if threshold crossed, else None.
+    """
+    from pathlib import Path
+    import pandas as pd
+
+    _trained_marker = Path("trained_data/.last_sota_training.json")
+    _last_train: Dict[str, str] = {}
+    if _trained_marker.exists():
+        try:
+            _last_train = json.loads(_trained_marker.read_text())
+        except Exception:
+            pass
+
+    _pairs = freshness.get("pairs", [])
+    for _pair in _pairs:
+        _pq = Path(f"trained_data/harvest/{_pair}_S5.parquet")
+        if not _pq.exists():
+            _pq = Path(f"trained_data/harvest/{_pair}_M15.parquet")
+        if not _pq.exists():
+            continue
+        try:
+            _df = pd.read_parquet(_pq)
+            _n_bars = len(_df)
+            _last_n = int(_last_train.get(_pair, 0))
+            if _n_bars - _last_n >= threshold_bars:
+                logger.info("US-008: SOTA training triggered for %s (%d new bars)", _pair, _n_bars - _last_n)
+                brain_callback(f"[cyan]  ▸ SOTA training triggered for {_pair} ({_n_bars - _last_n} new bars)[/]")
+                return _pair
+        except Exception as e:
+            logger.debug("SOTA training trigger check failed for %s: %s", _pair, e)
+    return None
+
+
 def maybe_spawn_autonomous_retrain(
     freshness: Dict[str, Any],
     brain_callback: Callable[[str], None],

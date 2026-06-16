@@ -46,6 +46,9 @@ class NeuralAgentConfig:
     online_batch_size: int = 32
     validation_split: float = 0.2
     early_stop_patience: int = 3
+    # US-010: Elastic Weight Consolidation
+    use_ewc: bool = False
+    ewc_lambda: float = 1e-4
 
 
 class PrioritizedReplayBuffer:
@@ -99,6 +102,9 @@ class NeuralAgentBase(ABC):
         self._replay_buffer = PrioritizedReplayBuffer(max_size=self.cfg.max_replay_size)
         self._trade_history: List[Dict[str, Any]] = []
         self._update_count = 0
+        # US-010: EWC state
+        self._fisher_info: Optional[Dict[str, np.ndarray]] = None
+        self._old_weights: Optional[Dict[str, np.ndarray]] = None
 
     # ------------------------------------------------------------------
     # Subclass hooks
@@ -234,7 +240,9 @@ class NeuralAgentBase(ABC):
             self._online_update()
 
     def _online_update(self) -> None:
-        """CRIT-4 FIX: multi-epoch training with validation + early stopping."""
+        """CRIT-4 FIX: multi-epoch training with validation + early stopping.
+        US-010: Adds Elastic Weight Consolidation (EWC) penalty when enabled.
+        """
         if len(self._replay_buffer) < self.cfg.min_samples_for_update:
             return
 
@@ -246,6 +254,10 @@ class NeuralAgentBase(ABC):
 
         if self.policy is None:
             self.policy = self.build_policy(X.shape[1])
+
+        # US-010: EWC penalty
+        if self.cfg.use_ewc and self._fisher_info is not None and self._old_weights is not None:
+            self._apply_ewc_penalty()
 
         callbacks = []
         if self.cfg.validation_split > 0 and len(X) >= 50:
@@ -273,6 +285,66 @@ class NeuralAgentBase(ABC):
             f"{self.name}: online update #{self._update_count} on {len(X)} samples "
             f"(loss={final_loss:.4f}, val_loss={val_loss:.4f})"
         )
+
+        # US-010: Update Fisher Information after training
+        if self.cfg.use_ewc:
+            self._compute_fisher_info(X)
+
+    # ------------------------------------------------------------------
+    # US-010: Elastic Weight Consolidation
+    # ------------------------------------------------------------------
+    def _compute_fisher_info(self, X: np.ndarray) -> None:
+        """Compute diagonal Fisher Information matrix from gradients."""
+        if self.policy is None:
+            return
+        try:
+            import tensorflow as tf
+            fisher: Dict[str, np.ndarray] = {}
+            old_weights: Dict[str, np.ndarray] = {}
+            with tf.GradientTape() as tape:
+                preds = self.policy(X, training=False)
+                # Use log-likelihood as the Fisher source
+                loss = tf.reduce_mean(tf.keras.losses.binary_crossentropy(
+                    tf.zeros_like(preds), preds
+                ))
+            grads = tape.gradient(loss, self.policy.trainable_variables)
+            for var, grad in zip(self.policy.trainable_variables, grads):
+                if grad is not None:
+                    fisher[var.name] = np.square(grad.numpy())
+                    old_weights[var.name] = var.numpy().copy()
+            self._fisher_info = fisher
+            self._old_weights = old_weights
+            logger.debug("%s: Fisher info computed (%d vars)", self.name, len(fisher))
+        except Exception as e:
+            logger.warning("%s: Fisher computation failed: %s", self.name, e)
+
+    def _apply_ewc_penalty(self) -> None:
+        """Add EWC regularization loss to the policy."""
+        if self.policy is None or self._fisher_info is None or self._old_weights is None:
+            return
+        try:
+            import tensorflow as tf
+            # Build a custom loss that includes EWC penalty
+            original_loss = self.policy.loss
+
+            def ewc_loss(y_true, y_pred):
+                base = tf.keras.losses.binary_crossentropy(y_true, y_pred)
+                penalty = 0.0
+                for var in self.policy.trainable_variables:
+                    if var.name in self._fisher_info:
+                        f = tf.constant(self._fisher_info[var.name], dtype=var.dtype)
+                        old = tf.constant(self._old_weights[var.name], dtype=var.dtype)
+                        penalty += tf.reduce_sum(f * tf.square(var - old))
+                return base + self.cfg.ewc_lambda * penalty
+
+            self.policy.compile(
+                optimizer=self.policy.optimizer,
+                loss=ewc_loss,
+                metrics=["accuracy"],
+            )
+            logger.debug("%s: EWC penalty applied (lambda=%.2e)", self.name, self.cfg.ewc_lambda)
+        except Exception as e:
+            logger.warning("%s: EWC penalty application failed: %s", self.name, e)
 
     # ------------------------------------------------------------------
     # Persistence
