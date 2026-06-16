@@ -25,6 +25,10 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow import keras
+try:
+    from src.sota_core.encoders.itransformer import iTransformerEncoder
+except Exception:
+    iTransformerEncoder = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +48,7 @@ class ModelConfig:
     learning_rate: float = 1e-3
     direction_weight: float = 1.0
     regime_weight: float = 0.3  # auxiliary loss
+    encoder_type: str = "transformer"  # "transformer" | "itransformer"
 
     def __post_init__(self):
         if self.cnn_filters is None:
@@ -147,19 +152,29 @@ class RawSequenceModel:
         )(tf.range(cfg.seq_len))
         x = x + pos_emb
 
-        for i in range(cfg.num_layers):
-            attn = keras.layers.MultiHeadAttention(
+        if cfg.encoder_type == "itransformer" and iTransformerEncoder is not None:
+            x = iTransformerEncoder(
+                seq_len=cfg.seq_len,
+                d_model=cfg.d_model,
                 num_heads=cfg.num_heads,
-                key_dim=cfg.d_model // cfg.num_heads,
-                name=f"mha_{i}",
-            )(x, x)
-            attn = keras.layers.Dropout(cfg.dropout, name=f"attn_drop_{i}")(attn)
-            x = keras.layers.LayerNormalization(epsilon=1e-6, name=f"ln1_{i}")(x + attn)
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                name="itransformer",
+            )(x)
+        else:
+            for i in range(cfg.num_layers):
+                attn = keras.layers.MultiHeadAttention(
+                    num_heads=cfg.num_heads,
+                    key_dim=cfg.d_model // cfg.num_heads,
+                    name=f"mha_{i}",
+                )(x, x)
+                attn = keras.layers.Dropout(cfg.dropout, name=f"attn_drop_{i}")(attn)
+                x = keras.layers.LayerNormalization(epsilon=1e-6, name=f"ln1_{i}")(x + attn)
 
-            ffn = keras.layers.Dense(cfg.d_model * 4, activation="relu", name=f"ffn1_{i}")(x)
-            ffn = keras.layers.Dense(cfg.d_model, name=f"ffn2_{i}")(ffn)
-            ffn = keras.layers.Dropout(cfg.dropout, name=f"ffn_drop_{i}")(ffn)
-            x = keras.layers.LayerNormalization(epsilon=1e-6, name=f"ln2_{i}")(x + ffn)
+                ffn = keras.layers.Dense(cfg.d_model * 4, activation="relu", name=f"ffn1_{i}")(x)
+                ffn = keras.layers.Dense(cfg.d_model, name=f"ffn2_{i}")(ffn)
+                ffn = keras.layers.Dropout(cfg.dropout, name=f"ffn_drop_{i}")(ffn)
+                x = keras.layers.LayerNormalization(epsilon=1e-6, name=f"ln2_{i}")(x + ffn)
 
         seq_repr = x  # (batch, seq_len, d_model)
         pooled = keras.layers.GlobalAveragePooling1D(name="gap")(seq_repr)
