@@ -31,6 +31,13 @@ from src.brokers.instrument import Instrument
 from src.brokers.oanda import OandaBroker
 from src.brokers.registry import get_registry
 
+# Dukascopy source (optional graceful import)
+try:
+    from src.data.sources.dukascopy_harvester import DukascopyHarvester, convert_dukascopy_to_harvest_format
+except Exception:
+    DukascopyHarvester = None  # type: ignore[assignment,misc]
+    convert_dukascopy_to_harvest_format = None  # type: ignore[assignment,misc]
+
 logger = logging.getLogger(__name__)
 
 HARVEST_ROOT = Path("trained_data/harvest")
@@ -48,6 +55,9 @@ class HarvestConfig:
     rate_limit: float = RATE_LIMIT_SECONDS
     harvest_root: Path = HARVEST_ROOT
     max_fail_streak: int = MAX_FAIL_STREAK
+    source: str = "oanda"  # "oanda" | "dukascopy"
+    start_date: Optional[str] = None  # YYYY-MM-DD for dukascopy
+    end_date: Optional[str] = None    # YYYY-MM-DD for dukascopy
 
 
 class HarvestScheduler:
@@ -90,6 +100,9 @@ class HarvestScheduler:
         Returns:
             Dict with harvested counts per pair and any errors.
         """
+        if self.cfg.source == "dukascopy":
+            return self.run_dukascopy(dry_run=dry_run)
+
         self._connect()
         results: Dict[str, Any] = {}
 
@@ -348,7 +361,56 @@ class HarvestScheduler:
             return {}
 
 
-# =============================================================================
+    # ------------------------------------------------------------------
+    # Dukascopy bulk backfill
+    # ------------------------------------------------------------------
+    def run_dukascopy(
+        self,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Bulk backfill from Dukascopy historical tick data.
+
+        Downloads tick data for the configured date range, converts to M15
+        OHLCV, and persists to the canonical harvest root.
+        """
+        if DukascopyHarvester is None:
+            logger.error("DukascopyHarvester not available; cannot run dukascopy source.")
+            return {}
+
+        if not self.cfg.start_date or not self.cfg.end_date:
+            logger.error("Dukascopy source requires --start and --end dates.")
+            return {}
+
+        from datetime import datetime
+        results: Dict[str, Any] = {}
+        start_dt = datetime.strptime(self.cfg.start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        end_dt = datetime.strptime(self.cfg.end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+        for pair_raw in self.cfg.pairs:
+            pair = str(pair_raw).upper().replace("/", "_")
+            pair_duka = pair.replace("_", "")
+            try:
+                logger.info("Dukascopy harvest %s %s -> %s", pair, self.cfg.start_date, self.cfg.end_date)
+                harvester = DukascopyHarvester(pair_duka, save_dir=self.cfg.harvest_root)
+                df_ticks = harvester.download_range(start_dt, end_dt)
+                if df_ticks.empty:
+                    results[pair] = {"status": "empty", "new_bars": 0}
+                    continue
+
+                out_path = self.cfg.harvest_root / f"{pair}_{self.cfg.granularity}_dukascopy.parquet"
+                if not dry_run:
+                    convert_dukascopy_to_harvest_format(pair, df_ticks, out_path)
+                    results[pair] = {"status": "ok", "new_bars": len(pd.read_parquet(out_path))}
+                else:
+                    n_bars = len(df_ticks) // 96  # rough M15 estimate
+                    results[pair] = {"status": "dry_run", "new_bars": n_bars}
+            except Exception as exc:
+                logger.error("Dukascopy harvest failed for %s: %s", pair, exc)
+                results[pair] = {"status": "error", "error": str(exc)}
+
+        return results
+
+        """Dispatch to the correct source backend."""# =============================================================================
 # CLI
 # =============================================================================
 def main() -> None:
@@ -358,6 +420,9 @@ def main() -> None:
     parser.add_argument("--backfill-months", type=int, default=None)
     parser.add_argument("--backfill-all", action="store_true", help="Backfill all DEFAULT_PAIRS")
     parser.add_argument("--position-book", nargs="+", default=None, help="Harvest position book for given pairs")
+    parser.add_argument("--source", default="oanda", help="Data source: oanda | dukascopy")
+    parser.add_argument("--start", default=None, help="Start date (YYYY-MM-DD) for dukascopy")
+    parser.add_argument("--end", default=None, help="End date (YYYY-MM-DD) for dukascopy")
     parser.add_argument("--dry-run", action="store_true", help="Dry run")
     args = parser.parse_args()
 
@@ -374,6 +439,9 @@ def main() -> None:
     cfg = HarvestConfig(
         pairs=pairs or [],
         granularity=args.granularity,
+        source=args.source,
+        start_date=args.start,
+        end_date=args.end,
     )
     scheduler = HarvestScheduler(cfg)
 
