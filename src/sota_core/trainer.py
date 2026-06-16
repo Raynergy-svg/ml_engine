@@ -320,10 +320,10 @@ class SOTATrainer:
 
         callbacks = [
             keras.callbacks.ReduceLROnPlateau(
-                monitor="val_direction_loss", factor=cfg.lr_decay_factor, patience=cfg.lr_patience, verbose=1
+                monitor="val_direction_loss", mode="min", factor=cfg.lr_decay_factor, patience=cfg.lr_patience, verbose=1
             ),
             keras.callbacks.EarlyStopping(
-                monitor="val_direction_loss", patience=cfg.early_stop_patience, restore_best_weights=True, verbose=1
+                monitor="val_direction_loss", mode="min", patience=cfg.early_stop_patience, restore_best_weights=True, verbose=1
             ),
         ]
 
