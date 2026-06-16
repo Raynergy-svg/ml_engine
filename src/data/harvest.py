@@ -276,6 +276,10 @@ class HarvestScheduler:
     @staticmethod
     def _months_to_bars(months: int, granularity: str) -> int:
         granularities = {
+            "S5": 12 * 60 * 24 * 30,
+            "S10": 6 * 60 * 24 * 30,
+            "S15": 4 * 60 * 24 * 30,
+            "S30": 2 * 60 * 24 * 30,
             "M1": 60 * 24 * 30,
             "M5": 12 * 24 * 30,
             "M15": 4 * 24 * 30,
@@ -291,6 +295,10 @@ class HarvestScheduler:
     def _gap_to_bars(latest: datetime, now: datetime, granularity: str) -> int:
         gap_seconds = (now - latest).total_seconds()
         seconds_per_bar = {
+            "S5": 5,
+            "S10": 10,
+            "S15": 15,
+            "S30": 30,
             "M1": 60,
             "M5": 300,
             "M15": 900,
