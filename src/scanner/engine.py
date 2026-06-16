@@ -7509,11 +7509,9 @@ class Scanner:
                 results.append(ExecutionResult(
                     success=True,
                     trade_id=f"DRYRUN-{a.pair}-{datetime.now(timezone.utc).strftime('%H%M%S')}",
-                    pair=a.pair,
-                    direction=a.direction,
                     lots=getattr(a, "recommended_lots", 0.0),
-                    entry_price=a.current_price,
-                    mode="dry_run",
+                    fill_price=a.current_price,
+                    fill_status="DRY_RUN",
                 ))
                 # Write dry-run journal entry
                 try:

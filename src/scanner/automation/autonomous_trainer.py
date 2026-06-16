@@ -361,6 +361,7 @@ def maybe_spawn_autonomous_retrain(
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     log_path = log_dir / f"retrain_{ts}.log"
 
+    log_file = None
     try:
         log_file = open(log_path, "ab", buffering=0)
         proc = subprocess.Popen(
@@ -374,6 +375,11 @@ def maybe_spawn_autonomous_retrain(
         result["skipped_reason"] = f"spawn_failed: {e}"
         brain_callback(f"[red]  ✗ retrain spawn failed: {e}[/]")
         return result
+    finally:
+        # The child has dup'd the fd; the parent handle is no longer needed.
+        # Closing it here prevents an fd leak across repeated spawns.
+        if log_file is not None:
+            log_file.close()
 
     _active_retrain_process = proc
 

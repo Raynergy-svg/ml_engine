@@ -184,10 +184,15 @@ class TickCaptureDaemon:
             status = "slow"
         else:
             status = "running"
+        # US-011 / neural-14: the per-minute counter only resets when a new
+        # tick arrives, so during a stall it retains its last value and lies
+        # about throughput. Report 0 once the stream has been idle past the
+        # 60s window — no tick has arrived to fill the current minute.
+        ticks_per_minute = 0 if idle_seconds > 60.0 else self._ticks_this_minute
         return {
             "stream_status": status,
             "ticks_received_total": self._stats["ticks_received"],
-            "ticks_per_minute": self._ticks_this_minute,
+            "ticks_per_minute": ticks_per_minute,
             "idle_seconds": round(idle_seconds, 1),
             "last_tick_time": self._last_tick_time,
             "flushes": self._stats["flushes"],

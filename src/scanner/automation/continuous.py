@@ -49,26 +49,80 @@ def _persist_sota_config(enabled: bool, config_path: str = "config/config_improv
     """Persist use_sota_inference flag to the active config YAML.
 
     US-009: After auto-promotion, persist the config change so it
-    survives scanner restarts.  Uses a simple regex replacement.
+    survives scanner restarts.
+
+    Parses the YAML structurally (not regex over raw text, which can match
+    inside comments / unrelated nested keys and silently no-op — the same
+    class of silent dead-write the incident log flags). Sets the top-level
+    ``use_sota_inference`` key explicitly, logs whether the key pre-existed
+    or was newly added, and writes atomically (tmp + os.replace).
     """
+    import os
     from pathlib import Path
+
+    import yaml
+
     p = Path(config_path)
     if not p.exists():
         logger.warning("Config file not found: %s", config_path)
         return
     try:
-        text = p.read_text()
-        # Replace use_sota_inference: false/true (case-insensitive-ish)
-        import re
-        new_text = re.sub(
-            r"(use_sota_inference:\s*)(true|false|True|False|TRUE|FALSE)",
-            lambda m: f"{m.group(1)}{str(enabled).lower()}",
-            text,
-        )
-        p.write_text(new_text)
-        logger.info("Persisted use_sota_inference=%s to %s", enabled, config_path)
+        with p.open("r") as fh:
+            data = yaml.safe_load(fh)
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            logger.error(
+                "Cannot persist use_sota_inference: %s did not parse to a mapping "
+                "(got %s) — refusing to overwrite", config_path, type(data).__name__,
+            )
+            return
+        key_existed = "use_sota_inference" in data
+        data["use_sota_inference"] = bool(enabled)
+        if not key_existed:
+            logger.warning(
+                "use_sota_inference key was absent from %s — adding it explicitly "
+                "(value=%s)", config_path, bool(enabled),
+            )
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        with tmp.open("w") as fh:
+            yaml.safe_dump(data, fh, default_flow_style=False, sort_keys=False)
+        os.replace(tmp, p)
+        logger.info("Persisted use_sota_inference=%s to %s", bool(enabled), config_path)
     except Exception as e:
         logger.warning("Failed to persist SOTA config: %s", e)
+
+
+def _create_multi_pair_post_flush_aggregator() -> Callable[[List[Any]], None]:
+    """Build a pair-agnostic post-flush callback.
+
+    US-002: Groups each flushed tick batch by instrument and dispatches to a
+    per-instrument aggregator, so multi-pair streams aggregate every pair that
+    appears in the batch — not just a single hard-coded pair. Per-pair
+    aggregator callables are cached so the factory runs once per instrument.
+    """
+    from src.data.tick_post_flush import create_post_flush_aggregator
+
+    _per_pair: Dict[str, Callable[[List[Any]], None]] = {}
+
+    def _dispatch(ticks: List[Any]) -> None:
+        if not ticks:
+            return
+        # Group the flushed ticks by instrument present in THIS batch.
+        by_instrument: Dict[str, List[Any]] = {}
+        for t in ticks:
+            inst = getattr(t, "instrument", None)
+            if inst is None:
+                continue
+            by_instrument.setdefault(inst, []).append(t)
+        for inst, inst_ticks in by_instrument.items():
+            agg = _per_pair.get(inst)
+            if agg is None:
+                agg = create_post_flush_aggregator(inst)
+                _per_pair[inst] = agg
+            agg(inst_ticks)
+
+    return _dispatch
 
 
 @dataclass
@@ -379,24 +433,16 @@ class ContinuousScanner:
                 pairs = self.config.pairs or []
                 if pairs:
                     client = OandaStreamClient.from_env()
-                    # US-002: Wire post-flush aggregation
-                    from src.data.tick_post_flush import create_post_flush_aggregator
-                    _persister = None
-                    try:
-                        _first_pair = pairs[0] if pairs else "EUR_USD"
-                        _persister = TickCaptureDaemon(
-                            client=client,
-                        ).persister  # will be replaced below
-                        # Actually construct properly
-                    except Exception:
-                        pass
-                    # Build daemon with aggregator hook
+                    # Build the daemon once and attach the post-flush
+                    # aggregator to its persister.
                     self._tick_capture_daemon = TickCaptureDaemon(client=client)
-                    # US-002: attach post-flush aggregator to persister
+                    # US-002: attach a pair-agnostic post-flush aggregator so
+                    # every streamed instrument gets fresh candles, not just
+                    # pairs[0].
                     try:
-                        from src.data.tick_post_flush import create_post_flush_aggregator
-                        _first_pair = pairs[0] if pairs else "EUR_USD"
-                        self._tick_capture_daemon.persister.on_flush = create_post_flush_aggregator(_first_pair)
+                        self._tick_capture_daemon.persister.on_flush = (
+                            _create_multi_pair_post_flush_aggregator()
+                        )
                     except Exception as _hook_err:
                         logger.warning("Failed to attach post-flush aggregator: %s", _hook_err)
                     # Start in background thread so scan loop isn't blocked
@@ -2504,11 +2550,17 @@ class ContinuousScanner:
                                 self._sota_inference = SOTAInference()
                             sota_pred = self._sota_inference.predict(analysis.pair, getattr(analysis, "df_raw", None))
                             if sota_pred is not None:
-                                sota_direction = sota_pred.get("direction", "HOLD")
-                                sota_confidence = float(sota_pred.get("confidence", 0.0))
+                                # sota_pred is a TradeSignal dataclass, not a dict.
+                                # trade=False means HOLD (no directional signal).
+                                _sota_dir = getattr(sota_pred, "direction", None)
+                                if not getattr(sota_pred, "trade", False):
+                                    _sota_dir = "HOLD"
+                                sota_direction = _sota_dir.upper() if isinstance(_sota_dir, str) else _sota_dir
+                                sota_confidence = float(getattr(sota_pred, "confidence", 0.0))
                     except Exception as e:
                         logger.debug("SOTA shadow inference failed for %s: %s", analysis.pair, e)
                         sota_direction = None
+                        sota_confidence = None
 
                 records.append({
                     "pair": analysis.pair,

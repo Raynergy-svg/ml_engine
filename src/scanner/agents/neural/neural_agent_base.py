@@ -102,9 +102,23 @@ class NeuralAgentBase(ABC):
         self._replay_buffer = PrioritizedReplayBuffer(max_size=self.cfg.max_replay_size)
         self._trade_history: List[Dict[str, Any]] = []
         self._update_count = 0
+        # neural-11: only predict from a policy that was loaded or trained.
+        # A freshly-built (random) policy must NOT drive passed/block_trade.
+        self._trained: bool = False
         # US-010: EWC state
         self._fisher_info: Optional[Dict[str, np.ndarray]] = None
         self._old_weights: Optional[Dict[str, np.ndarray]] = None
+        # bugs-10: compile the EWC loss exactly once. Recompiling on every
+        # online update resets/duplicates Adam slot variables (TF drops
+        # optimizer state) and re-instantiates the EarlyStopping metric
+        # contract. The compiled penalty reads the tf.Variable holders below,
+        # so it always uses the latest Fisher generation without recompiling.
+        self._ewc_compiled: bool = False
+        # bugs-10: per-variable (fisher, old_weight) tf.Variable holders. The
+        # compiled EWC loss closes over these; _compute_fisher_info assigns them
+        # in place each generation so the penalty tracks the latest checkpoint
+        # without recompiling. Keyed by trainable-variable name.
+        self._ewc_var_holders: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     # Subclass hooks
@@ -142,6 +156,13 @@ class NeuralAgentBase(ABC):
 
         if self.policy is None:
             self.policy = self.build_policy(len(features))
+
+        # neural-11: an untrained/randomly-initialized policy must not emit a
+        # real verdict — its arbitrary score could veto a live trade once
+        # shadow mode is disabled. Abstain (score=0.5, no block) until the
+        # policy has been loaded or has completed at least one online update.
+        if not self._trained:
+            return self._fallback_verdict(ctx, "policy_untrained")
 
         score_raw = float(self.policy.predict(features[np.newaxis, ...], verbose=0)[0, 0])
         score = _clip01(score_raw)
@@ -184,7 +205,12 @@ class NeuralAgentBase(ABC):
             reason_code=reason_code,
             confidence_delta=confidence_delta,
             block_trade=block_trade,
-            metadata={"raw_score": score_raw, "features": features.tolist()},
+            metadata={
+                "raw_score": score_raw,
+                "features": features.tolist(),
+                "passed": passed,
+                "score": score,
+            },
         )
 
     def _fallback_verdict(self, ctx: AgentDecisionContext, reason_code: str) -> AgentVerdict:
@@ -209,7 +235,18 @@ class NeuralAgentBase(ABC):
         CRIT-4 FIX: target is binary correctness (1.0 = voted correctly, 0.0 = wrong)
         instead of smoothed reward.  This is a proper classification label.
         """
-        passed = verdict_metadata.get("passed", False)
+        # neural-1: the agent's decision MUST be present. Defaulting a missing
+        # 'passed' to False inverts every label (agent labeled 'correct' exactly
+        # when the trade LOST), poisoning the policy. Skip the sample loudly
+        # instead of training on a fabricated decision.
+        if "passed" not in verdict_metadata:
+            logger.error(
+                "%s: record_outcome got verdict_metadata without 'passed' key "
+                "(keys=%s); skipping sample to avoid inverted labels.",
+                self.name, sorted(verdict_metadata.keys()),
+            )
+            return
+        passed = bool(verdict_metadata["passed"])
         # Correctness: (voted FOR and won) OR (voted AGAINST and lost)
         target = 1.0 if (passed == trade_won) else 0.0
         features = verdict_metadata.get("features")
@@ -279,6 +316,8 @@ class NeuralAgentBase(ABC):
             verbose=0,
         )
         self._update_count += 1
+        # neural-11: policy has now seen real outcomes — safe to predict from.
+        self._trained = True
         final_loss = float(history.history["loss"][-1])
         val_loss = float(history.history.get("val_loss", [final_loss])[-1])
         logger.info(
@@ -303,38 +342,88 @@ class NeuralAgentBase(ABC):
             old_weights: Dict[str, np.ndarray] = {}
             with tf.GradientTape() as tape:
                 preds = self.policy(X, training=False)
-                # Use log-likelihood as the Fisher source
+                # bugs-9 / neural-13: the Fisher diagonal approximates the
+                # sensitivity of the model's OWN log-likelihood at the trained
+                # optimum. The previous code used tf.zeros_like(preds) as the
+                # target, which systematically biases every gradient toward the
+                # y=0 class and produces an invalid Fisher estimate (anchors
+                # weights toward "predict 0 everywhere"). Use the model's own
+                # predicted class y_hat = round(p) as the label — the standard
+                # empirical-Fisher source — so the penalty protects the weights
+                # the model actually relies on.
+                y_hat = tf.stop_gradient(tf.round(preds))
                 loss = tf.reduce_mean(tf.keras.losses.binary_crossentropy(
-                    tf.zeros_like(preds), preds
+                    y_hat, preds
                 ))
             grads = tape.gradient(loss, self.policy.trainable_variables)
             for var, grad in zip(self.policy.trainable_variables, grads):
                 if grad is not None:
                     fisher[var.name] = np.square(grad.numpy())
                     old_weights[var.name] = var.numpy().copy()
+            # Atomic publish: anchor (old_weights) and Fisher are written
+            # together so the EWC penalty can never mix generations (bugs-10).
             self._fisher_info = fisher
             self._old_weights = old_weights
+            # bugs-10: mirror into in-place tf.Variable holders so the
+            # compile-once EWC loss always reads the freshest generation.
+            if self._ewc_var_holders is None:
+                self._ewc_var_holders = {}
+            for name, f_arr in fisher.items():
+                old_arr = old_weights[name]
+                holder = self._ewc_var_holders.get(name)
+                if holder is None:
+                    self._ewc_var_holders[name] = (
+                        tf.Variable(f_arr, dtype=tf.float32, trainable=False),
+                        tf.Variable(old_arr, dtype=tf.float32, trainable=False),
+                    )
+                else:
+                    holder[0].assign(f_arr)
+                    holder[1].assign(old_arr)
             logger.debug("%s: Fisher info computed (%d vars)", self.name, len(fisher))
         except Exception as e:
             logger.warning("%s: Fisher computation failed: %s", self.name, e)
 
     def _apply_ewc_penalty(self) -> None:
-        """Add EWC regularization loss to the policy."""
+        """Compile the EWC-regularized loss onto the policy exactly once.
+
+        bugs-10: the previous implementation recompiled the policy on EVERY
+        online update. Each ``compile()`` resets/duplicates the Adam slot
+        variables (TF warns and silently drops optimizer state) and rebuilds the
+        metric objects the EarlyStopping/val path depends on, so over many
+        updates the optimizer state churned and early-stopping could be
+        disabled. It also baked ``tf.constant`` snapshots of Fisher/old weights
+        at trace time, so anchor and Fisher could drift apart across partial
+        failures.
+
+        Fix: compile once (guarded by ``_ewc_compiled``), preserving the single
+        optimizer instance. The penalty reads ``tf.Variable`` holders updated in
+        place each generation by ``_compute_fisher_info`` — so the one compiled
+        closure always uses the latest Fisher/old-weight pair (written
+        atomically), with no recompile.
+        """
         if self.policy is None or self._fisher_info is None or self._old_weights is None:
+            return
+        if self._ewc_compiled:
+            # Already compiled with the EWC loss; the in-place Variable holders
+            # carry the freshest Fisher generation. Recompiling would clobber
+            # optimizer state (the bug). Nothing to do.
             return
         try:
             import tensorflow as tf
-            # Build a custom loss that includes EWC penalty
-            original_loss = self.policy.loss
+
+            holders = self._ewc_var_holders or {}
 
             def ewc_loss(y_true, y_pred):
                 base = tf.keras.losses.binary_crossentropy(y_true, y_pred)
-                penalty = 0.0
+                penalty = tf.constant(0.0, dtype=tf.float32)
                 for var in self.policy.trainable_variables:
-                    if var.name in self._fisher_info:
-                        f = tf.constant(self._fisher_info[var.name], dtype=var.dtype)
-                        old = tf.constant(self._old_weights[var.name], dtype=var.dtype)
-                        penalty += tf.reduce_sum(f * tf.square(var - old))
+                    holder = holders.get(var.name)
+                    if holder is None:
+                        continue
+                    f, old = holder
+                    penalty += tf.reduce_sum(
+                        tf.cast(f, var.dtype) * tf.square(var - tf.cast(old, var.dtype))
+                    )
                 return base + self.cfg.ewc_lambda * penalty
 
             self.policy.compile(
@@ -342,7 +431,8 @@ class NeuralAgentBase(ABC):
                 loss=ewc_loss,
                 metrics=["accuracy"],
             )
-            logger.debug("%s: EWC penalty applied (lambda=%.2e)", self.name, self.cfg.ewc_lambda)
+            self._ewc_compiled = True
+            logger.debug("%s: EWC penalty compiled (lambda=%.2e)", self.name, self.cfg.ewc_lambda)
         except Exception as e:
             logger.warning("%s: EWC penalty application failed: %s", self.name, e)
 
@@ -366,6 +456,8 @@ class NeuralAgentBase(ABC):
     def load(self, path: str) -> bool:
         try:
             self.policy = keras.models.load_model(path)
+            # neural-11: a loaded policy is a trained policy — safe to predict.
+            self._trained = True
             logger.info(f"{self.name}: loaded policy from {path}")
             return True
         except Exception as e:

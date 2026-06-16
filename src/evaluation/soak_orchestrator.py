@@ -18,6 +18,7 @@ import logging
 import multiprocessing
 import os
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -45,20 +46,45 @@ def _legacy_signal_fn(window: pd.DataFrame) -> BarPrediction:
     return BarPrediction(timestamp=str(window.index[-1]), direction=direction, confidence=conf, score=conf)
 
 
-def _sota_signal_fn(window: pd.DataFrame) -> BarPrediction:
-    """SOTA signal using the finetuned model."""
+def _sota_signal_fn(
+    window: pd.DataFrame,
+    sota: Any,
+    stats: Optional[Dict[str, int]] = None,
+) -> BarPrediction:
+    """SOTA signal using the finetuned model.
+
+    neural-0: SOTAInference.predict() returns a TradeSignal dataclass, not a
+    dict — read attributes (not .get()) and normalize direction casing to the
+    harness's "LONG"/"SHORT"/"HOLD". neural-6: the SOTAInference instance is
+    built ONCE in the worker and passed in (no per-bar model load).
+    """
+    ts = str(window.index[-1])
     try:
-        from src.sota_core.inference import SOTAInference
-        sota = SOTAInference()
         pair = window.attrs.get("pair", "UNKNOWN")
         pred = sota.predict(pair, window)
         if pred is not None:
-            direction = pred.get("direction", "HOLD")
-            confidence = float(pred.get("confidence", 0.5))
-            return BarPrediction(timestamp=str(window.index[-1]), direction=direction, confidence=confidence, score=confidence)
+            direction = getattr(pred, "direction", "HOLD") or "HOLD"
+            direction = str(direction).upper()
+            if direction not in ("LONG", "SHORT", "HOLD"):
+                direction = "HOLD"
+            confidence = float(getattr(pred, "confidence", 0.5) or 0.5)
+            if stats is not None:
+                stats["non_hold"] = stats.get("non_hold", 0) + (
+                    1 if direction in ("LONG", "SHORT") else 0
+                )
+            return BarPrediction(
+                timestamp=ts,
+                direction=direction,
+                confidence=confidence,
+                score=confidence,
+            )
     except Exception as e:
-        logger.debug("SOTA signal error in soak: %s", e)
-    return BarPrediction(timestamp=str(window.index[-1]), direction="HOLD", confidence=0.5, score=0.5)
+        # neural-0: surface SOTA failures loudly — an all-HOLD soak caused by
+        # a silently-swallowed error invalidates the gate in both directions.
+        if stats is not None:
+            stats["failures"] = stats.get("failures", 0) + 1
+        logger.warning("SOTA signal error in soak at %s: %s", ts, e)
+    return BarPrediction(timestamp=ts, direction="HOLD", confidence=0.5, score=0.5)
 
 
 def _load_held_out_data(pair: str, granularity: str = "M15", holdout_pct: float = 0.10, min_bars: int = 500) -> Optional[pd.DataFrame]:
@@ -90,15 +116,53 @@ def _run_soak_worker(
             logger.error("Soak worker: no data for %s", pair)
             return
         df.attrs["pair"] = pair
+
+        # neural-6: build SOTAInference ONCE here (it loads the keras model from
+        # disk in __init__). The previous code constructed it inside the per-bar
+        # loop, causing one full model load per bar of the held-out window.
+        sota_loaded = False
+        try:
+            from src.sota_core.inference import SOTAInference
+            sota = SOTAInference()
+            sota_loaded = bool(getattr(sota, "_loaded", False))
+        except Exception as e:
+            logger.warning("Soak worker: SOTAInference unavailable for %s: %s", pair, e)
+            sota = None
+
+        # neural-0 / safety-3: track non-HOLD predictions and failures so an
+        # all-HOLD or all-failed SOTA run is detectable rather than silently
+        # scored 0.0 accuracy.
+        sota_stats: Dict[str, int] = {"non_hold": 0, "failures": 0}
+        sota_fn = partial(_sota_signal_fn, sota=sota, stats=sota_stats)
+
         result = run_soak_comparison(
             pair=pair,
             df=df,
             legacy_signal_fn=_legacy_signal_fn,
-            sota_signal_fn=_sota_signal_fn,
+            sota_signal_fn=sota_fn,
             warmup_bars=min(128, len(df) // 4),
         )
+
+        # safety-3: a soak that never exercised a loaded SOTA model (model not
+        # loaded, or zero non-HOLD predictions) cannot yield a valid promotion
+        # verdict. Force INSUFFICIENT so no STACK/PROMOTE is ever derived from a
+        # constant-HOLD comparison if a consumer is wired downstream.
+        if not sota_loaded or sota_stats["non_hold"] == 0:
+            logger.warning(
+                "Soak worker: SOTA model not exercised for %s "
+                "(loaded=%s, non_hold=%d, failures=%d) — forcing INSUFFICIENT",
+                pair, sota_loaded, sota_stats["non_hold"], sota_stats["failures"],
+            )
+            result.recommendation = "INSUFFICIENT"
+            result.confidence = 0.0
+
         save_soak_report(result, output_path)
-        logger.info("Soak worker complete for %s: %s (confidence=%.2f)", pair, result.recommendation, result.confidence)
+        logger.info(
+            "Soak worker complete for %s: %s (confidence=%.2f, "
+            "sota_non_hold=%d, sota_failures=%d)",
+            pair, result.recommendation, result.confidence,
+            sota_stats["non_hold"], sota_stats["failures"],
+        )
     except Exception as e:
         logger.exception("Soak worker failed for %s: %s", pair, e)
 

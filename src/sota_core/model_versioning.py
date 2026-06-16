@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,8 +97,13 @@ def _update_manifest(timestamp: str, config: Dict, lineage: Dict, metrics: Dict)
     if MANIFEST_PATH.exists():
         try:
             manifest = json.loads(MANIFEST_PATH.read_text())
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError) as e:
+            # Surface corruption instead of silently dropping the entire
+            # version history that rollback_sota.py --list/--to depend on.
+            logger.warning(
+                "Manifest at %s failed to parse (%s); starting fresh — "
+                "prior version history may be lost", MANIFEST_PATH, e,
+            )
     manifest["versions"].append({
         "timestamp": timestamp,
         "saved_at": datetime.now(timezone.utc).isoformat(),
@@ -106,7 +112,11 @@ def _update_manifest(timestamp: str, config: Dict, lineage: Dict, metrics: Dict)
         "metrics_summary": {k: v for k, v in metrics.items() if isinstance(v, (int, float))},
     })
     MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
+    # Atomic write: write to .tmp then os.replace() so an interrupted write
+    # cannot truncate/corrupt the live manifest.
+    tmp_path = MANIFEST_PATH.with_suffix(MANIFEST_PATH.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(manifest, indent=2))
+    os.replace(str(tmp_path), str(MANIFEST_PATH))
 
 
 def _update_latest_symlink(target_dir: Path) -> None:
@@ -123,9 +133,24 @@ def _update_latest_symlink(target_dir: Path) -> None:
 
 
 def _enforce_retention(version_root: Path, max_versions: int) -> None:
+    # Never delete the directory that LATEST_SYMLINK currently points at —
+    # after a rollback, 'latest' may target an older timestamp, and removing
+    # it would leave a dangling symlink and break inference loads.
+    protected: Optional[Path] = None
+    try:
+        if LATEST_SYMLINK.is_symlink() or LATEST_SYMLINK.exists():
+            protected = LATEST_SYMLINK.resolve()
+    except OSError as e:
+        logger.warning("Retention: could not resolve latest symlink: %s", e)
     dirs = sorted([d for d in version_root.iterdir() if d.is_dir()], key=lambda p: p.name)
     while len(dirs) > max_versions:
         oldest = dirs.pop(0)
+        try:
+            if protected is not None and oldest.resolve() == protected:
+                # Skip the rollback target; retention removes the next-oldest.
+                continue
+        except OSError as e:
+            logger.warning("Retention: could not resolve %s: %s", oldest.name, e)
         try:
             shutil.rmtree(str(oldest))
             logger.info("Retention: removed old version %s", oldest.name)
