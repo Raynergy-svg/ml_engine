@@ -179,7 +179,7 @@ class SOTATrainer:
 
         # Save encoder weights for fine-tuning
         Path(save_dir).mkdir(parents=True, exist_ok=True)
-        pt_model.save_weights(f"{save_dir}/pretrain_weights.weights.h5")
+        self.model._encoder.save_weights(f"{save_dir}/pretrain_weights.weights.h5")
         logger.info(f"Pre-training complete. Encoder weights saved to {save_dir}")
 
         return {k: float(v[-1]) for k, v in history.history.items()}
@@ -311,7 +311,7 @@ class SOTATrainer:
         pt_weights = Path(pretrain_weights_dir) / "pretrain_weights.weights.h5"
         if pt_weights.exists():
             try:
-                self.model.model.load_weights(str(pt_weights), skip_mismatch=True)
+                self.model._encoder.load_weights(str(pt_weights))
                 logger.info("Loaded pre-trained encoder weights for fine-tuning")
             except Exception as e:
                 logger.warning(f"Could not load pretrain weights: {e}")
@@ -331,16 +331,11 @@ class SOTATrainer:
             f"Fine-tuning: train={len(train_X)}, val={len(val_X)}, "
             f"long_pct={y_dir.mean():.2%}"
         )
-        # OBS-1 FIX: Compute class weights from training label distribution
-        # to prevent bias toward majority class (e.g. upward-trending market)
+        # OBS-1 FIX: Dataset is naturally balanced (~50%); class_weight disabled
+        # because Keras 3 rejects class_weight on multi-output models.
         n_long = int((y_dir[:n_train] == 1).sum())
         n_short = int((y_dir[:n_train] == 0).sum())
-        total = max(n_long + n_short, 1)
-        class_weight = {
-            0: total / max(2 * n_short, 1),
-            1: total / max(2 * n_long, 1),
-        }
-        logger.info(f"Class weights: LONG={class_weight[1]:.2f}, SHORT={class_weight[0]:.2f}")
+        logger.info(f"Label balance: LONG={n_long}, SHORT={n_short}")
 
         history = self.model.model.fit(
             train_X,
@@ -349,7 +344,6 @@ class SOTATrainer:
             batch_size=cfg.batch_size,
             epochs=cfg.finetune_epochs,
             callbacks=callbacks,
-            class_weight={"direction": class_weight},
             verbose=2,
         )
 
