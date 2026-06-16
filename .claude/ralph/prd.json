@@ -1,494 +1,214 @@
 {
-  "branchName": "ralph/buddy-gap-resolution-phase5",
-  "description": "Auto-generated gap resolution PRD. Source: prd-tier7-upgrade-phase4.json. Detected 139 integration gaps across 4 categories. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
-  "project": "ML_Engine",
-  "userStories": [
-    {
-      "acceptanceCriteria": [
-        "Add self.state_engine.save_state() to graceful shutdown in continuous.py",
-        "Add self.memory_manager.save_state() to graceful shutdown in continuous.py",
-        "Add self.pair_transfer.save_state() to graceful shutdown in continuous.py",
-        "Add self.threshold_optimizer.save_state() to graceful shutdown in continuous.py",
-        "Add self.regime_broadcaster.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-001",
-      "notes": "",
-      "passes": false,
-      "priority": 1,
-      "title": "Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster"
-    },
-    {
-      "acceptanceCriteria": [
-        "Add self.agent_accuracy_matrix.save_state() to graceful shutdown in continuous.py",
-        "Add self.health_registry.save_state() to graceful shutdown in continuous.py",
-        "Add self.agent_lifecycle.save_state() to graceful shutdown in continuous.py",
-        "Add self.signal_timing.save_state() to graceful shutdown in continuous.py",
-        "Add self.model_calibration.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-002",
-      "notes": "",
-      "passes": false,
-      "priority": 2,
-      "title": "Wire save_state() into graceful shutdown for: agent_accuracy_matrix, health_registry, agent_lifecycle, signal_timing, model_calibration"
-    },
-    {
-      "acceptanceCriteria": [
-        "Add self.execution_router.save_state() to graceful shutdown in continuous.py",
-        "Add self.execution_quality_optimizer.save_state() to graceful shutdown in continuous.py",
-        "Add self.training_augmenter.save_state() to graceful shutdown in continuous.py",
-        "Add self.model_bandit.save_state() to graceful shutdown in continuous.py",
-        "Add self.affinity_portfolio.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-003",
-      "notes": "",
-      "passes": false,
-      "priority": 3,
-      "title": "Wire save_state() into graceful shutdown for: execution_router, execution_quality_optimizer, training_augmenter, model_bandit, affinity_portfolio"
-    },
-    {
-      "acceptanceCriteria": [
-        "Add self.position_manager.save_state() to graceful shutdown in continuous.py",
-        "Add self.temporal_attention.save_state() to graceful shutdown in continuous.py",
-        "Add self.dynamic_risk_allocator.save_state() to graceful shutdown in continuous.py",
-        "Add self.execution_quality_tracker.save_state() to graceful shutdown in continuous.py",
-        "Add self.attention_feedback.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-004",
-      "notes": "",
-      "passes": false,
-      "priority": 4,
-      "title": "Wire save_state() into graceful shutdown for: position_manager, temporal_attention, dynamic_risk_allocator, execution_quality_tracker, attention_feedback"
-    },
-    {
-      "acceptanceCriteria": [
-        "Add self.model_router.save_state() to graceful shutdown in continuous.py",
-        "Add self.causal_filter.save_state() to graceful shutdown in continuous.py",
-        "Add self.module_activation.save_state() to graceful shutdown in continuous.py",
-        "Add self.replay_validator.save_state() to graceful shutdown in continuous.py",
-        "Add self.pair_regime_agent_matrix.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-005",
-      "notes": "",
-      "passes": false,
-      "priority": 5,
-      "title": "Wire save_state() into graceful shutdown for: model_router, causal_filter, module_activation, replay_validator, pair_regime_agent_matrix"
-    },
-    {
-      "acceptanceCriteria": [
-        "Change enable_trader_readiness_agent default to True in ScannerConfig",
-        "Change enable_llm_macro_agent default to True in ScannerConfig",
-        "Change enable_llm_trade_analysis default to True in ScannerConfig",
-        "Change enable_meta_manager default to True in ScannerConfig",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
-      "id": "US-006",
-      "notes": "",
-      "passes": false,
-      "priority": 6,
-      "title": "Enable config flags for wired modules: trader_readiness_agent, llm_macro_agent, llm_trade_analysis, meta_manager"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'dynamic_sl_tp' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trade_explainer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'multi_horizon_fusion' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'claude_subprocess' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'group_momentum' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-007",
-      "notes": "",
-      "passes": false,
-      "priority": 7,
-      "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, multi_horizon_fusion, claude_subprocess, group_momentum"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'position_timeout' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'hermes_daily_brief' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'entropy_sizer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'approval_queue' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'retrain_trigger' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-008",
-      "notes": "",
-      "passes": false,
-      "priority": 8,
-      "title": "Register modules in dispatcher/orchestrator: position_timeout, hermes_daily_brief, entropy_sizer, approval_queue, retrain_trigger"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'policy_types' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'microstructure_regime' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'broker_transport' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'kelly_portfolio' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'hermes_watchdog' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-009",
-      "notes": "",
-      "passes": false,
-      "priority": 9,
-      "title": "Register modules in dispatcher/orchestrator: policy_types, microstructure_regime, broker_transport, kelly_portfolio, hermes_watchdog"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'adaptive_lr' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'confidence_calibrator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'capacity_model' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'memory_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trade_outcome_predictor' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-010",
-      "notes": "",
-      "passes": false,
-      "priority": 10,
-      "title": "Register modules in dispatcher/orchestrator: adaptive_lr, confidence_calibrator, capacity_model, memory_manager, trade_outcome_predictor"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'outcome_backfill' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'pair_transfer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'threshold_optimizer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'pair_model_selector' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'reflection_events' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-011",
-      "notes": "",
-      "passes": false,
-      "priority": 11,
-      "title": "Register modules in dispatcher/orchestrator: outcome_backfill, pair_transfer, threshold_optimizer, pair_model_selector, reflection_events"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'background_activity' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'post_deploy_critic' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'counterfactual_learner' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'serial_executor' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'event_handlers' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-012",
-      "notes": "",
-      "passes": false,
-      "priority": 12,
-      "title": "Register modules in dispatcher/orchestrator: background_activity, post_deploy_critic, counterfactual_learner, serial_executor, event_handlers"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'regime_broadcaster' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'agent_accuracy_matrix' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'self_model_state' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'health_registry' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'portfolio_optimizer' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-013",
-      "notes": "",
-      "passes": false,
-      "priority": 13,
-      "title": "Register modules in dispatcher/orchestrator: regime_broadcaster, agent_accuracy_matrix, self_model_state, health_registry, portfolio_optimizer"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'adjustment_validator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'session_snapshot' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'execution_funnel' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trading_events' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'alert_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-014",
-      "notes": "",
-      "passes": false,
-      "priority": 14,
-      "title": "Register modules in dispatcher/orchestrator: adjustment_validator, session_snapshot, execution_funnel, trading_events, alert_manager"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'dynamic_hedging' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'dynamic_drawdown' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'agent_lifecycle' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'signal_timing' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trading_event_bus' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-015",
-      "notes": "",
-      "passes": false,
-      "priority": 15,
-      "title": "Register modules in dispatcher/orchestrator: dynamic_hedging, dynamic_drawdown, agent_lifecycle, signal_timing, trading_event_bus"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'chain_memory' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_calibration' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'execution_router' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'execution_quality_optimizer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'adversarial_trainer' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-016",
-      "notes": "",
-      "passes": false,
-      "priority": 16,
-      "title": "Register modules in dispatcher/orchestrator: chain_memory, model_calibration, execution_router, execution_quality_optimizer, adversarial_trainer"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'state_reconciler' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'supervision_policy_engine' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'autonomous_trainer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'supervision_core' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-017",
-      "notes": "",
-      "passes": false,
-      "priority": 17,
-      "title": "Register modules in dispatcher/orchestrator: state_reconciler, supervision_policy_engine, autonomous_trainer, supervision_core, model_manager"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'hermes_digest' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'regime_reward' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'training_augmenter' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'causal_counterfactual' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trade_slots' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-018",
-      "notes": "",
-      "passes": false,
-      "priority": 18,
-      "title": "Register modules in dispatcher/orchestrator: hermes_digest, regime_reward, training_augmenter, causal_counterfactual, trade_slots"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'event_queue' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_bandit' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'ensemble_disagreement' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'regime_tracker' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'affinity_portfolio' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-019",
-      "notes": "",
-      "passes": false,
-      "priority": 19,
-      "title": "Register modules in dispatcher/orchestrator: event_queue, model_bandit, ensemble_disagreement, regime_tracker, affinity_portfolio"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'position_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'briefing_snapshot' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'cycle_autonomy' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'smart_execution' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'accuracy_gate' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-020",
-      "notes": "",
-      "passes": false,
-      "priority": 20,
-      "title": "Register modules in dispatcher/orchestrator: position_manager, briefing_snapshot, cycle_autonomy, smart_execution, accuracy_gate"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'temporal_attention' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'orchestrator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'constitution' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'dynamic_risk_allocator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'hermes_state' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-021",
-      "notes": "",
-      "passes": false,
-      "priority": 21,
-      "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, constitution, dynamic_risk_allocator, hermes_state"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'supervision_tick' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'validation_stats' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'lead_lag_detector' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'continuous' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'market_impact' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-022",
-      "notes": "",
-      "passes": false,
-      "priority": 22,
-      "title": "Register modules in dispatcher/orchestrator: supervision_tick, validation_stats, lead_lag_detector, continuous, market_impact"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'pair_affinity' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'seasonality' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trading_control_plane' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'learnings_outcomes' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'close_diagnostician' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-023",
-      "notes": "",
-      "passes": false,
-      "priority": 23,
-      "title": "Register modules in dispatcher/orchestrator: pair_affinity, seasonality, trading_control_plane, learnings_outcomes, close_diagnostician"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'deterministic_surgeon' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'feature_attention' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'supervision_runtime' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'hierarchical_risk_parity' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'execution_quality_tracker' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-024",
-      "notes": "",
-      "passes": false,
-      "priority": 24,
-      "title": "Register modules in dispatcher/orchestrator: deterministic_surgeon, feature_attention, supervision_runtime, hierarchical_risk_parity, execution_quality_tracker"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'attention_feedback' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'brain_caps' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'observational_learning' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_router' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'causal_filter' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-025",
-      "notes": "",
-      "passes": false,
-      "priority": 25,
-      "title": "Register modules in dispatcher/orchestrator: attention_feedback, brain_caps, observational_learning, model_router, causal_filter"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'module_activation' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'concept_drift' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trigger_registry' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'drift_monitor' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'crisis_generator' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-026",
-      "notes": "",
-      "passes": false,
-      "priority": 26,
-      "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, trigger_registry, drift_monitor, crisis_generator"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'drift_projector' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'event_history' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'phase_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'session_registry' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'pair_regime_agent_matrix' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-027",
-      "notes": "",
-      "passes": false,
-      "priority": 27,
-      "title": "Register modules in dispatcher/orchestrator: drift_projector, event_history, phase_manager, session_registry, pair_regime_agent_matrix"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'api_retry' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'meta_types' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-028",
-      "notes": "",
-      "passes": false,
-      "priority": 28,
-      "title": "Register modules in dispatcher/orchestrator: api_retry, meta_types"
-    },
-    {
-      "acceptanceCriteria": [
-        "Wire 'outcome_backfill' output into observation_consumer or learning_engine",
-        "Wire 'state_reconciler' output into observation_consumer or learning_engine",
-        "Wire 'briefing_snapshot' output into observation_consumer or learning_engine",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
-      "id": "US-029",
-      "notes": "",
-      "passes": false,
-      "priority": 29,
-      "title": "Connect feedback consumers for: outcome_backfill, state_reconciler, briefing_snapshot"
-    }
-  ]
+    "branchName": "ralph/buddy-autonomous-live-trading-phase39",
+    "description": "End-to-end autonomous live trading daemon. Wires tick capture, SOTA inference, neural agent learning, soak evaluation, and model promotion into a single self-driving loop. Builds on existing ContinuousScanner + AutonomousTrainer + ExecutionManager infra. Source: user directive (Option C).",
+    "project": "ML_Engine",
+    "userStories": [
+        {
+            "id": "US-001",
+            "title": "Wire tick capture daemon into ContinuousScanner maintenance loop",
+            "description": "The TickCaptureDaemon (scripts/run_tick_capture.py) runs standalone. ContinuousScanner has a maintenance loop that runs between scans. Wire the daemon lifecycle (start/stop/health) into ContinuousScanner so tick capture starts when the scanner starts and shuts down gracefully on exit.",
+            "priority": 1,
+            "acceptanceCriteria": [
+                "TickCaptureDaemon.start() is called inside ContinuousScanner.run() before the first scan",
+                "TickCaptureDaemon.shutdown() is called in ContinuousScanner._graceful_shutdown()",
+                "If tick capture fails to start, log warning but DO NOT block the scan loop (fault tolerant)",
+                "Config flag 'enable_tick_capture' added to ContinuousConfig (default True)",
+                "Tick capture status (running/stopped/error) is exposed in scan cycle log"
+            ],
+            "notes": "Relies on src/data/tick_capture.py and src/utils/oanda_streaming.py which already exist.",
+            "passes": false
+        },
+        {
+            "id": "US-002",
+            "title": "Auto-aggregate captured ticks to candles after buffer flush",
+            "description": "Currently TickPersister writes raw ticks to partitioned parquet. Add an optional post-flush hook that immediately aggregates new ticks to S5/M15 candles and appends them to the existing harvest parquet files (trained_data/harvest/{pair}_S5.parquet). This ensures the training pipeline always sees fresh data without waiting for a manual harvest run.",
+            "priority": 2,
+            "acceptanceCriteria": [
+                "TickPersister.flush() accepts an optional on_flush callback",
+                "Callback invokes aggregate_ticks_to_candles() with the newly flushed ticks",
+                "Aggregated candles are appended to trained_data/harvest/{pair}_S5.parquet (or M15)",
+                "Duplicate bars are dropped by (timestamp, pair) before append (idempotent)",
+                "Callback runs in the same thread (synchronous) to maintain ordering guarantees",
+                "If aggregation fails, log error but do not lose the raw tick parquet"
+            ],
+            "notes": "Uses src/data/tick_aggregate.py which already supports S5\u2192M15 aggregation.",
+            "passes": false
+        },
+        {
+            "id": "US-003",
+            "title": "Add SOTA shadow test alongside incumbent-vs-candidate A/B framework",
+            "description": "ModelManager currently A/B tests incumbent vs candidate traditional models. Add a third shadow lane for SOTA inference: on every scan, run legacy ensemble AND SOTA model on identical raw OHLCV, log both predictions to shadow_predictions.jsonl with a new 'sota_direction' field. This enables live comparison without risking capital.",
+            "priority": 3,
+            "acceptanceCriteria": [
+                "Shadow test logs include 'sota_direction', 'sota_confidence' fields for every actionable pair",
+                "SOTA inference runs only if use_sota_inference=True in config AND model file exists",
+                "SOTA failure is graceful: if inference errors, log null and continue (never crash scan)",
+                "Shadow predictions JSONL schema extended with sota_* fields; backward compatible with existing ModelManager scoring",
+                "Config flag 'enable_sota_shadow' added (default True when use_sota_inference=True)"
+            ],
+            "notes": "Uses src/sota_core/inference.py:SOTAInference. Must handle missing model file gracefully.",
+            "passes": false
+        },
+        {
+            "id": "US-004",
+            "title": "Update NeuralAgentTeam policies from live trade outcomes in trade-close loop",
+            "description": "When a trade closes in the learning loop (continuous.py:_run_learning_loop), the system updates pair performance, adaptive scalers, and counterfactual learners. Add a call to NeuralAgentTeam.update_weights_from_outcome() to trigger gradient updates on each agent's policy network using the trade's feature vectors and binary correctness label.",
+            "priority": 4,
+            "acceptanceCriteria": [
+                "NeuralAgentTeam.update_weights_from_outcome() is called for every closed trade with agent_verdicts + trade_won",
+                "If use_neural_agents=False, the call is skipped (no-op)",
+                "Update runs asynchronously (background thread) so it never blocks journal sync",
+                "After update, policies are saved to disk (trainer.save_policies())",
+                "Update count and average loss are logged per agent for observability"
+            ],
+            "notes": "Uses src/scanner/agents/neural/team_bridge.py:update_weights_from_outcome() and trainer.py.",
+            "passes": false
+        },
+        {
+            "id": "US-005",
+            "title": "Neural agent ramp-up sizing with cold-start protection",
+            "description": "Neural agents start with untrained policy networks. Until each agent accumulates at least MIN_LIVE_SAMPLES (default 100) trade outcomes, its policy weights are effectively random. Add a ramp-up mechanism: position sizing for trades approved by neural agents is scaled by min(trade_count / MIN_LIVE_SAMPLES, 1.0). Also block trades where ANY approving agent has fewer than MIN_LIVE_SAMPLES.",
+            "priority": 5,
+            "acceptanceCriteria": [
+                "ExecutionManager reads neural agent sample counts from trainer state",
+                "Position sizing multiplied by ramp_factor = min(agent_samples / 100, 1.0) for approving agents",
+                "If ANY approving agent has < 20 samples, trade is blocked with reason 'neural_agent_cold_start'",
+                "Config flag 'neural_agent_min_samples' added (default 100, tunable per regime)",
+                "Ramp-up status logged per trade: 'ramp_factor=0.45 (samples=45/100)'",
+                "After 100 samples, ramp_factor reaches 1.0 and normal sizing resumes"
+            ],
+            "notes": "Protects capital during neural agent cold-start. Can be disabled by setting min_samples=0.",
+            "passes": false
+        },
+        {
+            "id": "US-006",
+            "title": "Automated soak orchestration after SOTA finetune completes",
+            "description": "After AutonomousTrainer spawns a background SOTA finetune (or a manual training run finishes), automatically trigger the soak pipeline: run SOTA in shadow mode alongside legacy on held-out data, compute error correlation, and emit a recommendation (STACK / REPLACE / DISCARD). The soak runs in a background subprocess so training completion doesn't block the scan loop.",
+            "priority": 6,
+            "acceptanceCriteria": [
+                "AutonomousTrainer emits a 'training_complete' signal when SOTA finetune finishes",
+                "Signal triggers SoakRunner.run_soak_comparison() in a background Process",
+                "Soak uses held-out data (last 10% of harvested candles, or last 500 bars if < 5000 total)",
+                "SoakResult is persisted to trained_data/soak_results/{pair}_{timestamp}.json",
+                "If soak fails (model missing, data insufficient), log error and skip \u2014 do not block trading",
+                "Soak status visible in scan cycle log: 'soak_running', 'soak_complete', 'soak_error'"
+            ],
+            "notes": "Uses src/evaluation/soak_runner.py which already exists. Held-out data should be time-separated from training data.",
+            "passes": false
+        },
+        {
+            "id": "US-007",
+            "title": "Wire soak recommendation into model promotion gate",
+            "description": "ModelManager._check_model_promotion() currently promotes based on shadow test accuracy. Extend the gate to require: (1) soak recommendation is REPLACE or STACK, AND (2) SOTA shadow accuracy > legacy shadow accuracy over last N scans. Only promote if ALL gating conditions pass.",
+            "priority": 7,
+            "acceptanceCriteria": [
+                "ModelManager reads latest SoakResult for each pair before promotion decision",
+                "Promotion blocked if soak recommendation == DISCARD or UNDECIDED",
+                "Promotion blocked if sota_shadow_accuracy <= legacy_shadow_accuracy over last 200 actionable scans",
+                "If soak recommends STACK but not REPLACE, SOTA is added as a 5th ensemble component (augment mode) instead of full replacement",
+                "Promotion decision logged with full gating context: soak_rec, sota_acc, legacy_acc, improvement",
+                "Rollback preserves previous model weights if promotion degrades performance"
+            ],
+            "notes": "Augment mode means SOTA runs alongside legacy (stacked ensemble). Replace mode means SOTA replaces legacy inference.",
+            "passes": false
+        },
+        {
+            "id": "US-008",
+            "title": "Autonomous SOTA training pipeline triggered from accumulated tick candles",
+            "description": "When tick-aggregated candles reach a threshold (e.g., 5000 new bars since last training), AutonomousTrainer automatically triggers SOTA pre-training (self-supervised) followed by finetuning (supervised) using the freshest data. Training lineage is tracked so each model knows its data provenance.",
+            "priority": 8,
+            "acceptanceCriteria": [
+                "AutonomousTrainer checks 'bars_since_last_train' for each pair every cycle",
+                "Threshold 'sota_retrain_bars' added to config (default 5000)",
+                "When threshold crossed: spawn SOTATrainer.pretrain() then finetune() as chained subprocesses",
+                "Training uses tick-aggregated S5 candles (higher fidelity than M15)",
+                "Model artifact saved with lineage: source_data_range, n_bars, training_duration, val_loss",
+                "Old model kept as backup; only 2 most recent backups retained to manage disk",
+                "Training completion triggers soak (US-006) automatically"
+            ],
+            "notes": "Uses src/sota_core/trainer.py:SOTATrainer. Must integrate with existing BaseTrainer framework (IG-1 from audit).",
+            "passes": false
+        },
+        {
+            "id": "US-009",
+            "title": "Auto-promote SOTA to live inference when all gates pass",
+            "description": "When ModelManager determines promotion criteria are met (shadow tests + soak), automatically flip use_sota_inference=True in runtime config AND persist to config file. If augment mode (STACK), add SOTA as a 5th ensemble component without disabling legacy. Emit a TUI-visible promotion announcement.",
+            "priority": 9,
+            "acceptanceCriteria": [
+                "On promotion: config.use_sota_inference set to True in memory",
+                "Config change persisted to config/config_improved_H1.yaml (or active config file)",
+                "Scanner engine hot-reloads config without restart (uses existing config watcher)",
+                "If augment mode: SOTAInference added as 5th component to ModularEnsembleInference",
+                "Promotion announcement printed to console/TUI with green badge",
+                "Promotion event logged to trained_data/model_promotions.jsonl with timestamp, reason, improvement metrics"
+            ],
+            "notes": "Hot-reload uses existing engine.py config watcher. No restart required.",
+            "passes": false
+        },
+        {
+            "id": "US-010",
+            "title": "Add Elastic Weight Consolidation (EWC) to neural agent policies",
+            "description": "Neural agents currently use online gradient descent with a replay buffer. Without regularization, they forget older market regimes when new data arrives. Add optional EWC: after each batch of online updates, penalize weight changes proportional to their Fisher information from previous training phases. Prevents catastrophic forgetting.",
+            "priority": 10,
+            "acceptanceCriteria": [
+                "NeuralAgentConfig adds 'use_ewc' flag (default False, conservative)",
+                "NeuralAgentTrainer computes Fisher Information matrix after each training phase",
+                "Online updates apply EWC penalty: loss += lambda_ewc * sum(F_i * (theta_i - theta_old_i)^2)",
+                "Fisher info stored per policy in trained_data/models/neural/{agent_name}_fisher.npz",
+                "EWC lambda is tunable per agent (default 1e-4)",
+                "Unit test: train on regime A, switch to regime B, verify agent still performs on A (within 10% of original accuracy)"
+            ],
+            "notes": "Addresses training infra audit IG-2. Uses existing EWC implementation in TransformerDirectionTrainer as reference.",
+            "passes": false
+        },
+        {
+            "id": "US-011",
+            "title": "Health monitoring and alerting for tick capture daemon",
+            "description": "The tick capture daemon runs in a background thread and can silently stall (connection drop, parsing error, disk full). Add health checks: monitor ticks received per minute, heartbeat from OANDA stream, and disk space. Alert via console/TUI if throughput drops below threshold.",
+            "priority": 11,
+            "acceptanceCriteria": [
+                "TickCaptureDaemon exposes health metrics: ticks/min, last_tick_time, stream_status, disk_usage_pct",
+                "Health checked every scan cycle in ContinuousScanner maintenance loop",
+                "Alert triggered if ticks/min < 1 for 2 consecutive minutes (below expected ~5-10/min)",
+                "Alert message visible in TUI diagnostics screen and console output",
+                "Auto-restart: if stream_status == 'dead', daemon attempts reconnect automatically (3 retries)",
+                "Health metrics persisted to trained_data/tick_health.jsonl for post-mortem analysis"
+            ],
+            "notes": "Uses existing OandaStreamClient auto-reconnect logic. Health layer is additive.",
+            "passes": false
+        },
+        {
+            "id": "US-012",
+            "title": "SOTA model artifact versioning and rollback",
+            "description": "SOTA models are currently saved as flat .keras files with no versioning. When auto-promotion occurs, there is no reliable way to roll back if the promoted model degrades. Implement versioned artifacts: timestamped directories with model + config + lineage + validation metrics.",
+            "priority": 12,
+            "acceptanceCriteria": [
+                "SOTA model artifacts saved to trained_data/models/sota_versions/{timestamp}/ with files: model.keras, config.json, lineage.json, metrics.json",
+                "Symlink 'trained_data/models/sota_finetuned/latest' always points to newest version",
+                "ModelManager promotion atomically swaps symlink after validation passes",
+                "Rollback command available: scripts/rollback_sota.py --to-version {timestamp}",
+                "Retention policy: keep last 10 versions, auto-delete older (configurable)",
+                "Version manifest (trained_data/models/sota_versions/manifest.json) tracks all versions with promotion history"
+            ],
+            "notes": "Atomic symlink swap prevents race conditions during promotion. Manifest enables tooling.",
+            "passes": false
+        },
+        {
+            "id": "US-013",
+            "title": "Dry-run mode for full autonomous loop (zero live trades)",
+            "description": "Before deploying the fully autonomous loop with live capital, operators need a dry-run mode where all components execute (tick capture, training, soak, shadow tests, neural updates) but NO trades are sent to the broker. All execution decisions are logged as 'would_execute' entries.",
+            "priority": 13,
+            "acceptanceCriteria": [
+                "Config flag 'dry_run' added to ContinuousConfig (default False)",
+                "When dry_run=True: scanner evaluates normally, shadow tests run, trades are scored but NOT sent to broker",
+                "ExecutionManager checks dry_run before place_order() and logs 'WOULD_EXECUTE' instead",
+                "Neural agents still update from 'simulated' outcomes (dry-run outcomes are treated as real for learning)",
+                "Soak pipeline runs normally (no broker interaction anyway)",
+                "Dry-run status prominently displayed in TUI header and console banner",
+                "Config can flip dry_run\u2192False at runtime (hot reload) to go live"
+            ],
+            "notes": "Critical safety feature. Allows full system validation before risking capital.",
+            "passes": false
+        }
+    ]
 }
