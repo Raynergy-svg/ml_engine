@@ -865,7 +865,7 @@ class ScannerConfig:
     enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator (legacy flag — kept for backward compatibility)
     enable_devil_advocate_agent: bool = True  # Agent #14: Canonical _agent-suffixed toggle (supersedes enable_devil_advocate)
     enable_order_flow_agent: bool = True  # Agent #15: Order-flow / book-depth agent
-    enable_llm_macro_agent: bool = True  # Agent #16: LLM macro reasoning (US-001)
+    enable_llm_macro_agent: bool = False  # Agent #16: LLM macro reasoning (US-001). Reverted to False 2026-06-16: evaluate() runs _fetch_fred_all (8 blocking FRED GETs, timeout=15ea) + optional live LLM call per-scan/per-pair BEFORE the cache check — up to 120s synchronous HTTP in the scan hot path + violates the no-LLM-in-hot-path rule.
     enable_llm_macro_shadow: bool = True   # Log LLM macro votes without affecting ensemble
     # --- Reflection / observability surfaces ---
     # BriefingSnapshotWriter (Angle 1') — deterministic per-cycle snapshot of
