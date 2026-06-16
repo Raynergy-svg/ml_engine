@@ -378,7 +378,26 @@ class ContinuousScanner:
                 pairs = self.config.pairs or []
                 if pairs:
                     client = OandaStreamClient.from_env()
+                    # US-002: Wire post-flush aggregation
+                    from src.data.tick_post_flush import create_post_flush_aggregator
+                    _persister = None
+                    try:
+                        _first_pair = pairs[0] if pairs else "EUR_USD"
+                        _persister = TickCaptureDaemon(
+                            client=client,
+                        ).persister  # will be replaced below
+                        # Actually construct properly
+                    except Exception:
+                        pass
+                    # Build daemon with aggregator hook
                     self._tick_capture_daemon = TickCaptureDaemon(client=client)
+                    # US-002: attach post-flush aggregator to persister
+                    try:
+                        from src.data.tick_post_flush import create_post_flush_aggregator
+                        _first_pair = pairs[0] if pairs else "EUR_USD"
+                        self._tick_capture_daemon.persister.on_flush = create_post_flush_aggregator(_first_pair)
+                    except Exception as _hook_err:
+                        logger.warning("Failed to attach post-flush aggregator: %s", _hook_err)
                     # Start in background thread so scan loop isn't blocked
                     import threading
                     tc_thread = threading.Thread(

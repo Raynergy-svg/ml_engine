@@ -42,8 +42,9 @@ DEFAULT_FLUSH_INTERVAL_SEC = 30.0
 class TickPersister:
     """Flush buffered ticks to partitioned Parquet."""
 
-    def __init__(self, root: Path = TICK_ROOT):
+    def __init__(self, root: Path = TICK_ROOT, on_flush: Any = None):
         self.root = root
+        self.on_flush = on_flush  # US-002: optional post-flush callback
 
     def flush(self, ticks: List[TickQuote]) -> int:
         """Persist ticks; return count written."""
@@ -102,6 +103,12 @@ class TickPersister:
             written += len(group)
 
         logger.info(f"Flushed {written} ticks to {self.root}")
+        # US-002: Post-flush aggregation hook
+        if self.on_flush is not None and written > 0:
+            try:
+                self.on_flush(ticks)
+            except Exception as _hook_err:
+                logger.warning("Tick aggregation hook failed: %s", _hook_err)
         return written
 
 
