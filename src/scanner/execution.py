@@ -2200,6 +2200,49 @@ class ExecutionManager:
             ctx.get("agent_passed"), _ctx_disagreement, _ctx_regime,
         )
 
+        # US-005: Neural agent cold-start guard
+        _neural_cold_start = False
+        _neural_ramp_factor = 1.0
+        if getattr(self.scanner.config if hasattr(self, "scanner") else object(), "use_neural_agents", False):
+            try:
+                from src.scanner.agents.neural.trainer import NeuralAgentTrainer
+                _nat = NeuralAgentTrainer()
+                _nat.load_policies()
+                _min_samples = int(getattr(self.scanner.config, "neural_agent_min_samples", 100))
+                _approving_agents = []
+                _agent_verdicts = ctx.get("agent_verdicts", [])
+                for _vd in _agent_verdicts:
+                    if _vd.get("passed") and str(_vd.get("name", "")).startswith("neural_"):
+                        _approving_agents.append(_vd.get("name"))
+                if _approving_agents:
+                    _worst_samples = 999999
+                    for _agent_name in _approving_agents:
+                        _agent = _nat.agents.get(_agent_name)
+                        if _agent:
+                            _n_samples = len(_agent._trade_history)
+                            _worst_samples = min(_worst_samples, _n_samples)
+                    if _worst_samples < 20:
+                        _neural_cold_start = True
+                        logger.warning(
+                            "US-005 BLOCK: neural agent cold-start (%s samples=%d < 20)",
+                            pair, _worst_samples,
+                        )
+                    else:
+                        _neural_ramp_factor = min(_worst_samples / _min_samples, 1.0)
+                        if _neural_ramp_factor < 1.0:
+                            logger.info(
+                                "US-005 RAMP: %s neural ramp_factor=%.2f (samples=%d/%d)",
+                                pair, _neural_ramp_factor, _worst_samples, _min_samples,
+                            )
+            except Exception as _ne_err:
+                logger.debug("US-005 neural cold-start check error: %s", _ne_err)
+
+        if _neural_cold_start:
+            return ExecutionResult(
+                success=False,
+                error=f"BLOCKED: neural_agent_cold_start ({pair})",
+            )
+
         # Phase 85 (US-P85-003): ClusterGate — adjust confidence based on trade cluster membership
         if self._cluster_gate is not None:
             try:

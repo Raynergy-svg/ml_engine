@@ -2444,12 +2444,34 @@ class ContinuousScanner:
                         # Gracefully fall back to incumbent-only testing
                         candidate_direction = None
 
+                # US-003: SOTA shadow prediction
+                sota_direction = None
+                sota_confidence = None
+                if getattr(self.scanner.config, "use_sota_inference", False):
+                    try:
+                        from src.sota_core.inference import SOTAInference
+                        from pathlib import Path
+                        sota_model_path = Path("trained_data/models/sota_finetuned/sota_model.keras")
+                        if sota_model_path.exists():
+                            # Lazy init SOTA inference
+                            if not hasattr(self, "_sota_inference") or self._sota_inference is None:
+                                self._sota_inference = SOTAInference()
+                            sota_pred = self._sota_inference.predict(analysis.pair, getattr(analysis, "df_raw", None))
+                            if sota_pred is not None:
+                                sota_direction = sota_pred.get("direction", "HOLD")
+                                sota_confidence = float(sota_pred.get("confidence", 0.0))
+                    except Exception as e:
+                        logger.debug("SOTA shadow inference failed for %s: %s", analysis.pair, e)
+                        sota_direction = None
+
                 records.append({
                     "pair": analysis.pair,
                     "scan_timestamp": scan_timestamp,
                     "incumbent_direction": direction,
                     "incumbent_confidence": float(getattr(analysis, "confidence", 0.0)),
                     "candidate_direction": candidate_direction,
+                    "sota_direction": sota_direction,
+                    "sota_confidence": sota_confidence,
                     "scored": False,
                 })
 
@@ -2475,9 +2497,12 @@ class ContinuousScanner:
 
                 # Count true A/B tests (both predictions present)
                 ab_tests = sum(1 for r in records if r["candidate_direction"] is not None)
+                sota_tests = sum(1 for r in records if r["sota_direction"] is not None)
                 log_msg = f"Shadow predictions logged: {len(records)} pairs"
                 if ab_tests > 0:
                     log_msg += f" ({ab_tests} with true A/B)"
+                if sota_tests > 0:
+                    log_msg += f" ({sota_tests} with SOTA shadow)"
                 log_msg += f" at {scan_timestamp[:19]}"
                 logger.debug(log_msg)
 
