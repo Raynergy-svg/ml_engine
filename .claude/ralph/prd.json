@@ -15,8 +15,8 @@
                 "Config flag 'enable_tick_capture' added to ContinuousConfig (default True)",
                 "Tick capture status (running/stopped/error) is exposed in scan cycle log"
             ],
-            "notes": "Relies on src/data/tick_capture.py and src/utils/oanda_streaming.py which already exist.",
-            "passes": false
+            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commits 22a9036 and b3e28a7.",
+            "passes": true
         },
         {
             "id": "US-002",
@@ -46,8 +46,8 @@
                 "Shadow predictions JSONL schema extended with sota_* fields; backward compatible with existing ModelManager scoring",
                 "Config flag 'enable_sota_shadow' added (default True when use_sota_inference=True)"
             ],
-            "notes": "Uses src/sota_core/inference.py:SOTAInference. Must handle missing model file gracefully.",
-            "passes": false
+            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commits 22a9036 and b3e28a7.",
+            "passes": true
         },
         {
             "id": "US-004",
@@ -61,8 +61,8 @@
                 "After update, policies are saved to disk (trainer.save_policies())",
                 "Update count and average loss are logged per agent for observability"
             ],
-            "notes": "Uses src/scanner/agents/neural/team_bridge.py:update_weights_from_outcome() and trainer.py.",
-            "passes": false
+            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commits 22a9036 and b3e28a7.",
+            "passes": true
         },
         {
             "id": "US-005",
@@ -77,8 +77,8 @@
                 "Ramp-up status logged per trade: 'ramp_factor=0.45 (samples=45/100)'",
                 "After 100 samples, ramp_factor reaches 1.0 and normal sizing resumes"
             ],
-            "notes": "Protects capital during neural agent cold-start. Can be disabled by setting min_samples=0.",
-            "passes": false
+            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commits 22a9036 and b3e28a7.",
+            "passes": true
         },
         {
             "id": "US-006",
