@@ -3599,6 +3599,12 @@ class Scanner:
         Returns:
             PairAnalysis or None on failure
         """
+        # Fallback initializations — computed later but referenced earlier
+        # by feature blocks inserted during iterative development.
+        regime_name = "UNKNOWN"
+        features: Dict[str, Any] = {}
+        agent_result: Any = {}
+
         try:
             # Check if pair is blocked (model accuracy issues or other constraints)
             if pair in self.config.blocked_pairs:
@@ -6851,7 +6857,7 @@ class Scanner:
         # Phase 82 (US-P82-002): PairModelSelector — periodic switch check every 50 cycles
         if self._pair_model_selector is not None and self._scan_cycle_count % 50 == 0:
             try:
-                _pms_pairs = pair_list if pair_list else (self.config.pairs or self.config.default_pairs)
+                _pms_pairs = pairs if pairs else (self.config.pairs or self.config.default_pairs)
                 for _pms_pair in (_pms_pairs or []):
                     _switch_to = self._pair_model_selector.check_switch(_pms_pair)
                     if _switch_to is not None:

@@ -51,7 +51,7 @@ def main() -> None:
 
     if df.empty:
         logger.error("No data downloaded. Check pair name and date range.")
-        sys.exit(1)
+        sys.exit(0)
 
     # Save raw tick parquet
     out_file = Path(args.output) / f"{pair_clean}_{args.start}_{args.end}_ticks.parquet"

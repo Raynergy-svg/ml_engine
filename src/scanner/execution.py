@@ -19,6 +19,7 @@ import os
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
+import numpy as np
 
 from src.brokers.base import BrokerClient
 from src.brokers.registry import get_registry
@@ -3276,6 +3277,9 @@ class ExecutionManager:
 
             # Convert LONG/SHORT to BUY/SELL for broker API
             _broker_direction = "BUY" if direction.upper() == "LONG" else "SELL"
+
+            # Phase 86 pre-compute atr_pips from atr for downstream blocks
+            atr_pips = float(atr / _get_pip_value(pair, 0.0001)) if atr and atr > 0 else 0.0
 
             # Phase 86 (US-P86-004): SmartExecution — log whether slicing is recommended (observational)
             _se = getattr(self, "_smart_execution", None)

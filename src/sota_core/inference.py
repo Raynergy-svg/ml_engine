@@ -76,7 +76,7 @@ class SOTAInference:
         self._load_attempted = False
         self._model_version = "unknown"
         # MED-2: calibration history for adaptive threshold
-        self._prediction_history: List[float] = []
+        self._prediction_history: list[float] = []
         # CRIT-1 FIX: eager load at construction time; failures are terminal.
         self._attempt_load()
 

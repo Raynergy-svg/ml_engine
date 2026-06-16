@@ -1,214 +1,80 @@
 {
-    "branchName": "ralph/buddy-autonomous-live-trading-phase39",
-    "description": "End-to-end autonomous live trading daemon. Wires tick capture, SOTA inference, neural agent learning, soak evaluation, and model promotion into a single self-driving loop. Builds on existing ContinuousScanner + AutonomousTrainer + ExecutionManager infra. Source: user directive (Option C).",
+    "branchName": "ralph/sota-hardening-phase40",
+    "description": "Post-audit hardening: fix runtime bugs, wire Dukascopy harvester, unify training harness, add iTransformer encoder, and pre-train on historical tick data.",
     "project": "ML_Engine",
     "userStories": [
         {
             "id": "US-001",
-            "title": "Wire tick capture daemon into ContinuousScanner maintenance loop",
-            "description": "The TickCaptureDaemon (scripts/run_tick_capture.py) runs standalone. ContinuousScanner has a maintenance loop that runs between scans. Wire the daemon lifecycle (start/stop/health) into ContinuousScanner so tick capture starts when the scanner starts and shuts down gracefully on exit.",
+            "title": "Fix critical F821 undefined-name runtime bugs in engine.py and execution.py",
+            "description": "Static analysis found 37 F821 undefined names. The most dangerous are in engine.py (regime_name, agent_result, features) and execution.py (np, atr_pips). These will raise NameError at runtime when those code paths execute.",
             "priority": 1,
             "acceptanceCriteria": [
-                "TickCaptureDaemon.start() is called inside ContinuousScanner.run() before the first scan",
-                "TickCaptureDaemon.shutdown() is called in ContinuousScanner._graceful_shutdown()",
-                "If tick capture fails to start, log warning but DO NOT block the scan loop (fault tolerant)",
-                "Config flag 'enable_tick_capture' added to ContinuousConfig (default True)",
-                "Tick capture status (running/stopped/error) is exposed in scan cycle log"
+                "flake8 --select=F821 src/scanner/engine.py returns zero errors",
+                "flake8 --select=F821 src/scanner/execution.py returns zero errors",
+                "All introduced symbols are either imported or defined locally in the fixed scopes",
+                "No regressions in existing test suite (pytest tests/scanner/ passes)"
             ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commits 22a9036 and b3e28a7.",
-            "passes": true
+            "passes": false,
+            "notes": ""
         },
         {
             "id": "US-002",
-            "title": "Auto-aggregate captured ticks to candles after buffer flush",
-            "description": "Currently TickPersister writes raw ticks to partitioned parquet. Add an optional post-flush hook that immediately aggregates new ticks to S5/M15 candles and appends them to the existing harvest parquet files (trained_data/harvest/{pair}_S5.parquet). This ensures the training pipeline always sees fresh data without waiting for a manual harvest run.",
+            "title": "Wire Dukascopy harvester into HarvestScheduler as alternate data source",
+            "description": "The DukascopyHarvester downloads historical tick data but is not integrated with the existing HarvestScheduler pipeline. Add a --source dukascopy flag to src/data/harvest.py that routes through the DukascopyHarvester and converts output to canonical M15 parquet.",
             "priority": 2,
             "acceptanceCriteria": [
-                "TickPersister.flush() accepts an optional on_flush callback",
-                "Callback invokes aggregate_ticks_to_candles() with the newly flushed ticks",
-                "Aggregated candles are appended to trained_data/harvest/{pair}_S5.parquet (or M15)",
-                "Duplicate bars are dropped by (timestamp, pair) before append (idempotent)",
-                "Callback runs in the same thread (synchronous) to maintain ordering guarantees",
-                "If aggregation fails, log error but do not lose the raw tick parquet"
+                "python -m src.data.harvest --source dukascopy --pair EUR_USD --start 2023-01-01 --end 2023-01-31 runs without error",
+                "Output parquet matches schema of existing OANDA harvest files (open,high,low,close,volume index)",
+                "Existing OANDA harvest path remains unchanged (--source defaults to oanda)",
+                "Unit test added: tests/data/test_harvest_scheduler_dukascopy.py"
             ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commit f78c114.",
-            "passes": true
+            "passes": false,
+            "notes": ""
         },
         {
             "id": "US-003",
-            "title": "Add SOTA shadow test alongside incumbent-vs-candidate A/B framework",
-            "description": "ModelManager currently A/B tests incumbent vs candidate traditional models. Add a third shadow lane for SOTA inference: on every scan, run legacy ensemble AND SOTA model on identical raw OHLCV, log both predictions to shadow_predictions.jsonl with a new 'sota_direction' field. This enables live comparison without risking capital.",
+            "title": "Create unified training harness entry point and delete duplicated boilerplate scripts",
+            "description": "Fifteen standalone training scripts (~7,800 LOC) duplicate data loading, feature engineering, and serialization. Create a single config-driven harness that dispatches to registered trainers by model type.",
             "priority": 3,
             "acceptanceCriteria": [
-                "Shadow test logs include 'sota_direction', 'sota_confidence' fields for every actionable pair",
-                "SOTA inference runs only if use_sota_inference=True in config AND model file exists",
-                "SOTA failure is graceful: if inference errors, log null and continue (never crash scan)",
-                "Shadow predictions JSONL schema extended with sota_* fields; backward compatible with existing ModelManager scoring",
-                "Config flag 'enable_sota_shadow' added (default True when use_sota_inference=True)"
+                "New module src/training/harness.py exposes a train() function accepting model_type and data_paths",
+                "Harness delegates to existing trainer classes (SOTATrainer, NeuralAgentTrainer, etc.)",
+                "scripts/train_sota.py reduced to a thin wrapper that calls harness with sota config",
+                "At least 5 redundant standalone scripts are deleted and their functionality is reachable via harness",
+                "CI passes: pytest tests/training/"
             ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commits 22a9036 and b3e28a7.",
-            "passes": true
+            "passes": false,
+            "notes": ""
         },
         {
             "id": "US-004",
-            "title": "Update NeuralAgentTeam policies from live trade outcomes in trade-close loop",
-            "description": "When a trade closes in the learning loop (continuous.py:_run_learning_loop), the system updates pair performance, adaptive scalers, and counterfactual learners. Add a call to NeuralAgentTeam.update_weights_from_outcome() to trigger gradient updates on each agent's policy network using the trade's feature vectors and binary correctness label.",
+            "title": "Add iTransformer encoder variant to raw_sequence_model.py",
+            "description": "Current encoder is basic multi-head self-attention over time steps. iTransformer inverts attention to treat channels (OHLCV + features) as tokens, which beats PatchTST on long-horizon forecasting. Add an optional iTransformer encoder block selectable via ModelConfig.encoder_type.",
             "priority": 4,
             "acceptanceCriteria": [
-                "NeuralAgentTeam.update_weights_from_outcome() is called for every closed trade with agent_verdicts + trade_won",
-                "If use_neural_agents=False, the call is skipped (no-op)",
-                "Update runs asynchronously (background thread) so it never blocks journal sync",
-                "After update, policies are saved to disk (trainer.save_policies())",
-                "Update count and average loss are logged per agent for observability"
+                "ModelConfig gains encoder_type field with choices ['transformer', 'itransformer'] (default 'transformer')",
+                "iTransformer block implemented in src/sota_core/encoders/itransformer.py",
+                "RawSequenceModel.build_model() routes to correct encoder based on config",
+                "Unit test: both encoder types produce output tensors of identical shape for same input",
+                "No TensorFlow warnings or shape mismatches during model compilation"
             ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commits 22a9036 and b3e28a7.",
-            "passes": true
+            "passes": false,
+            "notes": ""
         },
         {
             "id": "US-005",
-            "title": "Neural agent ramp-up sizing with cold-start protection",
-            "description": "Neural agents start with untrained policy networks. Until each agent accumulates at least MIN_LIVE_SAMPLES (default 100) trade outcomes, its policy weights are effectively random. Add a ramp-up mechanism: position sizing for trades approved by neural agents is scaled by min(trade_count / MIN_LIVE_SAMPLES, 1.0). Also block trades where ANY approving agent has fewer than MIN_LIVE_SAMPLES.",
+            "title": "Trigger SOTA pre-training on Dukascopy M15 data once backfill completes",
+            "description": "The backfill running in screen session 1601.dukascopy_backfill will produce trained_data/harvest/EUR_USD_M15_dukascopy.parquet. Once detected, run the unified harness in pretrain phase on that file.",
             "priority": 5,
             "acceptanceCriteria": [
-                "ExecutionManager reads neural agent sample counts from trainer state",
-                "Position sizing multiplied by ramp_factor = min(agent_samples / 100, 1.0) for approving agents",
-                "If ANY approving agent has < 20 samples, trade is blocked with reason 'neural_agent_cold_start'",
-                "Config flag 'neural_agent_min_samples' added (default 100, tunable per regime)",
-                "Ramp-up status logged per trade: 'ramp_factor=0.45 (samples=45/100)'",
-                "After 100 samples, ramp_factor reaches 1.0 and normal sizing resumes"
+                "Detection script checks for merged parquet existence and starts harness automatically",
+                "Pretrain phase runs with masked candle reconstruction + next-return regression",
+                "Checkpoint saved to trained_data/models/sota_pretrain/ with timestamped version",
+                "Training metrics (loss, val_loss) are logged to logs/autonomous_trainer.jsonl",
+                "Dry-run flag gates actual GPU training (simulation mode for validation)"
             ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commits 22a9036 and b3e28a7.",
-            "passes": true
-        },
-        {
-            "id": "US-006",
-            "title": "Automated soak orchestration after SOTA finetune completes",
-            "description": "After AutonomousTrainer spawns a background SOTA finetune (or a manual training run finishes), automatically trigger the soak pipeline: run SOTA in shadow mode alongside legacy on held-out data, compute error correlation, and emit a recommendation (STACK / REPLACE / DISCARD). The soak runs in a background subprocess so training completion doesn't block the scan loop.",
-            "priority": 6,
-            "acceptanceCriteria": [
-                "AutonomousTrainer emits a 'training_complete' signal when SOTA finetune finishes",
-                "Signal triggers SoakRunner.run_soak_comparison() in a background Process",
-                "Soak uses held-out data (last 10% of harvested candles, or last 500 bars if < 5000 total)",
-                "SoakResult is persisted to trained_data/soak_results/{pair}_{timestamp}.json",
-                "If soak fails (model missing, data insufficient), log error and skip \u2014 do not block trading",
-                "Soak status visible in scan cycle log: 'soak_running', 'soak_complete', 'soak_error'"
-            ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commit 15b0e37.",
-            "passes": true
-        },
-        {
-            "id": "US-007",
-            "title": "Wire soak recommendation into model promotion gate",
-            "description": "ModelManager._check_model_promotion() currently promotes based on shadow test accuracy. Extend the gate to require: (1) soak recommendation is REPLACE or STACK, AND (2) SOTA shadow accuracy > legacy shadow accuracy over last N scans. Only promote if ALL gating conditions pass.",
-            "priority": 7,
-            "acceptanceCriteria": [
-                "ModelManager reads latest SoakResult for each pair before promotion decision",
-                "Promotion blocked if soak recommendation == DISCARD or UNDECIDED",
-                "Promotion blocked if sota_shadow_accuracy <= legacy_shadow_accuracy over last 200 actionable scans",
-                "If soak recommends STACK but not REPLACE, SOTA is added as a 5th ensemble component (augment mode) instead of full replacement",
-                "Promotion decision logged with full gating context: soak_rec, sota_acc, legacy_acc, improvement",
-                "Rollback preserves previous model weights if promotion degrades performance"
-            ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commit 15b0e37.",
-            "passes": true
-        },
-        {
-            "id": "US-008",
-            "title": "Autonomous SOTA training pipeline triggered from accumulated tick candles",
-            "description": "When tick-aggregated candles reach a threshold (e.g., 5000 new bars since last training), AutonomousTrainer automatically triggers SOTA pre-training (self-supervised) followed by finetuning (supervised) using the freshest data. Training lineage is tracked so each model knows its data provenance.",
-            "priority": 8,
-            "acceptanceCriteria": [
-                "AutonomousTrainer checks 'bars_since_last_train' for each pair every cycle",
-                "Threshold 'sota_retrain_bars' added to config (default 5000)",
-                "When threshold crossed: spawn SOTATrainer.pretrain() then finetune() as chained subprocesses",
-                "Training uses tick-aggregated S5 candles (higher fidelity than M15)",
-                "Model artifact saved with lineage: source_data_range, n_bars, training_duration, val_loss",
-                "Old model kept as backup; only 2 most recent backups retained to manage disk",
-                "Training completion triggers soak (US-006) automatically"
-            ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16.",
-            "passes": true
-        },
-        {
-            "id": "US-009",
-            "title": "Auto-promote SOTA to live inference when all gates pass",
-            "description": "When ModelManager determines promotion criteria are met (shadow tests + soak), automatically flip use_sota_inference=True in runtime config AND persist to config file. If augment mode (STACK), add SOTA as a 5th ensemble component without disabling legacy. Emit a TUI-visible promotion announcement.",
-            "priority": 9,
-            "acceptanceCriteria": [
-                "On promotion: config.use_sota_inference set to True in memory",
-                "Config change persisted to config/config_improved_H1.yaml (or active config file)",
-                "Scanner engine hot-reloads config without restart (uses existing config watcher)",
-                "If augment mode: SOTAInference added as 5th component to ModularEnsembleInference",
-                "Promotion announcement printed to console/TUI with green badge",
-                "Promotion event logged to trained_data/model_promotions.jsonl with timestamp, reason, improvement metrics"
-            ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commit 15b0e37.",
-            "passes": true
-        },
-        {
-            "id": "US-010",
-            "title": "Add Elastic Weight Consolidation (EWC) to neural agent policies",
-            "description": "Neural agents currently use online gradient descent with a replay buffer. Without regularization, they forget older market regimes when new data arrives. Add optional EWC: after each batch of online updates, penalize weight changes proportional to their Fisher information from previous training phases. Prevents catastrophic forgetting.",
-            "priority": 10,
-            "acceptanceCriteria": [
-                "NeuralAgentConfig adds 'use_ewc' flag (default False, conservative)",
-                "NeuralAgentTrainer computes Fisher Information matrix after each training phase",
-                "Online updates apply EWC penalty: loss += lambda_ewc * sum(F_i * (theta_i - theta_old_i)^2)",
-                "Fisher info stored per policy in trained_data/models/neural/{agent_name}_fisher.npz",
-                "EWC lambda is tunable per agent (default 1e-4)",
-                "Unit test: train on regime A, switch to regime B, verify agent still performs on A (within 10% of original accuracy)"
-            ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16.",
-            "passes": true
-        },
-        {
-            "id": "US-011",
-            "title": "Health monitoring and alerting for tick capture daemon",
-            "description": "The tick capture daemon runs in a background thread and can silently stall (connection drop, parsing error, disk full). Add health checks: monitor ticks received per minute, heartbeat from OANDA stream, and disk space. Alert via console/TUI if throughput drops below threshold.",
-            "priority": 11,
-            "acceptanceCriteria": [
-                "TickCaptureDaemon exposes health metrics: ticks/min, last_tick_time, stream_status, disk_usage_pct",
-                "Health checked every scan cycle in ContinuousScanner maintenance loop",
-                "Alert triggered if ticks/min < 1 for 2 consecutive minutes (below expected ~5-10/min)",
-                "Alert message visible in TUI diagnostics screen and console output",
-                "Auto-restart: if stream_status == 'dead', daemon attempts reconnect automatically (3 retries)",
-                "Health metrics persisted to trained_data/tick_health.jsonl for post-mortem analysis"
-            ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commit fda9c4c.",
-            "passes": true
-        },
-        {
-            "id": "US-012",
-            "title": "SOTA model artifact versioning and rollback",
-            "description": "SOTA models are currently saved as flat .keras files with no versioning. When auto-promotion occurs, there is no reliable way to roll back if the promoted model degrades. Implement versioned artifacts: timestamped directories with model + config + lineage + validation metrics.",
-            "priority": 12,
-            "acceptanceCriteria": [
-                "SOTA model artifacts saved to trained_data/models/sota_versions/{timestamp}/ with files: model.keras, config.json, lineage.json, metrics.json",
-                "Symlink 'trained_data/models/sota_finetuned/latest' always points to newest version",
-                "ModelManager promotion atomically swaps symlink after validation passes",
-                "Rollback command available: scripts/rollback_sota.py --to-version {timestamp}",
-                "Retention policy: keep last 10 versions, auto-delete older (configurable)",
-                "Version manifest (trained_data/models/sota_versions/manifest.json) tracks all versions with promotion history"
-            ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16.",
-            "passes": true
-        },
-        {
-            "id": "US-013",
-            "title": "Dry-run mode for full autonomous loop (zero live trades)",
-            "description": "Before deploying the fully autonomous loop with live capital, operators need a dry-run mode where all components execute (tick capture, training, soak, shadow tests, neural updates) but NO trades are sent to the broker. All execution decisions are logged as 'would_execute' entries.",
-            "priority": 13,
-            "acceptanceCriteria": [
-                "Config flag 'dry_run' added to ContinuousConfig (default False)",
-                "When dry_run=True: scanner evaluates normally, shadow tests run, trades are scored but NOT sent to broker",
-                "ExecutionManager checks dry_run before place_order() and logs 'WOULD_EXECUTE' instead",
-                "Neural agents still update from 'simulated' outcomes (dry-run outcomes are treated as real for learning)",
-                "Soak pipeline runs normally (no broker interaction anyway)",
-                "Dry-run status prominently displayed in TUI header and console banner",
-                "Config can flip dry_run\u2192False at runtime (hot reload) to go live"
-            ],
-            "notes": "Implemented by Dex in autonomous session 2026-06-16. See commit fda9c4c.",
-            "passes": true
+            "passes": false,
+            "notes": ""
         }
     ]
 }
