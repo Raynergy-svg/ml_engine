@@ -32,6 +32,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from src.evaluation.soak_orchestrator import SoakOrchestrator
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -178,6 +180,13 @@ def _is_process_running(pid: Optional[int]) -> bool:
 # Singleton process handle held in module scope so we can poll completion
 # across cycles without re-importing.
 _active_retrain_process: Optional[subprocess.Popen] = None
+_soak_orchestrator: Optional[SoakOrchestrator] = None
+
+def _get_soak_orchestrator() -> SoakOrchestrator:
+    global _soak_orchestrator
+    if _soak_orchestrator is None:
+        _soak_orchestrator = SoakOrchestrator()
+    return _soak_orchestrator
 
 
 def get_active_process() -> Optional[subprocess.Popen]:
@@ -436,6 +445,21 @@ def poll_completion(brain_callback: Callable[[str], None]) -> Optional[str]:
         "error": None if rc == 0 else f"non-zero exit {rc}",
         "prompt_preview": "",
     })
+
+    # US-006: Trigger soak comparison after successful retrain
+    if status == "success":
+        try:
+            _soak = _get_soak_orchestrator()
+            _pairs = state.last_pairs or "EUR_USD"
+            _first_pair = _pairs.split(",")[0] if "," in _pairs else _pairs
+            _model_path = "trained_data/models/sota_finetuned/sota_model.keras"
+            _soak.trigger(_first_pair, _model_path)
+            brain_callback(
+                f"[cyan]  ▸ SOAK triggered for {_first_pair} "
+                f"(background comparison running)[/]"
+            )
+        except Exception as _soak_err:
+            logger.debug("Soak trigger after retrain failed: %s", _soak_err)
 
     _active_retrain_process = None
     return status

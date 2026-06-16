@@ -135,6 +135,20 @@ class CycleAutonomyTriggers:
                     freshness=freshness,
                     brain_callback=self._brain,
                 )
+            # US-006: Poll soak orchestrator status
+            try:
+                from src.evaluation.soak_orchestrator import SoakOrchestrator
+                _soak = SoakOrchestrator()
+                _soak_status = _soak.poll()
+                if _soak_status.get("state") == "running":
+                    self._brain(f"[dim]  ▸ soak: {_soak_status['last_pair']} running[/]")
+                elif _soak_status.get("state") == "complete":
+                    self._brain(
+                        f"[green]  ▸ soak complete for {_soak_status['last_pair']}: "
+                        f"see trained_data/soak_results/[/]"
+                    )
+            except Exception:
+                pass
         except Exception as _ar_err:
             logger.debug("autonomous_trainer cycle hook error: %s", str(_ar_err))
 

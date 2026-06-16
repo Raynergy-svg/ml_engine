@@ -45,6 +45,32 @@ from src.scanner.automation.background_activity import get_background_activity_t
 logger = logging.getLogger(__name__)
 
 
+def _persist_sota_config(enabled: bool, config_path: str = "config/config_improved_H1.yaml") -> None:
+    """Persist use_sota_inference flag to the active config YAML.
+
+    US-009: After auto-promotion, persist the config change so it
+    survives scanner restarts.  Uses a simple regex replacement.
+    """
+    from pathlib import Path
+    p = Path(config_path)
+    if not p.exists():
+        logger.warning("Config file not found: %s", config_path)
+        return
+    try:
+        text = p.read_text()
+        # Replace use_sota_inference: false/true (case-insensitive-ish)
+        import re
+        new_text = re.sub(
+            r"(use_sota_inference:\s*)(true|false|True|False|TRUE|FALSE)",
+            lambda m: f"{m.group(1)}{str(enabled).lower()}",
+            text,
+        )
+        p.write_text(new_text)
+        logger.info("Persisted use_sota_inference=%s to %s", enabled, config_path)
+    except Exception as e:
+        logger.warning("Failed to persist SOTA config: %s", e)
+
+
 @dataclass
 class ContinuousConfig:
     """Configuration for continuous scanning."""
