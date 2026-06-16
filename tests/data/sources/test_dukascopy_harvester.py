@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import lzma
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import lz4.frame
 import numpy as np
 import pandas as pd
 import pytest
@@ -20,7 +20,7 @@ from src.data.sources.dukascopy_harvester import (
 
 
 def make_bi5_payload(n_ticks: int = 3) -> bytes:
-    """Create a valid bi5 payload: lz4-compressed 20-byte tick records."""
+    """Create a valid bi5 payload: lzma-compressed 20-byte tick records."""
     records = []
     for i in range(n_ticks):
         time_delta = i * 1000          # ms
@@ -30,12 +30,12 @@ def make_bi5_payload(n_ticks: int = 3) -> bytes:
         bid_vol = 1_000_000
         records.append(struct.pack(">IIIII", time_delta, ask, bid, ask_vol, bid_vol))
     raw = b"".join(records)
-    return lz4.frame.compress(raw)
+    return lzma.compress(raw)
 
 
 class TestParseBi5:
     def test_empty(self):
-        empty = lz4.frame.compress(b"")
+        empty = lzma.compress(b"")
         arr = _parse_bi5(empty)
         assert len(arr) == 0
 
@@ -151,4 +151,3 @@ class TestSmoke:
             pytest.skip("Dukascopy returned no data for chosen hour (weekend/holiday)")
         assert len(df) > 0
         assert {"ask", "bid", "mid"}.issubset(set(df.columns))
-

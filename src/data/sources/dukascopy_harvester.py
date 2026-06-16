@@ -5,7 +5,7 @@ Downloads free historical tick data from Dukascopy Bank:
 
 Data format:
   URL: https://www.dukascopy.com/datafeed/{PAIR}/{YYYY}/{MM}/{DD}/{HH}h_ticks.bi5
-  Compression: LZ4 (bi5 = binary + lz4)
+  Compression: LZMA (bi5 = binary + lzma)
   Tick record: 20 bytes
     - time_delta : uint32 BE (ms offset from hour start)
     - ask        : uint32 BE (price * 100_000)
@@ -22,9 +22,8 @@ Usage:
 
 from __future__ import annotations
 
-import gzip
-import io
 import logging
+import lzma
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,25 +43,14 @@ _MAX_RETRIES = 3
 _TIMEOUT = 30.0
 _REQUEST_DELAY = 0.5  # polite delay between requests
 
-# LZ4 availability (optional graceful fallback)
-try:
-    import lz4.frame
-    _HAS_LZ4 = True
-except ImportError:
-    _HAS_LZ4 = False
-    logger.warning("lz4 not installed; Dukascopy bi5 decompression unavailable")
-
 
 def _parse_bi5(data: bytes) -> np.ndarray:
-    """Decompress LZ4 and parse 20-byte tick records into structured array.
+    """Decompress LZMA and parse 20-byte tick records into structured array.
 
-    Returns ndarray with fields:
+    Returns ndarray with shape (n_ticks, 5) and columns:
         time_delta, ask_raw, bid_raw, ask_volume, bid_volume
     """
-    if not _HAS_LZ4:
-        raise RuntimeError("lz4 is required for bi5 decompression. Install: pip install lz4")
-
-    decompressed = lz4.frame.decompress(data)
+    decompressed = lzma.decompress(data)
     n_ticks = len(decompressed) // 20
     if n_ticks == 0:
         return np.array([], dtype=np.uint32)
@@ -116,10 +104,6 @@ class DukascopyHarvester:
             timestamp (UTC), ask, bid, mid, ask_volume, bid_volume
         Returns None if file not found or empty.
         """
-        if not _HAS_LZ4:
-            logger.error("Cannot download Dukascopy data: lz4 not installed")
-            return None
-
         url = self._build_url(year, month, day, hour)
         for attempt in range(1, retries + 1):
             try:
@@ -242,4 +226,4 @@ def convert_dukascopy_to_harvest_format(
     ohlcv = ohlcv.dropna()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ohlcv.to_parquet(output_path, compression="zstd")
-    logger.info("Converted %d M15 bars for %s → %s", len(ohlcv), pair, output_path)
+    logger.info("Converted %d M15 bars for %s -> %s", len(ohlcv), pair, output_path)
