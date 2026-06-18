@@ -49,6 +49,7 @@ class ModelConfig:
     direction_weight: float = 1.0
     regime_weight: float = 0.3  # auxiliary loss
     direction_classes: int = 2   # 2 = binary (sigmoid), 3 = LONG/SHORT/HOLD (softmax)
+    direction_horizons: tuple = (5,)  # multi-task: predict direction at each horizon
     encoder_type: str = "transformer"  # "transformer" | "itransformer"
     num_inputs: int = 5  # 5 for single pair OHLCV, 15 for 3-pair concat
 
@@ -183,38 +184,38 @@ class RawSequenceModel:
         grn = GatedResidualNetwork(cfg.dense_units, dropout=cfg.dropout, name="grn")(pooled)
         grn = keras.layers.Dropout(cfg.dropout, name="grn_drop")(grn)
 
-        if cfg.direction_classes == 3:
-            direction = keras.layers.Dense(
-                3, activation="softmax", name="direction", dtype="float32"
-            )(grn)
-            dir_loss = "sparse_categorical_crossentropy"
-            dir_metric = ["accuracy"]
-        else:
-            direction = keras.layers.Dense(
-                1, activation="sigmoid", name="direction", dtype="float32"
-            )(grn)
-            dir_loss = "binary_crossentropy"
-            dir_metric = ["accuracy"]
+        outputs = {}
+        loss_map = {}
+        loss_weights_map = {}
+        metrics_map = {}
+
+        # Multi-horizon direction heads
+        for h in cfg.direction_horizons:
+            if cfg.direction_classes == 3:
+                out = keras.layers.Dense(3, activation="softmax", name=f"direction_{h}", dtype="float32")(grn)
+                loss_map[f"direction_{h}"] = "sparse_categorical_crossentropy"
+                metrics_map[f"direction_{h}"] = ["accuracy"]
+            else:
+                out = keras.layers.Dense(1, activation="sigmoid", name=f"direction_{h}", dtype="float32")(grn)
+                loss_map[f"direction_{h}"] = "binary_crossentropy"
+                metrics_map[f"direction_{h}"] = ["accuracy"]
+            outputs[f"direction_{h}"] = out
+            loss_weights_map[f"direction_{h}"] = cfg.direction_weight / len(cfg.direction_horizons)
 
         regime = keras.layers.Dense(
             4, activation="softmax", name="regime", dtype="float32"
         )(grn)
+        outputs["regime"] = regime
+        loss_map["regime"] = "sparse_categorical_crossentropy"
+        loss_weights_map["regime"] = cfg.regime_weight
+        metrics_map["regime"] = ["accuracy"]
 
-        model = keras.Model(inputs=inputs, outputs=[direction, regime], name="sota_raw_sequence")
+        model = keras.Model(inputs=inputs, outputs=outputs, name="sota_raw_sequence")
         model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=cfg.learning_rate),
-            loss={
-                "direction": dir_loss,
-                "regime": "sparse_categorical_crossentropy",
-            },
-            loss_weights={
-                "direction": cfg.direction_weight,
-                "regime": cfg.regime_weight,
-            },
-            metrics={
-                "direction": dir_metric,
-                "regime": ["accuracy"],
-            },
+            loss=loss_map,
+            loss_weights=loss_weights_map,
+            metrics=metrics_map,
         )
         # CRIT-3 FIX: encoder is an explicit sub-model, no layer traversal.
         encoder = keras.Model(inputs=inputs, outputs=seq_repr, name="sota_encoder")
