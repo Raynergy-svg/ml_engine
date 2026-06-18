@@ -50,6 +50,7 @@ class ModelConfig:
     regime_weight: float = 0.3  # auxiliary loss
     direction_classes: int = 2   # 2 = binary (sigmoid), 3 = LONG/SHORT/HOLD (softmax)
     encoder_type: str = "transformer"  # "transformer" | "itransformer"
+    num_inputs: int = 5  # 5 for single pair OHLCV, 15 for 3-pair concat
 
     def __post_init__(self):
         if self.cnn_filters is None:
@@ -129,10 +130,10 @@ class RawSequenceModel:
 
     def build(self) -> keras.Model:
         cfg = self.cfg
-        inputs = keras.Input(shape=(cfg.seq_len, 5), name="ohlcv")
+        inputs = keras.Input(shape=(cfg.seq_len, cfg.num_inputs), name="ohlcv")
 
         x = VariableSelectionNetwork(
-            num_inputs=5, d_model=cfg.d_model, dropout=cfg.dropout, name="varsel"
+            num_inputs=cfg.num_inputs, d_model=cfg.d_model, dropout=cfg.dropout, name="varsel"
         )(inputs)
 
         for i, filt in enumerate(cfg.cnn_filters):
