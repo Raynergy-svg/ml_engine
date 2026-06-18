@@ -1,0 +1,53 @@
+{
+  "PASS": false,
+  "best": {
+    "lift_pp": 0.0,
+    "precision": 0.5407,
+    "threshold": 0.5,
+    "traded_fraction": 1.0
+  },
+  "elapsed_s": 524.4,
+  "experiment": "phase_a_meta_label",
+  "instrument": "USD_JPY",
+  "meta_precision_gate": 0.58,
+  "n_test": 1648,
+  "primary_test_acc": 0.5407,
+  "primary_train_acc": 0.5912,
+  "primary_val_acc": 0.5654,
+  "sanity_ok": true,
+  "sweep": [
+    {
+      "lift_pp": 0.0,
+      "precision": 0.5407,
+      "threshold": 0.5,
+      "traded_fraction": 1.0
+    },
+    {
+      "lift_pp": 0.0,
+      "precision": 0.5407,
+      "threshold": 0.55,
+      "traded_fraction": 1.0
+    },
+    {
+      "lift_pp": -54.07,
+      "precision": 0.0,
+      "threshold": 0.6,
+      "traded_fraction": 0.0
+    },
+    {
+      "lift_pp": -54.07,
+      "precision": 0.0,
+      "threshold": 0.65,
+      "traded_fraction": 0.0
+    },
+    {
+      "lift_pp": -54.07,
+      "precision": 0.0,
+      "threshold": 0.7,
+      "traded_fraction": 0.0
+    }
+  ],
+  "traded_fraction_gate": 0.2,
+  "ts": "2026-06-16T21:40:05.408789+00:00",
+  "verdict": "FAIL \u2014 no trade-quality edge on M15; shelve, factor pivot stands"
+}

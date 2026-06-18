@@ -84,7 +84,10 @@ logging.basicConfig(
 logger = logging.getLogger("phase_a_meta")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-INSTRUMENT = "EUR_USD"
+# Instrument is overridable via argv[1] / $PHASE_A_INSTRUMENT so the same honest
+# split can be replicated across the 3 majors (the repo's bar for a ceiling claim).
+INSTRUMENT = (sys.argv[1] if len(sys.argv) > 1 else
+              os.environ.get("PHASE_A_INSTRUMENT", "EUR_USD"))
 GRANULARITY = "M15"
 # Reuse the SAME 65k-bar CSV the price-only baseline trained on so the primary's
 # ~52% ceiling is reproduced exactly (apples-to-apples with commit a5748e0).
