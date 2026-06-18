@@ -21,6 +21,7 @@ Staying halted is the correct, evidenced outcome — a closed question with evid
 | Cross-sectional carry+trend 2014–2026 | dead | gross Sharpe ≈0 |
 | **Pre-2014 factor window** | **real then, dead now** | this session: trend +0.46 (99–14) → −0.55 (20–26); carry decayed to +0.09 |
 | EM / global carry | fails gate | prior: net Sharpe ~0.50 but 40% DD (carry crash) |
+| **Options-IV term-structure** (lone peer-reviewed survivor) | **closed** | this session: cross-sectional factor UNBUILDABLE free (only EUR/USD 1m EVZ exists, discontinued); accessible EVZ slice adds +0.20pp to direction (noise). `options_iv_evz_*.json` |
 | SOTA capacity scaling | rejected | signal-bound, not capacity-bound |
 
 ## 2. The decisive own-data test (refutes the "58% daily" literature)
