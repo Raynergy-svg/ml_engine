@@ -1,0 +1,71 @@
+{
+  "elapsed_s": 48.0,
+  "eth_combos_passing": 5,
+  "g1_pass": true,
+  "results": {
+    "BTC_USD": {
+      "gbm_deep/full": {
+        "mean_alpha": 0.349,
+        "years": 8,
+        "years_win": 5
+      },
+      "gbm_deep/reduced": {
+        "mean_alpha": -0.2,
+        "years": 8,
+        "years_win": 3
+      },
+      "gbm_shallow/full": {
+        "mean_alpha": 0.112,
+        "years": 8,
+        "years_win": 3
+      },
+      "gbm_shallow/reduced": {
+        "mean_alpha": -0.102,
+        "years": 8,
+        "years_win": 3
+      },
+      "logistic/full": {
+        "mean_alpha": 0.211,
+        "years": 8,
+        "years_win": 6
+      },
+      "logistic/reduced": {
+        "mean_alpha": -0.042,
+        "years": 8,
+        "years_win": 3
+      }
+    },
+    "ETH_USD": {
+      "gbm_deep/full": {
+        "mean_alpha": 0.183,
+        "years": 7,
+        "years_win": 5
+      },
+      "gbm_deep/reduced": {
+        "mean_alpha": -0.026,
+        "years": 7,
+        "years_win": 3
+      },
+      "gbm_shallow/full": {
+        "mean_alpha": 0.339,
+        "years": 7,
+        "years_win": 6
+      },
+      "gbm_shallow/reduced": {
+        "mean_alpha": 0.487,
+        "years": 7,
+        "years_win": 5
+      },
+      "logistic/full": {
+        "mean_alpha": 0.507,
+        "years": 7,
+        "years_win": 5
+      },
+      "logistic/reduced": {
+        "mean_alpha": 0.437,
+        "years": 7,
+        "years_win": 5
+      }
+    }
+  }
+}
