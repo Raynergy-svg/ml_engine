@@ -3780,6 +3780,41 @@ class Scanner:
                 self._run_inference(df_raw, df_feat, pair)
             )
 
+            # ================================================================
+            # Path B: SOTA Regime-Only Veto
+            # If use_sota_regime_only is enabled, consult the SOTA model for
+            # regime.  On EXTREME, force direction=HOLD regardless of
+            # ensemble signal.  Otherwise, prefer SOTA regime for metadata.
+            # ================================================================
+            if (
+                getattr(self.config, "use_sota_regime_only", False)
+                and hasattr(self, "_sota_regime_detector")
+                and self._sota_regime_detector is not None
+            ):
+                try:
+                    sota_regime_name, sota_regime_probs = self._sota_regime_detector.predict_regime_only(
+                        pair=pair, df_raw=df_raw
+                    )
+                    gate_details = dict(gate_details or {})
+                    gate_details["sota_regime"] = sota_regime_name
+                    gate_details["sota_regime_probs"] = sota_regime_probs.tolist()
+
+                    if sota_regime_name == "EXTREME":
+                        direction = "HOLD"
+                        confidence = 0.0
+                        gate_details["sota_regime_veto"] = True
+                        logger.info(
+                            "%s: SOTA regime veto — EXTREME detected (probs=%s). Forcing HOLD.",
+                            pair, np.round(sota_regime_probs, 3).tolist(),
+                        )
+                    # Prefer SOTA regime for downstream metadata when valid
+                    if sota_regime_name in {"LOW", "NORMAL", "HIGH", "EXTREME"}:
+                        regime_map = {"LOW": 0, "NORMAL": 1, "HIGH": 2, "EXTREME": 3}
+                        volatility_regime = regime_map[sota_regime_name]
+                        gate_details["volatility_regime_name"] = sota_regime_name
+                except Exception as _sota_err:
+                    logger.warning("%s: SOTA regime veto error: %s", pair, _sota_err)
+
             # Phase 44 (US-278): Override volatility_regime with BOCPD+Hurst+ADX if available
             if _regime_result is not None:
                 volatility_regime = _regime_result.regime_index

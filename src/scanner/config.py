@@ -453,6 +453,22 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # Activates the SOTA raw-sequence model (instead of legacy ensemble)
     # and neural agents (in shadow mode until bootstrap threshold met).
     # Use for backtesting and gradual rollout only.
+    "sota_ab_regime": {
+        "blocked_pairs": [],
+        # Path B: SOTA regime veto only, legacy ensemble for direction
+        "use_sota_regime_only": True,
+        "use_sota_inference": False,
+        "use_neural_agents": True,
+        "shadow_neural_agents": True,
+        "neural_agent_min_samples": 500,
+        # Conservative baseline from "balanced"
+        "sub_inference_min_confidence": 0.30,
+        "min_agent_consensus_ratio": 0.50,
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.60,
+        "devil_advocate_warn_threshold": 0.40,
+        "soft_uncertainty_blocking": True,
+    },
     "sota_ab": {
         "blocked_pairs": [],
         # SOTA toggles
@@ -735,6 +751,7 @@ class ScannerConfig:
     # ═══════════════════════════════════════════════════════════════════════════════
     # Goal 1: End-to-end deep learning signal core (replaces classical ensemble)
     use_sota_inference: bool = False  # Use RawSequenceModel for direction + regime
+    use_sota_regime_only: bool = False  # Path B: SOTA for regime veto only, legacy ensemble for direction
     use_hybrid_inference: bool = False  # Use HybridInference ensemble (US-008)
     sota_model_path: str = "trained_data/models/sota_finetuned/sota_model.keras"
     # Goal 2: Neural agent policies (replaces rule-based heuristic agents)
