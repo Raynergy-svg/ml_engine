@@ -52,6 +52,22 @@ equity timing were all closed with evidence. If it fails, halted-FX stands as th
 - **Lesson:** for 24/7 assets the daily-close convention is a first-class robustness axis; an
   edge smaller than the cross-source label-disagreement (9%) cannot be trusted until it survives
   multiple close conventions. Model-config robustness (G1) is necessary but not sufficient.
+- **G3 = FAIL** (`eth_shipgate_g3_*.json`): ETH defensive-timing book vs the mechanical gate
+  (net Sharpe ≥0.40 AND maxDD ≤25%). At 10bps cost: net Sharpe 0.30 (FRED) / 0.37 (Coinbase),
+  maxDD 72-73%. At realistic 30bps crypto cost: net Sharpe NEGATIVE. Buy-&-hold maxDD 91-98%.
+  Timing cushions drawdown and beats buy-&-hold but clears NEITHER rail, and the daily flip-cost
+  turns the edge negative at realistic fees. FAIL on both Sharpe and maxDD, all 4 scenarios.
+- **G4** not attempted — gated behind G3.
+
+## FINAL VERDICT (2026-06-18)
+The one signal that survived the full search (ETH defensive daily timing) is REAL and robust
+across models + close conventions, but is NOT deployable: it fails the ship gate on drawdown
+(72% ≫ 25%) and on cost (negative Sharpe at 30bps). Same pattern as carry/EM-carry — real
+fat-tailed risk premia that fail a sane risk gate; directional component too thin to beat costs.
+Decision per the SMART plan: G3 fail → return to halted; FX/crypto verdict stands. The honest
+escape would require BOTH relaxing the 25% maxDD mandate AND solving the cost problem (lower-
+turnover signal / cheaper execution) — neither recommended on this evidence. Commits: 3fc7dd0
+(lead), b8f7b53 (G1), 6ce4f1f (G2), + G3.
 
 ## TIME-BOUND (milestone-based; attach calendar dates on request)
 - **G1 — this work session** (now). Hard kill: if G1 fails, STOP — do not build on a fluke.
