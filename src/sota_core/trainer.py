@@ -44,6 +44,8 @@ class TrainerConfig:
     min_seq_len: int = 128
     train_split: float = 0.80
     val_split: float = 0.10
+    use_temporal_split: bool = True   # OBS-3: temporal split prevents window leakage
+    direction_threshold: float = 0.0   # |future_ret| below this → HOLD class (3-class only)
     # Data augmentation
     jitter_scale: float = 0.01       # Gaussian noise on returns
     time_warp_sigma: float = 0.1     # small temporal distortions
@@ -268,7 +270,14 @@ class SOTATrainer:
                 if end_idx + 5 >= len(df):
                     continue
                 future_ret = (df["close"].iloc[end_idx + 4] / df["close"].iloc[end_idx - 1]) - 1
-                direction = 1 if future_ret > 0 else 0
+                # 3-class support: HOLD when move is below threshold
+                if self.model.cfg.direction_classes == 3:
+                    if abs(future_ret) <= cfg.direction_threshold:
+                        direction = 2  # HOLD
+                    else:
+                        direction = 1 if future_ret > 0 else 0
+                else:
+                    direction = 1 if future_ret > 0 else 0
                 # Regime label: realized volatility percentile of next 5 bars
                 future_range = df["close"].iloc[end_idx : end_idx + 5]
                 vol = future_range.pct_change().std() * 100
@@ -292,17 +301,24 @@ class SOTATrainer:
         y_dir = np.array(all_y_dir, dtype=np.int32)
         y_reg = np.array(all_y_reg, dtype=np.int32)
 
-        # Shuffle + split
-        perm = np.random.permutation(len(X))
-        X, y_dir, y_reg = X[perm], y_dir[perm], y_reg[perm]
+        # OBS-3 FIX: Temporal split (windows are ordered in time).
+        # Random permutation leaks overlapping windows across train/val.
         n_total = len(X)
         n_train = int(n_total * cfg.train_split)
         n_val = int(n_total * cfg.val_split)
 
-        train_X = X[:n_train]
-        train_y = {"direction": y_dir[:n_train], "regime": y_reg[:n_train]}
-        val_X = X[n_train : n_train + n_val]
-        val_y = {"direction": y_dir[n_train : n_train + n_val], "regime": y_reg[n_train : n_train + n_val]}
+        if cfg.use_temporal_split:
+            train_X = X[:n_train]
+            train_y = {"direction": y_dir[:n_train], "regime": y_reg[:n_train]}
+            val_X = X[n_train : n_train + n_val]
+            val_y = {"direction": y_dir[n_train : n_train + n_val], "regime": y_reg[n_train : n_train + n_val]}
+        else:
+            perm = np.random.permutation(len(X))
+            X, y_dir, y_reg = X[perm], y_dir[perm], y_reg[perm]
+            train_X = X[:n_train]
+            train_y = {"direction": y_dir[:n_train], "regime": y_reg[:n_train]}
+            val_X = X[n_train : n_train + n_val]
+            val_y = {"direction": y_dir[n_train : n_train + n_val], "regime": y_reg[n_train : n_train + n_val]}
 
         # Build supervised model
         if not self.model._built:
@@ -333,9 +349,15 @@ class SOTATrainer:
         )
         # OBS-1 FIX: Dataset is naturally balanced (~50%); class_weight disabled
         # because Keras 3 rejects class_weight on multi-output models.
-        n_long = int((y_dir[:n_train] == 1).sum())
-        n_short = int((y_dir[:n_train] == 0).sum())
-        logger.info(f"Label balance: LONG={n_long}, SHORT={n_short}")
+        if self.model.cfg.direction_classes == 3:
+            n_long = int((y_dir[:n_train] == 1).sum())
+            n_short = int((y_dir[:n_train] == 0).sum())
+            n_hold = int((y_dir[:n_train] == 2).sum())
+            logger.info(f"Label balance: LONG={n_long}, SHORT={n_short}, HOLD={n_hold}")
+        else:
+            n_long = int((y_dir[:n_train] == 1).sum())
+            n_short = int((y_dir[:n_train] == 0).sum())
+            logger.info(f"Label balance: LONG={n_long}, SHORT={n_short}")
 
         history = self.model.model.fit(
             train_X,

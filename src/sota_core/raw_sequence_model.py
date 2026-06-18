@@ -48,6 +48,7 @@ class ModelConfig:
     learning_rate: float = 1e-3
     direction_weight: float = 1.0
     regime_weight: float = 0.3  # auxiliary loss
+    direction_classes: int = 2   # 2 = binary (sigmoid), 3 = LONG/SHORT/HOLD (softmax)
     encoder_type: str = "transformer"  # "transformer" | "itransformer"
 
     def __post_init__(self):
@@ -181,9 +182,19 @@ class RawSequenceModel:
         grn = GatedResidualNetwork(cfg.dense_units, dropout=cfg.dropout, name="grn")(pooled)
         grn = keras.layers.Dropout(cfg.dropout, name="grn_drop")(grn)
 
-        direction = keras.layers.Dense(
-            1, activation="sigmoid", name="direction", dtype="float32"
-        )(grn)
+        if cfg.direction_classes == 3:
+            direction = keras.layers.Dense(
+                3, activation="softmax", name="direction", dtype="float32"
+            )(grn)
+            dir_loss = "sparse_categorical_crossentropy"
+            dir_metric = ["accuracy"]
+        else:
+            direction = keras.layers.Dense(
+                1, activation="sigmoid", name="direction", dtype="float32"
+            )(grn)
+            dir_loss = "binary_crossentropy"
+            dir_metric = ["accuracy"]
+
         regime = keras.layers.Dense(
             4, activation="softmax", name="regime", dtype="float32"
         )(grn)
@@ -192,14 +203,17 @@ class RawSequenceModel:
         model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=cfg.learning_rate),
             loss={
-                "direction": "binary_crossentropy",
+                "direction": dir_loss,
                 "regime": "sparse_categorical_crossentropy",
             },
             loss_weights={
                 "direction": cfg.direction_weight,
                 "regime": cfg.regime_weight,
             },
-            metrics={"direction": "accuracy"},
+            metrics={
+                "direction": dir_metric,
+                "regime": ["accuracy"],
+            },
         )
         # CRIT-3 FIX: encoder is an explicit sub-model, no layer traversal.
         encoder = keras.Model(inputs=inputs, outputs=seq_repr, name="sota_encoder")
