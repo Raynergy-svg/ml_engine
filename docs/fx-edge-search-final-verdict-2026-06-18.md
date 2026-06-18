@@ -64,6 +64,29 @@ This explains the credible-looking counter-claims rather than contradicting them
 - **The reframe (confirmed):** profitable systematic FX = carry/risk premia + market-making/spread +
   execution/latency, NOT >52% directional prediction. Directional accuracy is the wrong scoreboard.
 
+## 3b. The one POSITIVE lead — directional ML adds value in CRYPTO, not FX/equities
+
+`scripts/experiment_cross_asset_direction.py` (artifact `cross_asset_direction_*.json`): the
+identical daily-direction walk-forward, run on other assets with buy-and-hold + cost benchmarks.
+
+| Asset | balanced acc | model timing alpha vs buy-&-hold |
+|---|---|---|
+| EUR/USD (control) | 0.509 | −0.02 (FX wall reproduced) |
+| S&P 500 | 0.503 | −0.25 (buy-&-hold beats the model) |
+| NASDAQ | 0.506 | −0.06 (no timing skill, just beta) |
+| BTC | 0.519 | +0.12 — but only **3/8 years** positive (inconsistent) |
+| **ETH** | 0.508 | **+0.34 — 6/7 years positive**, cushioned the 2022 crash |
+
+Reading (calibrated MEDIUM, NOT high): the coin-flip wall is real in FX (no premium, no skill) and
+in equities (real premium but timing destroys value vs holding). **Crypto is the only place the same
+model's timing adds value over passive holding** — ETH especially (beat buy-&-hold 6/7 years). The
+edge is NOT high directional accuracy (~51% still); it's that crypto's large persistent trends +
+violent crashes make a defensive momentum/timing overlay genuinely valuable, where FX's choppy
+random walk gives nothing. CAVEATS: n=7 years; ETH-specific (BTC inconsistent); after-cost long/short
+Sharpe is modest (~0.27); single model config (multiplicity risk); deploying to crypto is a real
+infra/regulatory pivot (OANDA's crypto coverage is limited). This is a LEAD to investigate, not a
+proven edge — but it is the first non-artifact positive signal in the entire search.
+
 ## 4. Implication for the bot
 
 Directional ML is the wrong horse for retail spot majors. The only things that ever showed positive

@@ -1,0 +1,577 @@
+{
+  "elapsed_s": 26.1,
+  "results": {
+    "BTC_USD": {
+      "mean_bal_acc": 0.5192,
+      "mean_buy_hold": 0.45,
+      "mean_model_long_net": 0.57,
+      "mean_model_ls_net": 0.14,
+      "median_bal_acc": 0.5205,
+      "n_years": 8,
+      "per_year": [
+        {
+          "bal_acc": 0.4963,
+          "buy_hold": -1.51,
+          "model_long_net": -1.63,
+          "model_ls_net": -1.29,
+          "n": 365,
+          "year": 2018
+        },
+        {
+          "bal_acc": 0.5125,
+          "buy_hold": 0.89,
+          "model_long_net": 1.5,
+          "model_ls_net": 1.13,
+          "n": 365,
+          "year": 2019
+        },
+        {
+          "bal_acc": 0.5228,
+          "buy_hold": 1.78,
+          "model_long_net": 1.67,
+          "model_ls_net": 0.91,
+          "n": 365,
+          "year": 2020
+        },
+        {
+          "bal_acc": 0.5386,
+          "buy_hold": 0.6,
+          "model_long_net": 1.28,
+          "model_ls_net": 1.21,
+          "n": 365,
+          "year": 2021
+        },
+        {
+          "bal_acc": 0.5266,
+          "buy_hold": -1.64,
+          "model_long_net": -1.71,
+          "model_ls_net": -1.54,
+          "n": 365,
+          "year": 2022
+        },
+        {
+          "bal_acc": 0.5158,
+          "buy_hold": 2.23,
+          "model_long_net": 1.91,
+          "model_ls_net": 0.59,
+          "n": 365,
+          "year": 2023
+        },
+        {
+          "bal_acc": 0.5231,
+          "buy_hold": 1.48,
+          "model_long_net": 0.8,
+          "model_ls_net": -0.7,
+          "n": 366,
+          "year": 2024
+        },
+        {
+          "bal_acc": 0.5181,
+          "buy_hold": -0.21,
+          "model_long_net": 0.72,
+          "model_ls_net": 0.83,
+          "n": 365,
+          "year": 2025
+        }
+      ],
+      "share_above_52": 0.5,
+      "share_above_54": 0.0
+    },
+    "ETH_USD": {
+      "mean_bal_acc": 0.5075,
+      "mean_buy_hold": 0.52,
+      "mean_model_long_net": 0.86,
+      "mean_model_ls_net": 0.27,
+      "median_bal_acc": 0.5079,
+      "n_years": 7,
+      "per_year": [
+        {
+          "bal_acc": 0.5079,
+          "buy_hold": -0.09,
+          "model_long_net": 0.22,
+          "model_ls_net": 0.08,
+          "n": 365,
+          "year": 2019
+        },
+        {
+          "bal_acc": 0.5131,
+          "buy_hold": 1.66,
+          "model_long_net": 2.06,
+          "model_ls_net": 0.65,
+          "n": 365,
+          "year": 2020
+        },
+        {
+          "bal_acc": 0.4851,
+          "buy_hold": 1.53,
+          "model_long_net": 1.17,
+          "model_ls_net": 0.05,
+          "n": 365,
+          "year": 2021
+        },
+        {
+          "bal_acc": 0.4792,
+          "buy_hold": -1.31,
+          "model_long_net": -0.93,
+          "model_ls_net": -0.4,
+          "n": 365,
+          "year": 2022
+        },
+        {
+          "bal_acc": 0.522,
+          "buy_hold": 1.44,
+          "model_long_net": 1.67,
+          "model_ls_net": 0.08,
+          "n": 365,
+          "year": 2023
+        },
+        {
+          "bal_acc": 0.5434,
+          "buy_hold": 0.6,
+          "model_long_net": 1.37,
+          "model_ls_net": 1.01,
+          "n": 366,
+          "year": 2024
+        },
+        {
+          "bal_acc": 0.5015,
+          "buy_hold": -0.19,
+          "model_long_net": 0.45,
+          "model_ls_net": 0.45,
+          "n": 365,
+          "year": 2025
+        }
+      ],
+      "share_above_52": 0.286,
+      "share_above_54": 0.143
+    },
+    "EUR_USD_ctrl": {
+      "mean_bal_acc": 0.5088,
+      "mean_buy_hold": -0.05,
+      "mean_model_long_net": -0.07,
+      "mean_model_ls_net": -0.54,
+      "median_bal_acc": 0.5018,
+      "n_years": 21,
+      "per_year": [
+        {
+          "bal_acc": 0.4938,
+          "buy_hold": -1.32,
+          "model_long_net": -2.77,
+          "model_ls_net": -2.35,
+          "n": 251,
+          "year": 2005
+        },
+        {
+          "bal_acc": 0.4942,
+          "buy_hold": 1.42,
+          "model_long_net": 1.21,
+          "model_ls_net": -0.2,
+          "n": 251,
+          "year": 2006
+        },
+        {
+          "bal_acc": 0.5121,
+          "buy_hold": 1.76,
+          "model_long_net": 1.65,
+          "model_ls_net": 0.35,
+          "n": 254,
+          "year": 2007
+        },
+        {
+          "bal_acc": 0.504,
+          "buy_hold": -0.39,
+          "model_long_net": -0.96,
+          "model_ls_net": -1.42,
+          "n": 252,
+          "year": 2008
+        },
+        {
+          "bal_acc": 0.4711,
+          "buy_hold": 0.25,
+          "model_long_net": -0.85,
+          "model_ls_net": -1.7,
+          "n": 252,
+          "year": 2009
+        },
+        {
+          "bal_acc": 0.5287,
+          "buy_hold": -0.69,
+          "model_long_net": -0.26,
+          "model_ls_net": -0.1,
+          "n": 250,
+          "year": 2010
+        },
+        {
+          "bal_acc": 0.5039,
+          "buy_hold": -0.21,
+          "model_long_net": -0.64,
+          "model_ls_net": -1.02,
+          "n": 251,
+          "year": 2011
+        },
+        {
+          "bal_acc": 0.4864,
+          "buy_hold": 0.11,
+          "model_long_net": -0.07,
+          "model_ls_net": -0.64,
+          "n": 251,
+          "year": 2012
+        },
+        {
+          "bal_acc": 0.553,
+          "buy_hold": 0.46,
+          "model_long_net": 1.65,
+          "model_ls_net": 1.51,
+          "n": 251,
+          "year": 2013
+        },
+        {
+          "bal_acc": 0.5216,
+          "buy_hold": -2.2,
+          "model_long_net": -1.55,
+          "model_ls_net": -0.64,
+          "n": 250,
+          "year": 2014
+        },
+        {
+          "bal_acc": 0.4941,
+          "buy_hold": -0.89,
+          "model_long_net": -0.75,
+          "model_ls_net": -0.56,
+          "n": 251,
+          "year": 2015
+        },
+        {
+          "bal_acc": 0.5018,
+          "buy_hold": -0.41,
+          "model_long_net": -0.11,
+          "model_ls_net": -0.2,
+          "n": 251,
+          "year": 2016
+        },
+        {
+          "bal_acc": 0.5497,
+          "buy_hold": 2.06,
+          "model_long_net": 2.58,
+          "model_ls_net": 0.84,
+          "n": 249,
+          "year": 2017
+        },
+        {
+          "bal_acc": 0.4881,
+          "buy_hold": -0.91,
+          "model_long_net": -0.83,
+          "model_ls_net": -0.97,
+          "n": 249,
+          "year": 2018
+        },
+        {
+          "bal_acc": 0.4937,
+          "buy_hold": -0.37,
+          "model_long_net": -0.61,
+          "model_ls_net": -1.11,
+          "n": 249,
+          "year": 2019
+        },
+        {
+          "bal_acc": 0.4944,
+          "buy_hold": 1.27,
+          "model_long_net": 1.17,
+          "model_ls_net": -0.32,
+          "n": 250,
+          "year": 2020
+        },
+        {
+          "bal_acc": 0.4977,
+          "buy_hold": -1.52,
+          "model_long_net": -1.32,
+          "model_ls_net": -1.38,
+          "n": 249,
+          "year": 2021
+        },
+        {
+          "bal_acc": 0.5718,
+          "buy_hold": -0.68,
+          "model_long_net": 0.67,
+          "model_ls_net": 1.19,
+          "n": 250,
+          "year": 2022
+        },
+        {
+          "bal_acc": 0.5217,
+          "buy_hold": 0.48,
+          "model_long_net": 0.84,
+          "model_ls_net": 0.17,
+          "n": 249,
+          "year": 2023
+        },
+        {
+          "bal_acc": 0.5269,
+          "buy_hold": -1.14,
+          "model_long_net": -1.36,
+          "model_ls_net": -1.69,
+          "n": 251,
+          "year": 2024
+        },
+        {
+          "bal_acc": 0.476,
+          "buy_hold": 1.77,
+          "model_long_net": 0.88,
+          "model_ls_net": -1.17,
+          "n": 250,
+          "year": 2025
+        }
+      ],
+      "share_above_52": 0.333,
+      "share_above_54": 0.143
+    },
+    "NASDAQ": {
+      "mean_bal_acc": 0.5063,
+      "mean_buy_hold": 0.81,
+      "mean_model_long_net": 0.75,
+      "mean_model_ls_net": 0.27,
+      "median_bal_acc": 0.5037,
+      "n_years": 21,
+      "per_year": [
+        {
+          "bal_acc": 0.5003,
+          "buy_hold": 0.33,
+          "model_long_net": 0.48,
+          "model_ls_net": 0.07,
+          "n": 252,
+          "year": 2005
+        },
+        {
+          "bal_acc": 0.5329,
+          "buy_hold": 0.55,
+          "model_long_net": 1.08,
+          "model_ls_net": 0.92,
+          "n": 251,
+          "year": 2006
+        },
+        {
+          "bal_acc": 0.5037,
+          "buy_hold": 0.43,
+          "model_long_net": 0.99,
+          "model_ls_net": 0.99,
+          "n": 251,
+          "year": 2007
+        },
+        {
+          "bal_acc": 0.5273,
+          "buy_hold": -1.14,
+          "model_long_net": -0.32,
+          "model_ls_net": 0.56,
+          "n": 253,
+          "year": 2008
+        },
+        {
+          "bal_acc": 0.5093,
+          "buy_hold": 1.24,
+          "model_long_net": 1.33,
+          "model_ls_net": 0.58,
+          "n": 252,
+          "year": 2009
+        },
+        {
+          "bal_acc": 0.4952,
+          "buy_hold": 0.78,
+          "model_long_net": -0.21,
+          "model_ls_net": -1.3,
+          "n": 252,
+          "year": 2010
+        },
+        {
+          "bal_acc": 0.5122,
+          "buy_hold": -0.06,
+          "model_long_net": -0.38,
+          "model_ls_net": -0.68,
+          "n": 252,
+          "year": 2011
+        },
+        {
+          "bal_acc": 0.5358,
+          "buy_hold": 1.07,
+          "model_long_net": 1.79,
+          "model_ls_net": 1.7,
+          "n": 250,
+          "year": 2012
+        },
+        {
+          "bal_acc": 0.4796,
+          "buy_hold": 2.4,
+          "model_long_net": 1.77,
+          "model_ls_net": 0.33,
+          "n": 252,
+          "year": 2013
+        },
+        {
+          "bal_acc": 0.4942,
+          "buy_hold": 0.93,
+          "model_long_net": 0.89,
+          "model_ls_net": 0.26,
+          "n": 252,
+          "year": 2014
+        },
+        {
+          "bal_acc": 0.5114,
+          "buy_hold": 0.22,
+          "model_long_net": 0.78,
+          "model_ls_net": 0.79,
+          "n": 252,
+          "year": 2015
+        },
+        {
+          "bal_acc": 0.4957,
+          "buy_hold": 0.65,
+          "model_long_net": -0.25,
+          "model_ls_net": -1.3,
+          "n": 252,
+          "year": 2016
+        },
+        {
+          "bal_acc": 0.4979,
+          "buy_hold": 2.65,
+          "model_long_net": 2.02,
+          "model_ls_net": 0.53,
+          "n": 251,
+          "year": 2017
+        },
+        {
+          "bal_acc": 0.4912,
+          "buy_hold": -0.24,
+          "model_long_net": -0.45,
+          "model_ls_net": -0.65,
+          "n": 251,
+          "year": 2018
+        },
+        {
+          "bal_acc": 0.5329,
+          "buy_hold": 1.98,
+          "model_long_net": 2.17,
+          "model_ls_net": 1.28,
+          "n": 253,
+          "year": 2019
+        },
+        {
+          "bal_acc": 0.5358,
+          "buy_hold": 0.93,
+          "model_long_net": 0.98,
+          "model_ls_net": 0.47,
+          "n": 253,
+          "year": 2020
+        },
+        {
+          "bal_acc": 0.5261,
+          "buy_hold": 1.23,
+          "model_long_net": 1.35,
+          "model_ls_net": 0.98,
+          "n": 252,
+          "year": 2021
+        },
+        {
+          "bal_acc": 0.5227,
+          "buy_hold": -1.33,
+          "model_long_net": -0.7,
+          "model_ls_net": 0.04,
+          "n": 251,
+          "year": 2022
+        },
+        {
+          "bal_acc": 0.441,
+          "buy_hold": 2.04,
+          "model_long_net": 1.42,
+          "model_ls_net": 0.5,
+          "n": 250,
+          "year": 2023
+        },
+        {
+          "bal_acc": 0.498,
+          "buy_hold": 1.48,
+          "model_long_net": 1.24,
+          "model_ls_net": 0.69,
+          "n": 252,
+          "year": 2024
+        },
+        {
+          "bal_acc": 0.4887,
+          "buy_hold": 0.78,
+          "model_long_net": -0.14,
+          "model_ls_net": -1.11,
+          "n": 250,
+          "year": 2025
+        }
+      ],
+      "share_above_52": 0.333,
+      "share_above_54": 0.0
+    },
+    "SP500": {
+      "mean_bal_acc": 0.5029,
+      "mean_buy_hold": 1.1,
+      "mean_model_long_net": 0.85,
+      "mean_model_ls_net": 0.26,
+      "median_bal_acc": 0.49,
+      "n_years": 7,
+      "per_year": [
+        {
+          "bal_acc": 0.4618,
+          "buy_hold": 2.09,
+          "model_long_net": 0.09,
+          "model_ls_net": -2.19,
+          "n": 252,
+          "year": 2019
+        },
+        {
+          "bal_acc": 0.4862,
+          "buy_hold": 0.37,
+          "model_long_net": 0.04,
+          "model_ls_net": -0.33,
+          "n": 253,
+          "year": 2020
+        },
+        {
+          "bal_acc": 0.5486,
+          "buy_hold": 2.0,
+          "model_long_net": 2.65,
+          "model_ls_net": 2.54,
+          "n": 252,
+          "year": 2021
+        },
+        {
+          "bal_acc": 0.535,
+          "buy_hold": -0.94,
+          "model_long_net": -0.69,
+          "model_ls_net": -0.41,
+          "n": 251,
+          "year": 2022
+        },
+        {
+          "bal_acc": 0.49,
+          "buy_hold": 1.66,
+          "model_long_net": 1.5,
+          "model_ls_net": 0.86,
+          "n": 250,
+          "year": 2023
+        },
+        {
+          "bal_acc": 0.4624,
+          "buy_hold": 1.69,
+          "model_long_net": 1.07,
+          "model_ls_net": 0.03,
+          "n": 252,
+          "year": 2024
+        },
+        {
+          "bal_acc": 0.5363,
+          "buy_hold": 0.84,
+          "model_long_net": 1.27,
+          "model_ls_net": 1.33,
+          "n": 250,
+          "year": 2025
+        }
+      ],
+      "share_above_52": 0.429,
+      "share_above_54": 0.143
+    }
+  }
+}
