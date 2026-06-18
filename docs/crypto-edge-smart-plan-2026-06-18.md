@@ -37,6 +37,22 @@ Directly serves "use ML to find profitable trades." It is the single positive si
 direction, meta-labeling, news, factors (carry/trend/EM/pre-2014), order flow, options-IV, and
 equity timing were all closed with evidence. If it fails, halted-FX stands as the evidenced end.
 
+## RESULTS LOG
+- **G1 = PASS** (commit b8f7b53): ETH long-only timing beats buy-&-hold ≥5/7 yrs in 5/6
+  model×feature combos incl. linear logistic (+0.51); BTC fails (3/8) → ETH-specific.
+- **G2 = PARTIAL** (`crypto_universe_g2_*.json`): universe nominal pass (9 coins, mean alpha
+  +0.287, 7/9 positive) is NOT trustworthy — measured under one daily-close convention.
+  Cross-convention check (FRED fixing vs Coinbase 00:00 UTC candle) shows next-day direction
+  labels DISAGREE on 9.0% of days, larger than the ~1-3pp edge. BTC swings +0.011 (FRED) ↔
+  +0.413 (Coinbase) = convention artifact. Only **ETH** stays positive under BOTH conventions
+  (+0.382 / +0.283) AND both model classes — the one signal that survives every robustness axis.
+  Universe generalization UNPROVEN (other coins single-source; free data can't cross-validate).
+  Net: ETH timing = a modest, robust, defensive long-only overlay (~51% bal acc, +0.3 Sharpe
+  alpha vs hold), NOT a high-accuracy edge and NOT a proven multi-coin strategy.
+- **Lesson:** for 24/7 assets the daily-close convention is a first-class robustness axis; an
+  edge smaller than the cross-source label-disagreement (9%) cannot be trusted until it survives
+  multiple close conventions. Model-config robustness (G1) is necessary but not sufficient.
+
 ## TIME-BOUND (milestone-based; attach calendar dates on request)
 - **G1 — this work session** (now). Hard kill: if G1 fails, STOP — do not build on a fluke.
 - **G2 — next work block** (after a CoinGecko/Binance loader lands).
