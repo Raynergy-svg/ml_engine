@@ -156,7 +156,31 @@ def manual_net_sharpe(gross_daily: pd.Series, held_w: pd.DataFrame,
     return _sharpe(net)
 
 
-def run_case(close_full, rd_full, pairs, book, start, end) -> dict:
+def _gross_daily(held_w, returns, accrual, cols) -> pd.Series:
+    w_eff = held_w.shift(1).fillna(0.0)
+    g = (w_eff * returns.reindex(columns=cols)).sum(axis=1) \
+        + (w_eff * accrual.reindex(columns=cols).fillna(0.0)).sum(axis=1)
+    return g.fillna(0.0)
+
+
+def crash_aware_overlay(held_w, gross_daily, target_ann_vol=0.10,
+                        dd_trigger=0.15, dd_cut=0.4, max_lev=2.0) -> pd.DataFrame:
+    """Causal vol-target + drawdown circuit-breaker overlay on the weights.
+
+    Both signals are 1-day LAGGED (use only info available before today's open), so
+    there is no lookahead. vol_scalar targets a fixed annual vol; dd_scalar de-grosses
+    to dd_cut when the book's trailing peak-to-trough drawdown exceeds dd_trigger.
+    """
+    trail_vol = gross_daily.rolling(63, min_periods=20).std().shift(1) * np.sqrt(252.0)
+    vol_scalar = (target_ann_vol / trail_vol).clip(0.0, max_lev).fillna(0.0)
+    equity = (1.0 + gross_daily).cumprod()
+    dd = (equity / equity.cummax() - 1.0).shift(1)
+    dd_scalar = pd.Series(np.where(dd < -dd_trigger, dd_cut, 1.0), index=gross_daily.index)
+    overlay = (vol_scalar * dd_scalar).reindex(held_w.index).ffill().fillna(0.0)
+    return held_w.mul(overlay, axis=0)
+
+
+def run_case(close_full, rd_full, pairs, book, start, end, crash_aware=False) -> dict:
     s = pd.Timestamp(start, tz="UTC"); e = pd.Timestamp(end, tz="UTC")
     cols = [p for p in pairs if p in close_full.columns]
     close = close_full[cols].loc[(close_full.index >= s) & (close_full.index <= e)].dropna(how="any")
@@ -176,12 +200,12 @@ def run_case(close_full, rd_full, pairs, book, start, end) -> dict:
     rb = weekly_rebalance_mask(close.index)
     held_w = enforce_guards(apply_no_trade_band(raw_w, band=0.05, rebalance_mask=rb))
 
+    if crash_aware:
+        base_gross = _gross_daily(held_w, returns, accrual, list(close.columns))
+        held_w = crash_aware_overlay(held_w, base_gross)
+
     result = run_backtest(held_w, close, carry_accrual=accrual, spreads_pips=em_spreads(close))
-    # gross daily for the transparent cost sensitivity
-    w_eff = held_w.shift(1).fillna(0.0)
-    gross_daily = (w_eff * returns.reindex(columns=close.columns)).sum(axis=1) \
-        + (w_eff * accrual.reindex(columns=close.columns).fillna(0.0)).sum(axis=1)
-    gross_daily = gross_daily.fillna(0.0)
+    gross_daily = _gross_daily(held_w, returns, accrual, list(close.columns))
     net0 = _sharpe(gross_daily.to_numpy())
     net15 = manual_net_sharpe(gross_daily, held_w, close, 15.0)
     net30 = manual_net_sharpe(gross_daily, held_w, close, 30.0)
@@ -190,6 +214,7 @@ def run_case(close_full, rd_full, pairs, book, start, end) -> dict:
     verdict = evaluate_gate(report)
     return {
         "universe": _uname(pairs), "book": book, "window": f"{start[:4]}-{end[:4]}",
+        "crash_aware": crash_aware,
         "span": f"{result.start}->{result.end}", "n_days": result.n_days,
         "gross_sharpe": round(result.gross_sharpe, 3),
         "net_sharpe": round(result.net_sharpe, 3),
@@ -215,6 +240,8 @@ def _uname(pairs) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--crash-aware", action="store_true",
+                    help="focused base-vs-overlay comparison (vol-target + DD breaker)")
     args = ap.parse_args()
     print(f"[em_carry] pipeline={FACTOR_PIPELINE_VERSION} source=FRED rate=IRSTCI01-callmoney")
     close_full = load_prices(GLOBAL, args.refresh)
@@ -225,24 +252,34 @@ def main() -> int:
           + ", ".join(f"{p}={em_spreads(close_full)[p]:.0f}" for p in EM))
 
     cases = []
-    for pairs in (EM, GLOBAL, G10):
-        for book in ("carry", "carry+trend"):
-            for start, end in (("1996-01-01", "2026-12-31"),
-                               ("2014-01-01", "2026-12-31"),
-                               ("2020-01-01", "2026-12-31")):
-                cases.append(run_case(close_full, rd_full, pairs, book, start, end))
+    if args.crash_aware:
+        # Decisive test: can vol-target + DD-breaker bring full-cycle maxDD under 25%
+        # while keeping net Sharpe >= 0.40? Base vs overlay, EM + GLOBAL carry.
+        for pairs in (EM, GLOBAL):
+            for start, end in (("1996-01-01", "2026-12-31"), ("2020-01-01", "2026-12-31")):
+                cases.append(run_case(close_full, rd_full, pairs, "carry", start, end, False))
+                cases.append(run_case(close_full, rd_full, pairs, "carry", start, end, True))
+    else:
+        for pairs in (EM, GLOBAL, G10):
+            for book in ("carry", "carry+trend"):
+                for start, end in (("1996-01-01", "2026-12-31"),
+                                   ("2014-01-01", "2026-12-31"),
+                                   ("2020-01-01", "2026-12-31")):
+                    cases.append(run_case(close_full, rd_full, pairs, book, start, end))
 
-    print("\n=== EM / GLOBAL CARRY (FRED daily, IRSTCI01 rates) ===")
-    hdr = (f"{'univ':7s} {'book':12s} {'window':10s} {'gross':>6s} {'net':>6s} "
-           f"{'n0bps':>6s} {'n15':>6s} {'n30':>6s} {'maxDD':>6s} {'worstYr':>8s} {'+yrs':>6s} gate")
+    title = "EM/GLOBAL CARRY — CRASH-AWARE (vol-target + DD breaker)" if args.crash_aware \
+        else "EM / GLOBAL CARRY (FRED daily, IRSTCI01 rates)"
+    print(f"\n=== {title} ===")
+    hdr = (f"{'univ':7s} {'overlay':8s} {'window':10s} {'gross':>6s} {'net15':>6s} "
+           f"{'maxDD':>6s} {'worstYr':>8s} {'+yrs':>6s} gate")
     print(hdr); print("-" * len(hdr))
     for c in cases:
         if c.get("skip"):
-            print(f"{c['universe']:7s} {c['book']:12s} {c['window']:10s}  -- {c['skip']}")
+            print(f"{c['universe']:7s} {'':8s} {c['window']:10s}  -- {c['skip']}")
             continue
-        print(f"{c['universe']:7s} {c['book']:12s} {c['window']:10s} "
-              f"{c['gross_sharpe']:>6.2f} {c['net_sharpe']:>6.2f} {c['net_sh_0bps']:>6.2f} "
-              f"{c['net_sh_15bps']:>6.2f} {c['net_sh_30bps']:>6.2f} {c['max_drawdown']:>6.1%} "
+        ov = "crash" if c.get("crash_aware") else "base"
+        print(f"{c['universe']:7s} {ov:8s} {c['window']:10s} "
+              f"{c['gross_sharpe']:>6.2f} {c['net_sh_15bps']:>6.2f} {c['max_drawdown']:>6.1%} "
               f"{c['worst_year']:>+8.1%} {c['positive_years']:>6s} "
               f"{'PASS' if c['gate_pass'] else 'FAIL'}")
     print("\nGate: net Sharpe>=0.40 AND maxDD<=25%. EM-carry read: even if GROSS clears "
