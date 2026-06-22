@@ -85,6 +85,14 @@ logger = logging.getLogger(__name__)
 
 
 SHIP_GATE_PATH_DEFAULT = "trained_data/backtests/SHIP_GATE.json"
+# Canonical on-disk locations for the alert manager's persisted state.
+# ``STATE_PATH_DEFAULT`` holds the per-alert-type cooldown log (last_fired);
+# ``AUDIT_DIR_DEFAULT`` collects one sidecar JSON per fired notification.
+# The manager accepts ``state_path`` (and channels accept ``audit_dir``) at
+# construction; these constants are the single source of truth the loop
+# launcher AND the TUI reader share so the wiring can never drift.
+STATE_PATH_DEFAULT = "trained_data/equity/alerts_state.json"
+AUDIT_DIR_DEFAULT = "trained_data/equity/alerts_audit"
 
 ALERT_HALT = "HALT"
 ALERT_BROKER_DISCONNECT = "BROKER_DISCONNECT"
@@ -955,6 +963,7 @@ class HarvesterAlertManager:
 
 __all__ = [
     "ALERT_BROKER_DISCONNECT",
+    "AUDIT_DIR_DEFAULT",
     "ALERT_DD_BREACH",
     "ALERT_HALT",
     "ALERT_POSITION_DRIFT",
@@ -973,6 +982,7 @@ __all__ = [
     "SEVERITY_CRITICAL",
     "SEVERITY_WARNING",
     "SHIP_GATE_PATH_DEFAULT",
+    "STATE_PATH_DEFAULT",
     "SlackWebhookChannel",
     "SlackWebhookConfig",
     "enforce_ship_gate",

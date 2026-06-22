@@ -1032,7 +1032,10 @@ class BuddyApp(App):
     ]
 
     # Asset class modes — F7 cycles through them
-    _ASSET_CLASSES = ["fx", "futures", "hybrid"]
+    # "equity" selects the equity-harvester surfaces (ship-gate badge,
+    # harvester panel, risk gates, rebalance plan, alerts) which read their
+    # own state files — it does NOT mutate the FX EmbeddedScanner config.
+    _ASSET_CLASSES = ["fx", "futures", "hybrid", "equity"]
 
     def __init__(self, live: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -1638,6 +1641,33 @@ class BuddyApp(App):
         except Exception:
             pass
 
+        # F4 Agents screen → equity risk-gate verdicts (P1-3)
+        try:
+            risk_gates = self._provider.get_risk_gates_status()
+            self.query_one("#agents-screen", AgentsScreen).update_risk_gates(
+                risk_gates
+            )
+        except Exception:
+            pass
+
+        # F3 Trades screen → harvester rebalance plan (P1-4)
+        try:
+            rebalance = self._provider.get_rebalance_status()
+            self.query_one("#trades-screen", TradesScreen).update_rebalance(
+                rebalance
+            )
+        except Exception:
+            pass
+
+        # F2 Inbox → equity alerts section (P1-7)
+        try:
+            alerts = self._provider.get_alerts_status()
+            self.query_one("#inbox-screen", InboxScreen).update_equity_alerts(
+                alerts
+            )
+        except Exception:
+            pass
+
         # US-513: Update staleness banner (red alert when models > 7d old)
         try:
             banner = self.query_one("#staleness-banner", StalenessBanner)
@@ -1869,7 +1899,21 @@ class BuddyApp(App):
             "fx": "FX (OANDA) — 15 pairs",
             "futures": "FUTURES (IBKR) — ES NQ CL GC ZB 6E",
             "hybrid": "HYBRID — FX + Futures",
+            "equity": "EQUITY (harvester) — beta-harvest state surfaces",
         }[self._asset_class]
+
+        # "equity" selects the harvester's read-only state surfaces — it must
+        # NOT touch the FX EmbeddedScanner config (no asset_class/broker_type
+        # mutation, no scan-loop restart). Mutating the FX config for equity
+        # would break the live FX scanner, which has no equity instruments.
+        if self._asset_class == "equity":
+            try:
+                brain_log = self.query_one("#brain-log")
+                brain_log.write(f"[bold cyan]⟨ MODE ⟩[/] {mode_label}")
+            except Exception:
+                pass
+            self.notify(f"Asset class: {mode_label}", title="Mode Switch")
+            return
 
         # Update scanner config if scanner is running
         if self._scanner is not None:

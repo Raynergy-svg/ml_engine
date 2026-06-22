@@ -78,6 +78,119 @@ def _format_duration(minutes: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# RebalancePlanPanel -- equity harvester rebalance plan (P1-4)
+# ---------------------------------------------------------------------------
+
+_ORDER_STATUS_COLORS: dict[str, str] = {
+    "FILLED": _POSITIVE,
+    "SENT": _WARNING,
+    "PENDING": _DIM,
+    "FAILED": _NEGATIVE,
+}
+
+
+class RebalancePlanPanel(Static):
+    """Equity harvester rebalance plan (P1-4).
+
+    Driven by ``DataProvider.get_rebalance_status()`` which reads
+    ``rebalance_state.json``. Shows the last rebalance asof, the active plan's
+    target weights, and per-order status (PENDING/SENT/FILLED/FAILED). Renders
+    an honest empty state when no rebalance has run yet.
+    """
+
+    can_focus = True
+
+    DEFAULT_CSS = """
+    RebalancePlanPanel {
+        height: auto;
+        min-height: 5;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._status: dict[str, Any] = {"available": False}
+
+    def update_status(self, status: dict[str, Any]) -> None:
+        self._status = status or {"available": False}
+        self.refresh()
+
+    def render(self) -> Text:
+        t = Text()
+        s = self._status
+        if not s.get("available"):
+            t.append("  No rebalance has run yet\n", style=_DIM)
+            t.append("  (no equity rebalance_state.json on disk)\n", style=_DIM)
+            return t
+
+        last = s.get("last_rebalance_asof") or "—"
+        t.append("  LAST REBALANCE ", style=_DIM)
+        t.append(str(last)[:19], style=f"bold {_PRIMARY}")
+        t.append("\n")
+
+        plan = s.get("active_plan")
+        if not isinstance(plan, dict):
+            t.append("  No active plan in flight\n", style=_DIM)
+            current = s.get("current_weights") or {}
+            if current:
+                top = sorted(
+                    current.items(), key=lambda kv: -abs(kv[1])
+                )[:6]
+                t.append("  Current weights: ", style=_DIM)
+                t.append(
+                    "  ".join(f"{k} {v:.2%}" for k, v in top),
+                    style=_TEXT,
+                )
+                t.append("\n")
+            return t
+
+        rb_id = plan.get("rebalance_id") or ""
+        if rb_id:
+            t.append("  PLAN ", style=_DIM)
+            t.append(str(rb_id), style=f"bold {_DATA}")
+            asof = plan.get("asof")
+            if asof:
+                t.append(f"  @ {str(asof)[:19]}", style=_BORDER)
+            t.append("\n")
+
+        orders = plan.get("orders") or []
+        if not orders:
+            t.append("  (plan has no orders)\n", style=_DIM)
+        else:
+            # Status tally
+            tally: dict[str, int] = {}
+            for o in orders:
+                tally[str(o.get("status", "PENDING"))] = (
+                    tally.get(str(o.get("status", "PENDING")), 0) + 1
+                )
+            t.append("  ", style=_DIM)
+            for status_name in ("FILLED", "SENT", "PENDING", "FAILED"):
+                n = tally.get(status_name, 0)
+                if n:
+                    color = _ORDER_STATUS_COLORS.get(status_name, _TEXT)
+                    t.append(f"{n} {status_name}  ", style=f"bold {color}")
+            t.append("\n")
+
+            targets = plan.get("target_weights") or {}
+            for o in orders[:12]:
+                ticker = str(o.get("ticker", "???"))
+                side = str(o.get("side", ""))
+                status_name = str(o.get("status", "PENDING"))
+                color = _ORDER_STATUS_COLORS.get(status_name, _TEXT)
+                tgt = o.get("target_weight")
+                if tgt is None:
+                    tgt = targets.get(ticker, 0.0)
+                side_color = _POSITIVE if side == "BUY" else _NEGATIVE
+                t.append(f"  {ticker:<6}", style=_TEXT)
+                t.append(f" {side:<4}", style=f"bold {side_color}")
+                t.append(f" → {float(tgt):>6.2%}", style=_DIM)
+                t.append(f"   {status_name}", style=f"bold {color}")
+                t.append("\n")
+        return t
+
+
+# ---------------------------------------------------------------------------
 # Drill-Down Panel
 # ---------------------------------------------------------------------------
 
@@ -404,6 +517,13 @@ class TradesScreen(Container):
         )
 
     def compose(self) -> ComposeResult:
+        # Equity harvester rebalance plan (P1-4) — the live core. Target-vs-
+        # current weights + pending rebalance orders. The FX positions tables
+        # below remain for the retired stack until fully removed.
+        with Vertical(id="trades-rebalance-panel", classes="panel"):
+            yield Label("  HARVESTER REBALANCE PLAN", classes="panel-title")
+            yield RebalancePlanPanel(id="trades-rebalance")
+
         with Vertical(id="trades-open-panel", classes="panel"):
             yield Label("  OPEN POSITIONS", classes="panel-title")
             yield DataTable(id="trades-open-table", cursor_type="row")
@@ -465,6 +585,19 @@ class TradesScreen(Container):
     # ------------------------------------------------------------------
     # Public: update from snapshot
     # ------------------------------------------------------------------
+
+    def update_rebalance(self, status: dict[str, Any]) -> None:
+        """Feed the equity rebalance plan into the RebalancePlanPanel (P1-4).
+
+        ``status`` is ``DataProvider.get_rebalance_status()`` output. Safe to
+        call before mount / when the panel is missing — swallowed cleanly so a
+        missing equity loop never breaks the screen.
+        """
+        try:
+            panel = self.query_one("#trades-rebalance", RebalancePlanPanel)
+        except Exception:
+            return
+        panel.update_status(status or {"available": False})
 
     def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
         """Refresh all sub-widgets from a new DashboardSnapshot."""

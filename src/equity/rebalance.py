@@ -54,6 +54,12 @@ logger = logging.getLogger(__name__)
 
 
 SHIP_GATE_PATH_DEFAULT = "trained_data/backtests/SHIP_GATE.json"
+# Canonical on-disk location for the rebalance scheduler's persisted state
+# (last_rebalance_asof, current_actual_weights, active_plan with per-order
+# PENDING/SENT/FILLED/FAILED status). The scheduler accepts ``state_path`` at
+# construction; this constant is the single source of truth the loop launcher
+# AND the TUI reader share so the wiring can never drift to a hardcoded string.
+STATE_PATH_DEFAULT = "trained_data/equity/rebalance_state.json"
 STATE_VERSION = 1
 DEFAULT_NO_TRADE_BAND = 0.005  # 0.5% per-name absolute weight band
 DEFAULT_REBALANCE_FREQ_DAYS = 30
@@ -651,5 +657,6 @@ __all__ = [
     "RebalanceScheduler",
     "RebalanceState",
     "SHIP_GATE_PATH_DEFAULT",
+    "STATE_PATH_DEFAULT",
     "plan_rebalance",
 ]

@@ -89,6 +89,13 @@ from src.equity.control_loop import (  # noqa: E402
 from src.equity.live_gate import (  # noqa: E402
     STATE_PATH_DEFAULT as _EQUITY_LIVE_GATE_STATE_PATH,
 )
+from src.equity.rebalance import (  # noqa: E402
+    STATE_PATH_DEFAULT as _EQUITY_REBALANCE_STATE_PATH,
+)
+from src.equity.alerts import (  # noqa: E402
+    AUDIT_DIR_DEFAULT as _EQUITY_ALERTS_AUDIT_DIR,
+    STATE_PATH_DEFAULT as _EQUITY_ALERTS_STATE_PATH,
+)
 
 
 def _read_equity_json(path: Path) -> dict | None:
@@ -957,3 +964,195 @@ class DataProvider:
             )
 
         return status
+
+    def get_risk_gates_status(self) -> dict[str, Any]:
+        """Read the equity risk-gate verdicts from ``loop_state.json``.
+
+        The risk layer (:mod:`src.equity.risk_agents`) does NOT write its own
+        state file — the control loop persists the full ``RiskDecision`` (with
+        per-gate ``verdicts``) under ``last_risk_decision`` in the loop state.
+        We surface every gate's pass/block + the composite degross factor +
+        the aggregate block/halt flags.
+
+        Returns ``available`` False when the loop state is absent/corrupt OR
+        present but carries no risk decision yet (loop ran but never reached
+        the risk step). Each gate dict carries ``name``, ``passed``,
+        ``block_trade``, ``score``, ``weight``, ``reason`` and ``reason_code``.
+        """
+        loop_path = self._project_root / _EQUITY_LOOP_STATE_PATH
+        loop = _read_equity_json(loop_path)
+        if loop is None:
+            return {"available": False}
+        decision = loop.get("last_risk_decision")
+        if not isinstance(decision, dict):
+            return {"available": False}
+
+        raw_verdicts = decision.get("verdicts")
+        gates: list[dict[str, Any]] = []
+        if isinstance(raw_verdicts, list):
+            for v in raw_verdicts:
+                if not isinstance(v, dict):
+                    continue
+                gates.append(
+                    {
+                        "name": str(v.get("name") or ""),
+                        "passed": bool(v.get("passed", False)),
+                        "block_trade": bool(v.get("block_trade", False)),
+                        "score": _safe_float(v.get("score")),
+                        "weight": _safe_float(v.get("weight"), 1.0),
+                        "reason": str(v.get("reason") or ""),
+                        "reason_code": str(v.get("reason_code") or ""),
+                    }
+                )
+
+        reasons = decision.get("reasons")
+        return {
+            "available": True,
+            "block_trade": bool(decision.get("block_trade", False)),
+            "halt": bool(decision.get("halt", False)),
+            "degross_factor": _safe_float(
+                decision.get("degross_factor"), 1.0
+            ),
+            "reasons": (
+                [str(r) for r in reasons]
+                if isinstance(reasons, list)
+                else []
+            ),
+            "gates": gates,
+            "last_cycle_asof": str(loop.get("last_cycle_asof") or ""),
+        }
+
+    def get_rebalance_status(self) -> dict[str, Any]:
+        """Read ``trained_data/equity/rebalance_state.json`` (US-007 contract).
+
+        Surfaces ``last_rebalance_asof``, the target weights of the active
+        plan, and per-order status (PENDING/SENT/FILLED/FAILED). Returns
+        ``available`` False when the file is absent/corrupt (no rebalance has
+        run yet). ``active_plan`` is None when the state exists but no plan is
+        currently in flight (all orders filled / never scheduled).
+        """
+        path = self._project_root / _EQUITY_REBALANCE_STATE_PATH
+        payload = _read_equity_json(path)
+        if payload is None:
+            return {"available": False}
+
+        status: dict[str, Any] = {
+            "available": True,
+            "last_rebalance_asof": str(
+                payload.get("last_rebalance_asof") or ""
+            ),
+        }
+
+        actual = payload.get("current_actual_weights")
+        status["current_weights"] = (
+            {str(k): _safe_float(v) for k, v in actual.items()}
+            if isinstance(actual, dict)
+            else {}
+        )
+
+        plan = payload.get("active_plan")
+        if not isinstance(plan, dict):
+            status["active_plan"] = None
+            return status
+
+        raw_targets = plan.get("target_weights")
+        targets = (
+            {str(k): _safe_float(v) for k, v in raw_targets.items()}
+            if isinstance(raw_targets, dict)
+            else {}
+        )
+        raw_orders = plan.get("orders")
+        orders: list[dict[str, Any]] = []
+        if isinstance(raw_orders, list):
+            for o in raw_orders:
+                if not isinstance(o, dict):
+                    continue
+                orders.append(
+                    {
+                        "ticker": str(o.get("ticker") or ""),
+                        "side": str(o.get("side") or ""),
+                        "target_weight": _safe_float(o.get("target_weight")),
+                        "status": str(o.get("status") or "PENDING"),
+                    }
+                )
+        status["active_plan"] = {
+            "rebalance_id": str(plan.get("rebalance_id") or ""),
+            "asof": str(plan.get("asof") or ""),
+            "target_weights": targets,
+            "orders": orders,
+        }
+        return status
+
+    def get_alerts_status(self) -> dict[str, Any]:
+        """Read equity alert state + the most recent audit sidecars.
+
+        Combines ``alerts_state.json`` (per-alert-type ``last_fired`` cooldown
+        log) with the newest ``alerts_audit/*.json`` sidecars (one per fired
+        notification: type/severity/message/timestamp). Returns ``available``
+        False only when BOTH the state file and the audit dir are absent. The
+        ``alerts`` list is newest-first, capped at ``limit`` entries.
+        """
+        state_path = self._project_root / _EQUITY_ALERTS_STATE_PATH
+        audit_dir = self._project_root / _EQUITY_ALERTS_AUDIT_DIR
+        state = _read_equity_json(state_path)
+
+        last_fired: dict[str, float] = {}
+        if state is not None:
+            raw = state.get("last_fired")
+            if isinstance(raw, dict):
+                for k, v in raw.items():
+                    fv = _safe_float(v, -1.0)
+                    if fv >= 0.0:
+                        last_fired[str(k)] = fv
+
+        alerts = self._read_alert_audit(audit_dir)
+
+        if state is None and not alerts:
+            return {"available": False}
+
+        return {
+            "available": True,
+            "last_fired": last_fired,
+            "universe_hash": str((state or {}).get("universe_hash") or ""),
+            "last_updated": str((state or {}).get("last_updated") or ""),
+            "alerts": alerts,
+        }
+
+    @staticmethod
+    def _read_alert_audit(
+        audit_dir: Path, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Read the newest alert-audit sidecars (newest-first, capped).
+
+        Each sidecar wraps a ``notification`` dict (alert_type / severity /
+        message / timestamp). Sort by filename — the manager prefixes every
+        name with the notification timestamp, so lexical order ≈ chronological.
+        Best-effort: a missing dir or a corrupt sidecar is skipped, never
+        raised.
+        """
+        try:
+            if not audit_dir.is_dir():
+                return []
+            files = sorted(
+                audit_dir.glob("*.json"), reverse=True
+            )[:limit]
+        except OSError:
+            return []
+
+        out: list[dict[str, Any]] = []
+        for f in files:
+            payload = _read_equity_json(f)
+            if payload is None:
+                continue
+            note = payload.get("notification")
+            if not isinstance(note, dict):
+                continue
+            out.append(
+                {
+                    "alert_type": str(note.get("alert_type") or ""),
+                    "severity": str(note.get("severity") or ""),
+                    "message": str(note.get("message") or ""),
+                    "timestamp": str(note.get("timestamp") or ""),
+                }
+            )
+        return out
