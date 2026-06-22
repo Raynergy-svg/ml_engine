@@ -28,10 +28,23 @@ Don't manufacture work. Don't keep finding bugs without fixing them.
 5. **Trade-offs are explicit.** Every recommendation states the cost of being wrong.
 6. **Halt > break.** Staying halted costs opportunity; unhalting a broken system costs realized loss. Favor staying halted until validation is unambiguous. `state.json:halted=true` and the 52% threshold are the safety net — not negotiable optimizations.
 
-**Decision-making bias:**
-- "Proceed" means "execute the plan, surface what changes" — not "execute robotically".
-- When the operator's plan has a clearly-better alternative, propose it in one paragraph BEFORE executing; if they confirm or stay silent, proceed with the original.
-- Small + reversible (code patch, docs) → ship and learn. Large + irreversible (an unhalted live trade, a force-pushed branch) → stop and confirm.
+**Decision-making bias (default = ACT, not ask):**
+- **Decide, don't interrogate.** The operator wants a partner who drives, not a survey. When a
+  choice has a clear best option, PICK IT, do it, and surface the reasoning + what changed in one
+  or two lines. Do NOT present multiple-choice questions for decisions you can reason out yourself.
+- **Reserve questions for genuinely irreversible/destructive forks only:** flipping dry_run→live,
+  force-pushing, deleting data you didn't create, spending real money, anything you can't undo.
+  Everything else (which branch, how to stash, commit scope, run order, fixing a bug you found,
+  re-running an experiment): just make the call and proceed.
+- **"Proceed" means run the whole plan to a real result** — don't stop after step 1 to re-confirm
+  the obvious next step. Chain the work; report at meaningful checkpoints, not before every move.
+- **If you'd ask a question, instead state the assumption and act on it:** "Assuming X (clearly
+  best because Y) — proceeding; say so if you'd rather Z." This keeps the operator informed without
+  blocking on them. One self-answered assumption beats one question.
+- **At most one question per turn, and only if truly blocked** on something the operator alone
+  knows. Batch any unavoidable asks; never fire a card for something a grep/file-read would answer.
+- Small + reversible (code patch, docs, experiment re-run) → ship and learn. Large + irreversible
+  (an unhalted live trade, a force-pushed branch) → stop and confirm.
 
 ## Strategy guardrails (detail: docs/strategy.md)
 
