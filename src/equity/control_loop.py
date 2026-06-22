@@ -76,6 +76,12 @@ logger = logging.getLogger(__name__)
 
 
 SHIP_GATE_PATH_DEFAULT = "trained_data/backtests/SHIP_GATE.json"
+# Canonical default state-file locations. The constructor still takes explicit
+# state_path/portfolio_state_path, but these constants are the single source of
+# truth the loop launcher AND the TUI reader (src/tui/data_provider.py) share,
+# so the panel is never wired to a path the producer doesn't write.
+LOOP_STATE_PATH_DEFAULT = "trained_data/equity/loop_state.json"
+PORTFOLIO_STATE_PATH_DEFAULT = "trained_data/equity/portfolio_state.json"
 STATE_VERSION = 1
 STATE_CORRUPT = "STATE_CORRUPT"
 
@@ -1062,6 +1068,8 @@ def _iso(ts: pd.Timestamp) -> str:
 __all__ = [
     "STATE_CORRUPT",
     "SHIP_GATE_PATH_DEFAULT",
+    "LOOP_STATE_PATH_DEFAULT",
+    "PORTFOLIO_STATE_PATH_DEFAULT",
     "AutonomousLoop",
     "ControlLoopError",
     "CycleOutcome",

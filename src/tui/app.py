@@ -299,6 +299,31 @@ class HeaderBar(Static):
     oanda_ok = reactive(False)
     scanner_ok = reactive(False)
     mode_label = reactive("DEMO")
+    # Equity live-gate indicator: "SHADOW" (safe, dim) vs "LIVE" (bright red).
+    # Defaults SHADOW — the safe assumption when live_gate_state.json is absent.
+    # nav_fraction is the fraction of NAV the live gate is armed to expose
+    # (None until armed). Set via update_live_gate().
+    harvester_mode = reactive("SHADOW")
+    harvester_nav_fraction: reactive[float | None] = reactive(None)
+
+    def update_live_gate(self, status: dict) -> None:
+        """Update the SHADOW/LIVE harvester indicator from a live-gate dict.
+
+        Tolerant of None/empty (treated as SHADOW). Reads the derived
+        ``mode`` and ``nav_fraction`` from DataProvider.get_live_gate_status().
+        """
+        status = status or {}
+        self.harvester_mode = (
+            "LIVE" if str(status.get("mode", "SHADOW")).upper() == "LIVE"
+            else "SHADOW"
+        )
+        frac = status.get("nav_fraction")
+        try:
+            self.harvester_nav_fraction = (
+                float(frac) if frac is not None else None
+            )
+        except (TypeError, ValueError):
+            self.harvester_nav_fraction = None
 
     def render(self) -> Text:
         now = datetime.now(timezone.utc).strftime("%H:%M UTC")
@@ -331,7 +356,95 @@ class HeaderBar(Static):
         t.append("Scanner ", style="#7483b8")
         t.append(scanner_text, style=scanner_style)
         t.append("  ║  ", style="#26304f")
+        t.append("MODE ", style="#7483b8")
+        if self.harvester_mode == "LIVE":
+            mode_txt = "LIVE ⚠"
+            if self.harvester_nav_fraction is not None:
+                mode_txt += f" {self.harvester_nav_fraction * 100:.0f}% NAV"
+            t.append(mode_txt, style="bold #ff1744")
+        else:
+            t.append("SHADOW", style="bold #00ffcc")
+        t.append("  ║  ", style="#26304f")
         t.append(f"{now}", style="#7483b8")
+        return t
+
+
+class HarvesterPanel(Static):
+    """Equity control-loop status panel for the Overview tab.
+
+    Reads the equity harvester's persisted state via
+    DataProvider.get_harvester_status() and renders NAV / peak NAV /
+    drawdown / loop phase / halted / cycle_count / last reconcile. Shows
+    an honest "Harvester not yet running" line when no state file exists
+    (the loop hasn't run live yet).
+    """
+
+    can_focus = True  # Click-to-focus for the 'c' copy hotkey
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._status: dict[str, Any] = {"available": False}
+
+    def update_status(self, status: dict) -> None:
+        self._status = status or {"available": False}
+        self.refresh()
+
+    def render(self) -> Text:
+        t = Text()
+        s = self._status
+        if not s.get("available"):
+            t.append("  Harvester not yet running", style="#7483b8")
+            t.append("\n  (no equity loop state on disk)", style="#26304f")
+            return t
+
+        halted = bool(s.get("halted", False))
+        halt_style = "bold #ff1744" if halted else "bold #39ff14"
+        t.append("  STATUS  ", style="#7483b8")
+        t.append("HALTED" if halted else "RUNNING", style=halt_style)
+        transport = s.get("transport_state") or "—"
+        t.append("   TRANSPORT ", style="#7483b8")
+        tr_style = "bold #39ff14" if transport == "CONNECTED" else "bold #ffb000"
+        t.append(str(transport), style=tr_style)
+        t.append(f"   CYCLE {s.get('cycle_count', 0)}", style="#7483b8")
+        t.append("\n")
+
+        nav = s.get("nav")
+        peak = s.get("peak_nav")
+        dd = s.get("drawdown_pct")
+        if nav is not None:
+            t.append("  NAV ", style="#7483b8")
+            t.append(f"${nav:,.0f}", style="bold #39ff14")
+            if peak:
+                t.append("   PEAK ", style="#7483b8")
+                t.append(f"${peak:,.0f}", style="#00f5ff")
+            if dd is not None:
+                dd_style = "#39ff14" if dd < 5 else "#ffb000" if dd < 10 else "#ff1744"
+                t.append("   DD ", style="#7483b8")
+                t.append(f"{dd:.1f}%", style=f"bold {dd_style}")
+            t.append("\n")
+
+        risk = s.get("risk")
+        if isinstance(risk, dict):
+            blocked = risk.get("block_trade") or risk.get("halt")
+            r_style = "bold #ff1744" if blocked else "bold #39ff14"
+            t.append("  RISK ", style="#7483b8")
+            t.append("BLOCKED" if blocked else "CLEAR", style=r_style)
+            reasons = risk.get("reasons") or []
+            if reasons:
+                t.append(f"  ({', '.join(reasons[:2])})", style="#ffb000")
+            t.append("\n")
+
+        reconcile = s.get("reconcile")
+        if isinstance(reconcile, dict):
+            n_breaches = reconcile.get("n_breaches", 0)
+            t.append("  RECONCILE ", style="#7483b8")
+            rc_style = "#39ff14" if not n_breaches else "#ff1744"
+            t.append(
+                f"{n_breaches} drift breach(es)", style=f"bold {rc_style}"
+            )
+            asof = reconcile.get("asof")
+            if asof:
+                t.append(f"  @ {asof[:19]}", style="#26304f")
         return t
 
 
@@ -960,7 +1073,8 @@ class BuddyApp(App):
                 with Vertical(id="overview-container"):
                     with Horizontal(id="overview-top"):
                         with Vertical(classes="panel"):
-                            yield Label("⟨ LIVE TRADES ⟩", classes="panel-title")
+                            yield Label("⟨ EQUITY HARVESTER ⟩", classes="panel-title")
+                            yield HarvesterPanel(id="harvester-panel")
                             yield DataTable(id="trades-table")
                         with Vertical(classes="panel"):
                             yield Label("⟨ AGENT CONSENSUS ⟩", classes="panel-title")
@@ -1497,6 +1611,30 @@ class BuddyApp(App):
         try:
             state_strip = self.query_one("#state-strip", StateStrip)
             state_strip.update_from_snapshot(snap)
+        except Exception:
+            pass
+
+        # Equity-harvester surfacing (read-only state files; graceful when
+        # absent — the loop may not have run live yet). Each reader returns a
+        # small dict with available:bool; widgets render a pending state on
+        # available=False.
+        try:
+            ship_gate = self._provider.get_ship_gate_status()
+            self.query_one("#state-strip", StateStrip).update_ship_gate(ship_gate)
+        except Exception:
+            pass
+
+        try:
+            live_gate = self._provider.get_live_gate_status()
+            self.query_one("#header-bar", HeaderBar).update_live_gate(live_gate)
+        except Exception:
+            pass
+
+        try:
+            harvester = self._provider.get_harvester_status()
+            self.query_one("#harvester-panel", HarvesterPanel).update_status(
+                harvester
+            )
         except Exception:
             pass
 

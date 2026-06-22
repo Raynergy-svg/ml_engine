@@ -1,8 +1,13 @@
-"""US-009: DiagnosticsScreen correctness tests.
+"""US-009 + P0-1 (2026-06-21 equity-wiring audit): DiagnosticsScreen tests.
 
 Covers:
-  AC-1  _seed_error_log contains current ML stack strings (Transformer /
-        LightGBM / XGBoost) and does NOT contain the stale 'TCN + Ridge + RF'.
+  AC-1  Demo mode renders an HONEST empty state from real log sources — NOT
+        hardcoded fake FX seed lines. Pre-2026-06-21 the screen seeded fake
+        FX entries ("OANDA connection established", "EUR/GBP spread elevated")
+        in demo mode; that fiction was removed when the equity harvester
+        became the live stack. With an empty tmp_path repo root there are no
+        real log sources, so the screen shows the "No live diagnostic log
+        entries found yet" honest empty state and NO fake FX strings.
   AC-2  psutil ImportError path mounts a Static(.error-banner) inside the
         SystemVitalsPanel — no random.uniform fake data.
 
@@ -18,7 +23,6 @@ import asyncio
 import sys
 from pathlib import Path
 
-import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
@@ -68,12 +72,16 @@ class _DiagApp(App):
 
 
 # ---------------------------------------------------------------------------
-# AC-1 helpers — seed strings after demo-mode mount
+# AC-1 helpers — log messages after demo-mode mount
 # ---------------------------------------------------------------------------
 
 
-def _collect_seed_msgs(tmp_path: Path) -> list[str]:
-    """Run the app briefly in demo mode and return seed log message strings."""
+def _collect_log_msgs(tmp_path: Path) -> list[str]:
+    """Run the app briefly in demo mode and return rendered log message strings.
+
+    project_root is an empty tmp_path, so there are no real log sources on
+    disk — the screen must show its honest empty state, NOT fake FX seeds.
+    """
     app = _DiagApp(project_root=tmp_path)
 
     async def _run() -> None:
@@ -86,41 +94,37 @@ def _collect_seed_msgs(tmp_path: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# AC-1: seed strings name current ML stack
+# AC-1 (P0-1): demo mode shows honest empty state, NOT fake FX seed lines
 # ---------------------------------------------------------------------------
 
 
-def test_seed_log_contains_transformer(tmp_path: Path) -> None:
-    """Seed entry names Transformer (direction head)."""
-    msgs = _collect_seed_msgs(tmp_path)
-    assert any("Transformer" in m for m in msgs), (
-        f"Expected 'Transformer' in seed log; got: {msgs}"
+def test_demo_mode_shows_honest_empty_state(tmp_path: Path) -> None:
+    """With no real log sources, the screen shows the empty-state message."""
+    msgs = _collect_log_msgs(tmp_path)
+    assert any("No live diagnostic log entries found yet" in m for m in msgs), (
+        f"Expected honest empty-state message; got: {msgs}"
     )
 
 
-def test_seed_log_contains_lightgbm(tmp_path: Path) -> None:
-    """Seed entry names LightGBM (confidence/momentum/risk heads)."""
-    msgs = _collect_seed_msgs(tmp_path)
-    assert any("LightGBM" in m for m in msgs), (
-        f"Expected 'LightGBM' in seed log; got: {msgs}"
-    )
+def test_demo_mode_no_fake_oanda_line(tmp_path: Path) -> None:
+    """The fake 'OANDA connection established' seed line is gone."""
+    msgs = _collect_log_msgs(tmp_path)
+    fake = [m for m in msgs if "OANDA connection established" in m]
+    assert not fake, f"Fake OANDA seed line still present: {fake}"
 
 
-def test_seed_log_contains_xgboost(tmp_path: Path) -> None:
-    """Seed entry names XGBoost (meta-labeler)."""
-    msgs = _collect_seed_msgs(tmp_path)
-    assert any("XGBoost" in m for m in msgs), (
-        f"Expected 'XGBoost' in seed log; got: {msgs}"
-    )
+def test_demo_mode_no_fake_fx_spread_line(tmp_path: Path) -> None:
+    """The fake 'EUR/GBP spread elevated' seed line is gone."""
+    msgs = _collect_log_msgs(tmp_path)
+    fake = [m for m in msgs if "spread elevated" in m]
+    assert not fake, f"Fake FX spread seed line still present: {fake}"
 
 
-def test_seed_log_no_stale_tcn_ridge_rf(tmp_path: Path) -> None:
-    """The stale 'TCN + Ridge + RF' string is absent from all seed entries."""
-    msgs = _collect_seed_msgs(tmp_path)
-    stale = [m for m in msgs if "TCN" in m and "Ridge" in m and "RF" in m]
-    assert not stale, (
-        f"Stale 'TCN + Ridge + RF' string found in seed entries: {stale}"
-    )
+def test_demo_mode_no_fx_pair_seed_lines(tmp_path: Path) -> None:
+    """No hardcoded FX-pair fiction (EUR/GBP, GBP/JPY) in the rendered log."""
+    msgs = _collect_log_msgs(tmp_path)
+    fake = [m for m in msgs if "EUR/GBP" in m or "GBP/JPY" in m]
+    assert not fake, f"Hardcoded FX-pair seed lines still present: {fake}"
 
 
 # ---------------------------------------------------------------------------
