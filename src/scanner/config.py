@@ -146,6 +146,14 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "meta_manager_use_llm": False,
         "staged_deploy_shadow_cycles": 20,
         "staged_deploy_canary_trades": 10,
+        # US-006: Equity-beta harvester overlay knobs.
+        "equity_harvester_target_vol": 0.12,
+        "equity_harvester_dd_soft": 0.10,
+        "equity_harvester_dd_hard": 0.20,
+        "equity_harvester_max_lev": 1.0,
+        "equity_harvester_vol_lookback": 21,
+        "equity_harvester_long_only": True,
+        "equity_harvester_ship_gate_path": "trained_data/backtests/SHIP_GATE.json",
     },
     # Fewer trades, higher signal quality requirements.
     "conservative": {
@@ -1247,6 +1255,19 @@ class ScannerConfig:
     meta_manager_use_llm: bool = False
     staged_deploy_shadow_cycles: int = 20
     staged_deploy_canary_trades: int = 10
+
+    # --- Equity-Beta Harvester (US-006) ---
+    # Causal vol-target + drawdown overlay knobs that gate the harvester's
+    # exposure scalar. Defaults match src.equity.ship_gate (the validated
+    # ship-gate config). Consumers read these via getattr(config, ...) so
+    # absence falls back to the strategy's own DEFAULTS without crashing.
+    equity_harvester_target_vol: float = 0.12
+    equity_harvester_dd_soft: float = 0.10
+    equity_harvester_dd_hard: float = 0.20
+    equity_harvester_max_lev: float = 1.0
+    equity_harvester_vol_lookback: int = 21
+    equity_harvester_long_only: bool = True
+    equity_harvester_ship_gate_path: str = "trained_data/backtests/SHIP_GATE.json"
 
     # Loaded YAML config (lazy loaded)
     _yaml_config: Optional[Dict[str, Any]] = field(default=None, repr=False)

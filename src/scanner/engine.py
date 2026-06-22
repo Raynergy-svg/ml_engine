@@ -3,6 +3,19 @@ Scanner Engine Module.
 
 Core scanning logic using ThreadPoolExecutor for parallel pair analysis.
 Handles data fetching, feature engineering, and incremental caching.
+
+.. deprecated:: 2026-06-21 (US-020)
+
+   The FX directional engine path is **retired from the active runtime.**
+   The autonomous bot now runs the equity-beta harvester
+   (``src/equity/control_loop.py``) per
+   ``tasks/prd-equity-harvester-bot.md``. This module remains importable
+   so backtests, journals, and audit trails stay reproducible — nothing
+   is hard-deleted. Live invocation is guarded by
+   :func:`src.scanner.fx_retired.enforce_harvester_ship_gate`. See
+   ``docs/fx-directional-path-retired.md`` for the verdicts that closed
+   the directional thesis, the full 15-agent roster, and re-activation
+   rules.
 """
 
 from __future__ import annotations

@@ -24,8 +24,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-import numpy as np  # noqa: E402
+import numpy as np  # noqa: E402,F401  (kept for downstream tweaks)
 import pandas as pd  # noqa: E402
+
+# `stats` and `overlay` are the canonical helpers shared with the runtime
+# portfolio backtester (US-003). Keep this script as the thin research driver;
+# the math lives in the package so the gate and this script can never drift.
+from src.equity.backtest import overlay, stats  # noqa: E402
 
 SECTORS = ["XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLU", "XLB"]
 START, END = "1999-01-01", "2026-06-01"
@@ -41,28 +46,6 @@ def load(tickers):
     if isinstance(df, pd.Series):
         df = df.to_frame(tickers if isinstance(tickers, str) else tickers[0])
     return df.dropna(how="all")
-
-
-def stats(pnl: pd.Series) -> dict:
-    pnl = pnl.dropna()
-    eq = (1 + pnl).cumprod()
-    dd = float(((eq.cummax() - eq) / eq.cummax()).max())
-    sharpe = float(pnl.mean() / (pnl.std() + 1e-12) * np.sqrt(ANN))
-    cagr = float(eq.iloc[-1] ** (ANN / len(pnl)) - 1)
-    per_year = {str(y): round(float((1 + g).prod() - 1), 4) for y, g in pnl.groupby(pnl.index.year)}
-    return {"net_sharpe": round(sharpe, 3), "max_dd": round(dd, 3), "cagr": round(cagr, 4),
-            "pos_years": f"{sum(v>0 for v in per_year.values())}/{len(per_year)}", "per_year": per_year}
-
-
-def overlay(base_ret: pd.Series, *, target_vol, dd_soft, dd_hard, max_lev=1.0):
-    """Causal exposure scalar: vol-target (Moreira-Muir) * drawdown breaker. Uses only
-    info <= t-1 (shift(1)) on the base book's own returns/equity — cannot peek."""
-    rvol = base_ret.rolling(21).std().mul(np.sqrt(ANN)).shift(1)
-    s_vol = (target_vol / rvol).clip(upper=max_lev).fillna(0.0)
-    eq = (1 + base_ret).cumprod()
-    dd = (1 - eq / eq.cummax()).shift(1).fillna(0.0)
-    s_dd = np.where(dd <= dd_soft, 1.0, np.where(dd >= dd_hard, 0.0, (dd_hard - dd) / (dd_hard - dd_soft)))
-    return (s_vol * pd.Series(s_dd, index=base_ret.index)).clip(0.0, max_lev)
 
 
 def main() -> int:

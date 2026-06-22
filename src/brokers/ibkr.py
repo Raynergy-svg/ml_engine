@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import logging
 import random
 import time
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Mapping, Optional, TypeVar
 
 from src.brokers.base import BrokerClient
 from src.brokers.instrument import Instrument
@@ -30,18 +31,84 @@ T = TypeVar("T")
 
 # Try to import ib_async (newer name) or ib_insync (older name)
 try:
-    from ib_async import IB, Contract, Order, Forex, Future
+    from ib_async import IB, Contract, Order, Forex, Future, Stock
 except ImportError:
     try:
-        from ib_insync import IB, Contract, Order, Forex, Future
+        from ib_insync import IB, Contract, Order, Forex, Future, Stock
     except ImportError:
         IB = None
         Contract = None
         Order = None
         Forex = None
         Future = None
+        Stock = None
         logger.warning(
             "ib_async/ib_insync not installed. Install with: pip install ib-insync"
+        )
+
+
+SHIP_GATE_PATH_DEFAULT = "trained_data/backtests/SHIP_GATE.json"
+
+
+class IBKREquityGateError(RuntimeError):
+    """Raised when the equity ship-gate guard refuses to unblock equity orders.
+
+    Fail-closed: missing SHIP_GATE.json, malformed JSON, ``gate_pass`` not
+    exactly True, missing ``universe_hash``, or hash mismatch all trip the
+    guard. The guard is checked before any EQUITY contract is built so an
+    unsanctioned ticker can never reach the broker.
+    """
+
+
+def enforce_equity_ship_gate(
+    ship_gate_path: Path,
+    expected_universe_hash: str,
+) -> None:
+    """Refuse equity orders unless the ship gate clears for THIS universe.
+
+    Mirrors :func:`src.equity.rebalance._enforce_ship_gate` so the broker
+    layer and the rebalance scheduler reject identically. Public so tests
+    can drive it against a real on-disk fixture without touching IBKR.
+
+    Args:
+        ship_gate_path: Path to the SHIP_GATE.json artifact.
+        expected_universe_hash: Hash of the *current* deployed universe.
+
+    Raises:
+        IBKREquityGateError: If the file is missing, malformed, the gate
+            did not pass, or the universe hash does not match.
+    """
+    path = Path(ship_gate_path)
+    if not path.exists():
+        raise IBKREquityGateError(
+            f"equity ship gate refuses: file not found at {path}"
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise IBKREquityGateError(
+            f"equity ship gate refuses: cannot read {path}: {exc}"
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise IBKREquityGateError(
+            f"equity ship gate refuses: {path} payload is not a JSON object"
+        )
+    if payload.get("gate_pass") is not True:
+        raise IBKREquityGateError(
+            "equity ship gate refuses: gate_pass="
+            f"{payload.get('gate_pass')!r} at {path} "
+            "(must be exactly True to unblock equity orders)"
+        )
+    universe_hash = payload.get("universe_hash")
+    if not isinstance(universe_hash, str) or not universe_hash:
+        raise IBKREquityGateError(
+            f"equity ship gate refuses: universe_hash missing/blank at {path}"
+        )
+    if universe_hash != expected_universe_hash:
+        raise IBKREquityGateError(
+            "equity ship gate refuses: universe_hash mismatch "
+            f"(gate={universe_hash!r}, "
+            f"expected={expected_universe_hash!r}) at {path}"
         )
 
 
@@ -114,9 +181,64 @@ class IBKRBroker(BrokerClient):
         self._pacing_cooldowns: Dict[str, float] = {}
         self._pacing_cooldown_duration = 15.0  # seconds
 
+        # Equity ship-gate guard: must be armed via arm_equity_gate() before
+        # any EQUITY contract can be built (fail-closed by default).
+        self._equity_gate_armed: bool = False
+        self._equity_universe_hash: Optional[str] = None
+        self._equity_ship_gate_path: Optional[Path] = None
+
         logger.debug(
             f"IBKRBroker initialized: host={host}, port={port}, client_id={client_id}"
         )
+
+    def arm_equity_gate(
+        self,
+        universe_hash: str,
+        ship_gate_path: Optional[Path] = None,
+    ) -> None:
+        """Arm the equity ship-gate guard for the active universe.
+
+        Reads ``ship_gate_path`` (defaults to ``SHIP_GATE_PATH_DEFAULT``),
+        validates ``gate_pass==True`` AND ``universe_hash`` matches the
+        provided hash, then enables EQUITY contract construction. Until
+        this method succeeds, every EQUITY ``_build_contract`` call raises
+        :class:`IBKREquityGateError`.
+
+        Args:
+            universe_hash: Hash of the currently deployed equity universe.
+            ship_gate_path: Path to SHIP_GATE.json (default: canonical
+                ``trained_data/backtests/SHIP_GATE.json``).
+
+        Raises:
+            IBKREquityGateError: If the gate file is missing, malformed,
+                ``gate_pass`` is not exactly True, or the universe hash
+                does not match.
+        """
+        path = Path(
+            ship_gate_path
+            if ship_gate_path is not None
+            else SHIP_GATE_PATH_DEFAULT
+        )
+        enforce_equity_ship_gate(path, universe_hash)
+        self._equity_gate_armed = True
+        self._equity_universe_hash = universe_hash
+        self._equity_ship_gate_path = path
+        logger.info(
+            "equity ship gate armed (universe_hash=%s..., path=%s)",
+            universe_hash[:8] if universe_hash else "",
+            path,
+        )
+
+    def disarm_equity_gate(self) -> None:
+        """Re-engage the fail-closed equity guard.
+
+        After this call, EQUITY ``_build_contract`` raises until the gate
+        is re-armed. Use on shutdown or when the universe changes.
+        """
+        self._equity_gate_armed = False
+        self._equity_universe_hash = None
+        self._equity_ship_gate_path = None
+        logger.info("equity ship gate disarmed (fail-closed)")
 
     # -------------------------
     # Error Handling & Retry Helpers
@@ -478,6 +600,13 @@ class IBKRBroker(BrokerClient):
 
         For FX instruments, creates a Forex contract.
         For FUTURES instruments, creates a Future contract.
+        For EQUITY instruments, creates a SMART-routed Stock contract.
+
+        EQUITY orders additionally require the ship-gate guard to have
+        been satisfied via :meth:`arm_equity_gate` — otherwise this method
+        raises :class:`IBKREquityGateError` to fail closed BEFORE any IB
+        Contract is built, so an unsanctioned ticker never reaches the
+        broker even if the caller forgot to arm the gate.
 
         Args:
             instrument: Trading instrument definition.
@@ -487,6 +616,8 @@ class IBKRBroker(BrokerClient):
 
         Raises:
             ValueError: If instrument configuration is invalid.
+            IBKREquityGateError: If asset_class is EQUITY and the ship gate
+                has not been armed for the active universe.
         """
         if instrument.asset_class == "FX":
             if Forex is None:
@@ -508,6 +639,24 @@ class IBKRBroker(BrokerClient):
                 exchange=instrument.exchange,
                 currency=instrument.currency,
                 lastTradeDateOrContractMonth=instrument.contract_month or "",
+            )
+        elif instrument.asset_class == "EQUITY":
+            if Stock is None:
+                raise ImportError("Stock not available; ib_async not installed")
+            if not self._equity_gate_armed:
+                raise IBKREquityGateError(
+                    "equity ship gate not armed: call "
+                    "arm_equity_gate(universe_hash=..., ship_gate_path=...) "
+                    "before placing equity orders"
+                )
+            # Equities route via IBKR SMART by default; the Instrument
+            # carries the exchange override (e.g. NASDAQ, NYSE) when set,
+            # otherwise SMART picks the venue.
+            exchange = instrument.exchange or "SMART"
+            return Stock(
+                instrument.broker_symbol,
+                exchange,
+                instrument.currency,
             )
         else:
             raise ValueError(f"Unsupported asset_class: {instrument.asset_class}")
@@ -942,6 +1091,171 @@ class IBKRBroker(BrokerClient):
 
         except Exception as e:
             error_msg = f"Failed to place bracket order: {type(e).__name__}: {e}"
+            logger.error(error_msg, exc_info=True)
+            return OrderResult(
+                trade_id="0",
+                fill_price=0.0,
+                status="rejected",
+                error_message=error_msg,
+            )
+
+    def place_equity_order(
+        self,
+        instrument: Instrument,
+        direction: str,
+        quantity: int,
+    ) -> OrderResult:
+        """Place a whole-share equity market order (no bracket).
+
+        Equity orders for the single-stock harvester are plain market
+        orders for whole shares — the rebalance scheduler owns
+        target-weight maths, drift, and exit logic, so the broker layer
+        only routes BUY/SELL of integer share counts.
+
+        Fail-closed gates (in order):
+        1. Equity ship-gate must be armed (else ``IBKREquityGateError``).
+        2. Connection must be live.
+        3. ``next_valid_id`` must be set.
+        4. ``direction in {"BUY","SELL"}``.
+        5. ``quantity`` integer-valued and strictly positive.
+        6. Instrument ``asset_class == "EQUITY"``.
+
+        Args:
+            instrument: Equity instrument (asset_class="EQUITY").
+            direction: "BUY" or "SELL".
+            quantity: Whole-share count (must be a positive integer).
+
+        Returns:
+            OrderResult with trade_id, fill_price (0.0 = pending market
+            fill), and status ("PENDING" on submit, "rejected" on guard
+            failure).
+
+        Raises:
+            IBKREquityGateError: If ``arm_equity_gate`` has not been
+                called. Surfaced (not swallowed) because hitting this
+                path means the caller bypassed the guard contract.
+        """
+        if instrument.asset_class != "EQUITY":
+            error_msg = (
+                f"place_equity_order requires asset_class='EQUITY', "
+                f"got {instrument.asset_class!r} ({instrument.symbol})"
+            )
+            logger.error(error_msg)
+            return OrderResult(
+                trade_id="0",
+                fill_price=0.0,
+                status="rejected",
+                error_message=error_msg,
+            )
+
+        if self._ib is None or not self._connected:
+            error_msg = "Not connected to IBKR"
+            logger.error(f"Cannot place equity order: {error_msg}")
+            return OrderResult(
+                trade_id="0",
+                fill_price=0.0,
+                status="rejected",
+                error_message=error_msg,
+            )
+
+        if self._next_valid_id is None:
+            error_msg = "nextValidId not available from IBKR"
+            logger.error(f"Cannot place equity order: {error_msg}")
+            return OrderResult(
+                trade_id="0",
+                fill_price=0.0,
+                status="rejected",
+                error_message=error_msg,
+            )
+
+        if direction not in ("BUY", "SELL"):
+            error_msg = (
+                f"Invalid direction: {direction!r}. Must be 'BUY' or 'SELL'."
+            )
+            logger.error(error_msg)
+            return OrderResult(
+                trade_id="0",
+                fill_price=0.0,
+                status="rejected",
+                error_message=error_msg,
+            )
+
+        # Whole-share guard: quantity must be a positive integer.
+        if not isinstance(quantity, int) or isinstance(quantity, bool):
+            error_msg = (
+                f"Equity quantity must be int, got {type(quantity).__name__} "
+                f"({quantity!r}). Fractional shares not supported."
+            )
+            logger.error(error_msg)
+            return OrderResult(
+                trade_id="0",
+                fill_price=0.0,
+                status="rejected",
+                error_message=error_msg,
+            )
+        if quantity <= 0:
+            error_msg = (
+                f"Equity quantity must be > 0, got {quantity!r}"
+            )
+            logger.error(error_msg)
+            return OrderResult(
+                trade_id="0",
+                fill_price=0.0,
+                status="rejected",
+                error_message=error_msg,
+            )
+
+        try:
+            # _build_contract enforces the equity gate; if it raises here,
+            # we surface it — bypassing the gate is a programming error.
+            contract = self._build_contract(instrument)
+
+            order_id = self._next_valid_id
+            self._next_valid_id += 1
+
+            order = Order()
+            order.orderId = order_id
+            order.clientId = self.client_id
+            order.action = direction
+            order.orderType = "MKT"
+            order.totalQuantity = quantity
+            order.transmit = True
+
+            logger.info(
+                "Submitting equity order: %s %d %s (order_id=%d)",
+                direction, quantity, instrument.symbol, order_id,
+            )
+
+            try:
+                self._ib.placeOrder(contract, order)
+                return OrderResult(
+                    trade_id=str(order_id),
+                    fill_price=0.0,
+                    status="PENDING",
+                )
+            except Exception as order_error:
+                error_msg = str(order_error)
+                if any(
+                    str(code) in error_msg for code in [201, 202]
+                ):
+                    logger.warning(
+                        "Equity order rejected for %s: %s",
+                        instrument.symbol, error_msg,
+                    )
+                    return OrderResult(
+                        trade_id="0",
+                        fill_price=0.0,
+                        status="rejected",
+                        error_message=error_msg,
+                    )
+                raise
+
+        except IBKREquityGateError:
+            raise
+        except Exception as e:
+            error_msg = (
+                f"Failed to place equity order: {type(e).__name__}: {e}"
+            )
             logger.error(error_msg, exc_info=True)
             return OrderResult(
                 trade_id="0",

@@ -9,14 +9,14 @@ from dataclasses import dataclass
 from typing import Optional, Literal
 
 
-AssetClass = Literal["FX", "FUTURES"]
+AssetClass = Literal["FX", "FUTURES", "EQUITY"]
 
 
 @dataclass(frozen=True)
 class Instrument:
     """Trading instrument definition.
 
-    Supports both FX and FUTURES asset classes with appropriate fields.
+    Supports FX, FUTURES, and EQUITY asset classes with appropriate fields.
 
     Attributes:
         symbol: Display symbol (e.g., "EUR_USD", "ES").
@@ -55,7 +55,7 @@ class Instrument:
             raise ValueError("symbol cannot be empty")
         if not self.broker_symbol:
             raise ValueError("broker_symbol cannot be empty")
-        if self.asset_class not in ("FX", "FUTURES"):
+        if self.asset_class not in ("FX", "FUTURES", "EQUITY"):
             raise ValueError(f"Invalid asset_class: {self.asset_class}")
         if self.price_precision < 0:
             raise ValueError("price_precision cannot be negative")
@@ -77,6 +77,12 @@ class Instrument:
                 raise ValueError(
                     f"FX pip_value must be positive, got {self.pip_value}"
                 )
+        elif self.asset_class == "EQUITY":
+            # EQUITY instruments are whole-share US listings routed via SMART;
+            # no FX pip_value, no FUTURES tick triple needed. Their symbol IS
+            # the trading ticker (e.g. "AAPL"); the broker_symbol mirrors it
+            # so existing pipelines that key off broker_symbol still work.
+            pass
         elif self.asset_class == "FUTURES":
             # FUTURES instruments should have tick_size, tick_value, multiplier
             if self.tick_size is None:
@@ -155,6 +161,43 @@ class Instrument:
             tick_value=None,
             multiplier=None,
             pip_value=pip_value,
+            price_precision=price_precision,
+            margin_requirement=margin_requirement,
+            exchange=exchange,
+            currency=currency,
+        )
+
+    @classmethod
+    def equity(
+        cls,
+        symbol: str,
+        broker_symbol: Optional[str] = None,
+        price_precision: int = 2,
+        margin_requirement: float = 100.0,
+        exchange: str = "SMART",
+        currency: str = "USD",
+    ) -> Instrument:
+        """Factory method for creating EQUITY (single-stock) instruments.
+
+        Args:
+            symbol: Display + trading ticker (e.g., "AAPL").
+            broker_symbol: Broker-specific symbol (defaults to ``symbol``).
+            price_precision: Decimal places (default 2 for US equities).
+            margin_requirement: Reg-T cash default = 100% (no leverage).
+            exchange: IBKR routing exchange (default "SMART").
+            currency: Account currency (default "USD").
+
+        Returns:
+            Instrument with asset_class="EQUITY".
+        """
+        return cls(
+            symbol=symbol,
+            broker_symbol=broker_symbol if broker_symbol else symbol,
+            asset_class="EQUITY",
+            tick_size=None,
+            tick_value=None,
+            multiplier=None,
+            pip_value=None,
             price_precision=price_precision,
             margin_requirement=margin_requirement,
             exchange=exchange,
