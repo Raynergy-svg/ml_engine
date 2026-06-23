@@ -29,6 +29,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | any status claim, "wired", "fixed", "verified", a subagent's diagnosis | **honesty.md** + `.claude/verifier.md` (verify from disk; separate agent) |
 | "this rule/gate is in place", a context file that only *instructs* behavior | **L-005** advisory ≠ enforced — back it with a hook or disk-reading code, or it's compliance-gated |
 | shipping a "hardened" gate, swapping one matcher for another (regex→AST), "this closes the evasion surface" | **L-006** a stronger matcher ≠ un-gameable — fail-closed + re-verify with the separate agent |
+| a loop/automation decision driven by a self-reported number (open_questions, "facts done", "verified") | **L-007** derive signals from observable artifacts + re-check latest vs live (tamper→HALT) |
 
 ---
 
@@ -113,3 +114,17 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Scope: every deterministic gate / tripwire in the loop (verify_gate.py, risk_monitor.sh, loop_gate.py).
 - Source: 2026-06-23 round-2 verifier GATE FAIL — the AST AugAssign/tuple miss surfaced while
   "closing" the regex gap; round-3 PASS only after fail-closing the unreducible forms.
+
+## L-007 — stopping signals must be derived from reality, not self-reported   [ACTIVE]
+- Trigger: a loop/automation gate decides stop/continue from a free-form number a worker types into
+  a state file (open_questions, "facts done", "verified") — anything self-reported gating the loop.
+- Root cause: a self-reported signal can be set to whatever keeps the loop alive or declares "done";
+  the gate is only as honest as the worker. A liar in state.json defeats the whole stopping logic.
+- Rule: DERIVE the signals from observable artifacts — count a tracked list (questions.json), diff
+  real test counts + verifier verdict, diff LESSONS.md lesson count — and RE-CHECK the latest
+  recorded cycle against LIVE reality at decide time (a fresh verify_gate run + live list count);
+  mismatch = tamper → HALT (fail-closed). Keep an absolute backstop. Document the residual limit
+  honestly (a worker can still falsify the recorded test/lesson counts; human review backstops that).
+- Scope: loop_gate.py / record_cycle.py and any future automation signal that gates behavior.
+- Source: 2026-06-23 objective-stopping-inputs increment — 59 no-mock tests incl. anti-tamper
+  (recorded PASS ≠ live FAIL → HALT) and the full record→decide pipeline; verified by separate agent.

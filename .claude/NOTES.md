@@ -117,10 +117,17 @@ Source: `.claude/state.json` read 2026-06-23.
 - **Stopping-conditions front:** STOP-CHURN now un-gameable to the self-report limit — rolling-window
   (progress = close a question OR learn a lesson) + 6-cycle absolute backstop. A separate verifier
   brute-forced 200k sequences and found no forever-CONTINUE stall. **51 no-mock tests, all green.**
-- **Honest hard limit (documented in loop_gate.py):** stopping signals are read from worker-written
-  `state.json`; a worker that deliberately falsifies open_questions/new_lessons can still evade — the
-  backstop there is human review, not this gate. Making those inputs objective (derive new_facts from
-  test deltas / verdict deltas) is the next-highest-value roadmap item; not yet done.
+- **Objective stopping inputs — DONE (2026-06-23).** Stopping signals now derive from observable
+  reality, not self-report: `open_questions` counted from tracked `.claude/loop/questions.json`;
+  `new_verified_facts`/`new_lessons` are per-cycle deltas of real test count + verify verdict +
+  LESSONS.md count, recorded by `.claude/loop/record_cycle.py` (runs the suite); loop_gate re-checks
+  the latest cycle's verdict + open-count against LIVE reality → tamper = HALT. **59 no-mock tests.**
+  Separate verifier acted as a malicious worker (faked verdict/open-count, wiped history, abused
+  blocked flag, malformed JSON) — every attempt failed closed; **no false STOP-DONE possible.**
+- **Remaining honest limit (documented in loop_gate.py + L-007):** a worker could still falsify the
+  recorded `tests_passed`/`lessons_count` integers themselves — but the live verify_gate re-run is the
+  true integrity floor, and human review backstops the counts. This is the irreducible self-report
+  edge; closing it further would need signing/attestation of record_cycle output (low priority).
 - Operating in delegated-authority mode (commit/push + /evolve auto-approved with proof; immutable
   escalations route to human). See the "Operating mode" section above.
 

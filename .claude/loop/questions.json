@@ -1,0 +1,4 @@
+{
+  "_doc": "Tracked open load-bearing questions. loop_gate.py derives open_questions from the count of status=='open' here (not a self-reported number). Close a question by setting status='closed' + closed_cycle. Adding/closing is auditable; the count drives STOP-CHURN and STOP-DONE.",
+  "questions": []
+}

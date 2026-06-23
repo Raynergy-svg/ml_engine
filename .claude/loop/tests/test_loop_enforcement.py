@@ -28,6 +28,7 @@ TOOLS = CLAUDE_DIR / "tools"
 
 VERIFY = LOOP_DIR / "verify_gate.py"
 LOOPG = LOOP_DIR / "loop_gate.py"
+RECORD = LOOP_DIR / "record_cycle.py"
 RISK = TOOLS / "risk_monitor.sh"
 STOP = TOOLS / "stop_gate.sh"
 
@@ -63,7 +64,7 @@ CONTEXT_FILES = [
 
 
 def build_repo(root: Path, *, env="practice", gap="0.10", halt=True, state=True,
-               register_stop=True, extra_files: dict | None = None) -> Path:
+               register_stop=True, open_qs=0, extra_files: dict | None = None) -> Path:
     """Create a minimal synthetic repo fixture; copy the REAL gate scripts in so paths resolve."""
     (root / "src/scanner").mkdir(parents=True, exist_ok=True)
     (root / "scripts").mkdir(parents=True, exist_ok=True)
@@ -85,8 +86,10 @@ def build_repo(root: Path, *, env="practice", gap="0.10", halt=True, state=True,
         if src.exists():
             (root / ".claude/tools" / src.name).write_text(src.read_text())
             os.chmod(root / ".claude/tools" / src.name, 0o755)
-    for src in (VERIFY, LOOPG):
+    for src in (VERIFY, LOOPG, RECORD):
         (root / ".claude/loop" / src.name).write_text(src.read_text())
+    (root / ".claude/loop/questions.json").write_text(json.dumps(
+        {"questions": [{"id": f"q{i}", "status": "open"} for i in range(open_qs)]}))
     if register_stop:
         (root / ".claude/settings.json").write_text(json.dumps({"hooks": {"Stop": [
             {"hooks": [{"type": "command", "command": str(root / ".claude/tools/stop_gate.sh")}]}]}}))
@@ -222,97 +225,111 @@ def test_verify_gate(tmp: Path):
 
 
 def test_loop_gate(tmp: Path):
-    print("\n[loop_gate.py]  (risk injected so the stop-logic is isolated)")
+    print("\n[loop_gate.py]  (objective signals: open_questions from questions.json; facts/lessons from deltas)")
     repo = build_repo(tmp / "lg")
+    qpath = tmp / "lg_questions.json"
+    spath = tmp / "lg_state.json"
 
-    def decide(state: dict, risk="green") -> dict:
-        sp = tmp / "lg_state.json"
-        sp.write_text(json.dumps(state))
-        r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(sp),
-                 "--risk-status", risk])
+    def cyc(n, tp, vp=True, lc=0, oqa=0):
+        return {"n": n, "tests_passed": tp, "verify_gate_pass": vp, "lessons_count": lc, "open_questions_after": oqa}
+
+    def decide(cycles, open_qs, *, verify="pass", risk="green", blocked=False):
+        qpath.write_text(json.dumps({"questions": [{"id": f"q{i}", "status": "open"} for i in range(open_qs)]}))
+        st = {"cycles": cycles}
+        if blocked:
+            st["blocked_on_irreversible"] = True
+        spath.write_text(json.dumps(st))
+        r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),
+                 "--questions", str(qpath), "--verify-status", verify, "--risk-status", risk])
         return json.loads(r.stdout), r.returncode
 
-    # CONTINUE: progress being made
-    out, rc = decide({"open_questions": 2, "cycles": [
-        {"n": 1, "new_lessons": 0, "new_verified_facts": 3, "open_questions_after": 2, "verdict": "FAIL"}]})
-    check("CONTINUE when new info found", out["decision"] == "CONTINUE", out)
+    # CONTINUE: single cycle, an open question remains
+    out, rc = decide([cyc(1, 10, lc=2, oqa=1)], open_qs=1)
+    check("CONTINUE single cycle with an open question", out["decision"] == "CONTINUE", out)
 
-    # STOP-DONE: PASS + no new info + zero open questions
-    out, rc = decide({"open_questions": 0, "cycles": [
-        {"n": 1, "new_lessons": 1, "new_verified_facts": 2, "open_questions_after": 1, "verdict": "FAIL"},
-        {"n": 2, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 0, "verdict": "PASS"}]})
-    check("STOP-DONE on verified completion", out["decision"] == "STOP-DONE", out)
+    # STOP-DONE: LIVE verify PASS + zero open (from list) + no new facts/lessons this cycle
+    out, rc = decide([cyc(1, 10, lc=2, oqa=1), cyc(2, 10, lc=2, oqa=0)], open_qs=0)
+    check("STOP-DONE: live PASS, 0 open (list), no new info", out["decision"] == "STOP-DONE", out)
 
-    # STOP-CHURN: anti-stall — 2 empty cycles, open questions not decreasing
-    out, rc = decide({"open_questions": 3, "cycles": [
-        {"n": 1, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"},
-        {"n": 2, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"}]})
-    check("STOP-CHURN on synthetic stall", out["decision"] == "STOP-CHURN", out)
+    # masked stall: tests_passed climbs every cycle but open qs flat & no lesson -> CHURN (facts don't save)
+    out, rc = decide([cyc(1, 10, lc=2, oqa=3), cyc(2, 11, lc=2, oqa=3), cyc(3, 12, lc=2, oqa=3)], open_qs=3)
+    check("STOP-CHURN on masked stall (facts climb, flat open qs, no lesson)", out["decision"] == "STOP-CHURN", out)
     check("STOP-CHURN reason mentions stall", "stall" in out["reason"].lower())
 
-    # churn must NOT trigger if open questions ARE decreasing (real progress despite no lesson)
-    out, rc = decide({"open_questions": 1, "cycles": [
-        {"n": 1, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"},
-        {"n": 2, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 1, "verdict": "FAIL"}]})
-    check("NOT churn when open questions shrink", out["decision"] == "CONTINUE", out)
+    # NOT churn when a question closes (open qs decrease)
+    out, rc = decide([cyc(1, 10, lc=2, oqa=3), cyc(2, 10, lc=2, oqa=1)], open_qs=1)
+    check("NOT churn when a question closes", out["decision"] == "CONTINUE", out)
 
-    # fresh anti-stall cases: 3-cycle deep stall, and open-questions GROWING while empty (regression)
-    out, rc = decide({"open_questions": 4, "cycles": [
-        {"n": 1, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 4, "verdict": "FAIL"},
-        {"n": 2, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 4, "verdict": "FAIL"},
-        {"n": 3, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 4, "verdict": "FAIL"}]})
+    # CONTINUE when a lesson is learned (lessons_count delta), flat open qs
+    out, rc = decide([cyc(1, 10, lc=2, oqa=3), cyc(2, 10, lc=3, oqa=3)], open_qs=3)
+    check("CONTINUE when a lesson learned (lessons_count delta)", out["decision"] == "CONTINUE", out)
+
+    # 3-cycle deep stall -> CHURN
+    out, rc = decide([cyc(1, 10, lc=2, oqa=4), cyc(2, 10, lc=2, oqa=4), cyc(3, 10, lc=2, oqa=4)], open_qs=4)
     check("STOP-CHURN on 3-cycle deep stall", out["decision"] == "STOP-CHURN", out)
 
-    out, rc = decide({"open_questions": 5, "cycles": [
-        {"n": 1, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"},
-        {"n": 2, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 5, "verdict": "FAIL"}]})
-    check("STOP-CHURN when open questions GROW while empty", out["decision"] == "STOP-CHURN", out)
+    # open questions GROW while empty -> CHURN
+    out, rc = decide([cyc(1, 10, lc=2, oqa=3), cyc(2, 10, lc=2, oqa=5)], open_qs=5)
+    check("STOP-CHURN when open questions grow", out["decision"] == "STOP-CHURN", out)
 
-    # masked stall: one trivial self-reported fact per cycle must NOT dodge churn (new contract)
-    out, rc = decide({"open_questions": 3, "cycles": [
-        {"n": 1, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"},
-        {"n": 2, "new_lessons": 0, "new_verified_facts": 1, "open_questions_after": 3, "verdict": "FAIL"},
-        {"n": 3, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"}]})
-    check("STOP-CHURN on masked stall (1 trivial fact/cycle, flat open qs)", out["decision"] == "STOP-CHURN", out)
-
-    # learning a lesson IS progress -> escapes churn even with flat open questions
-    out, rc = decide({"open_questions": 3, "cycles": [
-        {"n": 1, "new_lessons": 1, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"},
-        {"n": 2, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"}]})
-    check("CONTINUE when a lesson was learned (progress despite flat open qs)", out["decision"] == "CONTINUE", out)
-
-    # absolute backstop: a fabricated lesson every 3rd cycle can't keep the loop alive forever
-    periodic = [{"n": i + 1, "new_lessons": 1 if i % 3 == 0 else 0, "new_verified_facts": 0,
-                 "open_questions_after": 4, "verdict": "FAIL"} for i in range(7)]
-    out, rc = decide({"open_questions": 4, "cycles": periodic})
+    # backstop: a lesson every 3rd cycle can't keep it alive if no question net-closes over 6 cycles
+    periodic = [cyc(i + 1, 10, lc=2 + (i // 3), oqa=4) for i in range(7)]
+    out, rc = decide(periodic, open_qs=4)
     check("STOP-CHURN backstop: no question closed in 6+ cycles despite periodic lessons",
           out["decision"] == "STOP-CHURN", out)
 
-    # backstop stays quiet when open questions net-decrease over the long window
-    progressing = [{"n": i + 1, "new_lessons": 0, "new_verified_facts": 0,
-                    "open_questions_after": 6 - i, "verdict": "FAIL"} for i in range(6)]
-    out, rc = decide({"open_questions": 1, "cycles": progressing})
-    check("backstop quiet when open questions net-decrease over long window",
-          out["decision"] == "CONTINUE", out)
+    # backstop quiet when open questions net-decrease over the long window
+    progressing = [cyc(i + 1, 10, lc=2, oqa=6 - i) for i in range(6)]
+    out, rc = decide(progressing, open_qs=1)
+    check("backstop quiet when open questions net-decrease", out["decision"] == "CONTINUE", out)
 
-    # HALT: risk alarm overrides everything
-    out, rc = decide({"open_questions": 0, "cycles": [
-        {"n": 1, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 0, "verdict": "PASS"}]},
-        risk="alarm")
-    check("HALT-SAFETY on risk alarm (exit 2)", out["decision"] == "HALT-SAFETY" and rc == 2, (out, rc))
+    # ANTI-TAMPER: hand-edited verdict (state says PASS, live verify FAIL) -> HALT
+    out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=0, verify="fail")
+    check("HALT on tampered verdict (recorded PASS != live FAIL)", out["decision"] == "HALT-SAFETY" and rc == 2, out)
+    check("  tamper reason names mismatch", ("tamper" in out["reason"].lower() or "stale" in out["reason"].lower()), out)
+
+    # ANTI-TAMPER: state claims 0 open but questions.json has 2 open -> HALT
+    out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=2)
+    check("HALT on tampered open-count (recorded 0 != live 2)", out["decision"] == "HALT-SAFETY" and rc == 2, out)
+
+    # HALT: risk alarm (latest cycle consistent so tamper passes first)
+    out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=0, risk="alarm")
+    check("HALT-SAFETY on risk alarm", out["decision"] == "HALT-SAFETY" and rc == 2, out)
 
     # STOP-BLOCKED: irreversible fork
-    out, rc = decide({"open_questions": 1, "blocked_on_irreversible": True, "cycles": [
-        {"n": 1, "new_lessons": 0, "new_verified_facts": 1, "open_questions_after": 1, "verdict": "FAIL"}]})
+    out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=1)], open_qs=1, blocked=True)
     check("STOP-BLOCKED on irreversible fork", out["decision"] == "STOP-BLOCKED", out)
 
-    # fail-closed: unreadable loop state -> HALT
-    r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(tmp / "nope.json"),
-             "--risk-status", "green"])
-    # missing file -> treated as empty state -> CONTINUE (no cycles). Corrupt file -> HALT:
-    bad = tmp / "corrupt.json"; bad.write_text("{not json")
-    r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(bad), "--risk-status", "green"])
-    check("HALT on corrupt loop state (fail-closed, exit 2)", r.returncode == 2, r.stdout)
+    # fail-closed: corrupt state -> HALT
+    bad = tmp / "corrupt.json"
+    bad.write_text("{not json")
+    r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(bad),
+             "--questions", str(qpath), "--verify-status", "pass", "--risk-status", "green"])
+    check("HALT on corrupt loop state (fail-closed)", r.returncode == 2, r.stdout)
+
+    # fail-closed: missing questions.json -> HALT
+    r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),
+             "--questions", str(tmp / "no_questions.json"), "--verify-status", "pass", "--risk-status", "green"])
+    check("HALT on missing questions.json (fail-closed)", r.returncode == 2, r.stdout)
+
+
+def test_record_cycle(tmp: Path):
+    print("\n[record_cycle.py]  (objective measurement -> state.json -> loop_gate)")
+    repo = build_repo(tmp / "rc", open_qs=0)
+    (repo / ".claude/LESSONS.md").write_text("# Lessons\n## L-001 — a\nx\n## L-002 — b\ny\n")
+    spath = repo / ".claude/loop/state.json"
+    r = run([sys.executable, str(RECORD), "--repo", str(repo), "--summary", "test cycle",
+             "--test-cmd", 'echo "7 passed, 0 failed"', "--verify-status", "pass", "--state", str(spath)])
+    rec = json.loads(r.stdout)
+    check("record_cycle measured tests_passed=7 (parsed from run output)", rec["tests_passed"] == 7, rec)
+    check("record_cycle measured verify_gate_pass=True", rec["verify_gate_pass"] is True, rec)
+    check("record_cycle measured lessons_count=2 from LESSONS.md", rec["lessons_count"] == 2, rec)
+    check("record_cycle measured open_questions_after=0 from questions.json", rec["open_questions_after"] == 0, rec)
+    # the recorded (objective) cycle then drives loop_gate to STOP-DONE — full pipeline, no self-report
+    out = json.loads(run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),
+          "--questions", str(repo / ".claude/loop/questions.json"), "--verify-status", "pass",
+          "--risk-status", "green"]).stdout)
+    check("recorded cycle -> loop_gate STOP-DONE (objective pipeline end-to-end)", out["decision"] == "STOP-DONE", out)
 
 
 def test_stop_gate(tmp: Path):
@@ -338,6 +355,7 @@ def main() -> int:
         test_risk_monitor(tmp)
         test_verify_gate(tmp)
         test_loop_gate(tmp)
+        test_record_cycle(tmp)
         test_stop_gate(tmp)
     print(f"\n==== {_passed} passed, {_failed} failed ====")
     return 1 if _failed else 0

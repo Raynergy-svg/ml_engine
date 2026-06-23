@@ -57,9 +57,13 @@ which is which:
 
 ## ⑥ Objective stopping conditions (measurable — not vibes)
 
-These are computed from disk by **`.claude/loop/loop_gate.py`** reading `.claude/loop/state.json`
-(one entry per cycle: `new_lessons`, `new_verified_facts`, `open_questions_after`, `verdict`). The
-decision is mechanical, not a judgment call. Evaluate in order; first match wins.
+These are computed by **`.claude/loop/loop_gate.py`** from **observable reality**, not self-report:
+`open_questions` is counted from the tracked list `.claude/loop/questions.json`; `new_verified_facts`
+and `new_lessons` are per-cycle deltas of the real test count + verifier verdict + LESSONS.md lesson
+count, recorded by **`.claude/loop/record_cycle.py`** (which runs the suite — don't hand-edit cycles);
+and the latest cycle's verdict + open-count are re-checked against **live** reality at decide time
+(mismatch = tamper → HALT). So a worker that lies in `state.json` cannot keep the loop alive or
+declare STOP-DONE falsely. The decision is mechanical, not a judgment call. First match wins.
 
 | Signal | Objective test | Action |
 |---|---|---|
