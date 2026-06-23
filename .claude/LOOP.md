@@ -66,7 +66,7 @@ decision is mechanical, not a judgment call. Evaluate in order; first match wins
 | **HALT-SAFETY** | `risk_monitor.sh` exits non-zero (ALARM), OR any Hard NO is at risk | **STOP immediately.** Surface the alarm. Never "fix forward" past a safety tripwire. |
 | **STOP-BLOCKED** | The only remaining step is an irreversible/destructive fork (unhalt, dry_run→live, force-push, delete data you didn't create, spend real money) | **STOP.** Present the decision to the operator with the cost-of-wrong. Do not self-authorize. |
 | **STOP-DONE** | Definition of Done (INTENT) all-green **AND** `/verify-task` returned PASS (all load-bearing claims CONFIRMED) **AND** this cycle produced **no new lesson and no new verified information** | **STOP.** Report with evidence sources. Task complete. |
-| **STOP-CHURN** (anti-stall) | **2 consecutive cycles** produced no new verified information, no new lesson, and no reduction in open load-bearing questions | **STOP and escalate.** You are looping without progress — hand the blocker to the operator rather than burning cycles. |
+| **STOP-CHURN** (anti-stall) | Over the **last ≤3 cycles**, open load-bearing questions did **not** net-decrease **and** no lesson was learned. Progress = close a question OR learn a lesson; self-reported "facts" that do neither don't count (closes the masked-stall evasion). | **STOP and escalate.** You are looping without progress — hand the blocker to the operator rather than burning cycles. |
 | **CONTINUE** | A load-bearing question remains, a cheap experiment can answer it, risk monitor is GREEN, and the last cycle *did* yield new verified info/lessons | Run another cycle. |
 
 Two failure modes this kills:

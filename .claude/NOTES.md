@@ -109,6 +109,21 @@ Source: `.claude/state.json` read 2026-06-23.
 - Real-repo `verify_gate.py` PASS (20 checks); hot path (`execution.py`/`scripts/`/`main.py`) untouched.
 - Prior-cycle status (enforcement layer build) is folded into LESSONS L-005 + the cycle history.
 
+## Roadmap progress (north star — `INTENT.md` standing roadmap)
+
+- **Committed + pushed:** enforcement layer at `1062064` → `origin/ralph/equity-harvester-bot`
+  (settings.json is gitignored/machine-local → `.claude/loop/INSTALL.md` documents the wiring).
+- **Verifier front:** AST-verified, fail-closed, 3 independent rounds → PASS. L-006 captures the lesson.
+- **Stopping-conditions front:** STOP-CHURN now un-gameable to the self-report limit — rolling-window
+  (progress = close a question OR learn a lesson) + 6-cycle absolute backstop. A separate verifier
+  brute-forced 200k sequences and found no forever-CONTINUE stall. **51 no-mock tests, all green.**
+- **Honest hard limit (documented in loop_gate.py):** stopping signals are read from worker-written
+  `state.json`; a worker that deliberately falsifies open_questions/new_lessons can still evade — the
+  backstop there is human review, not this gate. Making those inputs objective (derive new_facts from
+  test deltas / verdict deltas) is the next-highest-value roadmap item; not yet done.
+- Operating in delegated-authority mode (commit/push + /evolve auto-approved with proof; immutable
+  escalations route to human). See the "Operating mode" section above.
+
 - 3 cycles recorded in `.claude/loop/state.json`. `loop_gate.py` computes **STOP-DONE** from disk
   (risk GREEN, last cycle no new info, 0 open questions). Build→verify→fix ran twice.
 - **What is now ENFORCED (deterministic, not compliance):** Stop hook `stop_gate.sh` runs

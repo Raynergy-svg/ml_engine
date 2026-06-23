@@ -268,6 +268,33 @@ def test_loop_gate(tmp: Path):
         {"n": 2, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 5, "verdict": "FAIL"}]})
     check("STOP-CHURN when open questions GROW while empty", out["decision"] == "STOP-CHURN", out)
 
+    # masked stall: one trivial self-reported fact per cycle must NOT dodge churn (new contract)
+    out, rc = decide({"open_questions": 3, "cycles": [
+        {"n": 1, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"},
+        {"n": 2, "new_lessons": 0, "new_verified_facts": 1, "open_questions_after": 3, "verdict": "FAIL"},
+        {"n": 3, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"}]})
+    check("STOP-CHURN on masked stall (1 trivial fact/cycle, flat open qs)", out["decision"] == "STOP-CHURN", out)
+
+    # learning a lesson IS progress -> escapes churn even with flat open questions
+    out, rc = decide({"open_questions": 3, "cycles": [
+        {"n": 1, "new_lessons": 1, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"},
+        {"n": 2, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 3, "verdict": "FAIL"}]})
+    check("CONTINUE when a lesson was learned (progress despite flat open qs)", out["decision"] == "CONTINUE", out)
+
+    # absolute backstop: a fabricated lesson every 3rd cycle can't keep the loop alive forever
+    periodic = [{"n": i + 1, "new_lessons": 1 if i % 3 == 0 else 0, "new_verified_facts": 0,
+                 "open_questions_after": 4, "verdict": "FAIL"} for i in range(7)]
+    out, rc = decide({"open_questions": 4, "cycles": periodic})
+    check("STOP-CHURN backstop: no question closed in 6+ cycles despite periodic lessons",
+          out["decision"] == "STOP-CHURN", out)
+
+    # backstop stays quiet when open questions net-decrease over the long window
+    progressing = [{"n": i + 1, "new_lessons": 0, "new_verified_facts": 0,
+                    "open_questions_after": 6 - i, "verdict": "FAIL"} for i in range(6)]
+    out, rc = decide({"open_questions": 1, "cycles": progressing})
+    check("backstop quiet when open questions net-decrease over long window",
+          out["decision"] == "CONTINUE", out)
+
     # HALT: risk alarm overrides everything
     out, rc = decide({"open_questions": 0, "cycles": [
         {"n": 1, "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 0, "verdict": "PASS"}]},

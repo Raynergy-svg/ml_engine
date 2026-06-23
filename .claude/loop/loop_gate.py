@@ -23,8 +23,11 @@ Decision precedence (first match wins), each from a concrete test:
   STOP-BLOCKED : blocked_on_irreversible == true                          -> exit 0
   STOP-DONE    : last verdict PASS AND last cycle produced no new info     -> exit 0
                  (new_lessons==0 and new_verified_facts==0) AND open_questions==0
-  STOP-CHURN   : >=2 cycles AND last 2 produced no new info AND open_qs    -> exit 0
-                 not decreasing  (anti-stall: escalate, don't loop)
+  STOP-CHURN   : >=2 cycles AND over the last min(3) cycles open questions  -> exit 0
+                 did NOT net-decrease AND no lesson was learned (anti-stall:
+                 progress = close a question OR learn a lesson; self-reported
+                 "facts" that do neither don't count — closes the masked-stall
+                 evasion of the old 2-empty-cycle rule). Escalate, don't loop.
   CONTINUE     : otherwise                                                 -> exit 0
 Exit 2 only on HALT (so a Stop/PreTool hook can block). Decision is always in stdout JSON.
 """
@@ -71,16 +74,32 @@ def decide(state: dict, risk: str) -> tuple[str, str]:
         return "STOP-DONE", "verifier PASS, no new info this cycle, zero open questions"
 
     if len(cycles) >= 2:
-        prev = cycles[-2]
-        prev_new = int(prev.get("new_lessons", 0)) + int(prev.get("new_verified_facts", 0))
-        oq_last = int(last.get("open_questions_after", open_q))
-        oq_prev = int(prev.get("open_questions_after", open_q))
-        if last_new == 0 and prev_new == 0 and oq_last >= oq_prev:
+        # Rolling window: progress over the window must CLOSE an open question or LEARN a lesson.
+        # Self-reported new_verified_facts that do neither are not progress — this closes the
+        # masked-stall evasion where one trivial fact per cycle dodged the old 2-empty-cycle rule.
+        window = cycles[-3:] if len(cycles) >= 3 else cycles[-2:]
+        oq_start = int(window[0].get("open_questions_after", open_q))
+        oq_end = int(window[-1].get("open_questions_after", open_q))
+        w_lessons = sum(int(c.get("new_lessons", 0)) for c in window)
+        if oq_end >= oq_start and w_lessons == 0:
             return ("STOP-CHURN",
-                    f"2 consecutive cycles with no new verified info and open questions not "
-                    f"decreasing ({oq_prev}->{oq_last}) — stalled; escalate to operator")
+                    f"no net progress over last {len(window)} cycles (open questions "
+                    f"{oq_start}->{oq_end} not decreasing, no lesson learned) — stalled; escalate")
 
-    return "CONTINUE", "progress is being made (new info this cycle or open questions shrinking)"
+    # Absolute backstop: a lesson buys a short reprieve, but if NOT A SINGLE open question has
+    # net-closed over a long window (>=6 cycles), you are stalled regardless of lesson cadence.
+    # (Closes the "one fabricated lesson every 3rd cycle keeps it alive forever" residual.)
+    if len(cycles) >= 6:
+        longw = cycles[-6:]
+        if int(longw[-1].get("open_questions_after", open_q)) >= int(longw[0].get("open_questions_after", open_q)):
+            return ("STOP-CHURN",
+                    "no open question net-closed in the last 6 cycles — stalled regardless of "
+                    "lesson cadence; escalate to operator")
+
+    # NOTE (honest limit): these signals are read from worker-written state.json. They catch
+    # accidental/lazy stalls; a worker that deliberately falsifies open_questions/new_lessons can
+    # still evade — the backstop there is the human review, not this gate. Documented, not hidden.
+    return "CONTINUE", "progress: an open question closed or a lesson learned"
 
 
 def main() -> int:

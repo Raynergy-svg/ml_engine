@@ -1,13 +1,15 @@
 {
-  "task": "Standing-roadmap cycle: harden verifier (AST), enforce lessons-fire, widen risk monitor",
+  "task": "Standing-roadmap: harden verifier (AST), enforce lessons-fire, widen risk monitor, un-gameable stopping conditions",
   "open_questions": 0,
   "blocked_on_irreversible": false,
   "cycles": [
-    {"n": 1, "summary": "Built stop_gate Stop hook + verify_gate.py + loop_gate.py + 29 no-mock tests. Real-repo PASS; Stop hook blocks synthetic ALARM.", "new_lessons": 1, "new_verified_facts": 5, "open_questions_after": 1, "verdict": "PASS"},
-    {"n": 2, "summary": "Independent Code Reviewer PASS (8/8). Fixed 2 findings (stop_gate-registration check, content-scan live-flip). +3 tests.", "new_lessons": 0, "new_verified_facts": 3, "open_questions_after": 1, "verdict": "PASS"},
+    {"n": 1, "summary": "Built Stop hook + verify_gate.py + loop_gate.py + 29 tests. Real PASS; Stop hook blocks ALARM.", "new_lessons": 1, "new_verified_facts": 5, "open_questions_after": 1, "verdict": "PASS"},
+    {"n": 2, "summary": "Verifier PASS (8/8). Fixed 2 findings (stop_gate-registration, content-scan live-flip). +3 tests.", "new_lessons": 0, "new_verified_facts": 3, "open_questions_after": 1, "verdict": "PASS"},
     {"n": 3, "summary": "Re-verify: 32/32 green, real PASS. No new findings.", "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 0, "verdict": "PASS"},
-    {"n": 4, "summary": "Roadmap hardening: AST ship-gate + halt-guard, lessons_have_triggers, risk_monitor Hard-NO #4. Independent verifier round-2 found REAL residual gap: AST missed AugAssign (+=) and tuple-unpack targets (>0.10 slipped as PASS) + latent inverted-else halt guard.", "new_lessons": 1, "new_verified_facts": 4, "open_questions_after": 1, "verdict": "FAIL"},
-    {"n": 5, "summary": "Fixed round-2 findings: AugAssign + tuple + walrus targets fail-closed; halt-guard requires Return in THEN-body; documented dynamic setattr/globals as out-of-scope. 47 no-mock tests green; real PASS. Verifier round-3 GATE PASS, HIGH confidence, no residual gap after adversarial effort (invented evasions all caught).", "new_lessons": 0, "new_verified_facts": 4, "open_questions_after": 1, "verdict": "PASS"},
-    {"n": 6, "summary": "Confirm: 47/47 tests, real-repo verify_gate PASS (20 checks), risk_monitor GREEN, loop_gate runs. No new findings.", "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 0, "verdict": "PASS"}
+    {"n": 4, "summary": "Roadmap hardening: AST ship-gate+halt-guard, lessons_have_triggers, risk_monitor Hard-NO #4. Verifier round-2 found REAL gap: AST missed AugAssign + tuple targets + inverted-else halt guard.", "new_lessons": 1, "new_verified_facts": 4, "open_questions_after": 1, "verdict": "FAIL"},
+    {"n": 5, "summary": "Fixed round-2 findings (AugAssign/tuple/walrus fail-closed; halt Return in THEN-body; dynamic forms documented out-of-scope). 47 tests. Verifier round-3 PASS, no residual gap.", "new_lessons": 0, "new_verified_facts": 4, "open_questions_after": 1, "verdict": "PASS"},
+    {"n": 6, "summary": "Confirm: 47/47 green, real PASS, STOP-DONE. Committed+pushed enforcement layer (1062064).", "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 0, "verdict": "PASS"},
+    {"n": 7, "summary": "Un-gameable stopping: STOP-CHURN rolling-window (progress = close a question OR learn a lesson; closes masked-stall) + absolute 6-cycle backstop (closes lesson-cadence evasion the verifier flagged). 51 tests. Verifier brute-forced 200k sequences: no forever-CONTINUE stall exists within the self-report limit.", "new_lessons": 0, "new_verified_facts": 3, "open_questions_after": 1, "verdict": "PASS"},
+    {"n": 8, "summary": "Confirm: 51/51 green, real-repo loop_gate STOP-DONE, verify_gate PASS (20), risk_monitor GREEN. No new findings.", "new_lessons": 0, "new_verified_facts": 0, "open_questions_after": 0, "verdict": "PASS"}
   ]
 }
