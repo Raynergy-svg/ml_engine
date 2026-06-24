@@ -883,17 +883,31 @@ class TradesScreen(Container):
 
         def _on_modal_result(confirmed: bool) -> None:
             if confirmed:
-                self._do_close_trade(trade.trade_id)
+                # The override flag is set True ONLY here. The sole trigger is the
+                # operator clicking Confirm in the halt-aware TradeCloseModal — the
+                # EXPLICIT, human-confirmed close the backend close_trade guard lets
+                # through while halted. No autonomous/programmatic path reaches this
+                # callback, so no auto-close can ever carry the override.
+                self._do_close_trade(trade.trade_id, operator_override=True)
 
         self.app.push_screen(TradeCloseModal(trade, halted=self._halted), _on_modal_result)
 
     @work
-    async def _do_close_trade(self, trade_id: str) -> None:
-        """Async worker: call ExecutionManager.close_trade and show result toast."""
+    async def _do_close_trade(self, trade_id: str, operator_override: bool = False) -> None:
+        """Async worker: call ExecutionManager.close_trade and show result toast.
+
+        operator_override defaults to False — it is True ONLY when this worker is
+        reached via the operator's explicit Confirm in TradeCloseModal (see
+        _on_modal_result). It is forwarded to close_trade so the backend halt
+        guard admits the genuine operator-confirmed close while halted; any other
+        or default invocation stays subject to the guard (fail-closed).
+        """
         from src.scanner.execution import ExecutionManager
 
         em = ExecutionManager()
-        result = await em.close_trade(trade_id, reason="operator")
+        result = await em.close_trade(
+            trade_id, reason="operator", operator_override=operator_override
+        )
 
         if result.get("success"):
             pl = result.get("realized_pl", 0.0)
