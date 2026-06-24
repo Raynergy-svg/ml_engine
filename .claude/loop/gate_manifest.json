@@ -4,7 +4,7 @@
   ".claude/loop/loop_gate.py": "6945a56681e170379c3b8f0657891b76d56414181f319b0afb2bb2331ec6e4ce",
   ".claude/loop/record_cycle.py": "31d8c23e165b724098fd6c5c714d04f91093ca9ef63e21906778d6929b64b486",
   ".claude/loop/record_verdict.py": "8e9e98b5b5539356fcb043882ce45414bee8c833f370dea8eb578683c3343da8",
-  ".claude/loop/tests/test_loop_enforcement.py": "1ad1329ad31a096e96909ead15efd0b333ffee1848c168dc5de56f2c81ddaead",
+  ".claude/loop/tests/test_loop_enforcement.py": "3b51181dd823f46153c26b1975ebc03c13398afe9771f1104ddb553ca5379e38",
   ".claude/loop/verify_gate.py": "8ceaeb1744f7ae8b6b15dd50fb1e86a7b2060c6a63633c50e6be19a3d5f2114c",
   ".claude/tools/risk_monitor.sh": "a9bf436a61ffe671cb255dc23518282be94ff2e90c75ead1cee4bb5c7c84f34c",
   ".claude/tools/session_context_boot.sh": "3aeb4fcd6c12ddccda6f9b07a77ddfe8bad4d0ab2dbcb17cf793a3e44af74efe",

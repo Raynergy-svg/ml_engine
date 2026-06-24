@@ -184,13 +184,21 @@ The honest win: this turns "worker can disable the gate" into "worker can't with
 operator controls" — until the one privileged install step runs, the anchor is advisory and the
 in-repo gates + code-level guards remain primary.
 
-**INSTALLED + ACTIVE (2026-06-24).** Operator ran the privileged step. Verified from disk:
-`/Library/Application Support/ClaudeCode/{managed-settings.json (root:wheel 0644), ml_engine_gate_wrapper.py
-(root:wheel 0755)}` — both root-owned, NOT writable by the worker (`verify_managed_anchor.py` → ACTIVE,
-exit 0). Installed wrapper == committed source (identical); runs against the real repo → exit 0
-(intact+GREEN allows stop, would block on drift/ALARM); no-ops out-of-scope. The managed Stop hook now
-fires at the harness level and the worker cannot disable or re-point it. Floors #1 (disable+neuter) and
-#5 (hook-neuter) are now CLOSED-to-requires-admin **in effect**, not just prepared.
+**INSTALLED 2026-06-24, then ADVERSARIALLY RE-CHECKED — found 2 bypasses, hardened (RE-INSTALL needed).**
+Operator ran the install. Verified from disk: the two files are `root:wheel`, NOT writable by the
+worker — a worker CANNOT directly edit/remove/re-point the managed hook (proven: every write returned
+Permission denied). BUT the adversarial re-check (operator-requested) found two ways a worker could
+still neutralize it via LOCAL settings (which the worker CAN write):
+  (1) `disableAllHooks: true` in local settings disables ALL hooks incl. managed — unless managed pins
+      `disableAllHooks: false` (precedence). NOW fixed in the in-repo managed-settings.json.
+  (2) interpreter PATH-shadow of bare `python3`/`bash`. NOW fixed: absolute `/usr/bin/python3` + `/bin/bash`.
+`verify_managed_anchor.py` now REQUIRES `disableAllHooks:false` and currently reports **NOT-ACTIVE,
+exit 1** against the installed OLD file — honest: **the operator must RE-INSTALL** the hardened file
+for the closure to take effect. **I correct my prior "CLOSED in effect" claim:** until re-install, the
+direct-edit vector is closed but the disableAllHooks/PATH vectors are open. Separate verifier red-teamed
+the hardened anchor → PASS, no new bypass. Runtime "managed false wins" is docs-precedence-confirmed
+(verbatim "can't be overridden"), not empirically reproduced (needs a live session). LOW residual noted:
+risk_monitor.sh's own unqualified git/grep (not a current bypass; documented in INSTALL.md).
 
 - 3 cycles recorded in `.claude/loop/state.json`. `loop_gate.py` computes **STOP-DONE** from disk
   (risk GREEN, last cycle no new info, 0 open questions). Build→verify→fix ran twice.

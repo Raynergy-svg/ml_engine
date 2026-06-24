@@ -46,6 +46,12 @@ def audit(d: Path) -> tuple[bool, list[str], dict]:
                     for grp in j.get("hooks", {}).get("Stop", []) for h in grp.get("hooks", [])]
             if not any(WRAPPER_NAME in c for c in cmds):
                 problems.append("managed-settings.json Stop hook does not wire the wrapper")
+            # disableAllHooks must be pinned false at managed scope, else a worker can set it true in
+            # local settings and disable ALL hooks (incl. this one). Managed false can't be overridden.
+            if j.get("disableAllHooks") is not False:
+                problems.append("managed-settings.json must set \"disableAllHooks\": false — without it "
+                                "a worker can disable the managed Stop hook via local settings "
+                                "(disableAllHooks=true). RE-INSTALL the updated managed file.")
         except Exception as e:
             problems.append(f"managed-settings.json invalid JSON ({e})")
         # un-tamperable property: worker (current user) must NOT be able to write it

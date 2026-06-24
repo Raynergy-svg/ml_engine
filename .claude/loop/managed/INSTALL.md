@@ -39,16 +39,34 @@ python3 .claude/loop/managed/verify_managed_anchor.py
 A green result confirms from disk: the managed file is present, wires the wrapper Stop hook, and is
 **not writable by your user** (root-owned) — the property that makes it un-overridable.
 
+## ⚠️ If you installed an earlier version: RE-INSTALL
+
+The managed file now also pins **`"disableAllHooks": false`**. Without it, a worker could set
+`disableAllHooks: true` in local settings and disable **all** hooks — including this managed Stop
+hook. Only a managed `false` prevents it — the precedence statement *"Managed (highest) — can't be
+overridden by anything"* is verbatim from code.claude.com/docs/en/settings (2026-06-24); that
+`disableAllHooks` is settable in lower scopes is inferred from the settings model (not spelled out in
+prose), but the load-bearing property — managed `false` wins — rests on the verbatim precedence rule.
+If you ran the install before this change, re-run it so the system copy gains `disableAllHooks: false`:
+
+```
+sudo bash .claude/loop/managed/install_managed_anchor.sh   # overwrites the system copy (idempotent)
+python3 .claude/loop/managed/verify_managed_anchor.py      # must report ACTIVE (it now requires disableAllHooks:false)
+```
+
 ## What gets installed
 
-- **`managed-settings.json`** — pins a `Stop` hook to the wrapper. Merges with (and cannot be removed
-  by) local settings.
+- **`managed-settings.json`** — pins a `Stop` hook to the wrapper **and** `"disableAllHooks": false`
+  (so a local `disableAllHooks: true` can't kill the managed hook). Merges with (and cannot be
+  removed or globally disabled by) local settings.
 - **`ml_engine_gate_wrapper.py`** — the root-owned Stop-hook gate. It is **self-contained**: it
   re-derives the gate-script SHA-256 hashes itself (so a *neutered in-repo checker* is caught), bakes
   the canonical pinned-script list (so manifest *entry-drop* is caught), is scoped to this repo (a
   no-op elsewhere), and only then runs the in-repo `risk_monitor`. `TARGET_REPO` is baked, not
-  env-overridable, so it can't be pointed at a clean fixture. On any Hard-NO/integrity failure it
-  exits 2 → blocks the turn from ending.
+  env-overridable, so it can't be pointed at a clean fixture. The hook command and the wrapper use
+  **absolute** interpreters (`/usr/bin/python3`, `/bin/bash`) so a worker can't shadow `python3`/`bash`
+  via local `env`/PATH to neuter it. On any Hard-NO/integrity failure it exits 2 → blocks the turn
+  from ending. (Linux: confirm `/usr/bin/python3` exists, else adjust the command path before install.)
 
 ## Re-install when the pinned set changes
 
@@ -89,6 +107,12 @@ depth, not closure.
   (re-install on every gate change) — heavier, available if you want it.
 - The agent half of verification (semantic judgment) remains advisory (L-011). The deterministic half
   is enforced; human review backstops the rest.
+- **risk_monitor.sh internal binaries (LOW):** the in-repo `risk_monitor.sh` calls `git`/`grep`/
+  `python3` unqualified. The managed hook invokes absolute `/usr/bin/python3` + `/bin/bash`, and the
+  worker cannot inject `env`/PATH into the managed-hook-spawned subprocess, so this is **not** a
+  current bypass — but if a future change exposed that subprocess env to the worker, those unqualified
+  binaries would become shadowable. Hardening (absolute paths in risk_monitor.sh) is deferred,
+  documented; not a blocker (flagged by the separate verifier 2026-06-24).
 - **Scope/cwd assumption:** the wrapper no-ops when the Stop-hook input `cwd` is outside this repo (so
   it doesn't interfere with your other projects). That `cwd` is supplied by Claude Code in the hook
   payload, not freely writable by the worker mid-session — the same harness-integrity assumption the

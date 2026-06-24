@@ -81,8 +81,10 @@ def run_gate(target: Path, data: dict) -> tuple[int, str]:
         return 2, f"gate-script drift (neutered/altered enforcement scripts): {drift}"
 
     mon = target / ".claude/tools/risk_monitor.sh"
+    # absolute /bin/bash so the worker can't shadow `bash` via PATH; fail-closed if absent.
+    bash_bin = "/bin/bash" if Path("/bin/bash").exists() else "bash"
     try:
-        r = subprocess.run(["bash", str(mon)], capture_output=True, text=True, timeout=60,
+        r = subprocess.run([bash_bin, str(mon)], capture_output=True, text=True, timeout=60,
                            env={**os.environ, "RISK_MONITOR_REPO": str(target)})
     except Exception as e:
         return 2, f"risk_monitor failed == unsafe ({e})"

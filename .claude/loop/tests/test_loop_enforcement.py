@@ -560,34 +560,43 @@ def test_managed_wrapper(tmp: Path):
 
 def test_managed_anchor(tmp: Path):
     print("\n[managed anchor verifier: verify_managed_anchor.audit]")
-    d = tmp / "manacc"
-    d.mkdir()
-    ok, probs, _ = _anchor.audit(d)
+
+    def write_anchor(name, *, wire=True, disable=False, readonly=True):
+        dp = tmp / name
+        dp.mkdir(parents=True, exist_ok=True)
+        cmd = "python3 ml_engine_gate_wrapper.py" if wire else "echo hi"
+        cfg = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": cmd}]}]}}
+        if disable is not None:
+            cfg["disableAllHooks"] = disable
+        ms = dp / "managed-settings.json"
+        ms.write_text(json.dumps(cfg))
+        wr = dp / "ml_engine_gate_wrapper.py"
+        wr.write_text("x")
+        if readonly:
+            os.chmod(ms, 0o444)
+            os.chmod(wr, 0o444)
+        return dp
+
+    ok, probs, _ = _anchor.audit(tmp / "ma_empty")
     check("NOT ok when nothing installed", not ok)
 
-    ms = d / "managed-settings.json"
-    ms.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
-        {"type": "command", "command": "python3 ml_engine_gate_wrapper.py"}]}]}}))
-    wr = d / "ml_engine_gate_wrapper.py"
-    wr.write_text("x")
-    ok, probs, _ = _anchor.audit(d)
+    ok, probs, _ = _anchor.audit(write_anchor("ma_writable", readonly=False))
     check("NOT ok when files are user-writable (not un-tamperable)",
           not ok and any("WRITABLE" in p for p in probs), probs)
 
-    os.chmod(ms, 0o444)
-    os.chmod(wr, 0o444)
-    ok, probs, _ = _anchor.audit(d)
-    check("OK when installed + wires wrapper + not user-writable", ok, probs)
+    ok, probs, _ = _anchor.audit(write_anchor("ma_nodisable", disable=None))
+    check("NOT ok without disableAllHooks:false (local-disable bypass open)",
+          not ok and any("disableAllHooks" in p for p in probs), probs)
 
-    d2 = tmp / "manacc_wrong"
-    d2.mkdir()
-    (d2 / "managed-settings.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
-        {"type": "command", "command": "echo hi"}]}]}}))
-    (d2 / "ml_engine_gate_wrapper.py").write_text("x")
-    os.chmod(d2 / "managed-settings.json", 0o444)
-    os.chmod(d2 / "ml_engine_gate_wrapper.py", 0o444)
-    ok, probs, _ = _anchor.audit(d2)
-    check("NOT ok when Stop hook doesn't wire the wrapper", not ok and any("wire the wrapper" in p for p in probs), probs)
+    ok, probs, _ = _anchor.audit(write_anchor("ma_disabletrue", disable=True))
+    check("NOT ok with disableAllHooks:true", not ok and any("disableAllHooks" in p for p in probs), probs)
+
+    ok, probs, _ = _anchor.audit(write_anchor("ma_wrongwire", wire=False))
+    check("NOT ok when Stop hook doesn't wire the wrapper",
+          not ok and any("wire the wrapper" in p for p in probs), probs)
+
+    ok, probs, _ = _anchor.audit(write_anchor("ma_good"))
+    check("OK: wired + not-user-writable + disableAllHooks:false", ok, probs)
 
 
 def main() -> int:
