@@ -1047,8 +1047,11 @@ class BuddyApp(App):
         self._asset_class = "fx"  # current asset class mode
         self._kill_in_progress = False  # True while flatten_all is running (disables hotkeys)
         # Plan C (2026-04-29) — file position into .claude/meta/changes.jsonl;
-        # _tick_brain reads forward from here on each 0.8s tick.
-        self._brain_ledger_pos: int = 0
+        # _tick_brain reads forward from here on each 0.8s tick. Start at the
+        # ledger's END so demo-mode's first tick doesn't replay the entire
+        # change history into the brain log (mirrors _initial_meta_ledger_offset
+        # for the live path).
+        self._brain_ledger_pos: int = self._initial_brain_ledger_pos()
         # T3: shared cumulative work-unit counters. Pre-built at app construct
         # so the F1 StatsBar can take a stable reference at compose time; the
         # EmbeddedScanner receives the same instance and bumps it inline.
@@ -1222,6 +1225,23 @@ class BuddyApp(App):
             self._reflection_stop.set()
         except Exception:
             pass
+
+    def _initial_brain_ledger_pos(self) -> int:
+        """Demo-mode brain tail starts at the END of the meta ledger so the
+        first 0.8s tick doesn't replay the whole change history into the brain
+        log. Mirrors _initial_meta_ledger_offset (live path) but uses the same
+        absolute ledger path _tick_brain reads, so the two agree regardless of
+        the process cwd."""
+        try:
+            ledger = (
+                Path(__file__).resolve().parent.parent.parent
+                / ".claude" / "meta" / "changes.jsonl"
+            )
+            if ledger.exists():
+                return ledger.stat().st_size
+        except OSError:
+            return 0
+        return 0
 
     def _initial_meta_ledger_offset(self) -> int:
         """Start tailing from the END of the existing ledger so we don't
