@@ -35,7 +35,7 @@ import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,35 @@ DEFAULT_VIRTUAL_TRADES_LINES = 10
 DEFAULT_TRADES_RECENT = 5
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Coerce a possibly-stringy/None value to float for sort/format.
+
+    Agent-weight and metric JSON is machine-written but can be hand-edited or
+    corrupted; a non-numeric value must not crash a section (see _safe_section).
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_section(fn: Callable[[], str]) -> str:
+    """Run one section builder, degrading any failure to an inline ERR line.
+
+    Module contract (see module docstring): "partial state is better than no
+    snapshot". A single section raising must never abort build_snapshot, so the
+    catch here is deliberately broad — but the error is logged AND surfaced
+    inline as "ERR: …" (never silently swallowed, per the no-silent-failure
+    rule).
+    """
+    name = getattr(fn, "__name__", "section")
+    try:
+        return fn()
+    except Exception as e:  # noqa: BLE001 - surfaced inline + logged, not swallowed
+        logger.exception("snapshot section %s failed", name)
+        return f"ERR: {name} failed: {e!r}"
 
 
 def _safe_read_lines(path: Path, n: int) -> list[str]:
@@ -215,7 +244,7 @@ def _trades_section() -> str:
         pnl_pips = outcome.get("pnl_pips", t.get("pnl_pips", "?"))
         won = outcome.get("trade_won", t.get("trade_won", "?"))
         exit_reason = outcome.get("exit_reason", t.get("exit_reason", "?"))
-        close_at = (
+        close_at = str(
             outcome.get("close_time") or outcome.get("closed_at")
             or t.get("close_time") or t.get("closed_at") or ""
         )[:19]
@@ -363,8 +392,10 @@ def _brain_feed_section() -> str:
     for raw in lines:
         try:
             r = json.loads(raw)
-            parsed.append(f"{str(r.get('ts', ''))[:19]}  {r.get('msg', '')[:140]}")
-        except (json.JSONDecodeError, AttributeError):
+            parsed.append(
+                f"{str(r.get('ts', ''))[:19]}  {str(r.get('msg') or '')[:140]}"
+            )
+        except (json.JSONDecodeError, AttributeError, TypeError):
             parsed.append(raw[:200])
     return _section("Brain feed (last %d lines)" % DEFAULT_BRAIN_LINES, parsed)
 
@@ -409,9 +440,12 @@ def _agents_section() -> str:
         for regime in ("LOW", "NORMAL", "HIGH", "EXTREME"):
             sub = weights.get(regime)
             if isinstance(sub, dict):
-                top = sorted(sub.items(), key=lambda kv: kv[1], reverse=True)[:5]
+                top = sorted(
+                    sub.items(), key=lambda kv: _safe_float(kv[1]), reverse=True
+                )[:5]
                 out.append(
-                    f"  {regime}: " + ", ".join(f"{k}={v:.2f}" for k, v in top)
+                    f"  {regime}: "
+                    + ", ".join(f"{k}={_safe_float(v):.2f}" for k, v in top)
                 )
     try:
         from src.scanner.automation.meta_manager import _LiveRegimeProbe
@@ -448,24 +482,24 @@ def build_snapshot() -> str:
         f"# Buddy TUI Snapshot — {ts}\n",
         f"_PID {os.getpid()} · cwd `{PROJECT_ROOT}`_\n",
         "## Runtime state\n",
-        _heartbeat_section(),
-        _state_section(),
-        _no_llm_policy_section(),
-        _alerts_section(),
+        _safe_section(_heartbeat_section),
+        _safe_section(_state_section),
+        _safe_section(_no_llm_policy_section),
+        _safe_section(_alerts_section),
         "\n## Autonomous loop\n",
-        _meta_pipeline_section(),
-        _config_adjustments_section(),
+        _safe_section(_meta_pipeline_section),
+        _safe_section(_config_adjustments_section),
         "\n## Models & agents\n",
-        _model_health_section(),
-        _agents_section(),
+        _safe_section(_model_health_section),
+        _safe_section(_agents_section),
         "\n## Trading evidence\n",
-        _trades_section(),
-        _virtual_trades_section(),
+        _safe_section(_trades_section),
+        _safe_section(_virtual_trades_section),
         "\n## Logs\n",
-        _brain_feed_section(),
-        _reflection_log_section(),
-        _autotrain_log_section(),
-        _debug_log_section(),
+        _safe_section(_brain_feed_section),
+        _safe_section(_reflection_log_section),
+        _safe_section(_autotrain_log_section),
+        _safe_section(_debug_log_section),
     ]
     return "\n".join(parts)
 

@@ -17,7 +17,7 @@ class StateStrip(Static):
 
     scanner_status: reactive[str] = reactive("RUNNING")
     mode: reactive[str] = reactive("DRY-RUN")
-    model_staleness_days: reactive[int] = reactive(0)
+    model_staleness_days: reactive[float] = reactive(0.0)
     # Equity ship-gate badge state. "available" is False until SHIP_GATE.json
     # exists; the badge renders dim "—" in that case. Set via
     # update_ship_gate() from the app's refresh loop.
@@ -36,7 +36,11 @@ class StateStrip(Static):
 
         raw = (snap.mode or "dry_run").lower()
         self.mode = "LIVE" if raw == "live" else "DRY-RUN"
-        self.model_staleness_days = int(snap.max_component_age_days or 0)
+        # Keep the float age: flooring with int() (7.9 -> 7) made this strip
+        # paint GREEN "7d" while StalenessBanner (which uses days > 7.0 on the
+        # raw float) fired RED for the same value. Store the float; round only
+        # for display so both surfaces agree on the same threshold and number.
+        self.model_staleness_days = float(snap.max_component_age_days or 0.0)
         self.refresh()
 
     def update_ship_gate(self, status: dict) -> None:
@@ -77,9 +81,11 @@ class StateStrip(Static):
         t.append("  │  ", style="#2a2a4a")
 
         days = self.model_staleness_days
+        # Green iff <= 7.0 — the exact boundary at which StalenessBanner hides
+        # (banner shows when days > 7.0). Keeps the two surfaces consistent.
         stale_style = "#00ff41" if days <= 7 else "#ffab00" if days <= 14 else "#ff1744"
         t.append("MODELS ", style="#6666aa")
-        t.append(f"{days}d old", style=f"bold {stale_style}")
+        t.append(f"{days:.0f}d old", style=f"bold {stale_style}")
 
         t.append("  │  ", style="#2a2a4a")
         t.append("SHIP_GATE ", style="#6666aa")

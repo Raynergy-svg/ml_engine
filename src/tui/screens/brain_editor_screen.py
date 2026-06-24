@@ -50,6 +50,11 @@ class BrainEditorScreen(Screen):
         self._template_path = root / ".claude" / "brain" / "briefing.md.default"
         self._doc = BriefingDocument()
         self._selected_title: Optional[str] = None
+        # ListItem ids must be valid Textual identifiers ([A-Za-z0-9_-]); a
+        # section title like "Next Actions" contains a space and raises
+        # BadIdentifier. We give each row a positional slug id and map it back
+        # to the human title here.
+        self._id_to_title: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -78,13 +83,20 @@ class BrainEditorScreen(Screen):
     def _render_list(self) -> None:
         lst = self.query_one("#brain_sections", ListView)
         lst.clear()
-        for s in self._doc.sections:
-            lst.append(ListItem(Label(s.title), id=s.title))
+        # Positional slug id (see __init__): the human title can't be a widget
+        # id. Map slug -> title so selection can recover the real section.
+        self._id_to_title = {}
+        for i, s in enumerate(self._doc.sections):
+            item_id = f"brain-sec-{i}"
+            self._id_to_title[item_id] = s.title
+            lst.append(ListItem(Label(s.title), id=item_id))
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.item is None or event.item.id is None:
             return
-        self._selected_title = event.item.id
+        self._selected_title = self._id_to_title.get(event.item.id)
+        if self._selected_title is None:
+            return
         s = next(
             (s for s in self._doc.sections if s.title == self._selected_title),
             None,
