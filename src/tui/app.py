@@ -1826,6 +1826,38 @@ class BuddyApp(App):
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab_id
 
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        """B1 fix: move focus into the newly-active tab's content so the tab's
+        screen-level BINDINGS resolve.
+
+        HeaderBar.can_focus=True retains focus after mount and Textual does not
+        move focus into a tab on switch, so without this the tab-container
+        hotkeys (Inbox a/r/e/s/v, Trades c, Config s/q/r, Rules r/g) are dead —
+        every keypress fell through to the App-level early-return loggers.
+        App-level bindings (u/k/m/space/…) are unaffected: they resolve at the
+        App regardless of which widget holds focus.
+        """
+        self._focus_active_tab_content()
+
+    def _focus_active_tab_content(self) -> None:
+        """Focus the first focusable descendant of the active tab pane so its
+        ancestor screen's BINDINGS participate in key resolution. No-op when the
+        pane has no focusable content (e.g. a transient mount state)."""
+        try:
+            tabs = self.query_one("#main-tabs", TabbedContent)
+            pane = self.query_one(f"#{tabs.active}", TabPane)
+        except Exception:
+            return
+        for widget in pane.query("*"):
+            try:
+                if widget.focusable:
+                    self.set_focus(widget)
+                    return
+            except Exception:
+                continue
+
     def _open_jobs_screen(self) -> None:
         """Lazily build a ScheduledJobsRegistry and push the Jobs screen.
 
