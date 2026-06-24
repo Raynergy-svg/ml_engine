@@ -36,6 +36,8 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | a verification/judge step that needs an agent or human dispatched & honest, used to gate "done" | **L-011** enforce the deterministic half live; close the lazy-skip with a bound verdict; document the lie floor |
 | a security gate wired in worker-writable config (local settings / in-repo hook) — worker can disable it | **L-012** pin it in root-owned managed settings (highest precedence); self-contained wrapper; verify not-user-writable |
 | relying on a managed hook as un-disablable without closing the global-disable + interpreter-shadow paths | **L-013** also pin disableAllHooks:false (managed) + absolute interpreters; verifier must require both |
+| a safety gate that alarms on an execution-mode=live / "enabled" flag, treating it as real money | **L-014** real-money risk = the ENVIRONMENT/endpoint, not the mode flag; gate live-alarms on env, keep env=live hard |
+| a tripwire that scans the WHOLE-repo diff/all files for a sensitive string, flagging any mention | **L-015** scope diff-scans to the danger paths (src/scripts) + structural form; docs/tests that mention it must not trip |
 
 ---
 
@@ -229,3 +231,37 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Source: 2026-06-24 adversarial re-check of the LIVE anchor — direct edit blocked (root-owned), but
   local `disableAllHooks` and interpreter-PATH-shadow were open; closed via managed `disableAllHooks:
   false` + absolute interpreters; verifier now requires them; 92 no-mock tests; docs re-verified.
+
+## L-014 — execution-mode=live is not real money; the ENVIRONMENT is the real-money guard   [ACTIVE]
+- Trigger: a safety gate alarms on an "execution mode = live" / "enabled" / "not-dry-run" flag and
+  treats it as equivalent to real money (e.g. risk_monitor/verify_gate flagging `state.mode==live`).
+- Root cause: real-money risk is determined by the ENVIRONMENT/endpoint (`oanda_environment` /
+  the API base URL), NOT by the execution-mode flag. A bot in `mode=live` on a practice/demo
+  environment trades PAPER money (broker pinned to api-fxpractice). Conflating `mode=live` with real
+  money produces false alarms that block legitimate operator-directed paper execution and erode trust.
+- Rule: gate real-money alarms on the ENVIRONMENT (`oanda_environment != practice` / live endpoint),
+  not on the execution-mode flag. Keep `env=live` / live-endpoint / ship-gate as HARD alarms; allow
+  `mode=live` only when env is practice. Verify the broker/client is environment-pinned (practice-only
+  URL) so `mode=live` cannot reach real money before allowing it.
+- Scope: risk_monitor / verify_gate runtime-state checks; any safety gate separating paper from real.
+- Source: 2026-06-24 operator-directed enable of the PRACTICE bot — `mode=live` is required to execute;
+  both gates falsely alarmed on it; taught env-gated; real-money guard confirmed from disk
+  (OandaPracticeClient PRACTICE_API_URL only, no live URL path); 95 no-mock tests; separate verifier.
+
+## L-015 — a string-matching tripwire must scope to the danger path, not the whole-repo diff   [ACTIVE]
+- Trigger: a security tripwire that scans the WHOLE-repo diff (or all files) for a sensitive string
+  (live env, a live endpoint, a secret, a dangerous call) and treats ANY added line containing it as
+  a violation.
+- Root cause: legitimate work — docs, tests, comments, even the gate's own alarm messages — must
+  MENTION the sensitive string to explain, test, or detect it. A whole-repo string-scan can't tell
+  "introduces the danger" from "documents/tests the guard against it", so it false-positives and
+  blocks real work. Concretely: verify_gate's `no_live_flip` scanned the whole `git diff` for
+  `oanda_environment…"live"` and FAILED on its OWN mode=live gate-teach diff (comments/tests/L-014).
+- Rule: scope diff/string tripwires to the PATHS where the real danger lives (src/scripts for a config
+  flip; the order path for a live endpoint) AND to the structural form (assignment/annotation), not
+  any mention. Docs/tests/comments that reference the sensitive string must not trip it. Keep the
+  primary content/default checks (which read the code itself) as the hard rail.
+- Scope: verify_gate / risk_monitor diff-scans; any string-based security tripwire.
+- Source: 2026-06-24 enable-bot — `no_live_flip` whole-repo diff-scan false-positived on the
+  mode=live gate-teach docs/tests, making verify_gate FAIL on its own change; scoped to src/scripts +
+  assignment form; regression test added (doc mention OK, real src flip still caught); 97 no-mock tests.

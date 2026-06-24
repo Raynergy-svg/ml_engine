@@ -30,13 +30,24 @@ durable decision/failure/pattern, move it to INTENT/LESSONS/skill via `/evolve` 
 
 ## Current runtime state (verify against disk before acting — this is a snapshot)
 
-Source: `.claude/state.json` read 2026-06-23.
+Source: `.claude/state.json` read 2026-06-24.
 
-- `halted: true` — **bot is halted. Do not propose, stage, or execute trades.**
-- `mode: "dry_run"`, `status: "shutdown"` (scanner not running)
-- `oanda_environment: "practice"` (`src/scanner/config.py:738`) — immutable Hard NO
-- NAV $102,183 · `open_trades: 0` · reconciled 2026-06-22
-- Zero live transformer artifacts — all quarantined by the 10% ship-gate (`.claude/rules/improvement.md`)
+- **`halted: false` — OPERATOR-DIRECTED ENABLE (2026-06-24).** The human operator (owns the halt)
+  directed "enable bot" on the PRACTICE/demo account.
+- **`mode: "live"`, `status: "running"`.** mode=live is EXECUTION mode (place orders), NOT real money.
+  Orders go to the PRACTICE/paper account: the order client is `OandaPracticeClient`, hard-pinned to
+  `PRACTICE_API_URL = api-fxpractice.oanda.com/v3` (`src/utils/oanda_practice.py:117`) and it IGNORES
+  `oanda_environment` entirely — there is NO live-URL path in the order client. Verified by separate
+  agent: "Can it place a real-money order? NO" (HIGH confidence). This is why mode=live is acceptable.
+- `oanda_environment: "practice"` (`src/scanner/config.py:738`) — **immutable Hard NO, untouched.**
+- Gates taught (committed): risk_monitor + verify_gate alarm on `mode=live` ONLY when env≠practice;
+  **env=live / real-money / ship-gate stay HARD** (env=live+mode=live → double hard alarm). L-014.
+- NAV $102,183 · `open_trades: 0` · zero live transformer artifacts (all quarantined) → bot abstains
+  (no champion direction model) so enabling unleashes no flood of trades; ship gate intact.
+- Known residual (non-blocking, pre-existing): static env-tripwire matches `oanda_environment = "live"`
+  assignment + git-diff `api-fxtrade`; a future *dict-form* profile override `"oanda_environment":
+  "live"` wouldn't be caught by the tripwire — but the practice-pinned order client is the primary
+  rail. Add the dict pattern IF env is ever wired into a profile dict / the client honors env.
 - Branch: `ralph/equity-harvester-bot` (an equity-beta harvester workstream is in flight)
 
 ## In-flight work (from session memory, not re-verified this turn — confirm before relying)

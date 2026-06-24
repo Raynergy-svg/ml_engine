@@ -201,10 +201,15 @@ def check_hard_nos(repo: Path) -> list[dict]:
         if live_hit:
             break
     if live_hit is None:
-        diffs = _git(repo, "diff") + "\n" + _git(repo, "diff", "--cached")
-        if re.search(r'^\+.*oanda_environment.*"live"', diffs, re.M) or \
+        # diff-scan SCOPED to src/scripts (a real env flip / live endpoint lives there) and to the
+        # assignment/annotation form. Docs/tests/comments under .claude/ that merely MENTION
+        # oanda_environment="live" or api-fxtrade (e.g. to explain or test the guard) must NOT
+        # false-trip this — that wart caused verify_gate to FAIL on its own gate-teach diff (2026-06-24).
+        diffs = (_git(repo, "diff", "--", "src", "scripts") + "\n"
+                 + _git(repo, "diff", "--cached", "--", "src", "scripts"))
+        if re.search(r'^\+.*oanda_environment\s*[:=].*"live"', diffs, re.M) or \
            re.search(r'^\+.*api-fxtrade\.oanda\.com', diffs, re.M):
-            live_hit = "working tree/staged diff adds a live env flip or live endpoint"
+            live_hit = "src/scripts diff adds a live env flip or live endpoint"
     checks.append({"name": "no_live_flip", "hard_no": True, "ok": live_hit is None,
                    "detail": "no live env assignment in src+scripts (staged/unstaged clean)"
                    if live_hit is None else live_hit})
@@ -221,14 +226,20 @@ def check_hard_nos(repo: Path) -> list[dict]:
     checks.append({"name": "halt_guard_live", "hard_no": True, "ok": halt_v is None,
                    "detail": "live get_halted() guard with return (AST-verified)" if halt_v is None else halt_v})
 
-    # Runtime state readable; live mode is incoherent on a practice/halted system (fail-closed).
+    # Runtime state readable. mode=live is EXECUTION mode (place orders), NOT real money — real money
+    # is oanda_environment=live (checked hard above). On a PRACTICE env, mode=live = paper trading
+    # (broker is api-fxpractice-only), allowed for operator-directed un-halt. So fail here only if
+    # mode=live AND env is not practice (real-money execution). (operator-directed 2026-06-24.)
     sp = repo / ".claude/state.json"
     mode = halted = None
     try:
         st = json.loads(sp.read_text())
         mode, halted = st.get("mode"), st.get("halted")
-        state_ok = mode != "live"
-        det = f"state readable (halted={halted}, mode={mode})" if state_ok else "state.mode=live"
+        env_practice = bool(re.search(r'oanda_environment:\s*str\s*=\s*"practice"',
+                                      _read(repo / "src/scanner/config.py")))
+        state_ok = (mode != "live") or env_practice
+        det = (f"state readable (halted={halted}, mode={mode}, env_practice={env_practice})"
+               if state_ok else "state.mode=live AND env NOT practice == real-money execution")
     except Exception as e:
         state_ok = False
         det = f"state.json unreadable/unparseable == unsafe ({e})"

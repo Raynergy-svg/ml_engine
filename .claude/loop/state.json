@@ -100,6 +100,42 @@
       "verify_gate_pass": true,
       "lessons_count": 13,
       "open_questions_after": 0
+    },
+    {
+      "n": 12,
+      "summary": "Operator-directed enable (PRACTICE): mode=live execution; taught risk_monitor+verify_gate that mode=live is allowed only when env=practice; env=live stays HARD; real-money guard confirmed (OandaPracticeClient practice-only); L-014",
+      "tests_passed": 95,
+      "tests_failed": 0,
+      "verify_gate_pass": false,
+      "lessons_count": 14,
+      "open_questions_after": 0
+    },
+    {
+      "n": 13,
+      "summary": "Confirm: 95 tests, 14 lessons, gates green, separate verifier PASS (real-money impossible, env=live stays hard)",
+      "tests_passed": 95,
+      "tests_failed": 0,
+      "verify_gate_pass": false,
+      "lessons_count": 14,
+      "open_questions_after": 0
+    },
+    {
+      "n": 14,
+      "summary": "Enable-bot: fixed verify_gate no_live_flip false-positive (scoped diff-scan to src/scripts so gate-teach docs/tests don't false-trip); mode=live teach; L-015. 97 tests",
+      "tests_passed": 97,
+      "tests_failed": 0,
+      "verify_gate_pass": true,
+      "lessons_count": 15,
+      "open_questions_after": 0
+    },
+    {
+      "n": 15,
+      "summary": "Confirm: 97 tests, 15 lessons, verify_gate PASS, risk_monitor GREEN, separate verifier PASS (real money NO, env=live hard)",
+      "tests_passed": 97,
+      "tests_failed": 0,
+      "verify_gate_pass": true,
+      "lessons_count": 15,
+      "open_questions_after": 0
     }
   ]
 }
