@@ -166,6 +166,24 @@ reduces to "a worker with full repo access can lie in a git-visible way (backsto
 or fabricate an agent dispatch." Closing those requires moving the root of trust OUTSIDE the
 worker-controlled environment (CI signing / TEE / out-of-band logging) — operator's call on cost.
 
+### Managed-settings trust anchor (2026-06-23, docs-verified) — moves the root of trust outside the repo
+Prepared (operator runs one privileged install step — `.claude/loop/managed/INSTALL.md`): enterprise
+managed-settings.json pins the Stop hook to a ROOT-OWNED self-contained wrapper at the system managed
+dir (macOS `/Library/Application Support/ClaudeCode/`, Linux `/etc/claude-code/`, Windows
+`C:\Program Files\ClaudeCode\` — NOT the deprecated ProgramData). Managed settings are highest
+precedence ("can't be overridden"); Claude Code write access is confined to the project tree. The
+wrapper re-derives the gate hashes ITSELF (catches a neutered in-repo checker). 90 no-mock tests;
+separate verifier red-teamed it (PASS, no new gap; fetched the docs live). Effect on the floors:
+- **Floor #1 (gate-tamper) — DISABLE + NEUTER dimensions: CLOSED to "requires admin."** A worker can't
+  remove/re-point the Stop hook (managed precedence) nor neuter a checker (wrapper self-hashes).
+- **Floor #5 (hook-neuter): CLOSED to "requires admin."** The tripwire can't be disabled by the worker.
+- STILL OPEN (documented): edit-script-AND-manifest-together (git-visible; close by baking the manifest
+  hash into the root-owned wrapper, re-install per gate change); the verification LIE dimension (L-011,
+  advisory agent half); and the cwd/harness-integrity assumption (same as the in-repo stop_gate).
+The honest win: this turns "worker can disable the gate" into "worker can't without admin, which the
+operator controls" — until the one privileged install step runs, the anchor is advisory and the
+in-repo gates + code-level guards remain primary.
+
 - 3 cycles recorded in `.claude/loop/state.json`. `loop_gate.py` computes **STOP-DONE** from disk
   (risk GREEN, last cycle no new info, 0 open questions). Build→verify→fix ran twice.
 - **What is now ENFORCED (deterministic, not compliance):** Stop hook `stop_gate.sh` runs

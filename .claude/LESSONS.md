@@ -34,6 +34,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | a content/quality gate that checks STRUCTURE (fields, length) and is treated as verifying MEANING | **L-009** structural ≠ semantic — name the floor; human review backstops meaning |
 | a "done"/PASS that needs no observable change, or a recorded metric trusted without recompute | **L-010** gate done on an artifact delta + recompute metrics from their real source (fail closed) |
 | a verification/judge step that needs an agent or human dispatched & honest, used to gate "done" | **L-011** enforce the deterministic half live; close the lazy-skip with a bound verdict; document the lie floor |
+| a security gate wired in worker-writable config (local settings / in-repo hook) — worker can disable it | **L-012** pin it in root-owned managed settings (highest precedence); self-contained wrapper; verify not-user-writable |
 
 ---
 
@@ -190,3 +191,23 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Scope: any verification / LLM-judge / human-review step the loop uses to gate behavior.
 - Source: 2026-06-23 red-team Front #1a + Increment 4 (record_verdict.py + loop_gate fresh-verdict
   gate, 77 no-mock tests); irreducible floor documented in NOTES.
+
+## L-012 — pin enforcement above the worker: root-owned managed settings   [ACTIVE]
+- Trigger: a security gate whose enforcement lives in a file the worker can write — local
+  `.claude/settings.json`, an in-repo hook registration — so the worker can simply disable or
+  re-point it. The in-repo gates can make tampering git-visible but cannot PREVENT the disable.
+- Root cause: a gate wired in worker-writable config is only advisory against a worker who edits that
+  config; the root of trust is inside the worker-controlled environment.
+- Rule: pin the enforcement (the Stop hook) in ENTERPRISE MANAGED SETTINGS installed to a root-owned
+  system path OUTSIDE the project tree — managed settings are highest precedence and "can't be
+  overridden by anything" (code.claude.com/docs/en/settings), and Claude Code's write access is
+  confined to the project, so the worker can't touch them without admin. Make the hook a
+  self-contained root-owned wrapper that re-derives the gate hashes ITSELF (so a neutered in-repo
+  checker is caught) and is scoped to the repo. Ship an install script + a from-disk verifier that
+  confirms the managed file is present AND not user-writable. Honest framing: this turns "worker can
+  disable the gate" into "worker can't without admin, which the operator controls" — state it plainly,
+  don't claim impossibility.
+- Scope: any security/enforcement hook that must survive the worker editing local config.
+- Source: 2026-06-23 managed-settings trust anchor — docs verified (paths incl. the corrected Windows
+  `C:\Program Files\ClaudeCode\`, precedence, `allowManagedHooksOnly`, experimental `type:"agent"`);
+  root-owned wrapper + installer + verifier; 90 no-mock tests; separate verifier red-teamed it.

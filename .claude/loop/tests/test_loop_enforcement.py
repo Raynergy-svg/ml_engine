@@ -35,6 +35,11 @@ GENMAN = LOOP_DIR / "gen_manifest.py"
 MANIFEST = LOOP_DIR / "gate_manifest.json"
 RISK = TOOLS / "risk_monitor.sh"
 STOP = TOOLS / "stop_gate.sh"
+MANAGED_DIR = LOOP_DIR / "managed"
+
+sys.path.insert(0, str(MANAGED_DIR))
+import ml_engine_gate_wrapper as _wrapper  # noqa: E402  (root-owned managed Stop-hook gate)
+import verify_managed_anchor as _anchor    # noqa: E402  (from-disk anchor verifier)
 
 _passed = 0
 _failed = 0
@@ -518,6 +523,73 @@ def test_record_verdict(tmp: Path):
     check("stale verdict after a state change -> CONTINUE (re-verify required)", out["decision"] == "CONTINUE", out)
 
 
+def test_managed_wrapper(tmp: Path):
+    print("\n[managed wrapper: ml_engine_gate_wrapper.run_gate (root-owned trust anchor)]")
+    good = build_repo(tmp / "mw_good")
+    code, msg = _wrapper.run_gate(good, {"cwd": str(good)})
+    check("allow (0) on intact in-scope repo", code == 0, (code, msg))
+    code, _ = _wrapper.run_gate(good, {"stop_hook_active": True, "cwd": str(good)})
+    check("loop guard: allow (0) on stop_hook_active", code == 0)
+    code, _ = _wrapper.run_gate(good, {"cwd": "/tmp/some/other/project"})
+    check("out-of-scope -> allow (0) no-op (won't disrupt other projects)", code == 0)
+
+    drifted = build_repo(tmp / "mw_drift")
+    rm = drifted / ".claude/tools/risk_monitor.sh"
+    rm.write_text(rm.read_text() + "\n# neutered\n")
+    code, msg = _wrapper.run_gate(drifted, {"cwd": str(drifted)})
+    check("BLOCK (2) on neutered gate script (wrapper self-derives the drift)", code == 2 and "drift" in msg, (code, msg))
+
+    dropped = build_repo(tmp / "mw_drop")
+    mp = dropped / ".claude/loop/gate_manifest.json"
+    m = json.loads(mp.read_text())
+    m.pop(".claude/tools/risk_monitor.sh", None)
+    mp.write_text(json.dumps(m))
+    (dropped / ".claude/tools/risk_monitor.sh").write_text("#!/usr/bin/env bash\necho GREEN; exit 0\n")
+    code, msg = _wrapper.run_gate(dropped, {"cwd": str(dropped)})
+    check("BLOCK (2) on manifest entry-drop (baked coverage list)", code == 2 and "unlisted" in msg, (code, msg))
+
+    alarmed = build_repo(tmp / "mw_alarm", env="live")
+    code, msg = _wrapper.run_gate(alarmed, {"cwd": str(alarmed)})
+    check("BLOCK (2) on risk-monitor ALARM (live env, scripts intact)", code == 2 and "ALARM" in msg, (code, msg))
+
+    nomani = build_repo(tmp / "mw_nomani")
+    (nomani / ".claude/loop/gate_manifest.json").unlink()
+    code, msg = _wrapper.run_gate(nomani, {"cwd": str(nomani)})
+    check("BLOCK (2) on missing manifest (fail-closed)", code == 2)
+
+
+def test_managed_anchor(tmp: Path):
+    print("\n[managed anchor verifier: verify_managed_anchor.audit]")
+    d = tmp / "manacc"
+    d.mkdir()
+    ok, probs, _ = _anchor.audit(d)
+    check("NOT ok when nothing installed", not ok)
+
+    ms = d / "managed-settings.json"
+    ms.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+        {"type": "command", "command": "python3 ml_engine_gate_wrapper.py"}]}]}}))
+    wr = d / "ml_engine_gate_wrapper.py"
+    wr.write_text("x")
+    ok, probs, _ = _anchor.audit(d)
+    check("NOT ok when files are user-writable (not un-tamperable)",
+          not ok and any("WRITABLE" in p for p in probs), probs)
+
+    os.chmod(ms, 0o444)
+    os.chmod(wr, 0o444)
+    ok, probs, _ = _anchor.audit(d)
+    check("OK when installed + wires wrapper + not user-writable", ok, probs)
+
+    d2 = tmp / "manacc_wrong"
+    d2.mkdir()
+    (d2 / "managed-settings.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+        {"type": "command", "command": "echo hi"}]}]}}))
+    (d2 / "ml_engine_gate_wrapper.py").write_text("x")
+    os.chmod(d2 / "managed-settings.json", 0o444)
+    os.chmod(d2 / "ml_engine_gate_wrapper.py", 0o444)
+    ok, probs, _ = _anchor.audit(d2)
+    check("NOT ok when Stop hook doesn't wire the wrapper", not ok and any("wire the wrapper" in p for p in probs), probs)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
@@ -526,6 +598,8 @@ def main() -> int:
         test_loop_gate(tmp)
         test_record_cycle(tmp)
         test_record_verdict(tmp)
+        test_managed_wrapper(tmp)
+        test_managed_anchor(tmp)
         test_stop_gate(tmp)
     print(f"\n==== {_passed} passed, {_failed} failed ====")
     return 1 if _failed else 0

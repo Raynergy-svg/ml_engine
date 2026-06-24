@@ -1,0 +1,15 @@
+{
+  "_comment": "ENTERPRISE MANAGED SETTINGS — install to the SYSTEM managed dir (root-owned) per INSTALL.md. Managed settings sit ABOVE local .claude/settings.json in precedence ('Managed (highest) - can't be overridden by anything', code.claude.com/docs/en/settings) so the worker cannot disable or re-point this Stop hook without admin. This macOS variant points at the wrapper installed in /Library/Application Support/ClaudeCode/. For Linux use /etc/claude-code/, for Windows C:\\Program Files\\ClaudeCode\\ (NOT the deprecated C:\\ProgramData\\) — see INSTALL.md. Optional stronger lockdown: add \"allowManagedHooksOnly\": true (also move the SessionStart boot hook into this file, since it blocks all non-managed hooks).",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"/Library/Application Support/ClaudeCode/ml_engine_gate_wrapper.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
