@@ -65,8 +65,12 @@ else
   mode="$(python3 -c "import json;print(json.load(open('$STATE')).get('mode'))" 2>/dev/null || echo ERR)"
   if [ "$halted" = "ERR" ] || [ "$mode" = "ERR" ]; then
     alarms+=("${STATE} unparseable — state UNKNOWN == unsafe")
-  elif [ "$mode" = "live" ]; then
-    alarms+=("state.mode=live — expected dry_run on a practice/halted system (HARD NO)")
+  elif [ "$mode" = "live" ] && ! grep -Eq 'oanda_environment:[[:space:]]*str[[:space:]]*=[[:space:]]*"practice"' "$CONFIG"; then
+    # mode=live is EXECUTION mode (place orders), NOT real money. Real money == oanda_environment=live,
+    # caught hard by HARD NO 1/4 above. Operator-directed un-halt on PRACTICE runs mode=live on the
+    # demo/paper account (broker is OandaPracticeClient, api-fxpractice-only). So flag here ONLY when
+    # env is NOT practice = real-money execution. (operator-directed 2026-06-24; practice account.)
+    alarms+=("state.mode=live AND oanda_environment NOT practice — REAL-MONEY EXECUTION (HARD NO)")
   fi
 fi
 

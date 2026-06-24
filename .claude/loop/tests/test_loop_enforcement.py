@@ -35,6 +35,11 @@ GENMAN = LOOP_DIR / "gen_manifest.py"
 MANIFEST = LOOP_DIR / "gate_manifest.json"
 RISK = TOOLS / "risk_monitor.sh"
 STOP = TOOLS / "stop_gate.sh"
+MANAGED_DIR = LOOP_DIR / "managed"
+
+sys.path.insert(0, str(MANAGED_DIR))
+import ml_engine_gate_wrapper as _wrapper  # noqa: E402  (root-owned managed Stop-hook gate)
+import verify_managed_anchor as _anchor    # noqa: E402  (from-disk anchor verifier)
 
 _passed = 0
 _failed = 0
@@ -68,7 +73,7 @@ CONTEXT_FILES = [
 
 
 def build_repo(root: Path, *, env="practice", gap="0.10", halt=True, state=True,
-               register_stop=True, open_qs=0, extra_files: dict | None = None) -> Path:
+               register_stop=True, open_qs=0, mode="dry_run", extra_files: dict | None = None) -> Path:
     """Create a minimal synthetic repo fixture; copy the REAL gate scripts in so paths resolve."""
     (root / "src/scanner").mkdir(parents=True, exist_ok=True)
     (root / "scripts").mkdir(parents=True, exist_ok=True)
@@ -81,7 +86,7 @@ def build_repo(root: Path, *, env="practice", gap="0.10", halt=True, state=True,
     (root / "src/scanner/execution.py").write_text(ex)
     (root / "scripts/train.py").write_text(f"HARD_MAX_GAP = {gap}\n")
     if state:
-        (root / ".claude/state.json").write_text(json.dumps({"halted": True, "mode": "dry_run"}))
+        (root / ".claude/state.json").write_text(json.dumps({"halted": not (mode == "live"), "mode": mode}))
     for rel in CONTEXT_FILES:
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text("x\n")
@@ -143,6 +148,15 @@ def test_risk_monitor(tmp: Path):
     r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(la)})
     check("ALARM exit 2 on live env assignment (Hard NO 4)", r.returncode == 2, f"rc={r.returncode} {r.stdout}")
 
+    # operator-directed: mode=live on PRACTICE env = paper execution -> GREEN (not real money)
+    mlp = build_repo(tmp / "rm_mode_live_practice", mode="live")
+    r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(mlp)})
+    check("GREEN exit 0 on mode=live + env=practice (paper execution allowed)", r.returncode == 0, f"rc={r.returncode} {r.stdout}")
+    # but mode=live on a LIVE env (real money) stays a HARD alarm
+    mll = build_repo(tmp / "rm_mode_live_liveenv", env="live", mode="live")
+    r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(mll)})
+    check("ALARM exit 2 on mode=live + env=live (real-money execution stays hard)", r.returncode == 2, f"rc={r.returncode} {r.stdout}")
+
 
 def test_verify_gate(tmp: Path):
     print("\n[verify_gate.py]")
@@ -152,6 +166,13 @@ def test_verify_gate(tmp: Path):
     v = json.loads((tmp / "vg_good/v.json").read_text())
     check("verdict.gate==PASS", v["gate"] == "PASS")
     check("verdict.hard_no_ok==True", v["hard_no_ok"] is True)
+
+    # operator-directed: mode=live on PRACTICE env -> state check OK (paper execution, not real money)
+    mlp = build_repo(tmp / "vg_mode_live_practice", mode="live")
+    r = run([sys.executable, str(VERIFY), "--repo", str(mlp), "--out", str(tmp / "vg_mlp.json")])
+    v = json.loads((tmp / "vg_mlp.json").read_text())
+    sc = next((c for c in v["checks"] if c["name"] == "state_readable_not_live"), {})
+    check("mode=live + env=practice -> state check OK + gate PASS", r.returncode == 0 and sc.get("ok") is True, (sc, v["gate"]))
 
     for name, kw in [("live", dict(env="live")), ("gap", dict(gap="0.30")), ("halt", dict(halt=False)),
                      ("state", dict(state=False))]:
@@ -518,14 +539,113 @@ def test_record_verdict(tmp: Path):
     check("stale verdict after a state change -> CONTINUE (re-verify required)", out["decision"] == "CONTINUE", out)
 
 
+def test_managed_wrapper(tmp: Path):
+    print("\n[managed wrapper: ml_engine_gate_wrapper.run_gate (root-owned trust anchor)]")
+    good = build_repo(tmp / "mw_good")
+    code, msg = _wrapper.run_gate(good, {"cwd": str(good)})
+    check("allow (0) on intact in-scope repo", code == 0, (code, msg))
+    code, _ = _wrapper.run_gate(good, {"stop_hook_active": True, "cwd": str(good)})
+    check("loop guard: allow (0) on stop_hook_active", code == 0)
+    code, _ = _wrapper.run_gate(good, {"cwd": "/tmp/some/other/project"})
+    check("out-of-scope -> allow (0) no-op (won't disrupt other projects)", code == 0)
+
+    drifted = build_repo(tmp / "mw_drift")
+    rm = drifted / ".claude/tools/risk_monitor.sh"
+    rm.write_text(rm.read_text() + "\n# neutered\n")
+    code, msg = _wrapper.run_gate(drifted, {"cwd": str(drifted)})
+    check("BLOCK (2) on neutered gate script (wrapper self-derives the drift)", code == 2 and "drift" in msg, (code, msg))
+
+    dropped = build_repo(tmp / "mw_drop")
+    mp = dropped / ".claude/loop/gate_manifest.json"
+    m = json.loads(mp.read_text())
+    m.pop(".claude/tools/risk_monitor.sh", None)
+    mp.write_text(json.dumps(m))
+    (dropped / ".claude/tools/risk_monitor.sh").write_text("#!/usr/bin/env bash\necho GREEN; exit 0\n")
+    code, msg = _wrapper.run_gate(dropped, {"cwd": str(dropped)})
+    check("BLOCK (2) on manifest entry-drop (baked coverage list)", code == 2 and "unlisted" in msg, (code, msg))
+
+    alarmed = build_repo(tmp / "mw_alarm", env="live")
+    code, msg = _wrapper.run_gate(alarmed, {"cwd": str(alarmed)})
+    check("BLOCK (2) on risk-monitor ALARM (live env, scripts intact)", code == 2 and "ALARM" in msg, (code, msg))
+
+    nomani = build_repo(tmp / "mw_nomani")
+    (nomani / ".claude/loop/gate_manifest.json").unlink()
+    code, msg = _wrapper.run_gate(nomani, {"cwd": str(nomani)})
+    check("BLOCK (2) on missing manifest (fail-closed)", code == 2)
+
+
+def test_managed_anchor(tmp: Path):
+    print("\n[managed anchor verifier: verify_managed_anchor.audit]")
+
+    def write_anchor(name, *, wire=True, disable=False, readonly=True):
+        dp = tmp / name
+        dp.mkdir(parents=True, exist_ok=True)
+        cmd = "python3 ml_engine_gate_wrapper.py" if wire else "echo hi"
+        cfg = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": cmd}]}]}}
+        if disable is not None:
+            cfg["disableAllHooks"] = disable
+        ms = dp / "managed-settings.json"
+        ms.write_text(json.dumps(cfg))
+        wr = dp / "ml_engine_gate_wrapper.py"
+        wr.write_text("x")
+        if readonly:
+            os.chmod(ms, 0o444)
+            os.chmod(wr, 0o444)
+        return dp
+
+    ok, probs, _ = _anchor.audit(tmp / "ma_empty")
+    check("NOT ok when nothing installed", not ok)
+
+    ok, probs, _ = _anchor.audit(write_anchor("ma_writable", readonly=False))
+    check("NOT ok when files are user-writable (not un-tamperable)",
+          not ok and any("WRITABLE" in p for p in probs), probs)
+
+    ok, probs, _ = _anchor.audit(write_anchor("ma_nodisable", disable=None))
+    check("NOT ok without disableAllHooks:false (local-disable bypass open)",
+          not ok and any("disableAllHooks" in p for p in probs), probs)
+
+    ok, probs, _ = _anchor.audit(write_anchor("ma_disabletrue", disable=True))
+    check("NOT ok with disableAllHooks:true", not ok and any("disableAllHooks" in p for p in probs), probs)
+
+    ok, probs, _ = _anchor.audit(write_anchor("ma_wrongwire", wire=False))
+    check("NOT ok when Stop hook doesn't wire the wrapper",
+          not ok and any("wire the wrapper" in p for p in probs), probs)
+
+    ok, probs, _ = _anchor.audit(write_anchor("ma_good"))
+    check("OK: wired + not-user-writable + disableAllHooks:false", ok, probs)
+
+
+def test_no_live_flip_scope(tmp: Path):
+    print("\n[verify_gate no_live_flip scope: docs/tests mentioning live strings don't false-trip]")
+    repo = build_repo(tmp / "nlf")
+    genv = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    for args in (["git", "init", "-q"], ["git", "add", "-A"], ["git", "commit", "-qm", "base"]):
+        subprocess.run(args, cwd=repo, env=genv, capture_output=True)
+    # a doc that MENTIONS the live strings (like our own gate-teach docs) must NOT trip no_live_flip
+    (repo / ".claude/NOTES.md").write_text('doc mentions oanda_environment = "live" and api-fxtrade.oanda.com\n')
+    r = run([sys.executable, str(VERIFY), "--repo", str(repo), "--out", str(tmp / "nlf.json")])
+    v = json.loads((tmp / "nlf.json").read_text())
+    nf = next((c for c in v["checks"] if c["name"] == "no_live_flip"), {})
+    check("doc mention of live strings does NOT trip no_live_flip (scoped to src/scripts)", nf.get("ok") is True, nf)
+    # a REAL src env flip in the diff still fails hard
+    (repo / "src/scanner/config.py").write_text('class C:\n    oanda_environment: str = "live"\n')
+    r = run([sys.executable, str(VERIFY), "--repo", str(repo), "--out", str(tmp / "nlf2.json")])
+    v = json.loads((tmp / "nlf2.json").read_text())
+    check("real src env flip still caught (hard_no_ok False)", v["hard_no_ok"] is False, v)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
         test_risk_monitor(tmp)
         test_verify_gate(tmp)
+        test_no_live_flip_scope(tmp)
         test_loop_gate(tmp)
         test_record_cycle(tmp)
         test_record_verdict(tmp)
+        test_managed_wrapper(tmp)
+        test_managed_anchor(tmp)
         test_stop_gate(tmp)
     print(f"\n==== {_passed} passed, {_failed} failed ====")
     return 1 if _failed else 0

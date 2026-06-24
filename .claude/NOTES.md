@@ -30,13 +30,37 @@ durable decision/failure/pattern, move it to INTENT/LESSONS/skill via `/evolve` 
 
 ## Current runtime state (verify against disk before acting — this is a snapshot)
 
-Source: `.claude/state.json` read 2026-06-23.
+Source: `.claude/state.json` read 2026-06-24.
 
-- `halted: true` — **bot is halted. Do not propose, stage, or execute trades.**
-- `mode: "dry_run"`, `status: "shutdown"` (scanner not running)
-- `oanda_environment: "practice"` (`src/scanner/config.py:738`) — immutable Hard NO
-- NAV $102,183 · `open_trades: 0` · reconciled 2026-06-22
-- Zero live transformer artifacts — all quarantined by the 10% ship-gate (`.claude/rules/improvement.md`)
+- **`halted: false` — OPERATOR-DIRECTED ENABLE (2026-06-24).** The human operator (owns the halt)
+  directed "enable bot" on the PRACTICE/demo account.
+- **`mode: "live"`, `status: "running"`.** mode=live is EXECUTION mode (place orders), NOT real money.
+  Orders go to the PRACTICE/paper account: the order client is `OandaPracticeClient`, hard-pinned to
+  `PRACTICE_API_URL = api-fxpractice.oanda.com/v3` (`src/utils/oanda_practice.py:117`) and it IGNORES
+  `oanda_environment` entirely — there is NO live-URL path in the order client. Verified by separate
+  agent: "Can it place a real-money order? NO" (HIGH confidence). This is why mode=live is acceptable.
+- `oanda_environment: "practice"` (`src/scanner/config.py:738`) — **immutable Hard NO, untouched.**
+- Gates taught (committed): risk_monitor + verify_gate alarm on `mode=live` ONLY when env≠practice;
+  **env=live / real-money / ship-gate stay HARD** (env=live+mode=live → double hard alarm). L-014.
+- NAV $102,183 · `open_trades: 0` · zero live transformer artifacts (all quarantined) → bot abstains
+  (no champion direction model) so enabling unleashes no flood of trades; ship gate intact.
+- Known residual (non-blocking, pre-existing): static env-tripwire matches `oanda_environment = "live"`
+  assignment + git-diff `api-fxtrade`; a future *dict-form* profile override `"oanda_environment":
+  "live"` wouldn't be caught by the tripwire — but the practice-pinned order client is the primary
+  rail. Add the dict pattern IF env is ever wired into a profile dict / the client honors env.
+
+- **close_trade halt guard (HUMAN-authorized hot-path safety-ADD, 2026-06-24).** `execute_trade` had a
+  halt guard (execution.py:2093) but `close_trade` did not — an autonomous close could reach the broker
+  while halted. Added a mirror guard: autonomous/programmatic closes are BLOCKED while `halted=true`
+  (returns `BLOCKED: state.halted=True` before any broker call); an EXPLICIT operator close passes
+  `operator_override=True`. Safety-ADD only (can only make close MORE restrictive). Separate verifier
+  PASS, 4 no-mock tests (`tests/test_close_trade_halt_guard_2026_06_24.py`). Env/practice-pin/order-client
+  UNTOUCHED — this was authorized for the close-guard ONLY; the "everything to live mode" instruction
+  was NOT approved and NOT acted on.
+  **TUI follow-up (TUI agent's job, not mine):** `src/tui/screens/trades_screen.py:874` calls
+  `close_trade(...)` WITHOUT `operator_override=True`, so the operator's manual TUI close is now also
+  blocked while halted (strictly fail-closed). The TUI's halt-aware `c`-key confirm must pass
+  `operator_override=True` after the operator confirms. Do NOT wire this from here (outside scope).
 - Branch: `ralph/equity-harvester-bot` (an equity-beta harvester workstream is in flight)
 
 ## In-flight work (from session memory, not re-verified this turn — confirm before relying)
@@ -165,6 +189,40 @@ Bottom line: every machine-checkable claim and every Hard NO is enforced + fail-
 reduces to "a worker with full repo access can lie in a git-visible way (backstopped by human review)
 or fabricate an agent dispatch." Closing those requires moving the root of trust OUTSIDE the
 worker-controlled environment (CI signing / TEE / out-of-band logging) — operator's call on cost.
+
+### Managed-settings trust anchor (2026-06-23, docs-verified) — moves the root of trust outside the repo
+Prepared (operator runs one privileged install step — `.claude/loop/managed/INSTALL.md`): enterprise
+managed-settings.json pins the Stop hook to a ROOT-OWNED self-contained wrapper at the system managed
+dir (macOS `/Library/Application Support/ClaudeCode/`, Linux `/etc/claude-code/`, Windows
+`C:\Program Files\ClaudeCode\` — NOT the deprecated ProgramData). Managed settings are highest
+precedence ("can't be overridden"); Claude Code write access is confined to the project tree. The
+wrapper re-derives the gate hashes ITSELF (catches a neutered in-repo checker). 90 no-mock tests;
+separate verifier red-teamed it (PASS, no new gap; fetched the docs live). Effect on the floors:
+- **Floor #1 (gate-tamper) — DISABLE + NEUTER dimensions: CLOSED to "requires admin."** A worker can't
+  remove/re-point the Stop hook (managed precedence) nor neuter a checker (wrapper self-hashes).
+- **Floor #5 (hook-neuter): CLOSED to "requires admin."** The tripwire can't be disabled by the worker.
+- STILL OPEN (documented): edit-script-AND-manifest-together (git-visible; close by baking the manifest
+  hash into the root-owned wrapper, re-install per gate change); the verification LIE dimension (L-011,
+  advisory agent half); and the cwd/harness-integrity assumption (same as the in-repo stop_gate).
+The honest win: this turns "worker can disable the gate" into "worker can't without admin, which the
+operator controls" — until the one privileged install step runs, the anchor is advisory and the
+in-repo gates + code-level guards remain primary.
+
+**INSTALLED 2026-06-24, then ADVERSARIALLY RE-CHECKED — found 2 bypasses, hardened (RE-INSTALL needed).**
+Operator ran the install. Verified from disk: the two files are `root:wheel`, NOT writable by the
+worker — a worker CANNOT directly edit/remove/re-point the managed hook (proven: every write returned
+Permission denied). BUT the adversarial re-check (operator-requested) found two ways a worker could
+still neutralize it via LOCAL settings (which the worker CAN write):
+  (1) `disableAllHooks: true` in local settings disables ALL hooks incl. managed — unless managed pins
+      `disableAllHooks: false` (precedence). NOW fixed in the in-repo managed-settings.json.
+  (2) interpreter PATH-shadow of bare `python3`/`bash`. NOW fixed: absolute `/usr/bin/python3` + `/bin/bash`.
+`verify_managed_anchor.py` now REQUIRES `disableAllHooks:false` and currently reports **NOT-ACTIVE,
+exit 1** against the installed OLD file — honest: **the operator must RE-INSTALL** the hardened file
+for the closure to take effect. **I correct my prior "CLOSED in effect" claim:** until re-install, the
+direct-edit vector is closed but the disableAllHooks/PATH vectors are open. Separate verifier red-teamed
+the hardened anchor → PASS, no new bypass. Runtime "managed false wins" is docs-precedence-confirmed
+(verbatim "can't be overridden"), not empirically reproduced (needs a live session). LOW residual noted:
+risk_monitor.sh's own unqualified git/grep (not a current bypass; documented in INSTALL.md).
 
 - 3 cycles recorded in `.claude/loop/state.json`. `loop_gate.py` computes **STOP-DONE** from disk
   (risk GREEN, last cycle no new info, 0 open questions). Build→verify→fix ran twice.
