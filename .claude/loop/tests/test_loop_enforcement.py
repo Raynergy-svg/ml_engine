@@ -109,6 +109,16 @@ def run(cmd: list[str], *, env_extra: dict | None = None, stdin: str = "") -> su
     return subprocess.run(cmd, capture_output=True, text=True, env=env, input=stdin, timeout=60)
 
 
+def wf_lesson(lid: str, title: str) -> str:
+    """A well-formed lesson (all five fields, non-trivial body) for fixtures."""
+    return (f"## {lid} — {title}\n"
+            f"- Trigger: when {title} occurs, described with enough detail to clear the length floor here.\n"
+            f"- Root cause: the underlying mechanism explained at sufficient length for the content audit.\n"
+            f"- Rule: do the deterministic thing and fail closed on ambiguity, always, no exceptions.\n"
+            f"- Scope: the whole self-improver loop and its tooling.\n"
+            f"- Source: 2026-06-23 test fixture, well-formed by construction.\n\n")
+
+
 # ---- tests --------------------------------------------------------------------------------------
 
 def test_risk_monitor(tmp: Path):
@@ -253,6 +263,16 @@ def test_verify_gate(tmp: Path):
     dc = next((c for c in v["checks"] if c["name"] == "gate_scripts_unmodified"), {})
     check("manifest entry-drop FAILs gate (coverage check, fail-closed)", r.returncode == 2 and dc.get("ok") is False, dc)
 
+    # red-team #3: a shallow/empty lesson (bumps the counter without content) FAILs the gate
+    shallow = build_repo(tmp / "vg_shallow_lesson", extra_files={
+        ".claude/LESSONS.md": "Recall-trigger\n| x | L-099 |\n---\n" + wf_lesson("L-001", "real one") +
+        "## L-099 — filler\nno fields here\n"})
+    outp = tmp / "vg_shallow_lesson/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(shallow), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    wf = next((c for c in v["checks"] if c["name"] == "lessons_well_formed"), {})
+    check("shallow lesson FAILs gate (content audit)", r.returncode == 2 and wf.get("ok") is False, wf)
+
     # red-team #4b: a Stop hook pointing at a STUB stop_gate.sh (wrong path) must FAIL registration
     stub = build_repo(tmp / "vg_stub_hook", register_stop=False)
     (stub / ".claude/settings.json").write_text(json.dumps({"hooks": {"Stop": [
@@ -273,14 +293,18 @@ def test_loop_gate(tmp: Path):
     def cyc(n, tp, vp=True, lc=0, oqa=0):
         return {"n": n, "tests_passed": tp, "verify_gate_pass": vp, "lessons_count": lc, "open_questions_after": oqa}
 
-    def decide(cycles, open_qs, *, verify="pass", risk="green", blocked=False):
+    def decide(cycles, open_qs, *, verify="pass", risk="green", blocked=False, lessons=None):
         qpath.write_text(json.dumps({"questions": [{"id": f"q{i}", "status": "open"} for i in range(open_qs)]}))
         st = {"cycles": cycles}
         if blocked:
             st["blocked_on_irreversible"] = True
         spath.write_text(json.dumps(st))
+        # inject live lesson count == last cycle's recorded lessons_count so logic tests don't trip
+        # the lessons tamper check (override via `lessons=` to exercise tamper itself)
+        lc = lessons if lessons is not None else (int(cycles[-1].get("lessons_count", 0)) if cycles else 0)
         r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),
-                 "--questions", str(qpath), "--verify-status", verify, "--risk-status", risk])
+                 "--questions", str(qpath), "--verify-status", verify, "--risk-status", risk,
+                 "--lessons-count", str(lc)])
         return json.loads(r.stdout), r.returncode
 
     # CONTINUE: single cycle, an open question remains
@@ -332,6 +356,10 @@ def test_loop_gate(tmp: Path):
     out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=2)
     check("HALT on tampered open-count (recorded 0 != live 2)", out["decision"] == "HALT-SAFETY" and rc == 2, out)
 
+    # ANTI-TAMPER: state claims lessons_count=5 but LESSONS.md has 2 well-formed -> HALT
+    out, rc = decide([cyc(1, 10, vp=True, lc=5, oqa=0)], open_qs=0, lessons=2)
+    check("HALT on tampered lessons_count (recorded 5 != live 2)", out["decision"] == "HALT-SAFETY" and rc == 2, out)
+
     # HALT: risk alarm (latest cycle consistent so tamper passes first)
     out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=0, risk="alarm")
     check("HALT-SAFETY on risk alarm", out["decision"] == "HALT-SAFETY" and rc == 2, out)
@@ -368,14 +396,14 @@ def test_loop_gate(tmp: Path):
 def test_record_cycle(tmp: Path):
     print("\n[record_cycle.py]  (objective measurement -> state.json -> loop_gate)")
     repo = build_repo(tmp / "rc", open_qs=0)
-    (repo / ".claude/LESSONS.md").write_text("# Lessons\n## L-001 — a\nx\n## L-002 — b\ny\n")
+    (repo / ".claude/LESSONS.md").write_text("# Lessons\n" + wf_lesson("L-001", "alpha") + wf_lesson("L-002", "beta"))
     spath = repo / ".claude/loop/state.json"
     r = run([sys.executable, str(RECORD), "--repo", str(repo), "--summary", "test cycle",
              "--test-cmd", 'echo "7 passed, 0 failed"', "--verify-status", "pass", "--state", str(spath)])
     rec = json.loads(r.stdout)
     check("record_cycle measured tests_passed=7 (parsed from run output)", rec["tests_passed"] == 7, rec)
     check("record_cycle measured verify_gate_pass=True", rec["verify_gate_pass"] is True, rec)
-    check("record_cycle measured lessons_count=2 from LESSONS.md", rec["lessons_count"] == 2, rec)
+    check("record_cycle measured lessons_count=2 (well-formed) from LESSONS.md", rec["lessons_count"] == 2, rec)
     check("record_cycle measured open_questions_after=0 from questions.json", rec["open_questions_after"] == 0, rec)
     # the recorded (objective) cycle then drives loop_gate to STOP-DONE — full pipeline, no self-report
     out = json.loads(run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),

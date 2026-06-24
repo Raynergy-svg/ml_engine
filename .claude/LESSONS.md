@@ -31,6 +31,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | shipping a "hardened" gate, swapping one matcher for another (regex→AST), "this closes the evasion surface" | **L-006** a stronger matcher ≠ un-gameable — fail-closed + re-verify with the separate agent |
 | a loop/automation decision driven by a self-reported number (open_questions, "facts done", "verified") | **L-007** derive signals from observable artifacts + re-check latest vs live (tamper→HALT) |
 | building a gate/checker that trusts its own script wasn't neutered (could be edited to always-pass) | **L-008** hash-pin every gate in a committed manifest; checkers cross-verify; fail closed on drift |
+| a content/quality gate that checks STRUCTURE (fields, length) and is treated as verifying MEANING | **L-009** structural ≠ semantic — name the floor; human review backstops meaning |
 
 ---
 
@@ -144,3 +145,17 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Scope: every gate / tripwire script in the loop (verify_gate, loop_gate, risk_monitor, stop_gate, …).
 - Source: 2026-06-23 red-team finding #2 + Increment 1 (gate_manifest + _integrity cross-check, 64
   tests); separate verifier PASS and it prescribed the entry-drop coverage fix.
+
+## L-009 — a structural check is not a semantic one   [ACTIVE]
+- Trigger: a content/quality gate that enforces STRUCTURE (required fields present, minimum length,
+  uniqueness) and is then treated/described as if it verifies MEANING or quality.
+- Root cause: a static check can confirm a lesson HAS the five fields and clears a length floor, but
+  it cannot judge whether the lesson teaches anything — a 377-char lorem-ipsum block carrying the
+  five field labels passes `audit_lessons` (the Increment-2 verifier proved this).
+- Rule: structural gates legitimately close the "empty counter-bump" cheat (fail-closed on
+  shallow/empty/dup), but do NOT claim a structural check verifies quality. Name the semantic floor
+  explicitly and rely on human review (operator-gated `/evolve`) for meaning. Word comments/docs as
+  "structure, not meaning".
+- Scope: the lesson audit and any content/quality gate in the loop.
+- Source: 2026-06-23 Increment 2 separate-verifier finding — crafted a structurally-valid but vacuous
+  lesson that passed the audit; floor documented in `_integrity.py` + NOTES.

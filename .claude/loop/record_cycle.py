@@ -56,8 +56,11 @@ def _measure_verify(repo: Path, override: str | None) -> bool:
 
 
 def _lessons_count(lessons_path: Path) -> int:
+    # Count only WELL-FORMED lessons (shared audit) so a shallow ## L-099 can't bump the signal.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _integrity import audit_lessons
     try:
-        return len(re.findall(r'^##\s+L-\d+\b', lessons_path.read_text(), re.M))
+        return audit_lessons(lessons_path.read_text())[0]
     except Exception:
         return 0
 

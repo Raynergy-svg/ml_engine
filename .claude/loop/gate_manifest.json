@@ -1,9 +1,9 @@
 {
-  ".claude/loop/_integrity.py": "44d969a0d0aa3e96907d5f49e76fd4a6b7d33379a6469b87ed2a707729d20da2",
+  ".claude/loop/_integrity.py": "d4b2a0170e01353e6857d5e5979c4f353df87b125ec27278f46fb6a07c269158",
   ".claude/loop/gen_manifest.py": "994380102fceb82ee46e46aaca7ef4f405dac405cb2c74675255d17f0f0dcea6",
-  ".claude/loop/loop_gate.py": "2f846e67c299aaac4946d49963a690b052e0205b7b12ec3fef2a375fc035055f",
-  ".claude/loop/record_cycle.py": "dc14b619d9ada79fa2d37ce0af8aba36800c898b5c548bc7959bff1f59a337be",
-  ".claude/loop/verify_gate.py": "15542f07af6c9ec8895d69efffb7d97e5944a0c8902fd6cb0dd28b8e98ed2e99",
+  ".claude/loop/loop_gate.py": "1c061f33a04403aabe20dda564e07013053af94e8244154feacb4bef969d2a0d",
+  ".claude/loop/record_cycle.py": "31d8c23e165b724098fd6c5c714d04f91093ca9ef63e21906778d6929b64b486",
+  ".claude/loop/verify_gate.py": "063ae52ef9bc8fd47a68a9f58b26c2abe5899bef6573ff4e90549f1d947f09cd",
   ".claude/tools/risk_monitor.sh": "a9bf436a61ffe671cb255dc23518282be94ff2e90c75ead1cee4bb5c7c84f34c",
   ".claude/tools/session_context_boot.sh": "3aeb4fcd6c12ddccda6f9b07a77ddfe8bad4d0ab2dbcb17cf793a3e44af74efe",
   ".claude/tools/stop_gate.sh": "ba40ff12f4a12f82a6b43549dda0de6dbfa50dc858826a4aba189079426672a5"

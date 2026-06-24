@@ -13,9 +13,51 @@ root checker that cannot hash itself. Regenerate the manifest with gen_manifest.
 from __future__ import annotations
 import hashlib
 import json
+import re
 from pathlib import Path
 
 MANIFEST_REL = ".claude/loop/gate_manifest.json"
+
+# A lesson counts as real only if it has all five field LABELS, a non-trivial body LENGTH, and a
+# unique title. This makes "add an empty ## L-099 to bump the lesson counter" fail closed
+# (red-team #3): shallow/empty/dup lessons are problems (gate FAIL) and are NOT counted toward the
+# lessons_count progress signal. NOTE: this enforces STRUCTURE, not MEANING — a well-formed but
+# vacuous lesson still passes; semantic quality is the irreducible floor (human review). See L-009.
+REQUIRED_LESSON_FIELDS = ("Trigger", "Root cause", "Rule", "Scope", "Source")
+_MIN_LESSON_BODY = 140
+
+
+def audit_lessons(text: str) -> tuple[int, list[str]]:
+    """Return (well_formed_count, problems). Well-formed = '## L-NNN — <title>' with a unique
+    non-empty title and a body containing all REQUIRED_LESSON_FIELDS and >= _MIN_LESSON_BODY chars."""
+    blocks = re.split(r'(?m)^(?=##\s+L-\d+\b)', text)
+    well = 0
+    problems: list[str] = []
+    seen: dict[str, str] = {}
+    for b in blocks:
+        m = re.match(r'##\s+(L-\d+)\s*[—-]\s*(.*)', b)
+        if not m:
+            continue
+        lid, title = m.group(1), m.group(2).strip()
+        body = b[m.end():]
+        issues = []
+        if not title:
+            issues.append("empty-title")
+        missing = [f for f in REQUIRED_LESSON_FIELDS if f.lower() not in body.lower()]
+        if missing:
+            issues.append("missing[" + "+".join(missing) + "]")
+        if len(body.strip()) < _MIN_LESSON_BODY:
+            issues.append("too-short")
+        key = title.lower()
+        if key and key in seen:
+            issues.append(f"dup-of-{seen[key]}")
+        elif key:
+            seen[key] = lid
+        if issues:
+            problems.append(f"{lid}:{'/'.join(issues)}")
+        else:
+            well += 1
+    return well, problems
 
 # Canonical set of enforcement scripts that MUST be hash-pinned. Single source of truth, imported by
 # gen_manifest.py. gate_drift cross-checks the manifest covers all of these, so dropping an entry to

@@ -42,7 +42,7 @@ from pathlib import Path
 DEFAULT_REPO = Path("/Users/buddy/Documents/ml_engine")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _integrity import gate_drift  # noqa: E402  (independent gate-script hash check)
+from _integrity import gate_drift, audit_lessons  # noqa: E402  (gate-hash + live lesson count)
 
 
 def _risk_status(repo: Path, override: str | None) -> tuple[str, str]:
@@ -105,7 +105,7 @@ def _derive(cycles: list[dict]) -> list[tuple[int, int]]:
     return out
 
 
-def decide(state: dict, live_open: int, live_pass: bool, risk: str) -> tuple[str, str]:
+def decide(state: dict, live_open: int, live_pass: bool, live_lessons: int, risk: str) -> tuple[str, str]:
     cycles = state.get("cycles", [])
 
     # ANTI-TAMPER (fail-closed): latest recorded measurement must match live reality.
@@ -120,6 +120,11 @@ def decide(state: dict, live_open: int, live_pass: bool, risk: str) -> tuple[str
             return ("HALT-SAFETY",
                     f"state.json stale/tampered: latest open_questions_after={rec_open} but tracked "
                     f"questions.json has {live_open} open — re-record the cycle (record_cycle.py)")
+        rec_lessons = last.get("lessons_count")
+        if rec_lessons is None or int(rec_lessons) != live_lessons:
+            return ("HALT-SAFETY",
+                    f"state.json stale/tampered: latest lessons_count={rec_lessons} but LESSONS.md has "
+                    f"{live_lessons} well-formed lessons — re-record the cycle (record_cycle.py)")
 
     if risk == "alarm":
         return "HALT-SAFETY", "risk monitor ALARM — stop and address before anything else"
@@ -165,10 +170,13 @@ def main() -> int:
     ap.add_argument("--questions", default=None, help="path to questions.json (default <repo>/.claude/loop/questions.json)")
     ap.add_argument("--risk-status", default=None, choices=["green", "alarm"], help="inject risk status (tests)")
     ap.add_argument("--verify-status", default=None, choices=["pass", "fail"], help="inject verify_gate status (tests)")
+    ap.add_argument("--lessons", default=None, help="path to LESSONS.md (default <repo>/.claude/LESSONS.md)")
+    ap.add_argument("--lessons-count", type=int, default=None, help="inject live well-formed lesson count (tests)")
     a = ap.parse_args()
     repo = Path(a.repo)
     state_path = Path(a.state) if a.state else (repo / ".claude/loop/state.json")
     questions_path = Path(a.questions) if a.questions else (repo / ".claude/loop/questions.json")
+    lessons_path = Path(a.lessons) if a.lessons else (repo / ".claude/LESSONS.md")
 
     def halt(reason: str) -> int:
         print(json.dumps({"decision": "HALT-SAFETY", "reason": reason}, indent=2))
@@ -193,11 +201,18 @@ def main() -> int:
 
     live_pass, verify_detail = _verify_status(repo, a.verify_status)
     risk, risk_detail = _risk_status(repo, a.risk_status)
+    if a.lessons_count is not None:
+        live_lessons = a.lessons_count
+    else:
+        try:
+            live_lessons = audit_lessons(lessons_path.read_text())[0]
+        except Exception as e:
+            return halt(f"LESSONS.md unreadable == cannot derive lesson count ({e})")
 
-    decision, reason = decide(state, live_open, live_pass, risk)
+    decision, reason = decide(state, live_open, live_pass, live_lessons, risk)
     print(json.dumps({"decision": decision, "reason": reason,
                       "live_open_questions": live_open, "live_verify": "PASS" if live_pass else "FAIL",
-                      "risk": risk, "cycles": len(state.get("cycles", []))}, indent=2))
+                      "live_lessons": live_lessons, "risk": risk, "cycles": len(state.get("cycles", []))}, indent=2))
     return 2 if decision == "HALT-SAFETY" else 0
 
 

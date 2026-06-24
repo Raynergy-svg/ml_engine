@@ -28,7 +28,7 @@ from pathlib import Path
 DEFAULT_REPO = Path("/Users/buddy/Documents/ml_engine")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _integrity import gate_drift  # noqa: E402  (shared gate-script hash check)
+from _integrity import gate_drift, audit_lessons  # noqa: E402  (gate-hash + lesson-content checks)
 
 
 def _read(p: Path) -> str:
@@ -290,6 +290,14 @@ def check_integrity(repo: Path) -> list[dict]:
     out.append({"name": "lessons_have_triggers", "hard_no": False, "ok": not miss,
                 "detail": "every lesson has a recall trigger" if not miss
                 else f"lessons missing recall triggers: {miss}"})
+
+    # Lesson CONTENT integrity (red-team #3): every ## L-NNN must be well-formed (all five fields,
+    # non-trivial body, unique title). A shallow/empty/duplicate lesson added to bump the counter
+    # fails the gate here.
+    _, lesson_problems = audit_lessons(_read(repo / ".claude/LESSONS.md"))
+    out.append({"name": "lessons_well_formed", "hard_no": False, "ok": not lesson_problems,
+                "detail": "all lessons well-formed" if not lesson_problems
+                else f"malformed/shallow/duplicate lessons: {lesson_problems}"})
     return out
 
 
