@@ -38,6 +38,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | relying on a managed hook as un-disablable without closing the global-disable + interpreter-shadow paths | **L-013** also pin disableAllHooks:false (managed) + absolute interpreters; verifier must require both |
 | a safety gate that alarms on an execution-mode=live / "enabled" flag, treating it as real money | **L-014** real-money risk = the ENVIRONMENT/endpoint, not the mode flag; gate live-alarms on env, keep env=live hard |
 | a tripwire that scans the WHOLE-repo diff/all files for a sensitive string, flagging any mention | **L-015** scope diff-scans to the danger paths (src/scripts) + structural form; docs/tests that mention it must not trip |
+| an FX retrain, "make the bot trade FX", "why are FX models stale/quarantined", "refresh creds + retrain a gate-passing FX model" | **L-016** FX is RETIRED (~52% ceiling, no edge) — don't propose FX retrains; the live strategy is the equity harvester |
 
 ---
 
@@ -265,3 +266,26 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Source: 2026-06-24 enable-bot — `no_live_flip` whole-repo diff-scan false-positived on the
   mode=live gate-teach docs/tests, making verify_gate FAIL on its own change; scoped to src/scripts +
   assignment form; regression test added (doc mention OK, real src flip still caught); 97 no-mock tests.
+
+## L-016 — FX direction is RETIRED; the live strategy is the equity harvester   [ACTIVE] (operator doctrine)
+- Trigger: any plan to retrain an FX direction model, "make the bot trade FX", "why are the FX
+  transformers stale/quarantined", or the specific "refresh OANDA creds + retrain a gate-passing FX
+  model so it can trade" path. Also: anyone treating the TUI Trades tab's "HARVESTER REBALANCE PLAN"
+  render, or the empty/stale FX champion slots, as a bug to "fix" back to FX.
+- Root cause: FX/forex direction hit a hard ~52% directional-accuracy ceiling — barely above a coin
+  flip, no shippable edge — confirmed 4+ independent ways (price-only, news fusion, factor, carry,
+  meta-labeling; see L-001 anchor artifact + L-002 ship gate + the verdict docs in `docs/`). So FX
+  transformers fail the 10% ship gate and stay PERMANENTLY quarantined. The product therefore
+  **retired FX and pivoted to the equity harvester** (equity-beta risk-premium harvesting). A stale or
+  quarantined FX champion is the EXPECTED, abandoned-by-design end-state — not a fixable gap, and not a
+  reason to retrain.
+- Rule: do NOT propose FX retrains, creds-refresh-to-trade-FX, lookback/feature tweaks, or any "get the
+  bot trading FX again" effort — it is a known dead end (the ceiling is the market, not a bug). The
+  live, active direction is the **equity harvester**; route trading work there. The TUI Trades tab
+  rendering "HARVESTER REBALANCE PLAN" instead of FX trades is INTENTIONAL product behavior (the
+  earlier L7 live-dashboard finding is RESOLVED as not-a-bug — never "fix" it back to FX). Stale FX
+  champions are abandoned; leave them. This does not relax any Hard NO (it tightens posture).
+- Scope: all "should/why-isn't the bot trading" + "let's retrain" planning; FX-vs-equity strategy
+  direction; TUI Trades-tab expectations.
+- Source: operator doctrine 2026-06-24 (approved under delegation); builds on L-001 + L-002 and the
+  ~52% verdict docs in `docs/`. Operator-sourced standing direction, not a single code observation.

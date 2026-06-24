@@ -4,7 +4,7 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-06-23 by Claude (context-system build + self-improver loop hardening).
+Last touched: 2026-06-24 by Claude (runtime-state sync: operator-directed unhalt at 18:52Z).
 
 ## Operating mode — delegated authority (2026-06-23, survives fresh sessions)
 
@@ -30,10 +30,22 @@ durable decision/failure/pattern, move it to INTENT/LESSONS/skill via `/evolve` 
 
 ## Current runtime state (verify against disk before acting — this is a snapshot)
 
-Source: `.claude/state.json` read 2026-06-24.
+Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-directed-enable`).
 
-- **`halted: false` — OPERATOR-DIRECTED ENABLE (2026-06-24).** The human operator (owns the halt)
-  directed "enable bot" on the PRACTICE/demo account.
+- **`halted: false` — OPERATOR-DIRECTED UNHALT (2026-06-24T18:52:52Z).** The human operator (owns the
+  halt) directed "unhalt the bot" on the PRACTICE/demo account; flipped via the sanctioned writer
+  `StateEngine().set_halted(False)` (true→false), env-practice confirmed before flipping. Note: the
+  morning enable's `halted=false` had since flipped back to `true` (auto-halt circuit-breaker pattern;
+  the noisy "16 consecutive losses" lines were unit-test artifacts, not real trades — lifetime journal
+  is 26 trades), so this is a re-unhalt.
+- **WON'T ACTUALLY TRADE YET (3 blockers, none lifted by unhalt — verified from disk 2026-06-24):**
+  (1) **No scanner process running** — no `continuous`/`embedded_scanner`/`main.py` proc; heartbeat pid
+  dead (written by test runs). Unhalt removes the veto but nothing is scanning; a scanner must be
+  launched. (2) **OANDA practice creds stale (401)** — last OANDA call `401 Unauthorized` 09:44 EDT,
+  no successful fetch since → a running scanner would abstain/error until creds refreshed. (3) **Models
+  stale** — 6 per-pair champions all 36 days old (2026-05-19), past the >7d staleness hard-block
+  (`trading.md`); +19 quarantined. Runtime abstains (`direction=None`) on stale/over-gap models.
+  Net: unhalt is necessary-not-sufficient; bot sits idle/abstaining until scanner + creds + fresh model.
 - **`mode: "live"`, `status: "running"`.** mode=live is EXECUTION mode (place orders), NOT real money.
   Orders go to the PRACTICE/paper account: the order client is `OandaPracticeClient`, hard-pinned to
   `PRACTICE_API_URL = api-fxpractice.oanda.com/v3` (`src/utils/oanda_practice.py:117`) and it IGNORES
@@ -42,8 +54,8 @@ Source: `.claude/state.json` read 2026-06-24.
 - `oanda_environment: "practice"` (`src/scanner/config.py:738`) — **immutable Hard NO, untouched.**
 - Gates taught (committed): risk_monitor + verify_gate alarm on `mode=live` ONLY when env≠practice;
   **env=live / real-money / ship-gate stay HARD** (env=live+mode=live → double hard alarm). L-014.
-- NAV $102,183 · `open_trades: 0` · zero live transformer artifacts (all quarantined) → bot abstains
-  (no champion direction model) so enabling unleashes no flood of trades; ship gate intact.
+- NAV $102,183 · `open_trades: 0` · 6 per-pair transformer champions present but 36d-stale (+19
+  quarantined) → bot abstains on staleness/ship-gate, so unhalting unleashes no flood of trades.
 - Known residual (non-blocking, pre-existing): static env-tripwire matches `oanda_environment = "live"`
   assignment + git-diff `api-fxtrade`; a future *dict-form* profile override `"oanda_environment":
   "live"` wouldn't be caught by the tripwire — but the practice-pinned order client is the primary
@@ -69,14 +81,27 @@ Source: `.claude/state.json` read 2026-06-24.
   independent code review flagged **4 CRITICAL + 7 HIGH execution defects** (C1 crash→double-submit,
   C2 fill-detection reads aggregate position as per-order fill, C3 books PENDING as FILLED, C4 can't
   detect a MISSING corp-action split). These are the real blocker to paper/shadow trading. `[unverified — from memory recent.md, re-grep before acting]`
-- **FX direction lever**: empirically closed at ~52% intraday / ~50–54% daily across every tested
-  approach (price-only, news fusion, factor, carry, meta-labeling). Stay halted = the correct
-  outcome, not a failure. See verdict docs in `docs/`.
+- **FX direction is RETIRED — equity harvester is the live strategy (operator doctrine 2026-06-24, L-016).**
+  FX/forex direction hit a hard ~52% ceiling (coin-flip, no shippable edge; confirmed 4+ ways:
+  price-only, news, factor, carry, meta-labeling), so the transformers fail the 10% ship gate and stay
+  PERMANENTLY quarantined. The product pivoted to the **equity harvester** (equity-beta risk-premium
+  harvesting). Consequences for future sessions: the 6 stale FX champions (36d old) are
+  **expected/abandoned-by-design, NOT a fixable gap**; do **NOT** propose FX retrains — and the earlier
+  "refresh creds + retrain a gate-passing FX model so it trades" suggestion is a **DEAD END** (the
+  ceiling is the market, not a bug). Route trading work to the equity harvester. See L-016 + verdict
+  docs in `docs/`.
+- **L7 (TUI live-run finding) RESOLVED as intentional:** the Trades tab rendering "HARVESTER REBALANCE
+  PLAN" instead of FX trades is correct product behavior (FX retired → equity harvester). Not a bug;
+  never "fix" it back to FX.
 
 ## Blockers
 
-- None for *this* task (context-system build). For trading: system is halted by design; unhalting
-  is blocked on unambiguous validation that does not currently exist.
+- None for *this* task (context-system build). For trading: the **operator** may unhalt at any time
+  (operator-directed override is allowed and was exercised 2026-06-24T18:52Z → `halted=false`). What
+  stays doctrine: the **AUTONOMOUS/loop path may NEVER unhalt on its own** (the `/evolve` loop can't
+  relax the halt Hard NO; only the human who owns the halt can lift it). And unhalting ≠ trading:
+  actual trades are gated on scanner-running + fresh (non-401) OANDA creds + a gate-passing fresh
+  model — none of which hold right now, so the bot abstains. See the runtime-state blockers above.
 
 ## Judgment calls I made on this build (veto any of these and I'll revise)
 
