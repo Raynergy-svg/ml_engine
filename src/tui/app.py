@@ -298,6 +298,8 @@ class HeaderBar(Static):
     open_count = reactive(0)
     oanda_ok = reactive(False)
     scanner_ok = reactive(False)
+    halted = reactive(False)        # L2: header must reflect halt, like the footer
+    nav_known = reactive(False)     # L4: False until a real NAV is fetched
     mode_label = reactive("DEMO")
     # Equity live-gate indicator: "SHADOW" (safe, dim) vs "LIVE" (bright red).
     # Defaults SHADOW — the safe assumption when live_gate_state.json is absent.
@@ -331,8 +333,25 @@ class HeaderBar(Static):
         pnl_color = "#39ff14" if self.pnl >= 0 else "#ff3158"
         oanda_style = "bold #39ff14" if self.oanda_ok else "bold #ff3158"
         oanda_text = "● LIVE" if self.oanda_ok else "● OFF"
-        scanner_style = "bold #39ff14" if self.scanner_ok else "bold #7483b8"
-        scanner_text = "● ACTIVE" if self.scanner_ok else "● IDLE"
+        # L2: halt is the single source of truth — never show ACTIVE while
+        # halted (the footer already does this; keep the two in agreement).
+        if self.halted:
+            scanner_text, scanner_style = "● HALTED", "bold #ff3158"
+        elif self.scanner_ok:
+            scanner_text, scanner_style = "● ACTIVE", "bold #39ff14"
+        else:
+            scanner_text, scanner_style = "● IDLE", "bold #7483b8"
+        # L4: distinguish "no NAV fetched yet / fetch failing" from a real $0.
+        # Show last-known (amber when stale/disconnected) or "—" if never known
+        # — never a fabricated "$0".
+        if self.nav_known:
+            nav_str = f"${self.nav:,.0f}"
+            pl_str = f"{pnl_sign}${self.pnl:,.0f}"
+            nav_style = "bold #39ff14" if self.oanda_ok else "bold #ffb000"
+            pl_style = f"bold {pnl_color}" if self.oanda_ok else "bold #ffb000"
+        else:
+            nav_str = pl_str = "—"
+            nav_style = pl_style = "bold #7483b8"
 
         t = Text()
         t.append("  ▰ ", style="bold #ff2bd6")
@@ -343,10 +362,10 @@ class HeaderBar(Static):
         )
         t.append("  ║  ", style="#26304f")
         t.append("NAV ", style="#7483b8")
-        t.append(f"${self.nav:,.0f}", style="bold #39ff14")
+        t.append(nav_str, style=nav_style)
         t.append("  │  ", style="#26304f")
         t.append("P/L ", style="#7483b8")
-        t.append(f"{pnl_sign}${self.pnl:,.0f}", style=f"bold {pnl_color}")
+        t.append(pl_str, style=pl_style)
         t.append("  │  ", style="#26304f")
         t.append(f"Open: {self.open_count}", style="#7483b8")
         t.append("  │  ", style="#26304f")
@@ -449,20 +468,39 @@ class HarvesterPanel(Static):
 
 
 class AgentPanel(Static):
-    """15-agent panel with colored bar indicators (see ``ScannerAgentTeam._BASE_WEIGHTS``). Reads from snapshot or demo."""
+    """15-agent consensus panel (see ``ScannerAgentTeam._BASE_WEIGHTS``).
+
+    Starts EMPTY and shows an explicit "awaiting first scan" placeholder until
+    real agent data arrives via update_from_snapshot. It must NEVER render the
+    DEMO_AGENTS simulated signal in live mode — fabricated BULLISH/SAFE/STRONG
+    rows would read as real consensus. Demo mode opts in explicitly via
+    load_demo().
+    """
 
     can_focus = True  # Click-to-focus for the 'c' copy hotkey
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._agents: list[tuple[str, float, str]] = list(DEMO_AGENTS)
+        self._agents: list[tuple[str, float, str]] = []
+        self._has_data = False
+
+    def load_demo(self) -> None:
+        """Seed simulated agents — DEMO MODE ONLY (never call in live mode)."""
+        self._agents = list(DEMO_AGENTS)
+        self._has_data = True
 
     def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
         if snap.agents:
             self._agents = [(a.name, a.score, a.signal) for a in snap.agents]
+            self._has_data = True
 
     def render(self) -> Text:
         t = Text()
+        if not self._agents:
+            # Live mode pre-scan: explicit placeholder, never fabricated signal.
+            t.append("  ⏳ AWAITING FIRST SCAN\n", style="bold #7483b8")
+            t.append("  no live agent consensus yet", style="#26304f")
+            return t
         for name, score, signal in self._agents:
             s = max(0.0, min(1.0, score))
             filled = int(s * 10)
@@ -960,7 +998,19 @@ class SystemHealthBar(Static):
         cpu = s.cpu_pct if s else 0
         mem = s.mem_mb if s else 0
         oanda_ok = s.oanda_connected if s else False
-        oanda_style = "bold #39ff14" if oanda_ok else "bold #ff3158"
+        # L3: green only on a genuine successful round-trip. "connected" can be
+        # optimistically True with 0ms latency (no successful fetch) or stale
+        # during a 503/504 outage — a green "● 0ms" then misrepresents health.
+        oanda_healthy = oanda_ok and api_ms > 0
+        oanda_style = "bold #39ff14" if oanda_healthy else "bold #ff3158"
+        oanda_text = f"● {api_ms:.0f}ms" if oanda_healthy else "● OFF"
+        # L5: psutil may be unavailable (resources read returns 0/0). MEM can
+        # never be 0 for a live process, so treat 0 as "unavailable" and show
+        # "—" rather than a misleading 0%/0MB.
+        if mem > 0:
+            cpu_text, mem_text = f"CPU: {cpu:.0f}%", f"MEM: {mem:.0f}MB"
+        else:
+            cpu_text, mem_text = "CPU: —", "MEM: —"
         if not s or not s.scanner_ready:
             scanner_text = "● OFFLINE"
             scanner_style = "bold #ff3158"
@@ -982,7 +1032,7 @@ class SystemHealthBar(Static):
         t.append(scanner_text, style=scanner_style)
         t.append("  │  ", style="#26304f")
         t.append("OANDA: ", style="#7483b8")
-        t.append(f"● {api_ms:.0f}ms", style=oanda_style)
+        t.append(oanda_text, style=oanda_style)
         t.append("  │  ", style="#26304f")
         t.append("Models: ", style="#7483b8")
         t.append(f"● {models}", style="bold #39ff14")
@@ -990,9 +1040,9 @@ class SystemHealthBar(Static):
         t.append("RL Sync: ", style="#7483b8")
         t.append("● CURRENT", style="bold #39ff14")
         t.append("  │  ", style="#26304f")
-        t.append(f"CPU: {cpu:.0f}%", style="#7483b8")
+        t.append(cpu_text, style="#7483b8")
         t.append("  │  ", style="#26304f")
-        t.append(f"MEM: {mem:.0f}MB", style="#7483b8")
+        t.append(mem_text, style="#7483b8")
         return t
 
 
@@ -1544,23 +1594,37 @@ class BuddyApp(App):
         spark = self.query_one("#nav-sparkline", Sparkline)
         spark.data = [100000 + random.randint(-500, 2000) for _ in range(30)]
 
-        # Try to load real agent weights even in demo mode
+        # Try to load real agent weights even in demo mode; if none exist, fall
+        # back to the explicit DEMO_AGENTS seed. This is the ONLY path that
+        # seeds demo agents — live mode shows the "awaiting first scan"
+        # placeholder instead (never fabricated signal).
         snap = self._provider.refresh()
+        panel = self.query_one("#agent-panel", AgentPanel)
         if snap.agents:
-            self.query_one("#agent-panel", AgentPanel).update_from_snapshot(snap)
-            self.query_one("#agent-panel", AgentPanel).refresh()
+            panel.update_from_snapshot(snap)
+        else:
+            panel.load_demo()
+        panel.refresh()
 
     def _apply_snapshot(self, snap: DashboardSnapshot) -> None:
         """Apply a DashboardSnapshot to all widgets (runs on main thread)."""
         header = self.query_one("#header-bar", HeaderBar)
-        fallback_nav = self._demo_nav if not self._live else 0.0
-        header.nav = snap.nav if snap.nav > 0 else fallback_nav
-        header.pnl = snap.unrealized_pnl if snap.nav > 0 else (
-            self._demo_nav - 100000 if not self._live else 0.0
-        )
+        # L4: only adopt a NAV we actually fetched; otherwise keep the last
+        # known value (rendered amber/stale) and never fall back to a fake $0.
+        if snap.nav > 0:
+            header.nav = snap.nav
+            header.pnl = snap.unrealized_pnl
+            header.nav_known = True
+        elif not self._live:
+            header.nav = self._demo_nav
+            header.pnl = self._demo_nav - 100000
+            header.nav_known = True
+        # else (live + no NAV yet): leave header.nav/pnl at last-known;
+        # nav_known stays False until the first successful fetch → renders "—".
         header.open_count = len(snap.trades)
         header.oanda_ok = snap.oanda_connected
         header.scanner_ok = snap.scanner_ready
+        header.halted = bool(getattr(snap, "halted", False))  # L2 single source
 
         # Update trades table
         table = self.query_one("#trades-table", DataTable)
