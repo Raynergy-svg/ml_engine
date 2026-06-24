@@ -1257,6 +1257,12 @@ class ScannerConfig:
     staged_deploy_canary_trades: int = 10
 
     # --- Equity-Beta Harvester (US-006) ---
+    # Master enable flag for the equity harvester runner (N1, 2026-06-24).
+    # Default OFF (fail-closed): the shadow runner refuses to run a cycle
+    # unless this is True. Live broker/order routing is a separate,
+    # operator-authorized hot-path step (H1/H3) — this flag only gates the
+    # non-hot-path shadow lane.
+    enable_equity_harvester: bool = False
     # Causal vol-target + drawdown overlay knobs that gate the harvester's
     # exposure scalar. Defaults match src.equity.ship_gate (the validated
     # ship-gate config). Consumers read these via getattr(config, ...) so
