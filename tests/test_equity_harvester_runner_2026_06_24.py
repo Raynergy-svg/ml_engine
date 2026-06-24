@@ -22,6 +22,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.equity.cycle_ledger import (
+    LEDGER_PATH_DEFAULT,
+    read_ledger,
+    verify_chain,
+)
 from src.equity.runner import ShadowRunResult, run_shadow_rebalance
 from src.equity.universe import UniverseRules, UniverseSnapshot
 from src.scanner.automation.state_engine import StateEngine
@@ -185,6 +190,53 @@ def test_runner_abstains_on_stale_data(tmp_path: Path, monkeypatch):
     assert res.ran is False
     assert res.reason == "abstain"
     assert not (tmp_path / _STATE_REL).exists()
+
+
+def test_runner_records_each_cycle_to_tamper_evident_ledger(tmp_path: Path, monkeypatch):
+    """Pillar 2: every tick (actionable or not) appends one chained ledger record."""
+    cfg, snap, prices, asof = _prepare(
+        tmp_path, monkeypatch, enabled=True, halted=False
+    )
+    ledger = tmp_path / LEDGER_PATH_DEFAULT
+
+    # Actionable tick -> a CONTINUE record with order count + weight fingerprint.
+    run_shadow_rebalance(
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path,
+        now=asof,
+    )
+    recs = read_ledger(ledger)
+    assert len(recs) == 1
+    assert recs[0].decision == "continue"
+    assert recs[0].actionable is True
+    assert recs[0].n_orders > 0
+    assert len(recs[0].target_weight_hash) == 64
+
+    # Non-actionable tick (stale data) -> a second ABSTAIN record, still chained.
+    run_shadow_rebalance(
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path
+    )
+    recs = read_ledger(ledger)
+    assert len(recs) == 2
+    assert recs[1].decision == "abstain"
+    assert recs[1].actionable is False
+    ok, broken = verify_chain(ledger)
+    assert ok is True and broken is None
+
+
+def test_runner_tick_survives_corrupt_ledger_non_blocking(tmp_path: Path, monkeypatch):
+    """D-1: a corrupt ledger must NOT crash a tick whose plan already executed."""
+    cfg, snap, prices, asof = _prepare(
+        tmp_path, monkeypatch, enabled=True, halted=False
+    )
+    ledger = tmp_path / LEDGER_PATH_DEFAULT
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text("{ corrupt tail line\n")  # poison the ledger tail
+    res = run_shadow_rebalance(
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path,
+        now=asof,
+    )
+    assert res.ran is True  # plan executed; ledger append failure is non-blocking
+    assert res.reason == "executed"
 
 
 def test_runner_abstains_on_empty_price_frame(tmp_path: Path, monkeypatch):

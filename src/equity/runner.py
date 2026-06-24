@@ -32,6 +32,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from src.equity.cycle_ledger import LEDGER_PATH_DEFAULT, append_cycle
 from src.equity.decision_gate import decide_cycle
 from src.equity.harvester_strategy import HarvesterStrategy
 from src.equity.rebalance import (
@@ -81,6 +82,36 @@ def _shadow_execute_order(order: Order) -> bool:
         order.target_weight,
     )
     return True
+
+
+def _record_cycle(
+    root: Path,
+    asof,
+    decision: str,
+    reasons,
+    actionable: bool,
+    universe_hash: str,
+    *,
+    n_orders: int = 0,
+    target_weights=None,
+) -> None:
+    """Append a Pillar-2 cycle record (non-blocking observability)."""
+    try:
+        append_cycle(
+            ledger_path=root / LEDGER_PATH_DEFAULT,
+            asof=str(asof),
+            decision=decision,
+            reasons=reasons,
+            actionable=actionable,
+            universe_hash=universe_hash,
+            n_orders=n_orders,
+            target_weights=target_weights,
+        )
+    except (OSError, ValueError, KeyError) as exc:
+        # Includes a corrupt/tampered ledger tail (JSONDecodeError ⊂ ValueError).
+        # The ledger is observability, never a safety gate: a write failure must
+        # not crash a tick whose plan already executed.
+        logger.warning("cycle ledger append failed (non-blocking): %s", exc)
 
 
 def run_shadow_rebalance(
@@ -133,6 +164,10 @@ def run_shadow_rebalance(
             decision.decision.value.upper(),
             ",".join(decision.reasons),
         )
+        _record_cycle(
+            root, asof, decision.decision.value, decision.reasons, False,
+            snapshot.universe_hash,
+        )
         return ShadowRunResult(ran=False, reason=decision.decision.value, plan=None)
 
     (root / _EQUITY_STATE_DIR_REL).mkdir(parents=True, exist_ok=True)
@@ -156,6 +191,10 @@ def run_shadow_rebalance(
         scheduler.finalize_plan(prior)
     plan = scheduler.plan_and_persist(target_weights=target_weights, asof=asof)
     scheduler.execute_plan(plan, _shadow_execute_order)
+    _record_cycle(
+        root, asof, "continue", (), True, snapshot.universe_hash,
+        n_orders=len(plan.orders), target_weights=plan.target_weights,
+    )
     logger.info(
         "equity harvester shadow tick EXECUTED — orders=%d state=%s",
         len(plan.orders),
