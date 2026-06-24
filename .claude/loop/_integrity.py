@@ -66,6 +66,7 @@ GATE_SCRIPTS = [
     ".claude/loop/verify_gate.py",
     ".claude/loop/loop_gate.py",
     ".claude/loop/record_cycle.py",
+    ".claude/loop/record_verdict.py",
     ".claude/loop/_integrity.py",
     ".claude/loop/gen_manifest.py",
     # The test suite is the recompute's trust anchor (loop_gate re-runs it to attest tests_passed),

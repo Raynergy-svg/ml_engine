@@ -76,6 +76,20 @@ def _verify_status(repo: Path, override: str | None) -> tuple[bool, str]:
         return False, f"verify_gate error == unsafe ({e})"
 
 
+def _fresh_verdict(path: Path, last_cycle: dict) -> bool:
+    """A separate-agent verdict is fresh iff gate==PASS AND its bound measurements match the current
+    last cycle (so skipping the verifier, or changing state after verifying, fails the freshness)."""
+    try:
+        v = json.loads(path.read_text())
+    except Exception:
+        return False
+    if v.get("gate") != "PASS":
+        return False
+    b = v.get("bound", {})
+    return all(str(b.get(k)) == str(last_cycle.get(k))
+               for k in ("tests_passed", "lessons_count", "open_questions_after"))
+
+
 def load_open_questions(path: Path) -> tuple[int | None, str | None]:
     """Count status=='open' entries. Missing/malformed -> (None, error) so caller fails closed."""
     if not path.exists():
@@ -108,7 +122,7 @@ def _derive(cycles: list[dict]) -> list[tuple[int, int]]:
 
 
 def decide(state: dict, live_open: int, live_pass: bool, live_lessons: int,
-           live_tests: int | None, risk: str) -> tuple[str, str]:
+           live_tests: int | None, verdict_fresh: bool, risk: str) -> tuple[str, str]:
     cycles = state.get("cycles", [])
 
     # ANTI-TAMPER (fail-closed): latest recorded measurement must match live reality.
@@ -158,9 +172,17 @@ def decide(state: dict, live_open: int, live_pass: bool, live_lessons: int,
                     "done conditions met but ZERO observable work across the loop (no test/lesson "
                     "delta, no question closed) — do real work, or set no_work_needed_attested=true "
                     "in state.json to attest a genuine no-op")
+        # Agent-verifier freshness (red-team #1a, lazy dimension): a fresh PASS verdict bound to THIS
+        # state must exist — i.e. the separate verifier was actually dispatched against the current
+        # state. Skipping it (laziness) leaves no fresh verdict. The lie (writing PASS without
+        # dispatching) is the irreducible floor — see L-011; verify_gate is the enforced floor.
+        if not verdict_fresh:
+            return ("CONTINUE",
+                    "done conditions met but no fresh PASS agent-verdict bound to this state — "
+                    "dispatch /verify-task (separate agent) then run record_verdict.py --gate PASS")
         return ("STOP-DONE",
-                "verify_gate PASS (live), zero open questions (tracked list), no new verified facts "
-                "or lessons this cycle, and observable work occurred across the loop")
+                "verify_gate PASS (live), zero open questions, no new facts/lessons this cycle, "
+                "observable work occurred, and a fresh separate-agent PASS verdict is bound to this state")
 
     # STOP-CHURN rolling window: progress = close a question OR learn a lesson (derived).
     if len(cycles) >= 2:
@@ -195,6 +217,8 @@ def main() -> int:
     ap.add_argument("--lessons-count", type=int, default=None, help="inject live well-formed lesson count (tests)")
     ap.add_argument("--test-cmd", default=None, help="command to recompute tests_passed (default: pinned suite)")
     ap.add_argument("--tests-count", type=int, default=None, help="inject live passing-test count (tests)")
+    ap.add_argument("--verdict", default=None, help="path to agent_verdict.json (default <repo>/.claude/loop/agent_verdict.json)")
+    ap.add_argument("--verdict-status", default=None, choices=["fresh", "stale"], help="inject verdict freshness (tests)")
     a = ap.parse_args()
     repo = Path(a.repo)
     state_path = Path(a.state) if a.state else (repo / ".claude/loop/state.json")
@@ -253,10 +277,16 @@ def main() -> int:
         except Exception as e:
             return halt(f"tests_passed recompute failed == unsafe ({e})")
 
-    decision, reason = decide(state, live_open, live_pass, live_lessons, live_tests, risk)
+    verdict_path = Path(a.verdict) if a.verdict else (repo / ".claude/loop/agent_verdict.json")
+    if a.verdict_status is not None:
+        verdict_fresh = a.verdict_status == "fresh"
+    else:
+        verdict_fresh = bool(state.get("cycles")) and _fresh_verdict(verdict_path, state["cycles"][-1])
+
+    decision, reason = decide(state, live_open, live_pass, live_lessons, live_tests, verdict_fresh, risk)
     print(json.dumps({"decision": decision, "reason": reason,
                       "live_open_questions": live_open, "live_verify": "PASS" if live_pass else "FAIL",
-                      "live_lessons": live_lessons, "live_tests": live_tests,
+                      "live_lessons": live_lessons, "live_tests": live_tests, "verdict_fresh": verdict_fresh,
                       "risk": risk, "cycles": len(state.get("cycles", []))}, indent=2))
     return 2 if decision == "HALT-SAFETY" else 0
 

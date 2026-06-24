@@ -33,6 +33,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | building a gate/checker that trusts its own script wasn't neutered (could be edited to always-pass) | **L-008** hash-pin every gate in a committed manifest; checkers cross-verify; fail closed on drift |
 | a content/quality gate that checks STRUCTURE (fields, length) and is treated as verifying MEANING | **L-009** structural ≠ semantic — name the floor; human review backstops meaning |
 | a "done"/PASS that needs no observable change, or a recorded metric trusted without recompute | **L-010** gate done on an artifact delta + recompute metrics from their real source (fail closed) |
+| a verification/judge step that needs an agent or human dispatched & honest, used to gate "done" | **L-011** enforce the deterministic half live; close the lazy-skip with a bound verdict; document the lie floor |
 
 ---
 
@@ -174,3 +175,18 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Scope: the loop's stopping conditions and any automation "done"/success signal.
 - Source: 2026-06-23 red-team Fronts #1d/#3a/#5 + Increment 3 (tests_passed recompute via the pinned
   suite, anti-laziness work-delta gate; 73 no-mock tests); separate verifier.
+
+## L-011 — you can't deterministically prove an agent was dispatched; enforce the half you can   [ACTIVE]
+- Trigger: a verification/judge step that depends on a separate agent (or human) actually being
+  dispatched and reasoning honestly — used as a gate for "done" (e.g. the separate-agent verifier).
+- Root cause: no static gate, from inside the same environment the worker controls, can prove an LLM
+  agent was dispatched or that it judged honestly. The verdict's gate value is a CLAIM. So the agent
+  half of verification is intrinsically advisory; only its lazy-skip is closable.
+- Rule: enforce the DETERMINISTIC half as the real floor (re-run disk-reading checks live, hash-pin
+  the gate scripts + recompute source). For the AGENT half, close the LAZY dimension — require a
+  fresh verdict artifact BOUND to the current state (so skipping the verifier blocks "done", and any
+  post-verify change forces re-verification) — and DOCUMENT the irreducible lie-dimension (a
+  fabricated PASS) as resting on human review. Never claim the agent dispatch itself is enforced.
+- Scope: any verification / LLM-judge / human-review step the loop uses to gate behavior.
+- Source: 2026-06-23 red-team Front #1a + Increment 4 (record_verdict.py + loop_gate fresh-verdict
+  gate, 77 no-mock tests); irreducible floor documented in NOTES.

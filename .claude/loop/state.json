@@ -46,6 +46,24 @@
       "verify_gate_pass": true,
       "lessons_count": 10,
       "open_questions_after": 0
+    },
+    {
+      "n": 6,
+      "summary": "Increment 4 work: record_verdict.py + loop_gate fresh-verdict gate (closes Front #1a lazy self-grade); L-011",
+      "tests_passed": 79,
+      "tests_failed": 0,
+      "verify_gate_pass": true,
+      "lessons_count": 11,
+      "open_questions_after": 0
+    },
+    {
+      "n": 7,
+      "summary": "Increment 4 confirm: 79 tests, 11 lessons, gates green",
+      "tests_passed": 79,
+      "tests_failed": 0,
+      "verify_gate_pass": true,
+      "lessons_count": 11,
+      "open_questions_after": 0
     }
   ]
 }

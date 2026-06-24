@@ -246,6 +246,7 @@ def check_integrity(repo: Path) -> list[dict]:
         ".claude/tools/stop_gate.sh", ".claude/loop/verify_gate.py", ".claude/loop/loop_gate.py",
         ".claude/loop/record_cycle.py", ".claude/loop/questions.json",
         ".claude/loop/_integrity.py", ".claude/loop/gen_manifest.py", ".claude/loop/gate_manifest.json",
+        ".claude/loop/record_verdict.py",
     ]
     out = []
     for rel in required:

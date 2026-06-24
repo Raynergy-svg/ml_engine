@@ -29,6 +29,7 @@ TOOLS = CLAUDE_DIR / "tools"
 VERIFY = LOOP_DIR / "verify_gate.py"
 LOOPG = LOOP_DIR / "loop_gate.py"
 RECORD = LOOP_DIR / "record_cycle.py"
+RECORDV = LOOP_DIR / "record_verdict.py"
 INTEG = LOOP_DIR / "_integrity.py"
 GENMAN = LOOP_DIR / "gen_manifest.py"
 MANIFEST = LOOP_DIR / "gate_manifest.json"
@@ -89,7 +90,7 @@ def build_repo(root: Path, *, env="practice", gap="0.10", halt=True, state=True,
         if src.exists():
             (root / ".claude/tools" / src.name).write_text(src.read_text())
             os.chmod(root / ".claude/tools" / src.name, 0o755)
-    for src in (VERIFY, LOOPG, RECORD, INTEG, GENMAN):
+    for src in (VERIFY, LOOPG, RECORD, RECORDV, INTEG, GENMAN):
         (root / ".claude/loop" / src.name).write_text(src.read_text())
     (root / ".claude/loop/tests").mkdir(parents=True, exist_ok=True)
     (root / ".claude/loop/tests/test_loop_enforcement.py").write_text(HERE.read_text())  # pinned suite
@@ -306,7 +307,7 @@ def test_loop_gate(tmp: Path):
         return {"n": n, "tests_passed": tp, "verify_gate_pass": vp, "lessons_count": lc, "open_questions_after": oqa}
 
     def decide(cycles, open_qs, *, verify="pass", risk="green", blocked=False, lessons=None,
-               tests=None, attest=False):
+               tests=None, attest=False, verdict="fresh"):
         qpath.write_text(json.dumps({"questions": [{"id": f"q{i}", "status": "open"} for i in range(open_qs)]}))
         st = {"cycles": cycles}
         if blocked:
@@ -315,12 +316,13 @@ def test_loop_gate(tmp: Path):
             st["no_work_needed_attested"] = True
         spath.write_text(json.dumps(st))
         # inject live lesson + test counts == last cycle's recorded values so logic tests don't trip
-        # the tamper checks (override via lessons=/tests= to exercise tamper itself)
+        # the tamper checks (override via lessons=/tests= to exercise tamper itself); verdict defaults
+        # fresh so done-path tests pass (override verdict="stale" to exercise the agent-verdict gate)
         lc = lessons if lessons is not None else (int(cycles[-1].get("lessons_count", 0)) if cycles else 0)
         tc = tests if tests is not None else (int(cycles[-1].get("tests_passed", 0)) if cycles else 0)
         r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),
                  "--questions", str(qpath), "--verify-status", verify, "--risk-status", risk,
-                 "--lessons-count", str(lc), "--tests-count", str(tc)])
+                 "--lessons-count", str(lc), "--tests-count", str(tc), "--verdict-status", verdict])
         return json.loads(r.stdout), r.returncode
 
     # CONTINUE: single cycle, an open question remains
@@ -391,6 +393,11 @@ def test_loop_gate(tmp: Path):
     out, rc = decide([cyc(1, 10, lc=2, oqa=1), cyc(2, 10, lc=2, oqa=0)], open_qs=0)
     check("STOP-DONE when a question was closed (observable work)", out["decision"] == "STOP-DONE", out)
 
+    # Front #1a (lazy dimension): STOP-DONE requires a fresh PASS agent-verdict; skip it -> not done
+    out, rc = decide([cyc(1, 10, lc=2, oqa=1), cyc(2, 10, lc=2, oqa=0)], open_qs=0, verdict="stale")
+    check("no STOP-DONE without a fresh agent-verdict (lazy self-grade closed)", out["decision"] == "CONTINUE", out)
+    check("  reason names the missing agent-verdict", "agent-verdict" in out["reason"].lower(), out)
+
     # HALT: risk alarm (latest cycle consistent so tamper passes first)
     out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=0, risk="alarm")
     check("HALT-SAFETY on risk alarm", out["decision"] == "HALT-SAFETY" and rc == 2, out)
@@ -439,7 +446,7 @@ def test_loop_gate(tmp: Path):
             "--test-cmd", 'echo "5 passed, 0 failed"'], capture_output=True, text=True, env=env_clean, timeout=60)
 
     r = recompute(5)
-    check("tests recompute runs the suite & matches -> STOP-DONE", json.loads(r.stdout)["decision"] == "STOP-DONE", r.stdout)
+    check("tests recompute runs the suite & matches -> no tamper-HALT", json.loads(r.stdout)["decision"] != "HALT-SAFETY", r.stdout)
     r = recompute(6)
     check("tests recompute catches a faked tests_passed -> HALT", r.returncode == 2, r.stdout)
 
@@ -484,6 +491,33 @@ def test_stop_gate(tmp: Path):
     check("loop guard: exit 0 when stop_hook_active (no trap)", r.returncode == 0, f"rc={r.returncode}")
 
 
+def test_record_verdict(tmp: Path):
+    print("\n[record_verdict.py + loop_gate fresh-verdict gate]")
+    repo = build_repo(tmp / "rv", open_qs=0)
+    qp = repo / ".claude/loop/questions.json"
+    sp = repo / ".claude/loop/state.json"
+    vp = repo / ".claude/loop/agent_verdict.json"
+    two = [{"n": 1, "tests_passed": 5, "verify_gate_pass": True, "lessons_count": 0, "open_questions_after": 1},
+           {"n": 2, "tests_passed": 5, "verify_gate_pass": True, "lessons_count": 0, "open_questions_after": 0}]
+    sp.write_text(json.dumps({"cycles": two}))
+
+    def lg():
+        return json.loads(run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(sp),
+            "--questions", str(qp), "--lessons-count", "0", "--tests-count", "5",
+            "--verify-status", "pass", "--risk-status", "green"]).stdout)
+
+    check("no agent_verdict file -> CONTINUE (must run the separate verifier)", lg()["decision"] == "CONTINUE")
+    run([sys.executable, str(RECORDV), "--repo", str(repo), "--gate", "PASS", "--state", str(sp), "--out", str(vp)])
+    check("fresh PASS agent-verdict bound to state -> STOP-DONE", lg()["decision"] == "STOP-DONE")
+    # change state after verifying -> verdict bound is now stale -> must re-verify
+    sp.write_text(json.dumps({"cycles": two + [
+        {"n": 3, "tests_passed": 6, "verify_gate_pass": True, "lessons_count": 0, "open_questions_after": 0}]}))
+    out = json.loads(run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(sp),
+        "--questions", str(qp), "--lessons-count", "0", "--tests-count", "6",
+        "--verify-status", "pass", "--risk-status", "green"]).stdout)
+    check("stale verdict after a state change -> CONTINUE (re-verify required)", out["decision"] == "CONTINUE", out)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
@@ -491,6 +525,7 @@ def main() -> int:
         test_verify_gate(tmp)
         test_loop_gate(tmp)
         test_record_cycle(tmp)
+        test_record_verdict(tmp)
         test_stop_gate(tmp)
     print(f"\n==== {_passed} passed, {_failed} failed ====")
     return 1 if _failed else 0

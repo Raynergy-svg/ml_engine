@@ -131,6 +131,41 @@ Source: `.claude/state.json` read 2026-06-23.
 - Operating in delegated-authority mode (commit/push + /evolve auto-approved with proof; immutable
   escalations route to human). See the "Operating mode" section above.
 
+## Irreducible floors — the 2026-06-23 red-team program's residual trust assumptions
+
+A red-team (separate agent, lying + lazy) attacked all four fronts; 4 hardening increments closed
+every CLOSABLE cheat with deterministic, fail-closed, tested gates (commits 88b8b83 / c0d8306 /
+d5992a8 / + Increment 4). What remains is genuinely irreducible — documented here per the operator's
+"don't fake closure" mandate. Each names the residual trust assumption and what closing it would cost.
+
+1. **Gate-script integrity (L-008).** All enforcement scripts + the test suite are SHA-256 hash-pinned
+   (`gate_manifest.json`), cross-checked by two independent checkers, coverage-checked vs entry-drop.
+   FLOOR: editing a gate script AND regenerating the manifest in one change evades hashing — but the
+   diff is git-visible, and a root checker can't hash itself. Closing cost: sign the manifest with a
+   key the worker can't access (CI-side), checked out-of-band.
+2. **Lesson meaning (L-009).** Lessons are structurally audited (5 fields, length, uniqueness);
+   empty/shallow/dup fail closed. FLOOR: a structurally-valid but vacuous lesson passes — a static
+   check can't judge meaning. Closing cost: an LLM-judge (itself subject to #5) or human review (current).
+3. **Recorded metrics (L-010).** open_questions, verify verdict, lessons_count, and tests_passed are
+   ALL re-derived live at decide time and tamper-checked → a hand-edited count HALTs. FLOOR: none for
+   these — re-derived from source (tests_passed's source, the suite, is hash-pinned per #1).
+4. **Observable work (L-010).** STOP-DONE requires an observable artifact delta OR an explicit
+   no_work_needed_attested. FLOOR: that attestation is a human-reviewed self-claim (can't prove intent
+   from inside). Closing cost: same as #5.
+5. **Separate-agent verification (L-011).** STOP-DONE requires a fresh PASS agent-verdict BOUND to the
+   current state — skipping the verifier blocks done; any post-verify change forces re-verify. FLOOR:
+   a worker can write `record_verdict.py --gate PASS` WITHOUT dispatching a real agent (the lie). No
+   static gate inside the worker-controlled environment can prove an LLM was dispatched or judged
+   honestly. The DETERMINISTIC half (verify_gate: live + hash-pinned + cross-protected) is the enforced
+   verification floor. Closing cost: an out-of-band trust anchor the worker can't forge — signed
+   attestation from a trusted execution environment that actually dispatched the verifier, or
+   append-only out-of-band dispatch logging the gate checks instead of a self-written JSON.
+
+Bottom line: every machine-checkable claim and every Hard NO is enforced + fail-closed. What's left
+reduces to "a worker with full repo access can lie in a git-visible way (backstopped by human review)
+or fabricate an agent dispatch." Closing those requires moving the root of trust OUTSIDE the
+worker-controlled environment (CI signing / TEE / out-of-band logging) — operator's call on cost.
+
 - 3 cycles recorded in `.claude/loop/state.json`. `loop_gate.py` computes **STOP-DONE** from disk
   (risk GREEN, last cycle no new info, 0 open questions). Build→verify→fix ran twice.
 - **What is now ENFORCED (deterministic, not compliance):** Stop hook `stop_gate.sh` runs
