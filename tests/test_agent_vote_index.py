@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -275,10 +274,11 @@ def test_extract_rows_skips_non_dict_reasons():
     assert rows[0][1] == "trend"
 
 
-def test_extract_rows_breakeven_label():
-    """|pnl| < $1 maps to outcome='breakeven', not loss."""
+def test_extract_rows_sub_dollar_non_win_is_loss():
+    """Unified convention (2026-06-24): a sub-$1 non-win is 'loss', not
+    'breakeven' — agrees with trade_search_index + the trades modal."""
     entry = _make_entry("be", outcome="loss", pnl=0.5)
-    # trade_won is False but |pnl|<1 -> breakeven
+    # trade_won is False and |pnl|<1 -> 'loss' under the unified convention.
     entry["outcome"]["trade_won"] = False
     rows = _extract_rows(entry)
-    assert all(r[7] == "breakeven" for r in rows)
+    assert all(r[7] == "loss" for r in rows)
