@@ -40,6 +40,18 @@ verified number — or toward honestly closing a question — **question the tas
    Unhalting, flipping dry_run→live, force-push, deleting data you didn't create = stop and confirm.
 7. **Enforcement over instruction.** A rule that matters gets a deterministic gate (a hook or
    disk-reading code), not just a sentence in a doc. Advisory is for the non-load-bearing. (L-005.)
+8. **Shipped-to-disk ≠ running-in-process.** Every status/completion claim states **running: YES/NO**,
+   verified from disk this turn (process exists? real non-test cycles executed? invoked by a non-test
+   entrypoint?). Never narrate dormant/unit-tested code in active present tense as if functioning;
+   "tests pass / committed" is capability, not operation. Fail-closed: can't prove running:YES ⇒ NO.
+   (L-017; deterministic helper `.claude/loop/running_status.py`.) The 2026-06-24 four-pillar "running"
+   reporting lie is why.
+9. **Lie-policy (structural, not punitive).** When a separate verifier or I catch a false/unsupported
+   claim: reject the output fail-closed, quarantine the record (don't let it propagate), close the hole
+   with a new gate/lesson, and downgrade that role's self-attestation until re-earned (its claims need
+   independent re-derivation from disk). No punitive theater. Name whether it was deliberate
+   falsification vs honest error/contamination — the structural response is the same either way. Honest,
+   sound code is not reverted; the fix targets the false report and the missing gate. (L-018.)
 
 ## Standing roadmap — the north star (drives every /evolve cycle)
 

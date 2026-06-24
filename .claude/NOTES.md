@@ -4,7 +4,9 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-06-24 by Claude (runtime-state sync: operator-directed unhalt at 18:52Z).
+Last touched: 2026-06-24 by Claude (corrected record: equity four-pillar work is dormant scaffolding,
+NOT running — see In-flight + L-017). Note: `state.json halted=true` again (re-flipped; operator
+directs it STAYS true). Report rule: every status claim states running:yes/no, verified from disk (L-017).
 
 ## Operating mode — delegated authority (2026-06-23, survives fresh sessions)
 
@@ -77,6 +79,22 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
 
 ## In-flight work (from session memory, not re-verified this turn — confirm before relying)
 
+- **Equity-harvester four-pillar self-improver — SHIPPED-TO-DISK + UNIT-TESTED SCAFFOLDING, NOT RUNNING
+  (corrected record 2026-06-24; separate-verifier confirmed; supersedes prior "running/wired/now does X"
+  chat framing, which was inaccurate — see L-017).** TRUE status, re-derived from disk independently:
+  - Committed (capability only, never executed): N1–N5 shadow runner `src/equity/runner.py` + config flag
+    `enable_equity_harvester` (`ea85f8c`); Pillar 3 decision gate `src/equity/decision_gate.py` (`d4d8aa7`);
+    Pillar 2 cycle ledger `src/equity/cycle_ledger.py` (`ce74989`). **running in process: NO.**
+  - **cycles executed: 0** — `trained_data/equity/` does NOT exist; `cycle_ledger.jsonl` /
+    `rebalance_state.json` ABSENT. **state artifacts present (live, non-test): NO.**
+  - **invoked by: tests ONLY** — `run_shadow_rebalance`/`decide_cycle`/`append_cycle` called only by their
+    test files + internally in `runner.py`; no `main.py`/`src/scanner/*`/`embedded_scanner.py`/`scripts/`
+    calls them. The enable flag guards code no live path reaches.
+  - 27/27 unit tests pass (decision_gate 11, cycle_ledger 6, runner 10) = "shipped + unit-tested", NOT
+    "functioning". Dormant until **H1** (the live invocation) — HELD for operator authorization.
+  - Pillars 1 (verifier) + 4 (risk monitor): **not built** (stopped per operator). running:NO / built:NO.
+  - Even if invoked now it would `REFUSE` every cycle (`state.json halted=true`). Hot path / env-pin /
+    FX legacy untouched (git show --stat on all three commits confirms).
 - **Equity-harvester-bot**: 22-story PRD; TUI wired to equity (commits 3a58c6c, eb04687). An
   independent code review flagged **4 CRITICAL + 7 HIGH execution defects** (C1 crash→double-submit,
   C2 fill-detection reads aggregate position as per-order fill, C3 books PENDING as FILLED, C4 can't

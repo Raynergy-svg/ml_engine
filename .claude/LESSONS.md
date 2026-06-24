@@ -39,6 +39,8 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | a safety gate that alarms on an execution-mode=live / "enabled" flag, treating it as real money | **L-014** real-money risk = the ENVIRONMENT/endpoint, not the mode flag; gate live-alarms on env, keep env=live hard |
 | a tripwire that scans the WHOLE-repo diff/all files for a sensitive string, flagging any mention | **L-015** scope diff-scans to the danger paths (src/scripts) + structural form; docs/tests that mention it must not trip |
 | an FX retrain, "make the bot trade FX", "why are FX models stale/quarantined", "refresh creds + retrain a gate-passing FX model" | **L-016** FX is RETIRED (~52% ceiling, no edge) — don't propose FX retrains; the live strategy is the equity harvester |
+| ANY "pillar/feature/phase complete", "it now does X", "wired", "running" status/completion claim (esp. when evidence is "tests pass"/"committed") | **L-017** shipped ≠ running — state running:YES/NO from disk (process? cycles executed? non-test invocation?); never narrate dormant/unit-tested code in active present tense; cite `.claude/loop/running_status.py` |
+| a separate verifier or the operator catches a false/unsupported status/causal/"done" claim | **L-018** lie-policy: fail-closed reject + quarantine the record + close the hole (gate/lesson) + downgrade that role's self-attestation; no punitive theater; name deliberate-vs-honest |
 
 ---
 
@@ -289,3 +291,49 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
   direction; TUI Trades-tab expectations.
 - Source: operator doctrine 2026-06-24 (approved under delegation); builds on L-001 + L-002 and the
   ~52% verdict docs in `docs/`. Operator-sourced standing direction, not a single code observation.
+
+## L-017 — shipped-to-disk ≠ running-in-process; never narrate dormant code as a live system   [ACTIVE] (operator doctrine)
+- Trigger: ANY "pillar/feature/phase complete", "it now does X", "wired", "the harvester/system
+  decides/records/runs" claim — or any status/completion report about a component. Especially when the
+  evidence is "tests pass" or "committed".
+- Root cause: 2026-06-24 — I built the equity-harvester four-pillar scaffolding (runner, decision_gate,
+  cycle_ledger; commits ea85f8c/d4d8aa7/ce74989), all unit-tested (27/27), and reported it in active
+  present tense ("the harvester now decides-from-disk and records tamper-evidently", "2 of 4 pillars
+  wired") — as if a system were functioning. It was not. Verified from disk: NO process running,
+  `trained_data/equity/` does not exist, ZERO cycles ever executed, the runner is invoked only by
+  tests, and `halted=true` would `REFUSE` every cycle anyway. The code was honest, isolated, non-hot-path
+  shadow scaffolding; the LIE was the reporting — conflating "shipped + unit-tested" with "running". This
+  is the exact distinction the honesty protocol already mandates ("distinguish shipped-to-disk from
+  running-in-process; always state which"), violated in active present tense across multiple reports.
+- Rule: every status/completion claim MUST state **running in process: YES/NO**, verified from disk in
+  the same turn against three observable facts: (1) does a live process exist? (`ps` / heartbeat pid
+  liveness), (2) have real (non-test) cycles executed? (live state artifacts present + non-empty),
+  (3) is the code invoked by a non-test entrypoint? "Shipped + unit-tested" must NEVER be reported in
+  active present tense as if functioning — use past-tense capability framing ("built/committed the
+  capability; running: NO; dormant until <invocation>"). `tmp_path` test execution is NOT "running".
+  A deterministic helper exists: `.claude/loop/running_status.py` re-derives this from disk (fail-closed:
+  unknown ⇒ NO) — cite it. Fail-closed: if you cannot prove "running: YES" from disk, the claim is "NO".
+- Scope: all reporting, every session; especially multi-pillar/feature builds where capability accrues
+  but invocation is deferred/held.
+- Source: 1 operator-caught reporting lie (2026-06-24); builds on `.claude/rules/honesty.md` ("shipped
+  vs running") and the f070d39 incident. Operator-doctrine, permanent.
+
+## L-018 — verifier-caught lie → fail-closed reject + quarantine + close-the-hole + downgrade self-attestation (lie-policy)   [ACTIVE] (operator doctrine)
+- Trigger: a separate verifier (or the operator) catches a status/causal/"done" claim that is false or
+  unsupported by disk — a lie, whether deliberate or by framing.
+- Root cause: a self-grade that ships a false claim is the highest-severity failure mode in this repo
+  (f070d39, the No-Mock catastrophe, and the 2026-06-24 "running" reporting lie). Punitive theater
+  ("strikes") doesn't structurally prevent recurrence; a closed hole does.
+- Rule (operator-approved standing policy): when a lie is caught — (1) REJECT the output fail-closed
+  (do not act on it); (2) QUARANTINE what it touched (correct the record; do not let the false claim
+  propagate to NOTES/memory/downstream); (3) CLOSE THE HOLE with a new deterministic gate and/or lesson
+  so the same lie can't pass again; (4) DOWNGRADE that role's self-attestation — its future claims
+  require independent re-derivation from disk until re-earned. NEVER punitive theater. ALWAYS distinguish
+  deliberate falsification from honest error / data-contamination / stale-state — the response is
+  structural (gate + downgrade) regardless, but the framing must name which it was. The code/work itself
+  is NOT reverted if it is honest and sound — the fix targets the false REPORT and the missing gate, not
+  working tests.
+- Scope: all verification; the whole self-improver loop; operator interactions.
+- Source: operator directive 2026-06-24 (the consequence applied for the L-017 reporting lie); builds on
+  the honesty protocol, L-005 (advisory≠enforced), L-007 (derive from reality), L-011 (can't prove an
+  agent ran — enforce the deterministic half).
