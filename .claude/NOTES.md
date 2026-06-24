@@ -184,6 +184,14 @@ The honest win: this turns "worker can disable the gate" into "worker can't with
 operator controls" — until the one privileged install step runs, the anchor is advisory and the
 in-repo gates + code-level guards remain primary.
 
+**INSTALLED + ACTIVE (2026-06-24).** Operator ran the privileged step. Verified from disk:
+`/Library/Application Support/ClaudeCode/{managed-settings.json (root:wheel 0644), ml_engine_gate_wrapper.py
+(root:wheel 0755)}` — both root-owned, NOT writable by the worker (`verify_managed_anchor.py` → ACTIVE,
+exit 0). Installed wrapper == committed source (identical); runs against the real repo → exit 0
+(intact+GREEN allows stop, would block on drift/ALARM); no-ops out-of-scope. The managed Stop hook now
+fires at the harness level and the worker cannot disable or re-point it. Floors #1 (disable+neuter) and
+#5 (hook-neuter) are now CLOSED-to-requires-admin **in effect**, not just prepared.
+
 - 3 cycles recorded in `.claude/loop/state.json`. `loop_gate.py` computes **STOP-DONE** from disk
   (risk GREEN, last cycle no new info, 0 open questions). Build→verify→fix ran twice.
 - **What is now ENFORCED (deterministic, not compliance):** Stop hook `stop_gate.sh` runs
