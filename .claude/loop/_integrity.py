@@ -68,6 +68,9 @@ GATE_SCRIPTS = [
     ".claude/loop/record_cycle.py",
     ".claude/loop/_integrity.py",
     ".claude/loop/gen_manifest.py",
+    # The test suite is the recompute's trust anchor (loop_gate re-runs it to attest tests_passed),
+    # so it is hash-pinned too — editing it to fake a pass count is now gate-drift, not just review.
+    ".claude/loop/tests/test_loop_enforcement.py",
     ".claude/tools/risk_monitor.sh",
     ".claude/tools/stop_gate.sh",
     ".claude/tools/session_context_boot.sh",

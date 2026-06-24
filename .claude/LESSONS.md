@@ -32,6 +32,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | a loop/automation decision driven by a self-reported number (open_questions, "facts done", "verified") | **L-007** derive signals from observable artifacts + re-check latest vs live (tamper→HALT) |
 | building a gate/checker that trusts its own script wasn't neutered (could be edited to always-pass) | **L-008** hash-pin every gate in a committed manifest; checkers cross-verify; fail closed on drift |
 | a content/quality gate that checks STRUCTURE (fields, length) and is treated as verifying MEANING | **L-009** structural ≠ semantic — name the floor; human review backstops meaning |
+| a "done"/PASS that needs no observable change, or a recorded metric trusted without recompute | **L-010** gate done on an artifact delta + recompute metrics from their real source (fail closed) |
 
 ---
 
@@ -159,3 +160,17 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Scope: the lesson audit and any content/quality gate in the loop.
 - Source: 2026-06-23 Increment 2 separate-verifier finding — crafted a structurally-valid but vacuous
   lesson that passed the audit; floor documented in `_integrity.py` + NOTES.
+
+## L-010 — gate "done" on observable work, and recompute metrics from their source   [ACTIVE]
+- Trigger: a "done"/PASS that requires no observable change (a gate that treats "nothing happened" as
+  success), or a self-reported metric (test count, lesson count) trusted without re-deriving it.
+- Root cause: laziness and falsification both produce a clean-looking record with no real work — a
+  gate that neither requires an observable artifact delta nor recomputes its metrics from the real
+  source can be satisfied by doing nothing or by typing a number into the state file.
+- Rule: gate "done" on an OBSERVABLE artifact delta (a real test added, a question closed, a lesson
+  learned) OR an explicit reviewable no-op attestation; and RECOMPUTE self-reported metrics from
+  their real source at decide time (re-run the pinned suite, re-count the tracked list, re-audit
+  LESSONS.md) rather than trusting the record — fail closed on mismatch.
+- Scope: the loop's stopping conditions and any automation "done"/success signal.
+- Source: 2026-06-23 red-team Fronts #1d/#3a/#5 + Increment 3 (tests_passed recompute via the pinned
+  suite, anti-laziness work-delta gate; 73 no-mock tests); separate verifier.

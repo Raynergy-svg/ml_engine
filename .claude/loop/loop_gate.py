@@ -35,6 +35,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -105,12 +107,19 @@ def _derive(cycles: list[dict]) -> list[tuple[int, int]]:
     return out
 
 
-def decide(state: dict, live_open: int, live_pass: bool, live_lessons: int, risk: str) -> tuple[str, str]:
+def decide(state: dict, live_open: int, live_pass: bool, live_lessons: int,
+           live_tests: int | None, risk: str) -> tuple[str, str]:
     cycles = state.get("cycles", [])
 
     # ANTI-TAMPER (fail-closed): latest recorded measurement must match live reality.
     if cycles:
         last = cycles[-1]
+        if live_tests is not None:
+            rec_tests = last.get("tests_passed")
+            if rec_tests is None or int(rec_tests) != live_tests:
+                return ("HALT-SAFETY",
+                        f"state.json stale/tampered: latest tests_passed={rec_tests} but the pinned "
+                        f"suite has {live_tests} passing now — re-record the cycle (record_cycle.py)")
         if bool(last.get("verify_gate_pass", False)) != live_pass:
             return ("HALT-SAFETY",
                     f"state.json stale/tampered: latest verify_gate_pass={last.get('verify_gate_pass')} "
@@ -137,9 +146,21 @@ def decide(state: dict, live_open: int, live_pass: bool, live_lessons: int, risk
     last_nf, last_nl = derived[-1]
     # STOP-DONE uses LIVE verify_gate + LIVE open-count (observable, not self-reported).
     if live_pass and last_nf == 0 and last_nl == 0 and live_open == 0:
+        # ANTI-LAZINESS (red-team #5): a "done" must be backed by an OBSERVABLE artifact delta
+        # somewhere in the loop — a real test added, a lesson learned, or a question closed. A loop
+        # that opened and did nothing observable cannot drift to DONE; it must either do real work or
+        # explicitly attest a genuine no-op (no_work_needed_attested) — a reviewable positive claim.
+        work_observed = any(nf > 0 or nl > 0 for nf, nl in derived) or any(
+            int(cycles[i].get("open_questions_after", 0)) < int(cycles[i - 1].get("open_questions_after", 0))
+            for i in range(1, len(cycles)))
+        if not (work_observed or state.get("no_work_needed_attested")):
+            return ("CONTINUE",
+                    "done conditions met but ZERO observable work across the loop (no test/lesson "
+                    "delta, no question closed) — do real work, or set no_work_needed_attested=true "
+                    "in state.json to attest a genuine no-op")
         return ("STOP-DONE",
                 "verify_gate PASS (live), zero open questions (tracked list), no new verified facts "
-                "or lessons this cycle (test-count + verdict + lesson-count deltas == 0)")
+                "or lessons this cycle, and observable work occurred across the loop")
 
     # STOP-CHURN rolling window: progress = close a question OR learn a lesson (derived).
     if len(cycles) >= 2:
@@ -172,6 +193,8 @@ def main() -> int:
     ap.add_argument("--verify-status", default=None, choices=["pass", "fail"], help="inject verify_gate status (tests)")
     ap.add_argument("--lessons", default=None, help="path to LESSONS.md (default <repo>/.claude/LESSONS.md)")
     ap.add_argument("--lessons-count", type=int, default=None, help="inject live well-formed lesson count (tests)")
+    ap.add_argument("--test-cmd", default=None, help="command to recompute tests_passed (default: pinned suite)")
+    ap.add_argument("--tests-count", type=int, default=None, help="inject live passing-test count (tests)")
     a = ap.parse_args()
     repo = Path(a.repo)
     state_path = Path(a.state) if a.state else (repo / ".claude/loop/state.json")
@@ -209,10 +232,32 @@ def main() -> int:
         except Exception as e:
             return halt(f"LESSONS.md unreadable == cannot derive lesson count ({e})")
 
-    decision, reason = decide(state, live_open, live_pass, live_lessons, risk)
+    # tests_passed attestation: recompute the latest cycle's count by re-running the PINNED suite, so
+    # a hand-edited tests_passed OR a record made with a fake --test-cmd is caught (closes #3a + #1d).
+    # Recursion-guarded: when loop_gate runs the suite it sets LOOP_GATE_IN_RECOMPUTE so the suite's
+    # own nested loop_gate calls skip re-running it.
+    if a.tests_count is not None:
+        live_tests: int | None = a.tests_count
+    elif os.environ.get("LOOP_GATE_IN_RECOMPUTE"):
+        live_tests = None  # nested run — don't recurse
+    else:
+        cmd = a.test_cmd or f"{sys.executable} {repo / '.claude/loop/tests/test_loop_enforcement.py'}"
+        try:
+            r = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=600,
+                               env={**os.environ, "LOOP_GATE_IN_RECOMPUTE": "1"})
+            out = r.stdout + r.stderr
+            m = re.search(r"(\d+)\s+passed", out)
+            if m is None or re.search(r"[1-9]\d*\s+failed", out):
+                return halt("tests_passed recompute could not parse a clean pass count == unsafe")
+            live_tests = int(m.group(1))
+        except Exception as e:
+            return halt(f"tests_passed recompute failed == unsafe ({e})")
+
+    decision, reason = decide(state, live_open, live_pass, live_lessons, live_tests, risk)
     print(json.dumps({"decision": decision, "reason": reason,
                       "live_open_questions": live_open, "live_verify": "PASS" if live_pass else "FAIL",
-                      "live_lessons": live_lessons, "risk": risk, "cycles": len(state.get("cycles", []))}, indent=2))
+                      "live_lessons": live_lessons, "live_tests": live_tests,
+                      "risk": risk, "cycles": len(state.get("cycles", []))}, indent=2))
     return 2 if decision == "HALT-SAFETY" else 0
 
 

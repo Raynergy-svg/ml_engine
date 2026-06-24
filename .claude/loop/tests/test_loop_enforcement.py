@@ -91,6 +91,8 @@ def build_repo(root: Path, *, env="practice", gap="0.10", halt=True, state=True,
             os.chmod(root / ".claude/tools" / src.name, 0o755)
     for src in (VERIFY, LOOPG, RECORD, INTEG, GENMAN):
         (root / ".claude/loop" / src.name).write_text(src.read_text())
+    (root / ".claude/loop/tests").mkdir(parents=True, exist_ok=True)
+    (root / ".claude/loop/tests/test_loop_enforcement.py").write_text(HERE.read_text())  # pinned suite
     if MANIFEST.exists():
         (root / ".claude/loop/gate_manifest.json").write_text(MANIFEST.read_text())
     (root / ".claude/loop/questions.json").write_text(json.dumps(
@@ -283,6 +285,16 @@ def test_verify_gate(tmp: Path):
     reg_check = next((c for c in v["checks"] if c["name"] == "stop_gate_registered"), {})
     check("stub-path Stop hook FAILs registration (basename hole closed)", reg_check.get("ok") is False, reg_check)
 
+    # verifier-3 finding: the test suite is the recompute trust anchor -> editing it is gate-drift
+    suite_tamper = build_repo(tmp / "vg_suite_tamper")
+    st = suite_tamper / ".claude/loop/tests/test_loop_enforcement.py"
+    st.write_text(st.read_text() + "\n# tampered to fake a pass count\n")
+    outp = tmp / "vg_suite_tamper/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(suite_tamper), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    sc = next((c for c in v["checks"] if c["name"] == "gate_scripts_unmodified"), {})
+    check("tampered test-suite FAILs gate (suite hash-pinned)", r.returncode == 2 and sc.get("ok") is False, sc)
+
 
 def test_loop_gate(tmp: Path):
     print("\n[loop_gate.py]  (objective signals: open_questions from questions.json; facts/lessons from deltas)")
@@ -293,18 +305,22 @@ def test_loop_gate(tmp: Path):
     def cyc(n, tp, vp=True, lc=0, oqa=0):
         return {"n": n, "tests_passed": tp, "verify_gate_pass": vp, "lessons_count": lc, "open_questions_after": oqa}
 
-    def decide(cycles, open_qs, *, verify="pass", risk="green", blocked=False, lessons=None):
+    def decide(cycles, open_qs, *, verify="pass", risk="green", blocked=False, lessons=None,
+               tests=None, attest=False):
         qpath.write_text(json.dumps({"questions": [{"id": f"q{i}", "status": "open"} for i in range(open_qs)]}))
         st = {"cycles": cycles}
         if blocked:
             st["blocked_on_irreversible"] = True
+        if attest:
+            st["no_work_needed_attested"] = True
         spath.write_text(json.dumps(st))
-        # inject live lesson count == last cycle's recorded lessons_count so logic tests don't trip
-        # the lessons tamper check (override via `lessons=` to exercise tamper itself)
+        # inject live lesson + test counts == last cycle's recorded values so logic tests don't trip
+        # the tamper checks (override via lessons=/tests= to exercise tamper itself)
         lc = lessons if lessons is not None else (int(cycles[-1].get("lessons_count", 0)) if cycles else 0)
+        tc = tests if tests is not None else (int(cycles[-1].get("tests_passed", 0)) if cycles else 0)
         r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),
                  "--questions", str(qpath), "--verify-status", verify, "--risk-status", risk,
-                 "--lessons-count", str(lc)])
+                 "--lessons-count", str(lc), "--tests-count", str(tc)])
         return json.loads(r.stdout), r.returncode
 
     # CONTINUE: single cycle, an open question remains
@@ -360,6 +376,21 @@ def test_loop_gate(tmp: Path):
     out, rc = decide([cyc(1, 10, vp=True, lc=5, oqa=0)], open_qs=0, lessons=2)
     check("HALT on tampered lessons_count (recorded 5 != live 2)", out["decision"] == "HALT-SAFETY" and rc == 2, out)
 
+    # ANTI-TAMPER: state claims tests_passed=10 but the pinned suite has 999 -> HALT (closes #3a/#1d)
+    out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=0, tests=999, attest=True)
+    check("HALT on tampered tests_passed (recorded 10 != live 999)", out["decision"] == "HALT-SAFETY" and rc == 2, out)
+
+    # ANTI-LAZINESS (#5): done-conditions met but ZERO observable work across the loop -> NOT done
+    out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=0)
+    check("no STOP-DONE on a zero-work loop (anti-laziness)", out["decision"] == "CONTINUE", out)
+    check("  reason names the missing observable work", "observable work" in out["reason"].lower(), out)
+    # ...unless a genuine no-op is explicitly attested
+    out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=0, attest=True)
+    check("STOP-DONE allowed with explicit no_work_needed_attested", out["decision"] == "STOP-DONE", out)
+    # observable work (a question closed) reaches STOP-DONE without attestation
+    out, rc = decide([cyc(1, 10, lc=2, oqa=1), cyc(2, 10, lc=2, oqa=0)], open_qs=0)
+    check("STOP-DONE when a question was closed (observable work)", out["decision"] == "STOP-DONE", out)
+
     # HALT: risk alarm (latest cycle consistent so tamper passes first)
     out, rc = decide([cyc(1, 10, vp=True, lc=2, oqa=0)], open_qs=0, risk="alarm")
     check("HALT-SAFETY on risk alarm", out["decision"] == "HALT-SAFETY" and rc == 2, out)
@@ -392,6 +423,26 @@ def test_loop_gate(tmp: Path):
              "--questions", str(qp), "--verify-status", "pass", "--risk-status", "green"])
     check("loop_gate HALTs on gate-script drift (independent of verify_gate)", r.returncode == 2, r.stdout)
 
+    # tests_passed recompute ACTUALLY runs the suite (proven via a fake --test-cmd), clean env so the
+    # recursion guard doesn't skip it. 2 cycles with a closed question => work observed.
+    env_clean = {k: v for k, v in os.environ.items() if k != "LOOP_GATE_IN_RECOMPUTE"}
+    qp2 = tmp / "rc_q.json"
+    qp2.write_text(json.dumps({"questions": []}))
+    sp2 = tmp / "rc_s.json"
+
+    def recompute(last_tp):
+        sp2.write_text(json.dumps({"cycles": [
+            {"n": 1, "tests_passed": 5, "verify_gate_pass": True, "lessons_count": 0, "open_questions_after": 1},
+            {"n": 2, "tests_passed": last_tp, "verify_gate_pass": True, "lessons_count": 0, "open_questions_after": 0}]}))
+        return subprocess.run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(sp2),
+            "--questions", str(qp2), "--lessons-count", "0", "--verify-status", "pass", "--risk-status", "green",
+            "--test-cmd", 'echo "5 passed, 0 failed"'], capture_output=True, text=True, env=env_clean, timeout=60)
+
+    r = recompute(5)
+    check("tests recompute runs the suite & matches -> STOP-DONE", json.loads(r.stdout)["decision"] == "STOP-DONE", r.stdout)
+    r = recompute(6)
+    check("tests recompute catches a faked tests_passed -> HALT", r.returncode == 2, r.stdout)
+
 
 def test_record_cycle(tmp: Path):
     print("\n[record_cycle.py]  (objective measurement -> state.json -> loop_gate)")
@@ -405,11 +456,15 @@ def test_record_cycle(tmp: Path):
     check("record_cycle measured verify_gate_pass=True", rec["verify_gate_pass"] is True, rec)
     check("record_cycle measured lessons_count=2 (well-formed) from LESSONS.md", rec["lessons_count"] == 2, rec)
     check("record_cycle measured open_questions_after=0 from questions.json", rec["open_questions_after"] == 0, rec)
-    # the recorded (objective) cycle then drives loop_gate to STOP-DONE — full pipeline, no self-report
+    # the recorded (objective) cycle drives loop_gate; one zero-delta cycle correctly does NOT declare
+    # done (anti-laziness) — full pipeline, no self-report. (--tests-count/--lessons-count match the
+    # measured values so the tamper checks pass without re-running the suite.)
     out = json.loads(run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),
           "--questions", str(repo / ".claude/loop/questions.json"), "--verify-status", "pass",
-          "--risk-status", "green"]).stdout)
-    check("recorded cycle -> loop_gate STOP-DONE (objective pipeline end-to-end)", out["decision"] == "STOP-DONE", out)
+          "--risk-status", "green", "--tests-count", str(rec["tests_passed"]),
+          "--lessons-count", str(rec["lessons_count"])]).stdout)
+    check("recorded zero-delta cycle -> loop_gate CONTINUE (anti-laziness, objective pipeline)",
+          out["decision"] == "CONTINUE", out)
 
 
 def test_stop_gate(tmp: Path):
