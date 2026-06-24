@@ -28,9 +28,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from src.equity.decision_gate import decide_cycle
 from src.equity.harvester_strategy import HarvesterStrategy
 from src.equity.rebalance import (
     STATE_PATH_DEFAULT as _REBALANCE_STATE_REL,
@@ -38,7 +40,6 @@ from src.equity.rebalance import (
     RebalancePlan,
     RebalanceScheduler,
 )
-from src.scanner.automation.state_engine import StateEngine
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids heavy/circular imports
     import pandas as pd
@@ -89,14 +90,16 @@ def run_shadow_rebalance(
     prices: "pd.DataFrame",
     asof: "pd.Timestamp",
     project_root: Path = Path("."),
-    state_engine: Optional[StateEngine] = None,
+    now: Optional[datetime] = None,
 ) -> ShadowRunResult:
     """Run one shadow rebalance tick; persist the plan for the TUI panel.
 
-    Fail-closed: refuses (``ran=False``) when the harvester is disabled or the
-    global halt flag is set, writing no state in either case. On success it
-    builds the ship-gate-guarded strategy + scheduler, computes target weights,
-    persists the plan, and shadow-fills it — never touching a broker.
+    Fail-closed via the Pillar-3 decision gate (:func:`decide_cycle`): refuses
+    (``ran=False``) unless the harvester is enabled AND the gate returns
+    CONTINUE — global halt -> REFUSE, drawdown breach -> HALT, ship-gate
+    fail/mismatch -> NO_ACT, stale data -> ABSTAIN. On CONTINUE it builds the
+    ship-gate-guarded strategy + scheduler, computes target weights, persists
+    the plan, and shadow-fills it — never touching a broker.
     """
     root = Path(project_root)
     ship_gate_path = root / getattr(
@@ -112,14 +115,25 @@ def run_shadow_rebalance(
         )
         return ShadowRunResult(ran=False, reason="disabled", plan=None)
 
-    # Guard 2 — respect the global halt (mirrors FX execute_trade/close_trade).
-    engine = state_engine or StateEngine()
-    if engine.get_halted():
+    # Guard 2 — objective decision gate, re-derived from disk (Pillar 3).
+    # Subsumes the global-halt check and adds drawdown / ship-gate / staleness
+    # rails. Self-report is not trusted; only CONTINUE is actionable.
+    index = getattr(prices, "index", None)
+    data_asof = index.max() if (index is not None and len(index) > 0) else None
+    decision = decide_cycle(
+        config=config,
+        project_root=root,
+        data_asof=data_asof,
+        now=now,
+        snapshot_universe_hash=snapshot.universe_hash,
+    )
+    if not decision.actionable:
         logger.warning(
-            "equity harvester shadow tick REFUSED — state.halted=True "
-            "(autonomous cycle blocked; operator must un-halt to run)"
+            "equity harvester shadow tick %s — reasons=%s",
+            decision.decision.value.upper(),
+            ",".join(decision.reasons),
         )
-        return ShadowRunResult(ran=False, reason="halted", plan=None)
+        return ShadowRunResult(ran=False, reason=decision.decision.value, plan=None)
 
     (root / _EQUITY_STATE_DIR_REL).mkdir(parents=True, exist_ok=True)
 

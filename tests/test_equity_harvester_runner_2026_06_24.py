@@ -114,7 +114,7 @@ def test_runner_refuses_when_globally_halted(tmp_path: Path, monkeypatch):
         config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path
     )
     assert res.ran is False
-    assert res.reason == "halted"
+    assert res.reason == "refuse"  # decision gate REFUSE on global halt
     assert not (tmp_path / _STATE_REL).exists()
 
 
@@ -124,7 +124,8 @@ def test_runner_writes_plan_that_tui_renders(tmp_path: Path, monkeypatch):
         tmp_path, monkeypatch, enabled=True, halted=False
     )
     res = run_shadow_rebalance(
-        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path,
+        now=asof,  # data is current as of asof -> decision gate CONTINUE
     )
     assert res.ran is True
     assert res.reason == "executed"
@@ -144,13 +145,15 @@ def test_runner_is_reinvocable_finalizes_prior_plan(tmp_path: Path, monkeypatch)
         tmp_path, monkeypatch, enabled=True, halted=False
     )
     res1 = run_shadow_rebalance(
-        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path,
+        now=asof,
     )
     assert res1.ran is True
     # Second invocation against the same state must succeed (re-plan), not raise
     # RebalanceError on the still-active prior plan.
     res2 = run_shadow_rebalance(
-        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path,
+        now=asof,
     )
     assert res2.ran is True
     assert res2.reason == "executed"
@@ -162,8 +165,53 @@ def test_runner_orders_filled_in_shadow_no_broker(tmp_path: Path, monkeypatch):
         tmp_path, monkeypatch, enabled=True, halted=False
     )
     res = run_shadow_rebalance(
-        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path,
+        now=asof,
     )
     assert res.plan is not None
     assert len(res.plan.orders) > 0
     assert all(o.is_filled for o in res.plan.orders)
+
+
+def test_runner_abstains_on_stale_data(tmp_path: Path, monkeypatch):
+    """Wired to the decision gate: stale market data -> ABSTAIN, no plan."""
+    cfg, snap, prices, asof = _prepare(
+        tmp_path, monkeypatch, enabled=True, halted=False
+    )
+    # No `now` -> real now (2026-06-24) is >7d past the synthetic data's last bar.
+    res = run_shadow_rebalance(
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path
+    )
+    assert res.ran is False
+    assert res.reason == "abstain"
+    assert not (tmp_path / _STATE_REL).exists()
+
+
+def test_runner_abstains_on_empty_price_frame(tmp_path: Path, monkeypatch):
+    """MEDIUM-defect fix: an empty price frame must ABSTAIN, not crash the gate."""
+    cfg, snap, prices, asof = _prepare(
+        tmp_path, monkeypatch, enabled=True, halted=False
+    )
+    empty = prices.iloc[0:0]  # zero rows, same columns -> no data_asof
+    res = run_shadow_rebalance(
+        config=cfg, snapshot=snap, prices=empty, asof=asof, project_root=tmp_path,
+        now=asof,
+    )
+    assert res.ran is False
+    assert res.reason == "abstain"
+    assert not (tmp_path / _STATE_REL).exists()
+
+
+def test_runner_no_acts_on_ship_gate_fail(tmp_path: Path, monkeypatch):
+    """Wired to the decision gate: failing ship gate -> NO_ACT (no raise, no plan)."""
+    cfg, snap, prices, asof = _prepare(
+        tmp_path, monkeypatch, enabled=True, halted=False
+    )
+    _write_ship_gate(tmp_path, gate_pass=False)  # overwrite the passing fixture gate
+    res = run_shadow_rebalance(
+        config=cfg, snapshot=snap, prices=prices, asof=asof, project_root=tmp_path,
+        now=asof,
+    )
+    assert res.ran is False
+    assert res.reason == "no_act"
+    assert not (tmp_path / _STATE_REL).exists()
