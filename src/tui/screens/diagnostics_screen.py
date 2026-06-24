@@ -855,7 +855,10 @@ class DiagnosticsScreen(Container):
             default={},
         )
         if isinstance(health, dict) and health:
-            rejected = int(health.get("cycles_rejected", 0) or 0)
+            try:
+                rejected = int(health.get("cycles_rejected", 0) or 0)
+            except (TypeError, ValueError):
+                rejected = 0
             states = health.get("module_states", {}) or {}
             failing = [
                 name for name, state in states.items()
@@ -870,14 +873,20 @@ class DiagnosticsScreen(Container):
             )
             if failing:
                 msg += f", failing: {', '.join(failing[:4])}"
-            entries.append({
-                "ts": datetime.fromtimestamp(
-                    (self._project_root / "trained_data" / "health_registry_log.json").stat().st_mtime,
+            # health_registry_log.json can be rotated/removed by the live
+            # registry between the _read_json above and this stat(); fall back
+            # to now() so one missing file can't crash the 5s refresh tick.
+            try:
+                _health_ts = datetime.fromtimestamp(
+                    (
+                        self._project_root / "trained_data"
+                        / "health_registry_log.json"
+                    ).stat().st_mtime,
                     tz=timezone.utc,
-                ),
-                "sev": sev,
-                "msg": msg,
-            })
+                )
+            except OSError:
+                _health_ts = datetime.now(timezone.utc)
+            entries.append({"ts": _health_ts, "sev": sev, "msg": msg})
 
         entries.sort(key=lambda e: e.get("ts", datetime.min.replace(tzinfo=timezone.utc)))
         return entries[-200:]
