@@ -420,6 +420,15 @@ class TradeCloseModal(ModalScreen[bool]):
         padding: 0 0 1 0;
     }
 
+    #close-halt-warning {
+        text-align: center;
+        color: #ffffff;
+        background: #ff1744;
+        text-style: bold;
+        padding: 0 1;
+        margin: 0 0 1 0;
+    }
+
     #close-buttons {
         align: center middle;
         height: 3;
@@ -434,9 +443,14 @@ class TradeCloseModal(ModalScreen[bool]):
     }
     """
 
-    def __init__(self, trade: TradeRow) -> None:
+    def __init__(self, trade: TradeRow, halted: bool = False) -> None:
         super().__init__()
         self._trade = trade
+        # Front-end defense-in-depth: when the bot is halted, the close
+        # confirm carries an explicit halt-aware warning (the deterministic
+        # code-layer halt guard for close_trade lives in the backend). This
+        # modal does NOT call close_trade itself — it only gates the confirm.
+        self._halted = halted
 
     def compose(self) -> ComposeResult:
         tr = self._trade
@@ -456,12 +470,18 @@ class TradeCloseModal(ModalScreen[bool]):
                 f"  Trade ID:      {tr.trade_id}",
                 id="close-details",
             )
+            if self._halted:
+                yield Label(
+                    "⚠  System is HALTED — close position anyway?",
+                    id="close-halt-warning",
+                )
             yield Label(
                 "Market-close at current bid/ask — cannot be undone.",
                 id="close-warning",
             )
             with Horizontal(id="close-buttons"):
-                yield Button("✓ Confirm Close", id="close-confirm", variant="error")
+                confirm_label = "✓ Close anyway" if self._halted else "✓ Confirm Close"
+                yield Button(confirm_label, id="close-confirm", variant="error")
                 yield Button("✕ Cancel", id="close-cancel", variant="default")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -506,6 +526,7 @@ class TradesScreen(Container):
         self._agent_scores: list[dict[str, Any]] = []
         self._candles_h1: list[float] = []
         self._selected_index: int | None = None
+        self._halted: bool = False  # mirrored from DashboardSnapshot.halted
         self._project_root: Path = Path(__file__).resolve().parents[3]
 
         # Tier 2 T9: precomputed trade-summary index. Avoids re-parsing the
@@ -601,6 +622,7 @@ class TradesScreen(Container):
 
     def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
         """Refresh all sub-widgets from a new DashboardSnapshot."""
+        self._halted = bool(getattr(snap, "halted", False))
         self._trades = list(snap.trades) if snap.trades else []
 
         # Cache agent scores for drill-down
@@ -863,7 +885,7 @@ class TradesScreen(Container):
             if confirmed:
                 self._do_close_trade(trade.trade_id)
 
-        self.app.push_screen(TradeCloseModal(trade), _on_modal_result)
+        self.app.push_screen(TradeCloseModal(trade, halted=self._halted), _on_modal_result)
 
     @work
     async def _do_close_trade(self, trade_id: str) -> None:
