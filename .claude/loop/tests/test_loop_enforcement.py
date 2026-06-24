@@ -29,6 +29,9 @@ TOOLS = CLAUDE_DIR / "tools"
 VERIFY = LOOP_DIR / "verify_gate.py"
 LOOPG = LOOP_DIR / "loop_gate.py"
 RECORD = LOOP_DIR / "record_cycle.py"
+INTEG = LOOP_DIR / "_integrity.py"
+GENMAN = LOOP_DIR / "gen_manifest.py"
+MANIFEST = LOOP_DIR / "gate_manifest.json"
 RISK = TOOLS / "risk_monitor.sh"
 STOP = TOOLS / "stop_gate.sh"
 
@@ -86,8 +89,10 @@ def build_repo(root: Path, *, env="practice", gap="0.10", halt=True, state=True,
         if src.exists():
             (root / ".claude/tools" / src.name).write_text(src.read_text())
             os.chmod(root / ".claude/tools" / src.name, 0o755)
-    for src in (VERIFY, LOOPG, RECORD):
+    for src in (VERIFY, LOOPG, RECORD, INTEG, GENMAN):
         (root / ".claude/loop" / src.name).write_text(src.read_text())
+    if MANIFEST.exists():
+        (root / ".claude/loop/gate_manifest.json").write_text(MANIFEST.read_text())
     (root / ".claude/loop/questions.json").write_text(json.dumps(
         {"questions": [{"id": f"q{i}", "status": "open"} for i in range(open_qs)]}))
     if register_stop:
@@ -223,6 +228,41 @@ def test_verify_gate(tmp: Path):
     check("orphan lesson (no trigger) FAILs gate", r.returncode == 2 and v["gate"] == "FAIL", v)
     check("  hard_no still ok (memory integrity gap)", v["hard_no_ok"] is True, v)
 
+    # red-team #2: a neutered gate script (content drift vs manifest) must FAIL the gate
+    tampered = build_repo(tmp / "vg_gate_tamper")
+    rm = tampered / ".claude/tools/risk_monitor.sh"
+    rm.write_text(rm.read_text() + "\n# neutered\n")  # change content -> hash drift
+    outp = tmp / "vg_gate_tamper/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(tampered), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    drift_check = next((c for c in v["checks"] if c["name"] == "gate_scripts_unmodified"), {})
+    check("neutered gate script FAILs gate (hash drift)", r.returncode == 2 and v["gate"] == "FAIL", v)
+    check("  gate_scripts_unmodified flags the drift", drift_check.get("ok") is False, drift_check)
+
+    # verifier-prescribed: manifest ENTRY-DROP (delete a pin + neuter the now-unlisted script) FAILs
+    dropped = build_repo(tmp / "vg_entry_drop")
+    man_path = dropped / ".claude/loop/gate_manifest.json"
+    man = json.loads(man_path.read_text())
+    man.pop(".claude/tools/risk_monitor.sh", None)  # drop the pin
+    man_path.write_text(json.dumps(man, indent=2, sort_keys=True))
+    rm2 = dropped / ".claude/tools/risk_monitor.sh"
+    rm2.write_text("#!/usr/bin/env bash\necho GREEN; exit 0\n")  # neuter the now-unlisted script
+    outp = tmp / "vg_entry_drop/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(dropped), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    dc = next((c for c in v["checks"] if c["name"] == "gate_scripts_unmodified"), {})
+    check("manifest entry-drop FAILs gate (coverage check, fail-closed)", r.returncode == 2 and dc.get("ok") is False, dc)
+
+    # red-team #4b: a Stop hook pointing at a STUB stop_gate.sh (wrong path) must FAIL registration
+    stub = build_repo(tmp / "vg_stub_hook", register_stop=False)
+    (stub / ".claude/settings.json").write_text(json.dumps({"hooks": {"Stop": [
+        {"hooks": [{"type": "command", "command": "/tmp/evil/stop_gate.sh"}]}]}}))
+    outp = tmp / "vg_stub_hook/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(stub), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    reg_check = next((c for c in v["checks"] if c["name"] == "stop_gate_registered"), {})
+    check("stub-path Stop hook FAILs registration (basename hole closed)", reg_check.get("ok") is False, reg_check)
+
 
 def test_loop_gate(tmp: Path):
     print("\n[loop_gate.py]  (objective signals: open_questions from questions.json; facts/lessons from deltas)")
@@ -311,6 +351,18 @@ def test_loop_gate(tmp: Path):
     r = run([sys.executable, str(LOOPG), "--repo", str(repo), "--state", str(spath),
              "--questions", str(tmp / "no_questions.json"), "--verify-status", "pass", "--risk-status", "green"])
     check("HALT on missing questions.json (fail-closed)", r.returncode == 2, r.stdout)
+
+    # red-team #2: loop_gate independently HALTs on gate-script drift (neutered loop_gate/risk_monitor)
+    drepo = build_repo(tmp / "lg_gate_tamper")
+    rm = drepo / ".claude/tools/risk_monitor.sh"
+    rm.write_text(rm.read_text() + "\n# neutered\n")
+    qp = drepo / ".claude/loop/questions.json"
+    sp = drepo / ".claude/loop/state.json"
+    sp.write_text(json.dumps({"cycles": [{"n": 1, "tests_passed": 1, "verify_gate_pass": True,
+                                          "lessons_count": 0, "open_questions_after": 0}]}))
+    r = run([sys.executable, str(LOOPG), "--repo", str(drepo), "--state", str(sp),
+             "--questions", str(qp), "--verify-status", "pass", "--risk-status", "green"])
+    check("loop_gate HALTs on gate-script drift (independent of verify_gate)", r.returncode == 2, r.stdout)
 
 
 def test_record_cycle(tmp: Path):

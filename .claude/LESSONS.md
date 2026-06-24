@@ -30,6 +30,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | "this rule/gate is in place", a context file that only *instructs* behavior | **L-005** advisory ≠ enforced — back it with a hook or disk-reading code, or it's compliance-gated |
 | shipping a "hardened" gate, swapping one matcher for another (regex→AST), "this closes the evasion surface" | **L-006** a stronger matcher ≠ un-gameable — fail-closed + re-verify with the separate agent |
 | a loop/automation decision driven by a self-reported number (open_questions, "facts done", "verified") | **L-007** derive signals from observable artifacts + re-check latest vs live (tamper→HALT) |
+| building a gate/checker that trusts its own script wasn't neutered (could be edited to always-pass) | **L-008** hash-pin every gate in a committed manifest; checkers cross-verify; fail closed on drift |
 
 ---
 
@@ -128,3 +129,18 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Scope: loop_gate.py / record_cycle.py and any future automation signal that gates behavior.
 - Source: 2026-06-23 objective-stopping-inputs increment — 59 no-mock tests incl. anti-tamper
   (recorded PASS ≠ live FAIL → HALT) and the full record→decide pipeline; verified by separate agent.
+
+## L-008 — a checker that can be silently neutered is not a gate   [ACTIVE]
+- Trigger: building a gate/checker that decides PASS/done while trusting that the gate script itself
+  wasn't modified — a verify/risk script that a worker could edit to `return 0` / `echo GREEN`.
+- Root cause: a gate that doesn't verify its OWN integrity (and its peers') evaporates with a
+  one-line edit, invisibly to the gate. Existence/size checks don't catch a neutered-but-nonempty
+  script.
+- Rule: hash-pin every enforcement script in a committed manifest (`gate_manifest.json`); have EACH
+  checker verify the FULL manifest (cross-protection — neutering one doesn't disable the others) and
+  fail closed on drift / unlisted / missing / unreadable-manifest. Cross-check the manifest covers the
+  canonical script set so entry-drop fails closed too. The irreducible floor (editing a script AND
+  the manifest together) must at least be git-visible; document it.
+- Scope: every gate / tripwire script in the loop (verify_gate, loop_gate, risk_monitor, stop_gate, …).
+- Source: 2026-06-23 red-team finding #2 + Increment 1 (gate_manifest + _integrity cross-check, 64
+  tests); separate verifier PASS and it prescribed the entry-drop coverage fix.

@@ -41,6 +41,9 @@ from pathlib import Path
 
 DEFAULT_REPO = Path("/Users/buddy/Documents/ml_engine")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _integrity import gate_drift  # noqa: E402  (independent gate-script hash check)
+
 
 def _risk_status(repo: Path, override: str | None) -> tuple[str, str]:
     if override:
@@ -175,6 +178,14 @@ def main() -> int:
         state = json.loads(state_path.read_text()) if state_path.exists() else {}
     except Exception as e:
         return halt(f"loop state unreadable == unsafe ({e})")
+
+    # Independent gate-script integrity: don't trust a modified verify_gate/risk_monitor/etc.
+    # (cross-protects with verify_gate's own check — neutering one checker doesn't disable the other).
+    drift, man_err = gate_drift(repo)
+    if man_err:
+        return halt(man_err)
+    if drift:
+        return halt(f"gate-script drift detected (modified/missing enforcement scripts): {drift}")
 
     live_open, q_err = load_open_questions(questions_path)
     if q_err:

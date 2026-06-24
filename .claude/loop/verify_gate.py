@@ -27,6 +27,9 @@ from pathlib import Path
 
 DEFAULT_REPO = Path("/Users/buddy/Documents/ml_engine")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _integrity import gate_drift  # noqa: E402  (shared gate-script hash check)
+
 
 def _read(p: Path) -> str:
     try:
@@ -242,6 +245,7 @@ def check_integrity(repo: Path) -> list[dict]:
         ".claude/tools/risk_monitor.sh", ".claude/tools/session_context_boot.sh",
         ".claude/tools/stop_gate.sh", ".claude/loop/verify_gate.py", ".claude/loop/loop_gate.py",
         ".claude/loop/record_cycle.py", ".claude/loop/questions.json",
+        ".claude/loop/_integrity.py", ".claude/loop/gen_manifest.py", ".claude/loop/gate_manifest.json",
     ]
     out = []
     for rel in required:
@@ -252,17 +256,33 @@ def check_integrity(repo: Path) -> list[dict]:
 
     # Enforced-wiring: the Stop hook must actually be REGISTERED, else the tripwire is dead code
     # (verifier finding #1, 2026-06-23). A present-but-unwired stop_gate.sh is a silent safety gap.
+    # Stop hook must register the CANONICAL repo stop_gate.sh, not just any file named stop_gate.sh
+    # (closes the basename-only hole — a stub `/tmp/evil/stop_gate.sh` no longer satisfies this).
     reg_ok, reg_detail = False, "settings.json missing -> Stop tripwire NOT wired"
+    canonical = (repo / ".claude/tools/stop_gate.sh").resolve()
+
+    def _resolve(cmd: str):
+        cmd = cmd.replace("${CLAUDE_PROJECT_DIR}", str(repo)).replace("$CLAUDE_PROJECT_DIR", str(repo))
+        try:
+            return Path(cmd.strip()).resolve()
+        except Exception:
+            return None
     try:
         s = json.loads((repo / ".claude/settings.json").read_text())
         cmds = [h.get("command", "")
                 for grp in s.get("hooks", {}).get("Stop", []) for h in grp.get("hooks", [])]
-        reg_ok = any(c.endswith("stop_gate.sh") for c in cmds)
-        reg_detail = "stop_gate.sh registered as Stop hook" if reg_ok \
-            else "stop_gate.sh NOT in Stop hooks -> tripwire NOT wired"
+        reg_ok = any(_resolve(c) == canonical for c in cmds if c)
+        reg_detail = "canonical stop_gate.sh registered as Stop hook" if reg_ok \
+            else "no Stop hook resolves to the repo's stop_gate.sh -> tripwire NOT wired (or stubbed)"
     except Exception as e:
         reg_detail = f"settings.json unreadable ({e}) -> cannot confirm Stop tripwire wiring"
     out.append({"name": "stop_gate_registered", "hard_no": False, "ok": reg_ok, "detail": reg_detail})
+
+    # Gate-script content integrity: every enforcement script must match the committed hash manifest.
+    drift, man_err = gate_drift(repo)
+    gate_ok = (not drift) and (man_err is None)
+    gate_detail = "all gate scripts match manifest" if gate_ok else (man_err or f"gate-script drift: {drift}")
+    out.append({"name": "gate_scripts_unmodified", "hard_no": False, "ok": gate_ok, "detail": gate_detail})
 
     # Memory enforcement: every L-NNN lesson must have a recall-trigger row, or it won't fire at
     # planning time (the whole point of the trigger index). Structurally enforces "lessons fire".
