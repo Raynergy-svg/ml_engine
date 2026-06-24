@@ -48,6 +48,19 @@ Source: `.claude/state.json` read 2026-06-24.
   assignment + git-diff `api-fxtrade`; a future *dict-form* profile override `"oanda_environment":
   "live"` wouldn't be caught by the tripwire — but the practice-pinned order client is the primary
   rail. Add the dict pattern IF env is ever wired into a profile dict / the client honors env.
+
+- **close_trade halt guard (HUMAN-authorized hot-path safety-ADD, 2026-06-24).** `execute_trade` had a
+  halt guard (execution.py:2093) but `close_trade` did not — an autonomous close could reach the broker
+  while halted. Added a mirror guard: autonomous/programmatic closes are BLOCKED while `halted=true`
+  (returns `BLOCKED: state.halted=True` before any broker call); an EXPLICIT operator close passes
+  `operator_override=True`. Safety-ADD only (can only make close MORE restrictive). Separate verifier
+  PASS, 4 no-mock tests (`tests/test_close_trade_halt_guard_2026_06_24.py`). Env/practice-pin/order-client
+  UNTOUCHED — this was authorized for the close-guard ONLY; the "everything to live mode" instruction
+  was NOT approved and NOT acted on.
+  **TUI follow-up (TUI agent's job, not mine):** `src/tui/screens/trades_screen.py:874` calls
+  `close_trade(...)` WITHOUT `operator_override=True`, so the operator's manual TUI close is now also
+  blocked while halted (strictly fail-closed). The TUI's halt-aware `c`-key confirm must pass
+  `operator_override=True` after the operator confirms. Do NOT wire this from here (outside scope).
 - Branch: `ralph/equity-harvester-bot` (an equity-beta harvester workstream is in flight)
 
 ## In-flight work (from session memory, not re-verified this turn — confirm before relying)
