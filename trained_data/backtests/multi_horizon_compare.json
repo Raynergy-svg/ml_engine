@@ -1,0 +1,74 @@
+{
+  "baseline_horizons": [
+    21
+  ],
+  "full_sample": {
+    "baseline": {
+      "gate_pass": true,
+      "horizons": [
+        21
+      ],
+      "max_dd": 0.229,
+      "net_sharpe": 0.829,
+      "positive_years": 17,
+      "total_years": 21
+    },
+    "end": "2026-05-30",
+    "net_sharpe_margin": -0.054,
+    "start": "2006-01-03",
+    "variant": {
+      "gate_pass": true,
+      "horizons": [
+        21,
+        63,
+        126,
+        252
+      ],
+      "max_dd": 0.245,
+      "net_sharpe": 0.775,
+      "positive_years": 16,
+      "total_years": 21
+    },
+    "variant_beats_baseline_net_sharpe": false
+  },
+  "generated_at": "reverify",
+  "members": 38,
+  "out_of_sample": {
+    "baseline": {
+      "gate_pass": false,
+      "horizons": [
+        21
+      ],
+      "max_dd": 0.229,
+      "net_sharpe": 1.015,
+      "positive_years": 7,
+      "total_years": 8
+    },
+    "end": "2026-05-29",
+    "fraction": 0.34,
+    "net_sharpe_margin": -0.089,
+    "start": "2019-06-19",
+    "variant": {
+      "gate_pass": false,
+      "horizons": [
+        21,
+        63,
+        126,
+        252
+      ],
+      "max_dd": 0.23,
+      "net_sharpe": 0.926,
+      "positive_years": 6,
+      "total_years": 8
+    },
+    "variant_beats_baseline_net_sharpe": false
+  },
+  "running": "NO (offline backtest evaluation)",
+  "universe_hash": "26c92e1d08e05819234333fe91a3eeee640c804f6232bc674ae9c5071f31b1ac",
+  "variant_horizons": [
+    21,
+    63,
+    126,
+    252
+  ]
+}
