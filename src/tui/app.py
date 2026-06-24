@@ -890,6 +890,17 @@ class MTFConfluencePanel(Static):
         blocks = "▁▂▃▄▅▆▇█"
         return "".join(blocks[min(7, int((p - mn) / rng * 7))] for p in prices[-16:])
 
+    @staticmethod
+    def _decor_widths(width: int) -> tuple[int, int]:
+        """Decorative divider length + confluence-bar block count for a given
+        panel content width, so neither hard-overflows a narrow column (e.g.
+        the 1fr Overview column at an 80-col terminal). Falls back to the
+        original full-width values when the size is unknown (width 0)."""
+        inner = max(10, (width or 56) - 4)
+        divider = min(54, inner)
+        bar_total = max(8, min(25, inner - 22))
+        return divider, bar_total
+
     def render(self) -> Text:
         t = Text()
         screens = [
@@ -914,10 +925,11 @@ class MTFConfluencePanel(Static):
         conf = self._confluence or sum(s * w for (_, s, _, _), w in zip(screens, weights))
         conf_color = "#39ff14" if conf >= 0.65 else "#ffb000" if conf >= 0.45 else "#ff3158"
         conf_signal = "PROCEED ✓" if conf >= 0.65 else "CAUTION ▲" if conf >= 0.45 else "REJECT ✗"
-        bar_filled = int(conf * 25)
-        bar_empty = 25 - bar_filled
+        divider_len, bar_total = self._decor_widths(self.size.width)
+        bar_filled = int(conf * bar_total)
+        bar_empty = bar_total - bar_filled
 
-        t.append("  ──────────────────────────────────────────────────────\n", style="#26304f")
+        t.append("  " + "─" * divider_len + "\n", style="#26304f")
         t.append("  CONFLUENCE ", style="#7483b8")
         t.append(f"{conf:.2f}", style=f"bold {conf_color}")
         t.append("  [", style="#26304f")
