@@ -33,7 +33,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Mapping, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -79,17 +79,30 @@ def availability_date(report_period: str, *, lag_days: int = DEFAULT_LAG_DAYS) -
             + pd.Timedelta(days=int(lag_days)))
 
 
-def _raw_quality_frame(records: Sequence[Mapping]) -> pd.DataFrame:
-    """Per-ticker frame indexed by availability_date with one column per component
-    plus the source report_period (kept for independent PIT re-derivation)."""
+def record_avail(record: Mapping, *, lag_days: int = DEFAULT_LAG_DAYS) -> pd.Timestamp:
+    """PIT availability for one record: the REAL ``filed`` date when present (true
+    PIT, e.g. EDGAR), else the conservative ``report_period + lag_days`` proxy."""
+    filed = record.get("filed")
+    if filed:
+        try:
+            return pd.Timestamp(filed, tz="UTC").normalize()
+        except (ValueError, TypeError):
+            pass
+    return availability_date(record["report_period"], lag_days=lag_days)
+
+
+def _raw_quality_frame(records: Sequence[Mapping], *, lag_days: int = DEFAULT_LAG_DAYS) -> pd.DataFrame:
+    """Per-ticker frame indexed by availability date with one column per component
+    plus the source report_period (kept for independent PIT re-derivation). Uses the
+    real ``filed`` date when present (true PIT), else report_period + lag_days."""
     rows = []
     for r in records:
         rp = r.get("report_period")
         if not rp:
             continue
         try:
-            avail = availability_date(rp)
-        except (ValueError, TypeError):
+            avail = record_avail(r, lag_days=lag_days)
+        except (ValueError, TypeError, KeyError):
             continue
         row = {"report_period": pd.Timestamp(rp, tz="UTC").normalize(), "_avail": avail}
         for col, _sign in QUALITY_COMPONENTS:
@@ -110,28 +123,36 @@ def build_quality_panel(
     members: Sequence[str],
     *,
     lag_days: int = DEFAULT_LAG_DAYS,
+    components: Optional[Sequence[Tuple[str, float]]] = None,
+    clip_z: Optional[float] = None,
 ) -> pd.DataFrame:
     """Build a date×ticker PIT quality-SCORE panel aligned to the membership grid.
 
-    For each ticker: lag every record to ``report_period + lag_days``, forward-fill
-    the raw components onto the grid (a fundamental persists until the next filing
-    is public), z-score each component cross-sectionally per date, sign-combine the
+    For each ticker: lag every record to its public-availability date (real ``filed``
+    when present, else ``report_period + lag_days``), forward-fill the raw components
+    onto the grid, z-score each component cross-sectionally per date, sign-combine the
     AVAILABLE components into the composite Q, and return that single score panel.
     A date/ticker with no public filing yet is NaN (never zero-filled).
+
+    ``components`` overrides the pre-registered QUALITY_COMPONENTS (for robustness
+    sensitivities, e.g. margin-only). ``clip_z`` winsorizes each component's
+    cross-sectional z to [-clip_z, +clip_z] BEFORE combining — taming non-robust
+    fat tails (e.g. bank / negative-equity debt_to_equity outliers).
     """
+    comps = list(components) if components is not None else list(QUALITY_COMPONENTS)
     idx = pd.DatetimeIndex(pd.to_datetime(membership_index, utc=True)).normalize()
     members = list(members)
     # Stage 1: forward-filled raw component panels, strictly causal (lagged source).
     comp_panels: Dict[str, pd.DataFrame] = {
-        col: pd.DataFrame(np.nan, index=idx, columns=members) for col, _ in QUALITY_COMPONENTS
+        col: pd.DataFrame(np.nan, index=idx, columns=members) for col, _ in comps
     }
     for tkr in members:
         recs = dump.get(tkr) or []
-        rf = _raw_quality_frame(recs)
+        rf = _raw_quality_frame(recs, lag_days=lag_days)
         if rf.empty:
             continue
-        for col, _sign in QUALITY_COMPONENTS:
-            s = rf[col].dropna()
+        for col, _sign in comps:
+            s = rf[col].dropna() if col in rf.columns else pd.Series(dtype=float)
             if s.empty:
                 continue
             # reindex onto the grid by last-known-public value (ffill from _avail)
@@ -139,11 +160,13 @@ def build_quality_panel(
     # Stage 2: cross-sectional z per date, sign-combined into the composite score.
     zsum = pd.DataFrame(0.0, index=idx, columns=members)
     zcnt = pd.DataFrame(0.0, index=idx, columns=members)
-    for col, sign in QUALITY_COMPONENTS:
+    for col, sign in comps:
         p = comp_panels[col]
         mu = p.mean(axis=1)
         sd = p.std(axis=1).replace(0.0, np.nan)
         z = p.sub(mu, axis=0).div(sd, axis=0) * float(sign)
+        if clip_z is not None:
+            z = z.clip(-float(clip_z), float(clip_z))
         present = z.notna()
         zsum = zsum.add(z.where(present, 0.0), fill_value=0.0)
         zcnt = zcnt.add(present.astype(float), fill_value=0.0)
@@ -184,7 +207,7 @@ def validate_panel_pit(
         for r in recs:
             rp = r.get("report_period")
             if rp and any(isinstance(r.get(c), (int, float)) for c, _ in QUALITY_COMPONENTS):
-                avails.append(availability_date(rp, lag_days=lag_days))
+                avails.append(record_avail(r, lag_days=lag_days))
         if not avails:
             raise ValueError(f"PIT violation: {tkr} has scores but no source filing in dump")
         earliest_known = min(avails)
