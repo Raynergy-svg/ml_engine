@@ -261,3 +261,4 @@ agent-loop.zip
 .loop/
 STATE.md
 loop.log
+trained_data/oanda/

@@ -112,6 +112,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"OANDA_BLOCKER: cycle failed ({type(exc).__name__}: {exc}) — "
                   "likely a stale practice token (401). Refresh OANDA_API_TOKEN.")
             return 2
+        # Monitoring for the TUI (best-effort, non-blocking): refresh account
+        # state + ingest the transaction ledger (trade history + realized P&L).
+        try:
+            from src.brokers import oanda_v20 as v20
+            v20.snapshot_account_state(client)
+            v20.TransactionLedger(client).sync()
+        except Exception as exc:  # never let monitoring break a cycle
+            logger.warning("monitor snapshot failed (non-blocking): %s", exc)
         on = sum(1 for v in r.targets.values() if v > 0)
         print(f"CYCLE_RESULT: ran={r.ran} reason={r.reason} on={on}/{len(r.targets)} "
               f"orders_placed={r.orders_placed}", flush=True)
