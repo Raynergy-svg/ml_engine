@@ -49,10 +49,19 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   PRACTICE: base `api-fxpractice`, account prefix `101`, NAV ~$102k, was flat. Cycle EXECUTED: 4/10 FX majors
   on (GBP_JPY/USD_JPY/USD_CHF/USD_CAD), 4 market orders placed → **openTradeCount=4 confirmed on the account**.
   Account is **FX-only** (68 instruments, NO metals/indices/commodities — operator expected XAU/XAG; not on
-  this account). CAVEAT (honest): FX unit sizing is APPROX (`units=notional/price`) → uneven across JPY-quote
-  pairs (USD_JPY got 78 vs USD_CHF 15723); conservative 0.5x leverage so harmless, but precise per-base-ccy
-  sizing is a needed refinement. FLAG (not built): order-book/position-book SENTIMENT = future pre-registered
-  contrarian test. HARD LINE intact: practice-only, hard-pinned URL, no live path. 4 no-mock tests; flake8 clean.
+  this account). HARD LINE intact: practice-only, hard-pinned URL, no live path.
+  **UPDATES (2026-06-25 pm, HEAD f717a49, loop PID rotates):** (1) FX sizing FIXED — per-base-currency
+  (`base_to_home_rate`), consistent home-notional (verifier: SIZING CORRECT). (2) Robust v20 layer
+  `src/brokers/oanda_v20.py` — streaming (stream-fxpractice + reconnect/backoff), TransactionLedger (audit
+  trail + realized P&L → `trained_data/oanda/transactions.jsonl`), `snapshot_account_state` (→ account_state.json
+  for TUI), sentiment DATA-ONLY. (3) Safety rails: no-trade band, NAV-drawdown auto-halt (20% from peak),
+  nan/nav<=0 guards. (4) LEVERAGE DIAL (operator: 0.5x too timid) — `OANDA_GROSS_LEVERAGE`/`--gross-leverage`,
+  default **3x**, cap 15x; at 3x ~$76k/position, marginUsed ~11%. Honest: leverage amplifies variance not edge
+  (trend = ~0-Sharpe drawdown-reducer); $1M/6mo on demo = ruin-math live, NON-GOAL. (5) SECURITY-VERIFIER
+  (Security Engineer): **SAFE** — practice-only guaranteed, leverage bounded, cannot bleed unbounded, real
+  fills truthfully labeled. (6) `docs/dashboard-data-contract.md` for the parallel read-only dashboard
+  workstream. `trained_data/oanda/` gitignored; token in `.env.local` (gitignored, never committed, diff-scanned).
+  17 no-mock tests; flake8 clean. FLAG (not built): order/position-book SENTIMENT = future pre-registered test.
 - **(SUPERSEDED) Equity-harvester H1 / IBKR-paper lane (2026-06-25 earlier):** harvester shadow loop ran
   (running:YES via oracle, simulated fills) but IBKR paper needs `ib_async`+gateway+login. Operator chose
   OANDA instead; harvester code (`scripts/run_equity_harvester.py`, runner `execute_order` inject) retained,
