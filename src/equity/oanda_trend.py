@@ -45,7 +45,24 @@ logger = logging.getLogger(__name__)
 DEFAULT_SMA = 100        # ~5-month trend on daily candles (managed-futures canonical)
 DEFAULT_GRANULARITY = "D"
 DEFAULT_CANDLE_COUNT = 300   # <= OANDA 5000 max; enough history for the SMA + warmup
-DEFAULT_GROSS_LEVERAGE = 0.5  # conservative: total demo exposure <= 0.5x NAV
+# Total demo exposure = gross_leverage x NAV, spread across the "on" instruments.
+# Operator dial via OANDA_GROSS_LEVERAGE / --gross-leverage (2026-06-25: 0.5 was
+# too timid — ~1.9% margin used). Default 3x; capped to keep margin < ~80% of NAV
+# (FX majors ~3-5% margin => ~20x is the margin-call wall, so 15x hard cap).
+DEFAULT_GROSS_LEVERAGE = 3.0
+MAX_GROSS_LEVERAGE = 15.0
+
+
+def clamp_leverage(value: float) -> float:
+    """Clamp gross leverage to (0, MAX_GROSS_LEVERAGE]; warn if it was capped."""
+    v = float(value)
+    if v <= 0:
+        return DEFAULT_GROSS_LEVERAGE
+    if v > MAX_GROSS_LEVERAGE:
+        logger.warning("gross_leverage %.1f exceeds cap %.1f — clamping (margin-call guard)",
+                       v, MAX_GROSS_LEVERAGE)
+        return MAX_GROSS_LEVERAGE
+    return v
 
 
 @dataclass(frozen=True)
@@ -218,6 +235,7 @@ def run_oanda_trend_cycle(
     granularity: str = DEFAULT_GRANULARITY,
     sma_window: int = DEFAULT_SMA,
     candle_count: int = DEFAULT_CANDLE_COUNT,
+    gross_leverage: float = DEFAULT_GROSS_LEVERAGE,
     dry_run: bool = False,
     now: Optional[datetime] = None,
 ) -> OandaTrendResult:
@@ -225,8 +243,10 @@ def run_oanda_trend_cycle(
 
     Respects the global halt (REFUSE) and asserts practice-only. With ``dry_run``
     it computes + logs targets without placing orders. Otherwise it reads NAV +
-    open positions and places market orders for the delta to each target.
+    open positions and sizes each held instrument to ``gross_leverage`` x NAV
+    (spread across the on-set) before placing the delta orders.
     """
+    gross_leverage = clamp_leverage(gross_leverage)
     assert getattr(config, "oanda_environment", "practice") == "practice", \
         "HARD LINE: oanda_environment must be 'practice'"
     root = Path(project_root)
@@ -268,7 +288,7 @@ def run_oanda_trend_cycle(
         return OandaTrendResult(False, "drawdown_halt", targets, 0)
     last_px = {inst: panel[inst].dropna().iloc[-1] for inst in panel.columns
                if not panel[inst].dropna().empty}
-    want = target_units(targets, nav, last_px)
+    want = target_units(targets, nav, last_px, gross_leverage=gross_leverage)
     # Visibility (verifier rec): an on-signal instrument sized 0 means its base->home
     # rate was underivable (USD leg absent from the traded panel) — surface it so a
     # silently-untraded cross can't hide as a no-op.

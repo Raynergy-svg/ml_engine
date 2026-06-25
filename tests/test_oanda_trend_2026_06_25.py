@@ -18,6 +18,15 @@ from src.equity.oanda_trend import (
 )
 
 
+def test_clamp_leverage_bounds():
+    from src.equity.oanda_trend import DEFAULT_GROSS_LEVERAGE, MAX_GROSS_LEVERAGE, clamp_leverage
+    assert clamp_leverage(3.0) == 3.0
+    assert clamp_leverage(0) == DEFAULT_GROSS_LEVERAGE       # invalid -> default
+    assert clamp_leverage(-5) == DEFAULT_GROSS_LEVERAGE
+    assert clamp_leverage(999) == MAX_GROSS_LEVERAGE         # capped at margin-call guard
+    assert clamp_leverage(10) == 10.0
+
+
 def test_nav_drawdown_auto_halt(tmp_path):
     from src.equity.oanda_trend import nav_drawdown_breached
     p = tmp_path / "peak_nav.json"

@@ -76,14 +76,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="signal only, place NO orders")
     ap.add_argument("--granularity", default="D")
     ap.add_argument("--sma", type=int, default=100)
+    ap.add_argument("--gross-leverage", type=float, default=None,
+                    help="total exposure as a multiple of NAV (env OANDA_GROSS_LEVERAGE; "
+                         "default 3.0; capped at 15x to stay clear of margin call)")
     ap.add_argument("--loop", type=float, default=0.0, help="seconds between cycles (>0 = persist)")
     ap.add_argument("--max-cycles", type=int, default=0)
     args = ap.parse_args(argv)
 
     from src.scanner.config import ScannerConfig
-    from src.equity.oanda_trend import run_oanda_trend_cycle
+    from src.equity.oanda_trend import DEFAULT_GROSS_LEVERAGE, run_oanda_trend_cycle
     config = ScannerConfig()
     assert config.oanda_environment == "practice", "HARD LINE: env must stay practice"
+
+    # Leverage dial: CLI > env OANDA_GROSS_LEVERAGE > default (clamped in the cycle).
+    import os as _os
+    gross_leverage = (args.gross_leverage if args.gross_leverage is not None
+                      else float(_os.getenv("OANDA_GROSS_LEVERAGE", DEFAULT_GROSS_LEVERAGE)))
+    logger.info("gross_leverage = %.1fx NAV (dial via --gross-leverage / OANDA_GROSS_LEVERAGE)",
+                gross_leverage)
 
     client, blocker = _make_client()
     if client is None:
@@ -106,7 +116,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             r = run_oanda_trend_cycle(
                 client=client, config=config, instruments=instruments,
                 project_root=REPO_ROOT, granularity=args.granularity,
-                sma_window=args.sma, dry_run=args.dry_run,
+                sma_window=args.sma, gross_leverage=gross_leverage, dry_run=args.dry_run,
             )
         except Exception as exc:
             print(f"OANDA_BLOCKER: cycle failed ({type(exc).__name__}: {exc}) — "
