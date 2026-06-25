@@ -12,9 +12,20 @@ import numpy as np
 from src.equity.oanda_trend import (
     base_to_home_rate,
     candles_to_close_panel,
+    rebalance_delta,
     target_units,
     trend_targets,
 )
+
+
+def test_rebalance_band_suppresses_micro_churn_but_allows_flips():
+    # NAV-drift micro-delta within the band -> no trade (no churn)
+    assert rebalance_delta(12769, 12770) == 0
+    assert rebalance_delta(12769, 12740) == 0          # 29 units < 2% of 12769
+    # real moves clear the band
+    assert rebalance_delta(12769, 0) == 12769          # open from flat
+    assert rebalance_delta(0, 12769) == -12769         # flip to flat (close)
+    assert rebalance_delta(12769, 12000) == 769        # 769 > 2% -> rebalance
 
 
 def _candles(closes, *, complete=True, start="2020-01-01"):

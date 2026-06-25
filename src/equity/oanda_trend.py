@@ -169,6 +169,19 @@ def target_units(
     return out
 
 
+def rebalance_delta(target: int, current: int, *, band_pct: float = 0.02, min_units: int = 1) -> int:
+    """Order delta with a no-trade band — 0 unless |target-current| exceeds the band.
+
+    Avoids churning tiny ±1-unit orders every cycle as NAV drifts (good-citizen):
+    only rebalances when the gap exceeds ``band_pct`` of the position (a flat<->on
+    flip is a full-position delta, always far above the band; sub-percent NAV drift
+    is ignored). ``min_units`` floors the band so it is never below 1 unit.
+    """
+    delta = int(target) - int(current)
+    band = max(int(band_pct * max(abs(int(target)), abs(int(current)))), int(min_units))
+    return delta if abs(delta) >= band else 0
+
+
 def run_oanda_trend_cycle(
     *,
     client: "OandaPracticeClient",
@@ -241,8 +254,8 @@ def run_oanda_trend_cycle(
 
     placed = 0
     for inst in instruments:
-        delta = int(want.get(inst, 0)) - int(current.get(inst, 0))
-        if abs(delta) < 1:
+        delta = rebalance_delta(want.get(inst, 0), current.get(inst, 0))
+        if delta == 0:
             continue
         client.create_market_order(instrument=inst, units=delta, client_tag="ml_engine_trend_demo")
         placed += 1
