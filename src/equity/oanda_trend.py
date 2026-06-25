@@ -106,29 +106,66 @@ def trend_targets(close_panel: pd.DataFrame, *, sma_window: int = DEFAULT_SMA) -
     return {inst: float(v) for inst, v in last.items()}
 
 
+def base_to_home_rate(
+    instrument: str,
+    last_prices: Dict[str, float],
+    *,
+    home_ccy: str = "USD",
+) -> Optional[float]:
+    """USD (home-ccy) value of 1 unit of the instrument's BASE currency.
+
+    OANDA units are denominated in the BASE currency (the left side of XXX_YYY),
+    so the home-currency exposure of ``units`` is ``units * base_to_home_rate`` —
+    NOT ``units * price`` (price is in the QUOTE currency). Examples (home=USD):
+      USD_JPY -> base USD            -> 1.0
+      EUR_USD -> base EUR            -> EUR_USD price (~1.10)
+      GBP_JPY -> base GBP            -> GBP_USD price (~1.27, via the cross leg)
+      USD_CAD -> base USD            -> 1.0
+    Resolves the base->home rate from a direct ``BASE_HOME`` price, else an inverse
+    ``HOME_BASE`` price. Returns ``None`` if it cannot be derived (caller refuses to
+    size rather than fabricate units).
+    """
+    base = str(instrument).split("_")[0]
+    if base == home_ccy:
+        return 1.0
+    direct = last_prices.get(f"{base}_{home_ccy}")        # e.g. EUR_USD
+    if direct and direct > 0:
+        return float(direct)
+    inverse = last_prices.get(f"{home_ccy}_{base}")       # e.g. USD_CAD for base CAD
+    if inverse and inverse > 0:
+        return 1.0 / float(inverse)
+    return None
+
+
 def target_units(
     targets: Dict[str, float],
     nav: float,
     last_prices: Dict[str, float],
     *,
     gross_leverage: float = DEFAULT_GROSS_LEVERAGE,
+    home_ccy: str = "USD",
 ) -> Dict[str, int]:
-    """Convert target weights -> signed integer OANDA units (long-or-flat => >= 0).
+    """Convert target weights -> integer OANDA units with PER-BASE-CURRENCY sizing.
 
-    Conservative, DEMO-grade sizing: notional_per_inst = weight * NAV * leverage,
-    units ~= notional / price. This is an APPROXIMATION of FX base-currency unit
-    semantics (exact units depend on each pair's base ccy) — fine for a small
-    practice demo with gross_leverage <= 0.5; precise per-base-ccy sizing is a
-    documented refinement, not a silent assumption.
+    Each held instrument gets EQUAL home-currency notional
+    (``weight * NAV * gross_leverage``); units = that notional / the base->home
+    rate, so JPY-quote and USD-base pairs are now consistently risk-scaled (no
+    more ``/price`` skew). An instrument whose base->home rate cannot be derived is
+    sized 0 (refuse, don't fabricate). Long-or-flat => units >= 0.
     """
     out: Dict[str, int] = {}
     for inst, w in targets.items():
-        px = last_prices.get(inst)
-        if w <= 0 or not px or px <= 0:
+        if w <= 0:
             out[inst] = 0
             continue
-        notional = float(w) * float(nav) * float(gross_leverage)
-        out[inst] = max(int(notional / float(px)), 1)
+        rate = base_to_home_rate(inst, last_prices, home_ccy=home_ccy)
+        if rate is None or rate <= 0:
+            logger.warning("no base->%s rate for %s — sizing 0 (refuse, no fabrication)",
+                           home_ccy, inst)
+            out[inst] = 0
+            continue
+        notional_home = float(w) * float(nav) * float(gross_leverage)
+        out[inst] = max(int(notional_home / float(rate)), 1)
     return out
 
 
@@ -185,6 +222,13 @@ def run_oanda_trend_cycle(
     last_px = {inst: panel[inst].dropna().iloc[-1] for inst in panel.columns
                if not panel[inst].dropna().empty}
     want = target_units(targets, nav, last_px)
+    # Visibility (verifier rec): an on-signal instrument sized 0 means its base->home
+    # rate was underivable (USD leg absent from the traded panel) — surface it so a
+    # silently-untraded cross can't hide as a no-op.
+    silently_flat = [i for i, w in targets.items() if w > 0 and want.get(i, 0) == 0]
+    if silently_flat:
+        logger.warning("on-signal but sized 0 (no base->home rate, add its USD leg): %s",
+                       silently_flat)
 
     pos_resp = client.get_open_positions() or {}
     current: Dict[str, int] = {}
