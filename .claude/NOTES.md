@@ -79,6 +79,24 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
 
 ## In-flight work (from session memory, not re-verified this turn — confirm before relying)
 
+- **Multi-strategy sleeve program — Phase 0 DONE; no-spend frontier exhausted (2026-06-25, running:NO,
+  offline-eval only).** Plan doc `docs/multi-strategy-sleeve-architecture-2026-06-24.md` (commit 3a7038b).
+  Phase-0 (commit 65015bd): built Sleeve A = multi-asset trend/managed-futures (long-or-flat ETFs,
+  `src/equity/trend_sleeve.py`) + HRP-across-sleeves combiner (`sleeve_combiner.py`) + combined-book gate
+  (`SHIP_GATE_book.json`). Falsifiable test {harvester+trend} vs harvester-alone, pre-registered canonical
+  params, separate-verifier independently re-derived (byte-for-byte) + multiple-testing audit.
+  **VERDICT (verifier-confirmed): NOT a stable Sharpe +1 — it's a DRAWDOWN-only risk-reducer.** Combined
+  beats harvester on Sharpe full +0.033 / OOS +0.118 BUT only 2/4 disjoint 5yr blocks (wins=GFC+2021-25,
+  loses calm 2011-20); sign-test p≈0.69; OOS ~72% overlaps the winning 2021-25 regime (not independent);
+  collapses under N≈5 ideas tried. ROBUST finding: maxDD 0.229→0.166 across ALL regimes (trend goes to
+  cash in crashes, corr~0.49). On the operator's "+1 Sharpe OOS" bar this is an HONEST NEGATIVE (=success).
+  **Frontier state:** trend was THE strong free/orthogonal candidate (drawdown-only); carry is gate-rejected
+  (EM-carry fat tail); quality needs PIT fundamentals = DATA PURCHASE (HARD STOP, operator's card —
+  financial-datasets = latest-FY/$0 balance, no free PIT). NOT iterating more sleeves (anti-p-hacking;
+  N already burns the significance budget). Surfaced operator decisions: (a) is tail-risk reduction a goal
+  worth taking trend toward shadow/live [operator-authorized hot-path]? (b) authorize PIT data purchase to
+  unblock the quality sleeve = the next real diversification lever. STOP-DONE on no-spend frontier.
+
 - **Equity-harvester four-pillar self-improver — SHIPPED-TO-DISK + UNIT-TESTED SCAFFOLDING, NOT RUNNING
   (corrected record 2026-06-24; separate-verifier confirmed; supersedes prior "running/wired/now does X"
   chat framing, which was inaccurate — see L-017).** TRUE status, re-derived from disk independently:
