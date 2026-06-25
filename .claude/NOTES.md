@@ -97,6 +97,21 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   worth taking trend toward shadow/live [operator-authorized hot-path]? (b) authorize PIT data purchase to
   unblock the quality sleeve = the next real diversification lever. STOP-DONE on no-spend frontier.
 
+- **Quality-sleeve PIT data purchase — AUTHORIZED 2026-06-25 (decision (b) above); receiving end BUILT,
+  quality still NOT_EVALUATED until real Pro data lands (running:NO).** Re-verified the data claim live before
+  endorsing any spend: `financial-datasets` FREE tier returns ONLY `2025-06-25`+ ("Upgrade to Pro for full
+  historical coverage") — so the purchase IS genuinely needed; 1 quarter can't evaluate 2006-2026. BUT its
+  records carry `accession_number`+`filing_url` (real SEC filing) → PIT-traceable, AND it's already MCP-wired
+  → **recommended buy = financial-datasets Pro** (vs Sharadar SF1 alt; builder is vendor-agnostic).
+  Built `src/equity/quality_data.py` (load dump → lag every filing to `report_period+90d` public-availability
+  → ffill to grid → cross-sectional z-blend of {+gross_margin,+net_margin,−debt_to_equity}, tilt=1.0,
+  pre-registered/untuned → `validate_panel_pit` independently re-derives no-lookahead & RAISES on violation →
+  `panel_coverage<60%` ⇒ refuse NOT_EVALUATED, never fabricate). 9 no-mock tests green; flake8 clean.
+  Driver `run_quality_bakeoff()` fires the moment a dump exists; spec+runbook in
+  `docs/quality-sleeve-data-procurement-2026-06-25.md`. **Blocked on: operator upgrades the plan (the actual
+  payment — Claude can't execute it); then I fetch-and-dump the 38 tickers via MCP → run bake-off → separate
+  verifier + multiple-testing audit before any quality-edge claim.**
+
 - **Equity-harvester four-pillar self-improver — SHIPPED-TO-DISK + UNIT-TESTED SCAFFOLDING, NOT RUNNING
   (corrected record 2026-06-24; separate-verifier confirmed; supersedes prior "running/wired/now does X"
   chat framing, which was inaccurate — see L-017).** TRUE status, re-derived from disk independently:
