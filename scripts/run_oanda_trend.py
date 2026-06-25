@@ -90,8 +90,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     # Leverage dial: CLI > env OANDA_GROSS_LEVERAGE > default (clamped in the cycle).
     import os as _os
-    gross_leverage = (args.gross_leverage if args.gross_leverage is not None
-                      else float(_os.getenv("OANDA_GROSS_LEVERAGE", DEFAULT_GROSS_LEVERAGE)))
+    try:
+        gross_leverage = (args.gross_leverage if args.gross_leverage is not None
+                          else float(_os.getenv("OANDA_GROSS_LEVERAGE", DEFAULT_GROSS_LEVERAGE)))
+    except (ValueError, TypeError):
+        logger.warning("bad OANDA_GROSS_LEVERAGE -> default %.1f", DEFAULT_GROSS_LEVERAGE)
+        gross_leverage = DEFAULT_GROSS_LEVERAGE
     logger.info("gross_leverage = %.1fx NAV (dial via --gross-leverage / OANDA_GROSS_LEVERAGE)",
                 gross_leverage)
 

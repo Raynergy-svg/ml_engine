@@ -54,9 +54,16 @@ MAX_GROSS_LEVERAGE = 15.0
 
 
 def clamp_leverage(value: float) -> float:
-    """Clamp gross leverage to (0, MAX_GROSS_LEVERAGE]; warn if it was capped."""
-    v = float(value)
-    if v <= 0:
+    """Clamp gross leverage to (0, MAX_GROSS_LEVERAGE]; warn if it was capped.
+
+    Non-finite (nan/inf) inputs fall back to the default (verifier hardening: a
+    nan would otherwise slip both comparisons and reach the sizer)."""
+    import math
+    try:
+        v = float(value)
+    except (ValueError, TypeError):
+        return DEFAULT_GROSS_LEVERAGE
+    if not math.isfinite(v) or v <= 0:
         return DEFAULT_GROSS_LEVERAGE
     if v > MAX_GROSS_LEVERAGE:
         logger.warning("gross_leverage %.1f exceeds cap %.1f — clamping (margin-call guard)",
@@ -279,6 +286,12 @@ def run_oanda_trend_cycle(
     # 2. NAV + current positions -> delta orders (long-or-flat)
     summary = client.get_account_summary() or {}
     nav = float((summary.get("account") or {}).get("NAV", 0.0) or 0.0)
+
+    # NAV glitch guard (verifier rec): a transient summary error -> nav<=0 would size
+    # every name to the 1-unit floor (noise orders). Refuse the cycle instead.
+    if nav <= 0:
+        logger.warning("OANDA trend cycle skipped — NAV unavailable/<=0 (transient?)")
+        return OandaTrendResult(False, "no_nav", targets, 0)
 
     # Autonomous-safety drawdown rail: stop adding risk if the demo NAV bleeds.
     dd = nav_drawdown_breached(nav, root / "trained_data" / "oanda" / "peak_nav.json")

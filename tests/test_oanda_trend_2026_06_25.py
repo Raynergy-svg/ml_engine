@@ -25,6 +25,9 @@ def test_clamp_leverage_bounds():
     assert clamp_leverage(-5) == DEFAULT_GROSS_LEVERAGE
     assert clamp_leverage(999) == MAX_GROSS_LEVERAGE         # capped at margin-call guard
     assert clamp_leverage(10) == 10.0
+    assert clamp_leverage(float("nan")) == DEFAULT_GROSS_LEVERAGE   # non-finite -> default
+    assert clamp_leverage(float("inf")) == DEFAULT_GROSS_LEVERAGE   # non-finite -> default
+    assert clamp_leverage("bad") == DEFAULT_GROSS_LEVERAGE          # unparseable -> default
 
 
 def test_nav_drawdown_auto_halt(tmp_path):
