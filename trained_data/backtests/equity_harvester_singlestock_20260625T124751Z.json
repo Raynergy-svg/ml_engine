@@ -1,0 +1,94 @@
+{
+  "asof": "2026-06-24",
+  "backtest_summary": {
+    "avg_cost": 4.824516661040411e-06,
+    "avg_turnover": 0.02412258309158844,
+    "equity_curve_last": 5.2356438401790415,
+    "execution_lag": 1,
+    "n_bars": 4142,
+    "span": "2010-01-05->2026-06-24",
+    "summary": {
+      "cagr": 0.106,
+      "max_dd": 0.229,
+      "net_sharpe": 0.908,
+      "per_year": {
+        "2010": 0.0,
+        "2011": -0.1319,
+        "2012": 0.1744,
+        "2013": 0.2737,
+        "2014": 0.0794,
+        "2015": 0.0278,
+        "2016": 0.1544,
+        "2017": 0.2582,
+        "2018": -0.0192,
+        "2019": 0.2504,
+        "2020": 0.0361,
+        "2021": 0.259,
+        "2022": -0.2104,
+        "2023": 0.2566,
+        "2024": 0.1666,
+        "2025": 0.1494,
+        "2026": 0.1756
+      },
+      "pos_years": "13/17"
+    },
+    "total_turnover": 99.91573916535933
+  },
+  "cost_params": {
+    "adv_supplied": true,
+    "cost_bps": 2.0,
+    "execution_lag": 1,
+    "slippage_bps_per_pct_adv": 5.0,
+    "slippage_bps_per_pct_adv_requested": 5.0
+  },
+  "criteria": {
+    "history_length": {
+      "passed": true,
+      "threshold": 10,
+      "value": 17
+    },
+    "max_drawdown": {
+      "passed": true,
+      "threshold": 0.25,
+      "value": 0.229
+    },
+    "net_sharpe": {
+      "passed": true,
+      "threshold": 0.4,
+      "value": 0.908
+    },
+    "positive_years": {
+      "passed": true,
+      "threshold": 6,
+      "value": 13
+    },
+    "walk_forward": {
+      "passed": true,
+      "threshold": true,
+      "value": true
+    }
+  },
+  "criteria_source": "src.factor.ship_gate.evaluate_gate (US-007 canonical bar)",
+  "gate_pass": true,
+  "max_dd": 0.229,
+  "net_sharpe": 0.908,
+  "overlay_params": {
+    "dd_hard": 0.2,
+    "dd_soft": 0.1,
+    "max_lev": 1.0,
+    "target_vol": 0.12
+  },
+  "pipeline_version": "2026-06-18-eq1",
+  "positive_years": 13,
+  "recommendation": "PASS \u2014 single-stock harvester clears the pre-registered bar; downstream build stories (US-006+) may proceed.",
+  "span": "2010-01-05->2026-06-24",
+  "summary": "PASS \u2014 net Sharpe 0.91, 13/17 positive years, maxDD 22.9%. Eligible for US-008 practice deploy.",
+  "thresholds": {
+    "max_drawdown": 0.25,
+    "min_net_sharpe": 0.4,
+    "min_positive_years": 6.0,
+    "min_total_years": 10.0
+  },
+  "total_years": 17,
+  "universe_hash": "f550709ad80a6da7e5976c03dacc82197fb25cfc620c02522300f5a803e23747"
+}

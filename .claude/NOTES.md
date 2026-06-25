@@ -40,14 +40,21 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   morning enable's `halted=false` had since flipped back to `true` (auto-halt circuit-breaker pattern;
   the noisy "16 consecutive losses" lines were unit-test artifacts, not real trades — lifetime journal
   is 26 trades), so this is a re-unhalt.
-- **WON'T ACTUALLY TRADE YET (3 blockers, none lifted by unhalt — verified from disk 2026-06-24):**
-  (1) **No scanner process running** — no `continuous`/`embedded_scanner`/`main.py` proc; heartbeat pid
-  dead (written by test runs). Unhalt removes the veto but nothing is scanning; a scanner must be
-  launched. (2) **OANDA practice creds stale (401)** — last OANDA call `401 Unauthorized` 09:44 EDT,
-  no successful fetch since → a running scanner would abstain/error until creds refreshed. (3) **Models
-  stale** — 6 per-pair champions all 36 days old (2026-05-19), past the >7d staleness hard-block
-  (`trading.md`); +19 quarantined. Runtime abstains (`direction=None`) on stale/over-gap models.
-  Net: unhalt is necessary-not-sufficient; bot sits idle/abstaining until scanner + creds + fresh model.
+- **EQUITY HARVESTER IS NOW RUNNING DEMO CYCLES (2026-06-25, operator-authorized H1 for PAPER only).**
+  Re-unhalted via `StateEngine().set_halted(False)` (`automation/state_engine.py`); built H1 entrypoint
+  `scripts/run_equity_harvester.py` (shadow + ibkr-paper lanes, `--loop`) driving the gated
+  `run_shadow_rebalance` (added injectable `execute_order`). Re-validated SHIP_GATE on the current PIT
+  universe (was hash-stale → NO_ACT; re-ran `run_equity_harvester_shipgate_pit.py` → gate_pass net_sharpe
+  0.908, hash `f550709a` now MATCHES snapshot). **Oracle (`running_status.py`, the fail-closed lie-catcher)
+  confirms `running:YES · process:YES · cycles_executed≥3 · live_artifacts:YES`; ledger hash-chain intact;
+  20 equal-weight orders FILLED in SIMULATION.** Fills are SHADOW (simulated) — NOT real paper orders yet.
+- **ACTUAL paper-broker fills BLOCKED (operator-side, precise):** equity harvester needs IBKR **paper**
+  (OANDA is FX-only, can't fill US stocks). Runtime blocker captured: `ImportError: ib_async not installed`.
+  To place real demo trades: (1) `pip install ib_async`; (2) IB Gateway/TWS on `127.0.0.1:7497` (paper);
+  (3) IBKR paper-account login. The `--broker ibkr-paper` lane connects + places the instant those exist
+  (fill path wired via `whole_share_round` + `place_equity_order`, UNVERIFIED until a live gateway tests it).
+- **(LEGACY FX, retired per L-016 — not the live path):** old FX blockers (no scanner proc, OANDA 401,
+  stale per-pair champions) no longer gate the live strategy; the equity harvester replaced FX direction.
 - **`mode: "live"`, `status: "running"`.** mode=live is EXECUTION mode (place orders), NOT real money.
   Orders go to the PRACTICE/paper account: the order client is `OandaPracticeClient`, hard-pinned to
   `PRACTICE_API_URL = api-fxpractice.oanda.com/v3` (`src/utils/oanda_practice.py:117`) and it IGNORES

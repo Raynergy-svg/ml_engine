@@ -30,7 +30,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from src.equity.cycle_ledger import LEDGER_PATH_DEFAULT, append_cycle
 from src.equity.decision_gate import decide_cycle
@@ -122,16 +122,24 @@ def run_shadow_rebalance(
     asof: "pd.Timestamp",
     project_root: Path = Path("."),
     now: Optional[datetime] = None,
+    execute_order: Optional[Callable[[Order], bool]] = None,
 ) -> ShadowRunResult:
-    """Run one shadow rebalance tick; persist the plan for the TUI panel.
+    """Run one rebalance tick; persist the plan for the TUI panel.
 
     Fail-closed via the Pillar-3 decision gate (:func:`decide_cycle`): refuses
     (``ran=False``) unless the harvester is enabled AND the gate returns
     CONTINUE — global halt -> REFUSE, drawdown breach -> HALT, ship-gate
     fail/mismatch -> NO_ACT, stale data -> ABSTAIN. On CONTINUE it builds the
     ship-gate-guarded strategy + scheduler, computes target weights, persists
-    the plan, and shadow-fills it — never touching a broker.
+    the plan, and fills it via ``execute_order``.
+
+    ``execute_order`` defaults to the deterministic SHADOW fill (no broker). The
+    operator-authorized H1 entrypoint may inject a PAPER/PRACTICE-broker callback
+    instead — the gate above (incl. global halt) still governs every tick, and
+    the callback is REQUIRED to target a paper/practice account only (never a
+    real-money broker). All other behaviour is identical.
     """
+    fill = execute_order or _shadow_execute_order
     root = Path(project_root)
     ship_gate_path = root / getattr(
         config, "equity_harvester_ship_gate_path", _DEFAULT_SHIP_GATE_REL
@@ -190,14 +198,15 @@ def run_shadow_rebalance(
     if prior is not None and not prior.remaining_orders():
         scheduler.finalize_plan(prior)
     plan = scheduler.plan_and_persist(target_weights=target_weights, asof=asof)
-    scheduler.execute_plan(plan, _shadow_execute_order)
+    scheduler.execute_plan(plan, fill)
     _record_cycle(
         root, asof, "continue", (), True, snapshot.universe_hash,
         n_orders=len(plan.orders), target_weights=plan.target_weights,
     )
     logger.info(
-        "equity harvester shadow tick EXECUTED — orders=%d state=%s",
+        "equity harvester tick EXECUTED — orders=%d fill=%s state=%s",
         len(plan.orders),
+        getattr(fill, "__name__", "custom"),
         state_path,
     )
     return ShadowRunResult(ran=True, reason="executed", plan=plan)
