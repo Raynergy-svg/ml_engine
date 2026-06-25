@@ -25,6 +25,8 @@ contrarian signal (retail crowding -> fade). Reserve for a pre-registered test.
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -169,6 +171,31 @@ def target_units(
     return out
 
 
+DEFAULT_DD_HARD = 0.20   # auto-halt the lane if NAV draws down >= 20% from peak
+
+
+def nav_drawdown_breached(nav: float, peak_path: Path, *, dd_hard: float = DEFAULT_DD_HARD) -> Optional[float]:
+    """Track peak NAV on disk; return the drawdown if it breaches ``dd_hard`` (else None).
+
+    Autonomous-safety rail (verifier rec): an unsupervised loop must stop adding risk
+    if the demo account bleeds. Peak NAV is persisted atomically and ratchets up only.
+    """
+    import json
+    peak = float(nav)
+    try:
+        prev = float(json.loads(peak_path.read_text()).get("peak_nav", nav))
+        peak = max(peak, prev)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    peak_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(peak_path.parent), suffix=".tmp")
+    with os.fdopen(fd, "w") as fh:
+        json.dump({"peak_nav": peak}, fh)
+    os.replace(tmp, peak_path)
+    dd = (peak - float(nav)) / peak if peak > 0 else 0.0
+    return dd if dd >= float(dd_hard) else None
+
+
 def rebalance_delta(target: int, current: int, *, band_pct: float = 0.02, min_units: int = 1) -> int:
     """Order delta with a no-trade band — 0 unless |target-current| exceeds the band.
 
@@ -232,6 +259,13 @@ def run_oanda_trend_cycle(
     # 2. NAV + current positions -> delta orders (long-or-flat)
     summary = client.get_account_summary() or {}
     nav = float((summary.get("account") or {}).get("NAV", 0.0) or 0.0)
+
+    # Autonomous-safety drawdown rail: stop adding risk if the demo NAV bleeds.
+    dd = nav_drawdown_breached(nav, root / "trained_data" / "oanda" / "peak_nav.json")
+    if dd is not None:
+        logger.error("OANDA trend cycle HALTED — NAV drawdown %.1f%% >= %.0f%% from peak",
+                     dd * 100, DEFAULT_DD_HARD * 100)
+        return OandaTrendResult(False, "drawdown_halt", targets, 0)
     last_px = {inst: panel[inst].dropna().iloc[-1] for inst in panel.columns
                if not panel[inst].dropna().empty}
     want = target_units(targets, nav, last_px)

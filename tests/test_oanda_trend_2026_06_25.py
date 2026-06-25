@@ -18,6 +18,19 @@ from src.equity.oanda_trend import (
 )
 
 
+def test_nav_drawdown_auto_halt(tmp_path):
+    from src.equity.oanda_trend import nav_drawdown_breached
+    p = tmp_path / "peak_nav.json"
+    assert nav_drawdown_breached(100000.0, p) is None      # first call sets peak, no dd
+    assert nav_drawdown_breached(95000.0, p) is None        # 5% dd < 20%, peak holds
+    dd = nav_drawdown_breached(79000.0, p)                  # 21% from peak 100k -> breach
+    assert dd is not None and dd > 0.20
+    # peak ratchets UP to a new high, then drawdown is measured from the new peak
+    assert nav_drawdown_breached(120000.0, p) is None        # new peak 120k
+    assert nav_drawdown_breached(100000.0, p) is None        # 16.7% from 120k < 20%
+    assert nav_drawdown_breached(95000.0, p) is not None     # 20.8% from 120k -> breach
+
+
 def test_rebalance_band_suppresses_micro_churn_but_allows_flips():
     # NAV-drift micro-delta within the band -> no trade (no churn)
     assert rebalance_delta(12769, 12770) == 0
