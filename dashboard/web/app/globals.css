@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* ---------------- AXIOM brand tokens ---------------- */
+@theme {
+  --color-base: #07090d;
+  --color-surface: #0e1219;
+  --color-surface2: #151b25;
+  --color-border: #1e2733;
+  --color-text: #e6edf3;
+  --color-dim: #8b98a9;
+  --color-faint: #5a6677;
+
+  --color-cyan: #22d3ee;
+  --color-emerald: #34e5a1;
+  --color-magenta: #e84ff0;
+
+  --color-pos: #2bd17e;
+  --color-neg: #ff4d6d;
+  --color-warn: #f5b14c;
+
+  --font-sans: var(--font-geist-sans), "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body {
+  background: #07090d;
+  color: #e6edf3;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  background-image:
+    radial-gradient(1100px 560px at 88% -12%, rgba(34, 211, 238, 0.06), transparent 60%),
+    radial-gradient(900px 520px at -8% 112%, rgba(52, 229, 161, 0.05), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* tabular numerals everywhere a number lives */
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.card {
+  background: linear-gradient(180deg, #0e1219, #0b0e14);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+
+.grad-text {
+  background: linear-gradient(120deg, var(--color-cyan), var(--color-emerald));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #1e2733; border-radius: 8px; }
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.live-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
