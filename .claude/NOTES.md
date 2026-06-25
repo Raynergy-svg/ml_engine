@@ -40,7 +40,24 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   morning enable's `halted=false` had since flipped back to `true` (auto-halt circuit-breaker pattern;
   the noisy "16 consecutive losses" lines were unit-test artifacts, not real trades — lifetime journal
   is 26 trades), so this is a re-unhalt.
-- **EQUITY HARVESTER IS NOW RUNNING DEMO CYCLES (2026-06-25, operator-authorized H1 for PAPER only).**
+- **OANDA PRACTICE TREND LANE IS LIVE — PLACED 4 REAL DEMO ORDERS THAT FILLED (2026-06-25, operator lane choice).**
+  Operator pivoted from IBKR to OANDA practice (v20). Strategy = NON-directional TREND/managed-futures
+  (price vs MA, long-or-flat, shift(1) — the validated drawdown-reducer; NOT the retired directional FX
+  transformer, L-016 stands). Built `src/equity/oanda_trend.py` (candles→close panel→trend_sleeve signal→
+  units→orders, halt-gated, practice-asserted) + `scripts/run_oanda_trend.py` + `get_instruments()` on the
+  practice client. **Token is LIVE** (the old 401 is resolved — `.env` has a working practice PAT). Verified
+  PRACTICE: base `api-fxpractice`, account prefix `101`, NAV ~$102k, was flat. Cycle EXECUTED: 4/10 FX majors
+  on (GBP_JPY/USD_JPY/USD_CHF/USD_CAD), 4 market orders placed → **openTradeCount=4 confirmed on the account**.
+  Account is **FX-only** (68 instruments, NO metals/indices/commodities — operator expected XAU/XAG; not on
+  this account). CAVEAT (honest): FX unit sizing is APPROX (`units=notional/price`) → uneven across JPY-quote
+  pairs (USD_JPY got 78 vs USD_CHF 15723); conservative 0.5x leverage so harmless, but precise per-base-ccy
+  sizing is a needed refinement. FLAG (not built): order-book/position-book SENTIMENT = future pre-registered
+  contrarian test. HARD LINE intact: practice-only, hard-pinned URL, no live path. 4 no-mock tests; flake8 clean.
+- **(SUPERSEDED) Equity-harvester H1 / IBKR-paper lane (2026-06-25 earlier):** harvester shadow loop ran
+  (running:YES via oracle, simulated fills) but IBKR paper needs `ib_async`+gateway+login. Operator chose
+  OANDA instead; harvester code (`scripts/run_equity_harvester.py`, runner `execute_order` inject) retained,
+  not the active demo. Original framing below kept for lineage.
+- **EQUITY HARVESTER H1 (lineage):** (2026-06-25, operator-authorized H1 for PAPER only).
   Re-unhalted via `StateEngine().set_halted(False)` (`automation/state_engine.py`); built H1 entrypoint
   `scripts/run_equity_harvester.py` (shadow + ibkr-paper lanes, `--loop`) driving the gated
   `run_shadow_rebalance` (added injectable `execute_order`). Re-validated SHIP_GATE on the current PIT
