@@ -41,6 +41,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | an FX retrain, "make the bot trade FX", "why are FX models stale/quarantined", "refresh creds + retrain a gate-passing FX model" | **L-016** FX is RETIRED (~52% ceiling, no edge) — don't propose FX retrains; the live strategy is the equity harvester |
 | ANY "pillar/feature/phase complete", "it now does X", "wired", "running" status/completion claim (esp. when evidence is "tests pass"/"committed") | **L-017** shipped ≠ running — state running:YES/NO from disk (process? cycles executed? non-test invocation?); never narrate dormant/unit-tested code in active present tense; cite `.claude/loop/running_status.py` |
 | a separate verifier or the operator catches a false/unsupported status/causal/"done" claim | **L-018** lie-policy: fail-closed reject + quarantine the record + close the hole (gate/lesson) + downgrade that role's self-attestation; no punitive theater; name deliberate-vs-honest |
+| a subproject dev server (preview_start/launch.json) starts but never binds a port; `npm --prefix` "runs" but nothing listens | **L-019** dev-server cwd + preview-wrapper trap — set launch `cwd`/`cd`; fall back to Bash-run + Playwright |
 
 ---
 
@@ -337,3 +338,23 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Source: operator directive 2026-06-24 (the consequence applied for the L-017 reporting lie); builds on
   the honesty protocol, L-005 (advisory≠enforced), L-007 (derive from reality), L-011 (can't prove an
   agent ran — enforce the deterministic half).
+
+## L-019 — a subproject dev server that "starts" but never binds: cwd + preview-wrapper traps   [ACTIVE]
+- Trigger: a preview_start / launch.json dev server for a SUBPROJECT (e.g. dashboard/web) reports
+  started but never binds (curl → HTTP 000 / connection refused) while a manual launch works; or
+  `npm --prefix <subdir> run dev` "runs" yet nothing listens.
+- Root cause: two independent traps. (1) `npm --prefix <subdir> run dev` runs the script with cwd at
+  the REPO ROOT (`--prefix` only relocates package.json lookup, not cwd) — a Next.js/Vite dev server
+  finds no app/ at root and never binds. (2) the macOS Claude preview launcher routes the process
+  through a `disclaimer` wrapper that swallowed the Next grandchild: the npm parent lived but no
+  `next` child bound a port, and preview_logs stayed empty.
+- Rule: for a subproject dev server, set the launch config `cwd` to the app dir (or `cd` first) —
+  never rely on `npm --prefix` to set cwd. If the preview launcher won't bind (parent alive, nothing
+  listening, empty preview logs), fall back to a direct Bash-run server (`PORT=xxxx npm run dev` from
+  the app dir) + Playwright `browser_navigate`/`browser_take_screenshot` for visual verification.
+  Poll the port for HTTP 200 before screenshotting; never trust "server started" without a bind.
+- Scope: dashboard / subproject dev-server launches + browser verification (NOT the bot runtime).
+- Source: 2026-06-25 AXIOM build (commit 8c4d49a). preview_start assigned a port but `next` never
+  bound under `npm --prefix dashboard/web run dev`; Bash `PORT=51999 npm run dev` from dashboard/web
+  bound in ~205ms; verified via Playwright. Single-observation DEV-TOOLING lesson, promoted by
+  operator request (not catastrophic evidence — below the usual 3+ bar; recorded by directive).
