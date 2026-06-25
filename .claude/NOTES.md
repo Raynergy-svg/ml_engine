@@ -119,6 +119,13 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   negative = success. LABELLED residual bias: delisting returns understated (ffill), yfinance price-availability
   survivorship (189 delisted lack prices), EDGAR XBRL floor ~2010. 23 no-mock tests green; flake8 clean.
   Caches on disk (`market_data/equity/sp500_pit_fundamentals.json`, `sp500_prices.parquet`) for re-derivation.
+  **Separate verifier (trust-downgraded) CONFIRMED:** re-derived EVERY headline number exactly from cache
+  (EW 0.740, canonical −0.600, margin-only OOS +0.026, 624 names, cov 0.9554); the lookahead validator
+  genuinely fires (injected forgery → raised); baselines unmodified (git diff empty); residual survivorship
+  is CONSERVATIVE (biases toward EW, cannot manufacture the negative); −0.600 confirmed a d/e-outlier artifact
+  (max d/e 990, 303 neg-equity). Verdict: no shippable edge, ROBUST. Commits d6c63bb (receiving end) + c8be8cd
+  (EDGAR/membership/eval + result). Diversification-sleeve frontier now genuinely exhausted (trend=drawdown-only,
+  carry=gate-rejected, quality=no-edge) — further factor variants = dredging; operator's call.
 
 - **Equity-harvester four-pillar self-improver — SHIPPED-TO-DISK + UNIT-TESTED SCAFFOLDING, NOT RUNNING
   (corrected record 2026-06-24; separate-verifier confirmed; supersedes prior "running/wired/now does X"
