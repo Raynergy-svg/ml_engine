@@ -136,6 +136,45 @@ def evaluate_book(
     }
 
 
+def book_return_series(
+    snapshot: "UniverseSnapshot",
+    prices: pd.DataFrame,
+    base_weights: pd.DataFrame,
+    *,
+    adv: Optional[pd.DataFrame] = None,
+    target_vol: float = DEFAULT_TARGET_VOL,
+    dd_soft: float = DEFAULT_DD_SOFT,
+    dd_hard: float = DEFAULT_DD_HARD,
+    max_lev: float = DEFAULT_MAX_LEV,
+    cost_bps: float = DEFAULT_COST_BPS,
+    slippage_bps_per_pct_adv: float = DEFAULT_SLIPPAGE_BPS_PER_PCT_ADV,
+    execution_lag: int = DEFAULT_EXECUTION_LAG,
+) -> pd.Series:
+    """Net-of-cost daily return series for a book (the sleeve's stream for the
+    combiner). Same managed-weights + backtest as `evaluate_book`."""
+    base_returns = _derive_returns(prices.reindex(index=base_weights.index))
+    scalar = baseline_overlay(
+        base_returns.fillna(0.0),
+        target_vol=target_vol,
+        dd_soft=dd_soft,
+        dd_hard=dd_hard,
+        max_lev=max_lev,
+    ).reindex(base_weights.index).fillna(0.0)
+    managed = base_weights.mul(scalar, axis=0)
+    eff_slip = float(slippage_bps_per_pct_adv)
+    if adv is None and eff_slip > 0.0:
+        eff_slip = 0.0
+    result = run_portfolio_backtest(
+        managed,
+        prices.reindex(index=base_weights.index),
+        cost_bps=cost_bps,
+        slippage_bps_per_pct_adv=eff_slip,
+        adv=adv,
+        execution_lag=execution_lag,
+    )
+    return result.returns
+
+
 def _atomic_write_json(payload: dict, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
