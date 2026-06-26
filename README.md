@@ -1,337 +1,203 @@
-# ML Engine
+<div align="center">
 
-Buddy is the trading runtime inside ML Engine: a multi-pair scanner, execution engine, monitoring surface, and self-improving learning loop for FX, with newer multi-broker support for futures workflows.
+# ⟨ BUDDY//2046 ⟩
 
-## Disclaimer
+### The Cyberpunk Command Bridge for Autonomous FX Trading
 
-This repository contains experimental trading software.
+**An ML-driven, multi-pair forex engine — 15-agent consensus, ATR-governed execution, and a self-improving learning loop, with a deterministic Claude-free runtime.**
 
-- It is not financial advice.
-- Live trading can lose real money.
-- Use practice/demo accounts first.
-- Review every config and execution path before enabling live orders.
+<br/>
 
-## What Buddy Is Today
+![Status](https://img.shields.io/badge/runtime-HALTED%20%2F%20demo-ff3158?style=for-the-badge&labelColor=0d0221)
+![Mode](https://img.shields.io/badge/edge-research--grade-b84dff?style=for-the-badge&labelColor=0d0221)
+![Python](https://img.shields.io/badge/python-3.11-00f5ff?style=for-the-badge&labelColor=0d0221)
+![Models](https://img.shields.io/badge/ML-Transformer%20%2B%20TCN%20%2B%20LightGBM%20%2B%20PPO-39ff14?style=for-the-badge&labelColor=0d0221)
+![Brokers](https://img.shields.io/badge/broker-OANDA%20%2B%20IBKR-ff2bd6?style=for-the-badge&labelColor=0d0221)
 
-The old README described a smaller gated ensemble. The current project is broader:
+<br/>
 
-- A scanner that evaluates many instruments in one pass.
-- A weighted agent-consensus layer that can block or promote trades.
-- An execution pipeline with ATR-based exits, spread checks, freshness checks, and broker routing.
-- A status and journal surface for runtime visibility.
-- A learning loop that extracts patterns from outcomes, promotes recurring lessons into rules, and updates persisted agent weights.
+<img src="buddy_6screens.svg" alt="Buddy Command Bridge — six-screen TUI" width="900"/>
 
-At a high level:
+</div>
+
+---
+
+> [!WARNING]
+> **Experimental trading software. Not financial advice.** Live trading can lose real money.
+> Buddy ships **halted and demo-only** by default. Run everything on practice accounts first,
+> and read every gate and execution path before you ever flip a live order.
+
+---
+
+## ◈ What Buddy Is
+
+Buddy is the trading runtime inside **ML Engine** — an autonomous research platform that scans
+many FX pairs in a single pass, evaluates each setup through a weighted **15-agent consensus**,
+governs every trade with ATR-based risk rails, and learns from outcomes to retune its own weights,
+rules, and thresholds.
+
+The runtime is **deterministic and Claude-free** — no LLM sits in the per-scan or per-trade hot
+path. Claude is used out-of-band for planning, post-mortems, and the autonomous dev loop, never
+to make a live trading decision.
 
 ```text
-Scan market data
-  -> run model + feature analysis
-  -> collect agent verdicts
-  -> apply gates and policy checks
-  -> execute through broker if allowed
-  -> journal outcomes
-  -> learn from results
-  -> tune weights, rules, and operating thresholds
+   ┌─────────┐   ┌──────────┐   ┌────────┐   ┌───────────┐   ┌────────┐
+   │  SCAN   │──▶│  AGENTS  │──▶│  GATES │──▶│  EXECUTE   │──▶│  OANDA │
+   │ ensemble│   │ 15-vote  │   │ conf · │   │ ATR SL/TP  │   │  IBKR  │
+   │ + feats │   │ consensus│   │ risk · │   │ regime-szd │   │        │
+   └─────────┘   └──────────┘   │ momentm│   └───────────┘   └────────┘
+        ▲                       └────────┘         │
+        │                                          ▼
+        └──── tune ◀── rules ◀── learnings ◀── RL feedback ◀── outcomes
 ```
 
-## Core Architecture
+---
 
-```text
-main.py / bin/Buddy
-  -> cli/
-  -> src/scanner/engine.py
-      -> model inference
-      -> agent team voting
-      -> gate evaluation
-      -> execution manager
-      -> automation / watch mode / supervision
-      -> learning + diagnostics + state persistence
-```
+## ◈ The Command Bridge
 
-Primary runtime areas:
-
-- `main.py`: thin CLI entrypoint and command dispatch.
-- `bin/Buddy`: convenience launcher that picks config and Python environment by machine architecture.
-- `src/scanner/`: scanner, agents, execution, automation, filters, diagnostics, confidence pipeline, and adaptive logic.
-- `src/brokers/`: broker abstraction plus OANDA and IBKR clients.
-- `cli/`: user-facing command handlers for scan, train, journal, learn, analyze, status, and monitoring flows.
-- `trained_data/`: models, journals, adaptive state, diagnostics, and scanner outputs.
-- `.claude/`: Buddy's rules, learnings, Ralph PRD loop state, and operator memory files used by the repo's autonomous workflows.
-
-## Agent Consensus Model
-
-Buddy's scanner still centers on the specialist-agent voting system described in `AGENTS.md`.
-
-### Core scanner agents
-
-| Agent | Base Weight | Role |
-| --- | ---: | --- |
-| `trend` | 1.15 | Trend direction and strength |
-| `mean_reversion` | 0.90 | Pullback / stretch detection |
-| `volatility` | 1.00 | ATR and regime context |
-| `risk_sentinel` | 1.25 | Portfolio and drawdown protection |
-| `uncertainty` | 1.10 | Model disagreement / variance control |
-| `execution_quality` | 1.05 | Spread, slippage, liquidity |
-| `momentum` | 1.05 | MACD / ROC-style follow-through |
-| `news_risk` | 0.95 | Event and headline risk |
-| `multi_timeframe` | 1.10 | H1/H4/D1 alignment |
-| `pair_performance` | 0.85 | Pair-specific historical behavior |
-| `session_timing` | 0.80 | Session quality / overlap timing |
-| `support_resistance` | 1.00 | Pivot and nearby structure |
-
-The current codebase also includes newer adjunct evaluators:
-
-- `trader_readiness`: optional human-side readiness signal bridged from Aura.
-- `devil_advocate`: adversarial final bear-case evaluator that can warn or veto late in the pipeline.
-
-### Weight learning
-
-Agent weights persist in `trained_data/models/agent_weights.json` and adapt from outcomes. The runtime now supports:
-
-- bounded weight learning
-- time-based decay back toward baseline
-- regime-aware weight storage
-- optional Bayesian weight blending
-- confidence calibration and weighted-vote adjustment
-
-That means the scanner is not using static weights only; it carries forward learned behavior between runs.
-
-## Execution Model
-
-Buddy does not rely on fixed 15/30 pip exits anymore as the main story. Current execution is built around:
-
-- ATR-based stop loss and take profit sizing
-- regime-adaptive ATR multipliers
-- minimum risk/reward enforcement
-- stale-signal protection via max data age
-- spread checks before order placement
-- trailing-stop and live position management hooks
-- RL-assisted sizing / gates / exits when enabled by profile
-
-The default config reflects lessons recorded in `.claude/learnings.md`, especially around:
-
-- keeping `max_data_age_seconds` high enough for real scan latency
-- enforcing minimum R:R floors
-- tightening disagreement handling after repeated losses
-- preventing stale or overwritten state from blocking the pipeline silently
-
-## Brokers And Instruments
-
-The project is no longer OANDA-only.
-
-- Default broker: OANDA
-- Supported broker abstraction: OANDA and IBKR
-- Default instrument set: major and cross FX pairs
-- Futures-oriented profiles and instrument registry entries also exist for `ES`, `NQ`, `CL`, and `GC`
-
-Environment variables Buddy expects for OANDA workflows:
+A neon Textual TUI — eight live screens spanning overview, agents, trades, journal, inbox,
+config, and runtime control. Launch it:
 
 ```bash
-OANDA_API_TOKEN=...
-OANDA_ACCOUNT_ID=...
+./buddy --demo     # synthetic data, safe to explore
+./buddy --live     # connects to your configured broker (halted until you say go)
 ```
 
-`OANDA_API_KEY` is accepted as a fallback alias in several paths. Local runs automatically try `.env.local` first, then `.env`.
+<div align="center">
+<img src="buddy_overview.svg" alt="Overview screen" width="440"/>
+<img src="buddy_agents.svg" alt="Agent consensus screen" width="440"/>
+</div>
 
-## Quick Start
+---
 
-### 1. Create an environment
+## ◈ The ML Stack
 
-The repo includes both `environment_tf_metal.yml` and `environment_intel_mac.yml`, plus `requirements.txt`.
+Buddy is an ensemble of specialized heads, each validated with walk-forward + purged k-fold and
+a hard **10% train/val ship-gate** that quarantines any overfit model before it can go live.
 
-Example:
+| Head | Model | Role |
+|------|-------|------|
+| **Direction** (primary) | Tiny Transformer (d_model=16) + EMA + EWC + replay | Directional signal |
+| Direction (baseline) | sklearn HistGradientBoosting | Hybrid voter |
+| **Volatility regime** | TCN (dilated causal Conv1D), dual-head | LOW/NORMAL/HIGH/EXTREME |
+| Momentum / Risk / Confidence | LightGBM | Setup scoring |
+| Meta-labeler | XGBoost on triple-barrier labels | Trade filter |
+| **Position sizer** | PPO (stable-baselines3) | Regime-aware sizing |
+| Agent weights | EMA-damped multiplicative bandit | Consensus learning |
+| Calibration | Platt + Isotonic | Confidence honesty |
+
+---
+
+## ◈ The 15-Agent Consensus
+
+Every setup is judged by a weighted council. Fall below the regime-aware threshold and the trade
+is blocked. **`devil_advocate` runs last and can veto an otherwise-passing setup.**
+
+| Agent | Weight | Reads |
+|-------|:------:|-------|
+| `trend` | 1.15 | SMA crossover + ADX — `passed=False` is a **hard veto** |
+| `risk_sentinel` | 1.25 | Drawdown ratio + portfolio risk |
+| `devil_advocate` | 1.30 | Adversarial bear-case — **runs last, can veto** |
+| `uncertainty` · `multi_timeframe` | 1.10 | Model disagreement · H1/H4/D1 confluence |
+| `execution_quality` · `momentum` | 1.05 | Spread/liquidity · MACD + ROC |
+| `volatility` · `support_resistance` | 1.00 | ATR regime · swing pivots |
+| `news_risk` · `order_flow` | 0.95 | NFP/CPI/FOMC scan · OANDA book signal |
+| `mean_reversion` · `pair_performance` | 0.90 / 0.85 | RSI pullback · per-pair win rate |
+| `session_timing` | 0.80 | Forex session overlap |
+
+Weights adapt from every closed trade and persist to `trained_data/models/agent_weights.json`.
+
+---
+
+## ◈ Safety Rails (non-negotiable)
+
+- **R:R ≥ 1.2:1** on every trade — no exceptions.
+- **ATR-based SL/TP only** — `SL = ATR × atr_sl_multiplier`, never hardcoded pips.
+- **Drawdown guardian** runs every scan cycle · max portfolio risk **15% of NAV**.
+- **Correlation filter** before execution — prevents double exposure.
+- **Halt > break** — the system favors staying halted over unhalting on ambiguous validation.
+- **Tiered self-heal autonomy** — corrective actions are graded by blast radius; only trivially
+  reversible ones auto-apply.
+
+---
+
+## ◈ Quick Start
 
 ```bash
-conda env create -f environment_tf_metal.yml
-conda activate tf-metal
+# 1. Environment
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+
+# 2. Credentials (practice account first!)
+export OANDA_API_KEY="..."  export OANDA_ACCOUNT_ID="..."
+
+# 3. See the bridge
+./buddy --demo
+
+# 4. Dry scan (no orders)
+python main.py scan --dry-run
+
+# 5. Single-pair inference
+python main.py scan --pair EUR_USD --dry-run
+
+# 6. Train a model (price-only H1 direction)
+python scripts/train_single_model_m1.py --instrument EUR_USD --model transformer --granularity H1
 ```
 
-Intel Macs can use `environment_intel_mac.yml` instead.
+### Core commands
 
-After the environment is ready, install the P0 safety gates (orphan-key guard, py_compile, circuit-breaker regression — see `docs/ci_gates.md`):
+| Command | Does |
+|---------|------|
+| `python main.py scan [--dry-run] [--pair X]` | Run the scanner |
+| `python main.py status` | Runtime + portfolio snapshot |
+| `python main.py journal` / `learn` | Inspect outcomes · trigger learning |
+| `python main.py retrain-all` / `train-rl-sizer` | Model maintenance |
+| `./buddy [--live\|--demo]` | Launch the Command Bridge TUI |
 
-```bash
-pip install pre-commit
-pre-commit install
-```
+---
 
-### 2. Set credentials
+## ◈ Autonomous Systems
 
-Create `.env.local` in the repo root:
+- **Tier 7 control loop** — `incident → propose → gate → soak → promote → close`, deterministic
+  (no LLM in the loop), with shadow→canary→live staged deployment and a Constitution guard.
+- **Self-improving learning loop** — extracts a learning from every closed trade; promotes a
+  pattern to a rule after 3+ observations.
+- **Ralph** — a build-time autonomous dev loop that implements PRD stories iteratively
+  (`scripts/ralph.sh`, `.claude/ralph/prd.json`). Never part of the trading runtime.
 
-```bash
-OANDA_API_TOKEN=your_token
-OANDA_ACCOUNT_ID=your_account_id
-```
+---
 
-### 3. Check status
-
-```bash
-./bin/Buddy status
-```
-
-### 4. Run a dry scan
-
-```bash
-./bin/Buddy scan --profile balanced
-```
-
-### 5. Run single-pair inference
-
-```bash
-./bin/Buddy EUR_USD --dry-run
-```
-
-### 6. Execute only when you are ready
-
-```bash
-./bin/Buddy EUR_USD --execute
-./bin/Buddy scan --auto-execute
-```
-
-## Main CLI Commands
-
-Buddy can be run through `./bin/Buddy` or `python main.py`.
-
-### Runtime commands
-
-```bash
-./bin/Buddy status
-./bin/Buddy scan --profile balanced
-./bin/Buddy scan --watch --interval 5
-./bin/Buddy scan --supervision --enforce-policy 1
-./bin/Buddy EUR_USD --dry-run
-./bin/Buddy EUR_USD --execute
-./bin/Buddy buddy-chat -I EUR_USD
-./bin/Buddy journal --days 30
-./bin/Buddy learn
-./bin/Buddy analyze --top 10
-./bin/Buddy monitor --alerts
-./bin/Buddy model-status --decisions
-```
-
-### Training and model maintenance
-
-Important: `train-buddy` is single-pair training. Scanner behavior depends on the broader scanner stack and persisted runtime state, not just one isolated model artifact.
-
-```bash
-./bin/Buddy train -I EUR_USD --oanda-live
-python main.py retrain-gates
-python main.py retrain-all
-python main.py train-rl-sizer
-python main.py train-rl-gates
-python main.py train-rl-exits
-python main.py promote-model
-```
-
-### Useful scan flags
-
-- `--profile`: `conservative`, `balanced`, `aggressive`, `smart`, `futures_paper`, `futures_live`
-- `--watch`: continuous scan loop
-- `--interval`: watch loop cadence in minutes
-- `--auto-execute`: place trades automatically when allowed
-- `--diversified`: add diversification filtering
-- `--force`: bypass some session/filter restrictions for investigation
-- `--futures`: shorthand for IBKR futures paper profile
-- `--instruments`: override profile instrument list
-
-## Profiles And Modes
-
-Scan behavior is heavily profile-driven.
-
-- `balanced`: full-featured default and the best general starting point
-- `conservative`: fewer trades, stricter thresholds
-- `aggressive`: looser thresholds, still risk bounded
-- `smart`: profile intended to run agent-confirmation enhancements
-- `futures_paper` / `futures_live`: broker/profile presets for IBKR-style workflows
-
-Watch mode and supervision mode are both first-class runtime paths now:
-
-- watch mode repeats scans on a timer
-- supervision mode shifts toward a supervisor-first lifecycle with policy enforcement levels
-
-## Learning Loop
-
-Buddy's current identity is tightly tied to its learning pipeline.
-
-### Sources of learning
-
-- `trained_data/trade_journal_rl.json`: scanner trade journal and outcomes
-- `.claude/learnings.md`: extracted date-stamped lessons
-- `.claude/rules/`: promoted recurring patterns that become active rules
-- `.claude/config_adjustments.json`: adaptive tuning outputs
-- `trained_data/models/agent_weights.json`: persisted learned agent weights
-
-### Manual learning command
-
-```bash
-./bin/Buddy learn
-./bin/Buddy learn --status
-./bin/Buddy learn --analyze
-./bin/Buddy learn --promote
-./bin/Buddy learn --consolidate
-./bin/Buddy learn --report
-```
-
-The current learnings file shows the practical direction of the system:
-
-- root-cause analysis of execution stalls
-- threshold calibration for disagreement and confidence systems
-- promotion of repeated trade-outcome patterns into enforceable rules
-- repeated emphasis on safe state persistence and end-to-end audits
-
-## Ralph And Autonomous Improvement
-
-This repo also contains Ralph, the autonomous dev loop used for PRD-driven code improvement:
-
-- `scripts/ralph.sh`
-- `.claude/ralph/prd.json`
-- `.claude/agents/`
-
-Ralph is reference and automation infrastructure around the codebase, not the scanner agent team itself. The scanner agents and the `.claude/agents/` prompt library are separate concepts.
-
-## Repo Map
+## ◈ Repo Map
 
 ```text
-bin/                    launcher scripts
-cli/                    command handlers and CLI support
-config/                 runtime and profile configuration
-docs/                   implementation notes
-scripts/                maintenance, validation, Ralph loop, status helpers
-src/brokers/            broker abstraction, OANDA, IBKR, instrument registry
-src/scanner/            scanner, agents, execution, automation, filters, analytics
-src/training/           training pipelines and trainer infrastructure
-tests/                  automated coverage
-trained_data/           models, journals, diagnostics, adaptive state
-.claude/                learnings, rules, Ralph state, operator memory
+main.py                 thin CLI entrypoint
+buddy / src/tui/        the Command Bridge TUI (Textual, 8 screens)
+src/scanner/            engine · agents · gates · execution · automation
+src/training/           trainers, walk-forward validation, meta-labeling, RL
+src/brokers/            broker abstraction + OANDA & IBKR clients
+trained_data/           models, journals, adaptive state, diagnostics
+.claude/                rules, learnings, brain, Ralph PRD loop, operator memory
+docs/                   strategy, architecture, incidents, session handoffs
 ```
 
-## Recommended First Commands For New Contributors
+---
 
-```bash
-./bin/Buddy status
-./bin/Buddy scan --profile balanced --no-train
-./bin/Buddy journal --days 14
-./bin/Buddy learn --status
-python main.py --help
-```
+## ◈ Honesty Doctrine
 
-Those four commands give a quick read on:
+Buddy is built around a hard verification culture (`.claude/rules/honesty.md`): every status
+claim names its source, causal claims carry calibrated confidence, and findings are verified
+from disk — not memory. In that spirit, the honest current status:
 
-- whether credentials and runtime state are loaded
-- what the scanner thinks is tradeable
-- what recent outcomes look like
-- what Buddy has learned recently
+> **Edge is research-grade, not proven.** Price-only intraday direction caps near ~52% balanced
+> accuracy across tested pairs; news fusion and daily carry/trend factors have so far shown no
+> deployable lift at this data scale. The engineering — the measurement harness, ship-gate, and
+> risk rails — is real and reusable; the profitable signal is still an open question. See
+> `docs/strategy.md` and the dated session handoffs for the full, unvarnished record.
 
-## Project Notes
+---
 
-- The repo contains legacy and experimental material. Prefer `src/scanner/`, `src/brokers/`, `cli/`, `config/`, and `scripts/` for the current Buddy path.
-- macOS-specific memory and OpenMP safeguards are set early in `main.py`; they are intentional and part of the production story for this codebase.
-- Many runtime surfaces are fail-open by design so missing optional subsystems do not crash scans. That makes status, diagnostics, and learnings especially important when troubleshooting.
+<div align="center">
 
-## Where To Look Next
+**⟨ BUDDY//2046 ⟩** · halt-safe · Claude-free runtime · evidence over vibes
 
-- Start with `AGENTS.md` for the scanner-agent mental model.
-- Read `.claude/learnings.md` for the most recent system lessons and tuning direction.
-- Use `python main.py --help` for the full command surface.
+</div>
