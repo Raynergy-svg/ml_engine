@@ -9,6 +9,7 @@ import { PositionsTable } from "@/components/PositionsTable";
 import { EquityCurve } from "@/components/EquityCurve";
 import { TradeHistory } from "@/components/TradeHistory";
 import { SentimentPlaceholder } from "@/components/SentimentPlaceholder";
+import { Tier7Panel } from "@/components/Tier7Panel";
 
 export default function Home() {
   const [selected, setSelected] = useState("USD_JPY");
@@ -38,11 +39,15 @@ export default function Home() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
+          <div className="h-[420px]">
+            <Tier7Panel />
+          </div>
           <div className="lg:col-span-2">
             <TradeHistory />
           </div>
-          <SentimentPlaceholder />
         </div>
+
+        <SentimentPlaceholder />
       </main>
 
       <footer className="mx-auto max-w-[1640px] px-4 pb-8 pt-2 font-mono text-[10.5px] text-faint">

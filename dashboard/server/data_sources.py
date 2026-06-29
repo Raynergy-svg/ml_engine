@@ -29,6 +29,13 @@ FX_MAJORS: List[str] = [
 HEARTBEAT_FRESH_S = 30.0   # TUI scanner heartbeat ticks ~10s; >30s old => not alive
 LANE_FRESH_S = 7200.0      # trend lane rebalances hourly; account snapshot <2h => lane live
 
+# Tier 7 autonomous-loop snapshot — contracted at docs/dashboard-data-contract.md
+# (written by src/scanner/automation/tier7_state.py:write_tier7_state). Read-only
+# display: the loop's incident->propose->gate->soak->promote->close + self-heal state.
+# Absent => panel renders honest not-connected (never fabricates loop activity).
+TIER7_STATE_PATH = CLAUDE_DIR / "tier7_state.json"
+TIER7_FRESH_S = 900.0      # snapshot-write freshness; >15m old => snapshot considered stale
+
 
 # --------------------------------------------------------------------------- #
 # Generic fail-soft JSON / JSONL readers
@@ -242,6 +249,64 @@ def read_equity_sleeve() -> Dict[str, Any]:
         "target_weights": plan.get("target_weights", {}),
         "actual_weights": data.get("current_actual_weights", {}),
         "source": "trained_data/equity/rebalance_state.json",
+    }
+
+
+def read_tier7() -> Dict[str, Any]:
+    """Tier 7 autonomous-loop status — fail-soft passthrough of the bot's snapshot.
+
+    Reads ``.claude/tier7_state.json`` (written by
+    ``src/scanner/automation/tier7_state.py:write_tier7_state``; contract: docs/
+    dashboard-data-contract.md). Honest by design: it trusts the bot's own
+    ``running`` / ``running_reason`` (heartbeat-fresh AND pid-alive), adds a separate
+    snapshot-freshness signal (is the file itself being refreshed?), and returns
+    ``connected: False`` when the file is absent — it NEVER fabricates loop activity.
+    """
+    from datetime import datetime, timezone
+
+    rel = str(TIER7_STATE_PATH.relative_to(REPO_ROOT))
+    if not TIER7_STATE_PATH.exists():
+        return {"connected": False, "source": rel, "pending_contract": True}
+    data = _read_json(TIER7_STATE_PATH, None)
+    if not isinstance(data, dict):
+        return {"connected": False, "source": rel, "error": "unreadable"}
+
+    # Snapshot freshness: is the bot still WRITING this file? (distinct from whether
+    # the loop is running — a fresh snapshot can honestly report running:false).
+    snap_age = None
+    gen = data.get("generated_at")
+    if gen:
+        try:
+            snap_age = (datetime.now(timezone.utc)
+                        - datetime.fromisoformat(str(gen).replace("Z", "+00:00"))).total_seconds()
+        except (ValueError, TypeError):
+            pass
+    if snap_age is None:  # fall back to file mtime
+        try:
+            snap_age = datetime.now(timezone.utc).timestamp() - TIER7_STATE_PATH.stat().st_mtime
+        except OSError:
+            pass
+
+    return {
+        "connected": True,
+        "source": rel,
+        "snapshot_age_s": round(snap_age, 1) if snap_age is not None else None,
+        "snapshot_stale": (snap_age is not None and snap_age > TIER7_FRESH_S),
+        # honest, bot-derived liveness (do NOT recompute — trust the bot's pid+heartbeat check)
+        "running": bool(data.get("running")),
+        "running_reason": data.get("running_reason"),
+        "halted": data.get("halted"),
+        "mode": data.get("mode"),
+        "status": data.get("status"),
+        "goal": data.get("goal"),
+        "improvement_focus": data.get("improvement_focus"),
+        "scan_cycle_count": data.get("scan_cycle_count"),
+        "current_action": data.get("current_action"),
+        "last_cycle": data.get("last_cycle") or {},
+        "self_heal": data.get("self_heal") or {},
+        "meta_last_event": data.get("meta_last_event") or {},
+        "generated_at": gen,
+        "note": data.get("note"),
     }
 
 

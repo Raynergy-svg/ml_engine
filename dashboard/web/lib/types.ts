@@ -4,6 +4,10 @@ export interface Position {
   instrument: string;
   net_units: number;
   unrealized_pl: number;
+  // Optional bracket levels — present once the bot writes TP/SL into account_state.json
+  // (additive, contract-safe). Absent today → rendered as "—" / no chart line.
+  take_profit?: number | null;
+  stop_loss?: number | null;
 }
 
 export interface Account {
@@ -118,6 +122,53 @@ export interface Sentiment {
   note: string;
   books: Record<string, { price: string; longCountPercent: string; shortCountPercent: string }[]>;
   source: string;
+}
+
+export interface Tier7LastCycle {
+  heartbeat_ts?: string;
+  age_seconds?: number;
+  cycle_count?: number;
+  pid?: number;
+  pid_alive?: boolean;
+  scanner_alive_beacon?: boolean;
+}
+export interface Tier7MetaEvent {
+  change_id?: string;
+  stage?: string;
+  event?: string;
+  kind?: string;
+  deploy_target?: string;
+  updated_at?: string;
+}
+export interface Tier7SelfHeal {
+  action_budget?: {
+    actions_today?: string[];
+    last_action_at?: string;
+    last_action_label?: string;
+  };
+  debounce?: Record<string, string>;
+}
+export interface Tier7 {
+  connected: boolean;
+  source: string;
+  pending_contract?: boolean;
+  error?: string;
+  snapshot_age_s?: number | null;
+  snapshot_stale?: boolean;
+  running?: boolean;
+  running_reason?: string | null;
+  halted?: boolean | null;
+  mode?: string | null;
+  status?: string | null;
+  goal?: string | null;
+  improvement_focus?: string | null;
+  scan_cycle_count?: number | null;
+  current_action?: string | null;
+  last_cycle?: Tier7LastCycle;
+  self_heal?: Tier7SelfHeal;
+  meta_last_event?: Tier7MetaEvent;
+  generated_at?: string | null;
+  note?: string | null;
 }
 
 export interface StreamPayload {

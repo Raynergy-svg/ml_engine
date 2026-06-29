@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import {
-  createChart, CandlestickSeries, LineSeries, ColorType, CrosshairMode,
-  type IChartApi, type ISeriesApi,
+  createChart, CandlestickSeries, LineSeries, ColorType, CrosshairMode, LineStyle,
+  type IChartApi, type ISeriesApi, type IPriceLine,
 } from "lightweight-charts";
 import { usePoll } from "@/lib/api";
+import { useStream } from "@/lib/stream";
 import type { CandleResponse } from "@/lib/types";
 import { Card, SectionTitle, NotConnected, Loading, Badge } from "./ui";
 import { fmtPrice, fmtPct, prettyPair } from "@/lib/format";
@@ -17,10 +18,18 @@ export function CandleChart({ instrument }: { instrument: string }) {
     `/api/candles/${instrument}?granularity=${gran}&sma=100&count=300`, 30000,
   );
 
+  // Bracket levels for THIS instrument's open position (if any) — from the live
+  // stream. Present only once the bot writes TP/SL into account_state.json.
+  const { payload } = useStream();
+  const pos = payload?.account?.positions?.find((p) => p.instrument === instrument);
+  const tp = pos?.take_profit ?? null;
+  const sl = pos?.stop_loss ?? null;
+
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const smaRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const bracketLinesRef = useRef<IPriceLine[]>([]);
 
   // Create the chart once.
   useEffect(() => {
@@ -61,6 +70,22 @@ export function CandleChart({ instrument }: { instrument: string }) {
       chartRef.current?.timeScale().fitContent();
     }
   }, [data, gran]);
+
+  // Draw TP/SL bracket lines for the selected instrument's position; clear + redraw
+  // when the levels change or are removed. No-op (no lines) when brackets are absent.
+  useEffect(() => {
+    const series = candleRef.current;
+    if (!series) return;
+    for (const line of bracketLinesRef.current) series.removePriceLine(line);
+    bracketLinesRef.current = [];
+    const add = (price: number, color: string, title: string) =>
+      bracketLinesRef.current.push(series.createPriceLine({
+        price, color, lineWidth: 1, lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true, title,
+      }));
+    if (sl != null) add(sl, "#ff4d6d", "SL");
+    if (tp != null) add(tp, "#2bd17e", "TP");
+  }, [tp, sl, instrument, data]);
 
   const sig = data?.signal;
   const disconnected = (data && !data.connected) || !!error;
@@ -113,7 +138,11 @@ export function CandleChart({ instrument }: { instrument: string }) {
         <div className="flex items-center gap-5 border-t px-4 py-2 font-mono text-[11px] hairline tnum text-dim">
           <span>last <span className="text-text">{fmtPrice(sig.price, instrument)}</span></span>
           <span>SMA <span className="text-cyan">{fmtPrice(sig.sma, instrument)}</span></span>
-          <span className="text-faint">price &gt; SMA ⇒ long · else flat (shift-1 causal)</span>
+          {sl != null && <span>SL <span style={{ color: "#ff4d6d" }}>{fmtPrice(sl, instrument)}</span></span>}
+          {tp != null && <span>TP <span style={{ color: "#2bd17e" }}>{fmtPrice(tp, instrument)}</span></span>}
+          {tp == null && sl == null && (
+            <span className="text-faint">price &gt; SMA ⇒ long · else flat (shift-1 causal)</span>
+          )}
         </div>
       )}
     </Card>

@@ -100,8 +100,8 @@ def _client():
 def root() -> Dict[str, Any]:
     return {"service": "AXIOM data layer", "read_only": True, "environment": "practice",
             "endpoints": ["/api/account", "/api/status", "/api/trades", "/api/equity",
-                          "/api/strategy", "/api/sentiment", "/api/prices", "/api/candles/{instrument}",
-                          "/api/instruments", "/api/stream"]}
+                          "/api/strategy", "/api/sentiment", "/api/tier7", "/api/prices",
+                          "/api/candles/{instrument}", "/api/instruments", "/api/stream"]}
 
 
 @app.get("/api/health")
@@ -137,6 +137,11 @@ def sentiment() -> Dict[str, Any]:
 @app.get("/api/equity_sleeve")
 def equity_sleeve() -> Dict[str, Any]:
     return ds.read_equity_sleeve()
+
+
+@app.get("/api/tier7")
+def tier7() -> Dict[str, Any]:
+    return ds.read_tier7()
 
 
 @app.get("/api/instruments")

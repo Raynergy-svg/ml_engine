@@ -54,10 +54,25 @@ set in `web/.env.local`).
 | Candles + trend SMA(100) overlay + signal | v20 `get_candles` + `trend_targets` recompute | ✅ real, needs token |
 | Trend strategy grid (long/flat per pair) | `trend_targets` (the bot's actual rule) | ✅ real, needs token |
 | Halt / running / mode | `.claude/state.json` + lane snapshot freshness | ✅ real |
+| **Tier 7 autonomous loop** (running/offline + reason, current action, last meta-pipeline event, self-heal actions, last cycle) | `.claude/tier7_state.json` (`tier7_state.py`) | ✅ real |
+| **Position TP/SL** (table columns + chart lines + distance) | `account_state.json` positions `take_profit`/`stop_loss` | 🟡 **pending backend** — fields not in the data/contract yet; renders `—` + note |
 | Order-book sentiment | `trained_data/oanda/sentiment_snapshot.json` | 🟡 **placeholder** — tagged `DATA-ONLY; not wired` |
 
-When the broker is unreachable (e.g. stale token), live views show an explicit
-**"not connected"** state — never a fabricated number.
+When the broker is unreachable (e.g. stale token) or a source file is absent, views show
+an explicit **"not connected" / "—" / pending** state — never a fabricated number.
+
+### Tier 7 honesty note
+The panel reports the bot's own `running` + `running_reason` (heartbeat-fresh AND pid-alive)
+verbatim — it never recomputes a rosier liveness. It also distinguishes **snapshot freshness**
+(is the file still being written?) from **loop running** (is the control loop alive?), so a
+fresh snapshot can honestly read `loop OFFLINE`. The header's "RUNNING" is the *trend lane*;
+the Tier 7 "OFFLINE" is the *meta self-healing loop* — two separate processes, both truthful.
+
+### Pending on the backend contract
+- **TP/SL bracket levels** (TASK A): the dashboard already consumes optional
+  `take_profit`/`stop_loss` on each position (table columns, chart price-lines, pip distance).
+  They render `—` until the bot writes those additive fields into `account_state.json` and
+  records them in `docs/dashboard-data-contract.md`.
 
 ### Honesty cross-check
 The trend signal the dashboard recomputes (`/api/strategy`) matches the bot's actual
@@ -66,8 +81,8 @@ open positions — two independent paths that agree.
 ## Endpoints (all GET, read-only)
 
 `/api/account` · `/api/status` · `/api/trades` · `/api/equity` · `/api/strategy`
-· `/api/prices` · `/api/candles/{instrument}` · `/api/sentiment` · `/api/instruments`
-· `/api/stream` (SSE) · `/api/health`
+· `/api/tier7` · `/api/prices` · `/api/candles/{instrument}` · `/api/sentiment`
+· `/api/instruments` · `/api/stream` (SSE) · `/api/health`
 
 ## Adding hosting + auth later (designed for, not yet built)
 
