@@ -62,6 +62,27 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   fills truthfully labeled. (6) `docs/dashboard-data-contract.md` for the parallel read-only dashboard
   workstream. `trained_data/oanda/` gitignored; token in `.env.local` (gitignored, never committed, diff-scanned).
   17 no-mock tests; flake8 clean. FLAG (not built): order/position-book SENTIMENT = future pre-registered test.
+  **UPDATES (2026-06-29, HEAD fa856e8):** (7) TP/SL BRACKETS live — ATR-based stopLossOnFill (entry-2*ATR,
+  ON) + optional TP (OFF, trend rides) on opening orders; verified real broker-side SL on the account
+  (USD_JPY SL 160.579). (8) MARGIN/LIQUIDATION GUARD — margin_scale clamps book to max_margin_util*NAV
+  (50% default) regardless of leverage dial; STRESS @15x fired (scale=0.833 -> 47% margin, held); HALT rail
+  fired (halted=true -> 0 orders). Verifier (Code Reviewer): SAFE. (9) account_state.json now carries
+  per-position stop_loss/take_profit (read-only, for AXIOM SL/TP columns); contract updated. (10) TIER 7
+  SELF-HEAL LOOP STARTED — `scripts/run_tier7_loop.py` BOUNDED headless supervisor (no headless scanner
+  daemon existed; full Tier 7 is TUI-only). Writes heartbeat + bounded self-heal (config/weight only, tiered/
+  budgeted/debounced) + tier7_state each tick. LIVE: PID rotates, tier7_state running:True (heartbeat fresh +
+  pid alive). Explore-agent + Security-verifier (Security Engineer) confirmed BOUNDED + SAFE: cannot unhalt
+  (only TUI app.py:2724 does), cannot trade (no execution import), cannot flip env, cannot promote/un-quarantine
+  a ship-gate-failing artifact (retrain_gates → online_retrainer rewrites only xgb_momentum/rf_risk/
+  ridge_confidence sklearn baselines IN-PLACE; zero promotion code). Self-heal events in
+  tier7_state.self_heal.recent_events (real apply() results, lie-policy). running:YES honest (fresh≤90s + pid alive).
+  **AUTONOMY DISCREPANCY (noted so it's not a future surprise):** `ScannerConfig.self_heal_max_autonomy_level`
+  DEFAULTS TO 5 (`config.py:682`) while the self_heal docstring/`is None` branch intend LEVEL_3. At 5 the
+  unattended loop would auto-apply LEVEL_5 retrains. FIXED: `run_tier7_loop.py` CLAMPS to 3 by default
+  (`--max-autonomy` / `TIER7_MAX_AUTONOMY`, operator-raisable [3,5]); at 3 only reversible operational heals
+  auto-apply, retrains REFUSED (unit-tested + live: status=degraded). Commits b69ad30 (SL/TP display) +
+  fa856e8 (Tier 7 supervisor) + (clamp) pushed. Two background loops: OANDA trend (trades) + Tier 7 self-heal
+  (operational recovery only, clamped L3).
 - **(SUPERSEDED) Equity-harvester H1 / IBKR-paper lane (2026-06-25 earlier):** harvester shadow loop ran
   (running:YES via oracle, simulated fills) but IBKR paper needs `ib_async`+gateway+login. Operator chose
   OANDA instead; harvester code (`scripts/run_equity_harvester.py`, runner `execute_order` inject) retained,

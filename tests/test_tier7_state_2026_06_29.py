@@ -52,6 +52,32 @@ def test_dead_pid_is_not_running(tmp_path):
     assert "not alive" in s["running_reason"]
 
 
+def test_selfheal_autonomy_clamp_refuses_retrain_at_level3():
+    """The supervisor's clamp: at level 3, LEVEL_5 retrain verbs are REFUSED; raising
+    the ceiling to 5 allows them. Real SelfHeal + a real (non-mock) config object."""
+    from src.scanner.feedback.self_heal import SelfHeal
+
+    class _Cfg3:
+        self_heal_max_autonomy_level = 3
+
+    class _Cfg5:
+        self_heal_max_autonomy_level = 5
+
+    sh3 = SelfHeal(config=_Cfg3())
+    ok_reset, _, lvl_reset = sh3._check_action_level("reset_gate_threshold_to_default")
+    ok_retrain, _, lvl_retrain = sh3._check_action_level("retrain_gates")
+    ok_rl, _, _ = sh3._check_action_level("retrain_rl_position_sizer")
+    assert ok_reset is True and lvl_reset == 3        # reversible operational heal: allowed
+    assert ok_retrain is False and lvl_retrain == 5   # LEVEL_5 retrain: REFUSED at clamp
+    assert ok_rl is False                             # RL retrain: REFUSED at clamp
+    # operator can raise the ceiling explicitly
+    ok5, _, _ = SelfHeal(config=_Cfg5())._check_action_level("retrain_gates")
+    assert ok5 is True
+    # unknown action fails closed to LEVEL_5 -> refused at clamp
+    ok_unknown, _, _ = sh3._check_action_level("delete_everything")
+    assert ok_unknown is False
+
+
 def test_write_tier7_state_atomic_and_readonly_note(tmp_path):
     _seed(tmp_path, hb_age_s=5, pid=os.getpid())
     snap = write_tier7_state(tmp_path)

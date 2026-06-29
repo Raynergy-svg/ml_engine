@@ -55,15 +55,24 @@ def _append_event(root: Path, payload: dict) -> None:
         os.fsync(fh.fileno())
 
 
-def _self_heal_tick(root: Path) -> dict:
-    """Run ONE bounded self-heal cycle; never raises (degraded-safe). Returns a summary."""
+def _self_heal_tick(root: Path, max_autonomy_level: int) -> dict:
+    """Run ONE bounded self-heal cycle; never raises (degraded-safe). Returns a summary.
+
+    ``max_autonomy_level`` CLAMPS the self-heal action ceiling (default 3). At 3 only
+    trivially-reversible operational heals auto-apply (reset agent weight, reset gate
+    threshold to default); LEVEL_4 (tighten/reduce-risk) and LEVEL_5 (retrain_gates /
+    retrain_rl_position_sizer) are REFUSED. This is the doctrine-matching clamp — the
+    ScannerConfig dataclass default is 5, which would let the unattended loop auto-retrain.
+    """
     try:
         from src.scanner.config import ScannerConfig
         from src.scanner.feedback.diagnostics import PostTradeDiagnostics
         from src.scanner.feedback.self_heal import SelfHeal
 
+        cfg = ScannerConfig()
+        cfg.self_heal_max_autonomy_level = int(max_autonomy_level)  # clamp (default 3)
         diag = PostTradeDiagnostics().run()
-        result = SelfHeal(config=ScannerConfig()).apply(diag)
+        result = SelfHeal(config=cfg).apply(diag)
         actions = result.get("actions_taken", []) or []
         return {"status": result.get("status", "no_action"),
                 "n_actions": len(actions),
@@ -74,7 +83,7 @@ def _self_heal_tick(root: Path) -> dict:
         return {"status": "error", "n_actions": 0, "actions": [], "error": str(exc)}
 
 
-def _tick(root: Path, cycle: int) -> None:
+def _tick(root: Path, cycle: int, max_autonomy_level: int) -> None:
     from src.scanner.automation.tier7_state import write_tier7_state
     from src.tui.heartbeat import write_heartbeat
 
@@ -86,7 +95,7 @@ def _tick(root: Path, cycle: int) -> None:
 
     write_heartbeat(root, cycle_count=cycle, mode=_read_mode(root),
                     scanner_alive=True, pid=os.getpid())
-    sh = _self_heal_tick(root)
+    sh = _self_heal_tick(root, max_autonomy_level)
     _append_event(root, {
         "ts": datetime.now(timezone.utc).isoformat(), "cycle": cycle,
         "halted": halted, **sh,
@@ -104,14 +113,25 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="seconds between ticks (default 30 -> heartbeat fresh < 90s)")
     ap.add_argument("--once", action="store_true", help="single tick then exit")
     ap.add_argument("--max-cycles", type=int, default=0, help="stop after N (0 = until killed)")
+    ap.add_argument("--max-autonomy", type=int, default=None,
+                    help="self-heal action ceiling (env TIER7_MAX_AUTONOMY; default 3 = "
+                         "reversible operational heals only; 4=guarded, 5=allow retrains). "
+                         "Operator raises explicitly; the unattended default stays low.")
     args = ap.parse_args(argv)
 
-    logger.info("Tier 7 self-heal supervisor START (pid %d, bounded: no trade/unhalt/env path)",
-                os.getpid())
+    # Clamp the self-heal autonomy LOW by default (doctrine = 3; ScannerConfig default
+    # is 5). Operator can raise via --max-autonomy / TIER7_MAX_AUTONOMY. Bounded to [3,5].
+    raw = args.max_autonomy if args.max_autonomy is not None else os.getenv("TIER7_MAX_AUTONOMY", "3")
+    try:
+        max_autonomy = min(5, max(3, int(raw)))
+    except (ValueError, TypeError):
+        max_autonomy = 3
+    logger.info("Tier 7 self-heal supervisor START (pid %d, bounded: no trade/unhalt/env path; "
+                "self_heal max_autonomy_level=%d)", os.getpid(), max_autonomy)
     cycle = 0
     while True:
         cycle += 1
-        _tick(REPO_ROOT, cycle)
+        _tick(REPO_ROOT, cycle, max_autonomy)
         if args.once or (args.max_cycles and cycle >= args.max_cycles):
             return 0
         time.sleep(float(args.interval))
