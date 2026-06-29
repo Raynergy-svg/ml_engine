@@ -81,8 +81,14 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   unattended loop would auto-apply LEVEL_5 retrains. FIXED: `run_tier7_loop.py` CLAMPS to 3 by default
   (`--max-autonomy` / `TIER7_MAX_AUTONOMY`, operator-raisable [3,5]); at 3 only reversible operational heals
   auto-apply, retrains REFUSED (unit-tested + live: status=degraded). Commits b69ad30 (SL/TP display) +
-  fa856e8 (Tier 7 supervisor) + (clamp) pushed. Two background loops: OANDA trend (trades) + Tier 7 self-heal
-  (operational recovery only, clamped L3).
+  fa856e8 (Tier 7 supervisor) + 03fd7e2 (clamp) pushed. Two background loops: OANDA trend (trades) + Tier 7
+  self-heal (operational recovery only, clamped L3).
+  **RESOLVED 2026-06-29 (operator-approved): flipped `config.py:682` `self_heal_max_autonomy_level` default
+  5->3** so the dataclass matches its own docstring — defense-in-depth, fail-closed for EVERY `ScannerConfig()`
+  consumer (not just the supervisor). DOCUMENTED BEHAVIOR CHANGE: the attended TUI scanner's self-heal now
+  also defaults to L3 (was 5); operator can still raise explicitly via config / `--max-autonomy` /
+  `TIER7_MAX_AUTONOMY`. No profile dict overrides it. verify_gate PASS (28 checks, hard_no_ok=True) +
+  risk_monitor GREEN post-flip. This safety-TIGHTENING relaxes no Hard NO.
 - **(SUPERSEDED) Equity-harvester H1 / IBKR-paper lane (2026-06-25 earlier):** harvester shadow loop ran
   (running:YES via oracle, simulated fills) but IBKR paper needs `ib_async`+gateway+login. Operator chose
   OANDA instead; harvester code (`scripts/run_equity_harvester.py`, runner `execute_order` inject) retained,

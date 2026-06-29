@@ -679,7 +679,11 @@ class ScannerConfig:
     # else is logged + skipped. Set to 4 to allow guarded actions; 5 (NOT
     # recommended) opens the gate to retrains. Consumed by
     # ``SelfHeal._check_action_level`` in ``src/scanner/feedback/self_heal.py``.
-    self_heal_max_autonomy_level: int = 5
+    # Default changed 5->3 on 2026-06-29 (operator-approved) so the dataclass
+    # matches this docstring — fail-closed for every ScannerConfig() consumer, not
+    # just the Tier 7 supervisor. Raise explicitly via config / the supervisor's
+    # --max-autonomy / TIER7_MAX_AUTONOMY flag.
+    self_heal_max_autonomy_level: int = 3
 
     # Meta-labeler threshold (configurable for 0.52-0.53 range)
     # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
