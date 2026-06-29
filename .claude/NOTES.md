@@ -93,6 +93,18 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   NEGATIVE (intraday 52%, daily factor ~0, multi-horizon, quality/value/lowvol/HRP, carry gate-rejected,
   news, meta-label, order-book sentiment); multi-asset trend is the FIRST + ONLY gate-clear, but it's
   drawdown-control diversification (ties buy-hold Sharpe), NOT alpha. No directional/return edge found anywhere.
+- **SLEEVE COMBINATIONS TESTED → NO RETURN ALPHA (2026-06-29, a0977dc).** Pre-registered (docs/experiment-
+  sleeve-combinations-2026-06-29.md). CARRY+TREND: combined Sharpe 0.624 < trend-alone 0.785 (carry DILUTES;
+  negative). TREND+HARVESTER: combined Sharpe 1.112 > both but ann_return 0.126 ≈ harvester 0.130 (NOT higher)
+  — gain purely lower vol/maxDD = diversification/risk-control, NOT alpha; doesn't beat buy-hold on return
+  (0.126<0.21). Test 3 (XSMOM) DECLINED (anti-dredge: 2 clean negatives, a 3rd fishing = L-018 lie). Separate
+  verifier in-flight. **FINAL CAMPAIGN VERDICT: no return/directional alpha ANYWHERE; only robust real finding
+  is RISK-CONTROL (trend drawdown + diversification). Free-daily-bar/liquid-asset space is EFFICIENT for return
+  prediction at this scale — path forward = NEW INPUTS (alt-data/higher-freq/fundamentals-at-scale), NOT more backtests.**
+  Verifier: NEGATIVE CONFIRMED honest both ways (no hidden edge, no oversold win). Notes: carry+trend negative is
+  honest for the pre-committed IV combiner (carry got ~66% weight, diluting trend; swapping combiner=dredge).
+  Best RISK-CONTROL book in the batch = trend+harvester (Sharpe 1.112, full gate pass) — NOT alpha, but the
+  practical keeper if a risk-controlled multi-sleeve book is ever stood up (operator decision; not done).
   **UPDATES (2026-06-29, HEAD fa856e8):** (7) TP/SL BRACKETS live — ATR-based stopLossOnFill (entry-2*ATR,
   ON) + optional TP (OFF, trend rides) on opening orders; verified real broker-side SL on the account
   (USD_JPY SL 160.579). (8) MARGIN/LIQUIDATION GUARD — margin_scale clamps book to max_margin_util*NAV

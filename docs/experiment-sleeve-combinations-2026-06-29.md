@@ -86,3 +86,11 @@ buy-and-hold on RETURN. Same as the whole campaign: **risk-control YES, return-a
 / liquid-asset input space is efficient for directional/return prediction at this scale. The honest path
 forward is NEW INPUTS (alt-data / higher-frequency / fundamentals-at-scale), not more backtests on the same
 data. Reported, NOT promoted/traded. Practice-only.
+
+**Two clarifications (separate verifier, NEGATIVE CONFIRMED honest both ways):**
+- carry+trend's negative is honest FOR THE PRE-COMMITTED inverse-variance combiner, which gave carry ~66%
+  weight (lower vol → higher IV weight) so the weak sleeve dominated. Correct pre-registered behavior; swapping
+  to a Sharpe-weighted combiner to flatter trend would be the dredge. It does not mask a hidden carry+trend edge.
+- For a RISK-CONTROL mandate (the campaign's one accepted finding), **trend+harvester is the best book in the
+  batch** — Sharpe 1.112, full-sample gate pass, lowest-vol diversified. It is NOT return alpha, but it is the
+  practical keeper if/when a risk-controlled multi-sleeve book is ever stood up (operator decision; not done here).
