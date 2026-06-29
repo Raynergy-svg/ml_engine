@@ -4,9 +4,12 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-06-29 by Claude (crypto edge-hunt H1 result). Note: `state.json halted=true`
-(operator directs it STAYS true). Report rule: every status claim states running:yes/no, verified
-from disk (L-017).
+Last touched: 2026-06-29 by Claude (read-only health audit + flagged-item cleanup). Disk truth:
+`state.json halted=false` — OPERATOR-DIRECTED ENABLE (last_actor=`operator-directed-enable`,
+2026-06-29T10:29:54Z); the bot is intentionally live on the PRACTICE account, matching the body
+§ below. (Corrected a stale header that wrongly read `halted=true`; no halt event ever occurred —
+state.json was unchanged for ~12h, three disk beacons agree. See audit.) Report rule: every status
+claim states running:yes/no, verified from disk (L-017).
 
 ## Crypto edge-hunt (2026-06-29, operator-approved new direction) — research/backtest ONLY
 
