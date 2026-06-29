@@ -210,5 +210,42 @@ a payment for taking the losing, non-stationary side of short-term momentum, and
 it. Honest negative = success. (Binding caveat stands: even had it cleared, ~6.5y / ~1.5
 cycles < 10y → never an unqualified ship.)
 
-### H2 — XS momentum: _pending run (HELD for operator go-ahead)_
-### H3 — order-flow imbalance: _pending (conditional)_
+### H2 — XS momentum: **QUALIFIED NEGATIVE (gate FAIL) — independently CONFIRMED** (2026-06-29)
+
+Run: `scripts/experiment_crypto_xs_signals.py momentum` →
+`trained_data/backtests/crypto_xs_momentum_20260629T220045Z.json`. Same verified harness as
+H1, signal swapped. Universe 693, 2020-01→2026-05.
+
+| Block | net Sharpe | price Sharpe | price ann | carry ann | maxDD | BTC-β |
+|---|---|---|---|---|---|---|
+| IS (pre-2024) | +0.21 | +0.66 | +0.178 | +0.030 | −0.447 | −0.03 |
+| **OOS (2024+)** | **+0.75** | +1.33 | **+0.313** | +0.020 | **−0.269** | **−0.07** |
+| Full | +0.40 | +0.88 | +0.229 | +0.026 | **−0.491** | −0.04 |
+| Stress 2× OOS | **+0.09** | — | — | — | −0.364 | −0.07 |
+| Survivor-only OOS | +0.70 | — | +0.300 | +0.020 | −0.282 | −0.07 |
+
+OOS significance: PSR(>0)=0.876, DSR=0.62 (need ≥0.95), bootstrap p=0.104 (need <0.0167).
+
+**Gate:** net Sharpe≥0.40 **✓ (+0.75)** · maxDD≤0.25 ✗ (0.49 full) · OOS-confirmed ✓ ·
+DSR/Bonferroni ✗ · **|BTC-β|≤0.15 ✓ (−0.07)** · history≥10y ✗. → `clears_ex_history = FALSE`.
+
+**Decomposition:** the strongest, most edge-shaped result of the three — positive OOS,
+genuinely **market-neutral** (β −0.07), and the return lives in **price** (real cross-sectional
+momentum, +0.31/yr OOS; carry is ~6% incidental drip), and survivorship barely moves it
+(survivor-only +0.70). **But it does NOT clear the gate:** −0.49 full-sample drawdown (fat
+left tail), not statistically significant after multiple-testing (DSR 0.62, p 0.10), and
+**cost-fragile** — net Sharpe collapses to +0.09 at 2× costs.
+
+**Separate-verifier (Code Reviewer, from-scratch full-universe re-derivation):** all 13 OOS/IS
+figures reproduced **exactly**. Direction confirmed momentum (sign-flip control mirrors to
+−1.33). Causality clean (double-lagged; weight earning d−1→d return decided from closes ≤d−2).
+Driver is price-momentum, not carry, not BTC-beta. **Effective-N ≈ 3.9** (avg pairwise corr
+0.46; top eigenvalue = 50% of variance) → the cross-section is ~one factor, so the significance
+FAIL is conservative/understated. **VERDICT: TRUSTWORTHY — no bug.**
+
+**Plain verdict:** Crypto XS momentum is the closest thing to an edge found — positive,
+market-neutral, price-driven OOS — but it **fails the gate** on drawdown, significance, and
+cost-fragility. A suggestive, fat-tailed risk premium, NOT a robust deployable alpha at this
+turnover/cost. Qualified negative.
+
+### H3 — order-flow imbalance: _running (klines taker re-fetch in progress)_

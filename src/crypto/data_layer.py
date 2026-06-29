@@ -52,7 +52,7 @@ _CONNECT_TIMEOUT = 5
 _READ_TIMEOUT = 30
 _MAX_RETRIES = 4
 _BACKOFF_BASE = 1.0
-_POLITE_SLEEP = 0.15  # between sequential requests, be a good citizen
+_POLITE_SLEEP = 0.03  # between sequential requests (static CDN bucket tolerates it)
 
 
 # --------------------------------------------------------------------------- #
@@ -151,8 +151,12 @@ def _read_zip_csv(content: bytes, header: list[str] | None = None) -> pd.DataFra
     # Some monthly CSVs ship with a header row, some don't; sniff the first byte.
     first = zf.open(name).read(64).decode("utf-8", "replace")
     has_header = any(c.isalpha() for c in first.split(",")[0])
-    return pd.read_csv(raw, header=0 if has_header else None,
-                       names=None if has_header else header)
+    # Binance added header rows to newer dumps (e.g. klines 2025+) using ITS OWN
+    # column names (taker_buy_volume, not our positional taker_base). Always read
+    # POSITIONALLY and skip a header row if present, then assign our canonical
+    # names -> robust to both header and headerless monthly files.
+    return pd.read_csv(raw, header=None, names=header,
+                       skiprows=1 if has_header else 0)
 
 
 def fetch_binance_funding(symbol: str, *, refresh: bool = False) -> pd.DataFrame:
@@ -218,11 +222,12 @@ def fetch_binance_klines(symbol: str, interval: str = "1d", *,
         time.sleep(_POLITE_SLEEP)
     if not frames:
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume",
-                                     "quote_volume"])
+                                     "quote_volume", "taker_base"])
     df = pd.concat(frames, ignore_index=True)
     df["open_time"] = pd.to_datetime(df["open_time"].astype("int64"),
                                      unit="ms", utc=True)
-    keep = ["open", "high", "low", "close", "volume", "quote_volume"]
+    # taker_base = taker BUY base volume (col 9) -> order-flow imbalance signal (H3)
+    keep = ["open", "high", "low", "close", "volume", "quote_volume", "taker_base"]
     df = (df.drop_duplicates(subset=["open_time"]).set_index("open_time")
             .sort_index()[keep].astype(float))
     _atomic_parquet(df, cache)
