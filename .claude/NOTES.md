@@ -61,7 +61,18 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   (Security Engineer): **SAFE** — practice-only guaranteed, leverage bounded, cannot bleed unbounded, real
   fills truthfully labeled. (6) `docs/dashboard-data-contract.md` for the parallel read-only dashboard
   workstream. `trained_data/oanda/` gitignored; token in `.env.local` (gitignored, never committed, diff-scanned).
-  17 no-mock tests; flake8 clean. FLAG (not built): order/position-book SENTIMENT = future pre-registered test.
+  17 no-mock tests; flake8 clean.
+  **SENTIMENT LEVER TESTED → NEGATIVE (2026-06-29, ceed4b2, the deferred flag now closed).** Pre-registered
+  (docs/experiment-oanda-sentiment-2026-06-29.md, written before results) OANDA position-book contrarian
+  fade: S=-(NL-0.5), causal t->t+1, 521 daily books x 7 majors (OANDA serves books >=2y). Pooled IC +0.0005
+  (t=0.03 ≈ 0); IS portfolio Sharpe 0.403 (t=0.49 insig.) COLLAPSES to -1.593 OOS, IC flips sign; per-year
+  Sharpe +1.25/-0.51/-1.20. Fails all 3 pre-registered bars → NO EDGE, shelved (offline-only, not wired).
+  Honest negative = success; closes the last genuinely-untested lever. **Separate verifier (Code Reviewer):
+  NEGATIVE CONFIRMED** — causality clean (forward shift), sign clean (momentum=exact negation, |IC|≈0 either
+  way), cost-independent (gross OOS Sharpe -1.562 vs net -1.593), eff-N≈521 not 3640 (only more null); even the
+  most-favorable per-pair causal-demeaned timing test fails OOS (t=1.64 IS, OOS Sharpe -0.65, sign-flips 3/7).
+  No hidden edge. Wrinkle noted: pre-reg+result in one atomic commit (provenance adequate-not-ironclad).
+  `src/equity/oanda_sentiment.py` offline; 184MB book cache gitignored.
   **UPDATES (2026-06-29, HEAD fa856e8):** (7) TP/SL BRACKETS live — ATR-based stopLossOnFill (entry-2*ATR,
   ON) + optional TP (OFF, trend rides) on opening orders; verified real broker-side SL on the account
   (USD_JPY SL 160.579). (8) MARGIN/LIQUIDATION GUARD — margin_scale clamps book to max_margin_util*NAV
