@@ -76,4 +76,19 @@ Robustness (labelled, not cherry-picking): **no-crypto** (19 assets) full 0.794 
 ### Plain verdict
 The "trend pays through breadth" hypothesis is **confirmed in the sense that matters**: breadth across uncorrelated asset classes turned the FX-only dead-end into a **robust, gate-clearing managed-futures book** (~0.7–0.9 Sharpe, 10–18% maxDD, 34y, OOS-confirmed, all sub-periods positive). **But the advantage over simply buy-and-holding the same basket is DRAWDOWN CONTROL (18% vs 68% — a 4× reduction), NOT excess Sharpe.** Same drawdown-reducer property the FX trend sleeve showed, now strong enough at portfolio scale to clear the gate. This is a genuine, defensible *risk-adjusted* result — the best of the search — but it is NOT alpha over passive holding. Per the strict relative "+1" bar it does not clear; per the absolute ship gate it does.
 
+### Caveats (separate-verifier flagged; substance survives)
+- **The "34y" label oversells diversification.** Only SPY reaches 1993; the panel is
+  1-asset until ~1998, <8 assets until 2006, and reaches TRUE breadth (19-21 assets)
+  only from ~2007. The early sub-period Sharpes (1.35 in '93-97, 1.38 in '03-07) are
+  near-single-asset SPY trend, NOT diversified breadth. Read it as "**~19 years of
+  genuine multi-asset breadth (2007-2026), SPY-anchored before that**," not 34y of breadth.
+  The verdict SURVIVES this: post-2007 (diversified) = **0.737 Sharpe, DD 0.18, gate PASS**,
+  and the entire OOS window (2017-2026) is post-2007 — the 0.829 OOS is computed purely on
+  the diversified book, not propped up by thin early years.
+- **Survivor-only ETF universe:** no asset that *delisted* is in the panel, so true
+  crisis tail risk is understated — the realized 0.18 maxDD is a FLOOR, not a guarantee.
+  Standard for managed-futures proxy work, but real.
+
+### Verifier verdict: GATE-CLEARING CONFIRMED — real, causal (triple-shift, reproduced to 3 decimals), uniform/no-dredge (losers FXY/UNG included), gate legitimately met (not tautological), framing honest.
+
 REPORTED, NOT promoted/traded — new-market (multi-asset ETF) execution is a separate operator decision and would itself be a different account/broker. Directional transformer stays closed; practice-only.

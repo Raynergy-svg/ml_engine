@@ -73,6 +73,26 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   most-favorable per-pair causal-demeaned timing test fails OOS (t=1.64 IS, OOS Sharpe -0.65, sign-flips 3/7).
   No hidden edge. Wrinkle noted: pre-reg+result in one atomic commit (provenance adequate-not-ironclad).
   `src/equity/oanda_sentiment.py` offline; 184MB book cache gitignored.
+  **MULTI-ASSET TREND — GATE-CLEARING, the strongest finding of the whole campaign (2026-06-29, ec3182f).**
+  Operator ungated a broad new-markets hunt (no spend). Pre-registered (docs/experiment-multi-asset-trend-
+  2026-06-29.md, before results): ONE canonical trend rule (price>200d SMA, long-or-flat, shift1) UNIFORM
+  across 21 free multi-asset ETF/crypto proxies (7 classes), per-asset streams HRP-combined + 10% vol-target,
+  portfolio-level judgment. **CLEARS the ship gate: Sharpe 0.744 full / 0.829 OOS, maxDD 0.18, 26/34 pos yrs,
+  34y, all 7 sub-periods positive — the FIRST lever ever to clear the gate on its own** (FX-only was gross≈0).
+  Robust: no-crypto 0.79/0.91 PASS, no-overlay 0.69 PASS (not artifact). **BUT ties EW buy-hold on Sharpe
+  (0.829 vs 0.895) — the edge over passive is DRAWDOWN control (18% vs 68%, ~4x), NOT alpha.** Same drawdown-
+  reducer property as FX trend, now gate-clearing at portfolio breadth. Per the strict relative "+1 vs baseline"
+  bar: does NOT clear (tie); per the absolute ship gate: DOES. REPORTED, NOT promoted/traded (new-market
+  execution = operator decision). `src/equity/multi_asset_trend.py` offline.
+  **Skeptical verifier: GATE-CLEARING CONFIRMED** — causal (triple-shift, reproduced to 3 decimals), uniform/
+  no-dredge (losers FXY/UNG included), gate legit (not tautological). CAVEAT (verifier-flagged, substance
+  survives): the "34y" oversells — only SPY reaches 1993, TRUE breadth (19-21 assets) only since ~2007;
+  read as "~19y genuine multi-asset breadth (2007-26), SPY-anchored before." Verdict survives: post-2007
+  diversified = 0.737 PASS, and the whole OOS (2017-26) is post-2007. Survivor-only ETF universe → 0.18 maxDD
+  is a FLOOR not a guarantee (delisted assets absent). NET CAMPAIGN SCORECARD: every return/direction lever
+  NEGATIVE (intraday 52%, daily factor ~0, multi-horizon, quality/value/lowvol/HRP, carry gate-rejected,
+  news, meta-label, order-book sentiment); multi-asset trend is the FIRST + ONLY gate-clear, but it's
+  drawdown-control diversification (ties buy-hold Sharpe), NOT alpha. No directional/return edge found anywhere.
   **UPDATES (2026-06-29, HEAD fa856e8):** (7) TP/SL BRACKETS live — ATR-based stopLossOnFill (entry-2*ATR,
   ON) + optional TP (OFF, trend rides) on opening orders; verified real broker-side SL on the account
   (USD_JPY SL 160.579). (8) MARGIN/LIQUIDATION GUARD — margin_scale clamps book to max_margin_util*NAV
