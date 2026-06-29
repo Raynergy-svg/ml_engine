@@ -99,6 +99,22 @@ def gate_eval(net: pd.Series) -> Dict[str, object]:
             "positive_years": int(pos), "total_years": int(tot), "gate_pass": bool(verdict.passed)}
 
 
+def decompose(net: pd.Series) -> Dict[str, object]:
+    """RETURN-vs-RISK decomposition for a net-return stream (separates alpha from drawdown).
+
+    ann_return = mean*252 (the RETURN side); ann_vol = std*sqrt(252) (the RISK side);
+    net_sharpe = ann_return/ann_vol; max_dd from the equity curve. Lets us tell a real
+    RETURN edge (ann_return up) from a drawdown-only improvement (Sharpe up via lower vol)."""
+    r = pd.Series(net).dropna().astype(float)
+    g = gate_eval(r)
+    ann_ret = float(r.mean() * 252.0)
+    ann_vol = float(r.std() * np.sqrt(252.0)) if r.std() > 0 else 0.0
+    return {"ann_return": round(ann_ret, 4), "ann_vol": round(ann_vol, 4),
+            "net_sharpe": g["net_sharpe"], "max_dd": g["max_dd"],
+            "positive_years": g["positive_years"], "total_years": g["total_years"],
+            "gate_pass": g["gate_pass"]}
+
+
 def ew_buy_hold(prices: pd.DataFrame) -> pd.Series:
     """Equal-weight buy-and-hold of all available assets (baseline)."""
     return prices.pct_change().mean(axis=1, skipna=True).dropna()

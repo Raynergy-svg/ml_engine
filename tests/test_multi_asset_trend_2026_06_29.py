@@ -46,3 +46,14 @@ def test_uptrend_held_downtrend_flat():
 def test_gate_eval_shape():
     g = gate_eval(_series(800, 0.0004, 5).pct_change())
     assert set(["net_sharpe", "max_dd", "positive_years", "total_years", "gate_pass"]) <= set(g)
+
+
+def test_decompose_separates_return_from_risk():
+    from src.equity.multi_asset_trend import decompose
+    idx = pd.bdate_range("2010-01-01", periods=2000)
+    # 0.1% daily drift >> 0.5% noise/sqrt(2000) -> drift dominates: ann_return ~0.25, vol ~0.08
+    r = pd.Series(np.full(2000, 0.001) + np.random.default_rng(0).normal(0, 0.005, 2000), index=idx)
+    d = decompose(r)
+    assert set(["ann_return", "ann_vol", "net_sharpe", "max_dd", "gate_pass"]) <= set(d)
+    assert 0.15 < d["ann_return"] < 0.35 and 0.05 < d["ann_vol"] < 0.12
+    assert abs(d["net_sharpe"] - d["ann_return"] / d["ann_vol"]) < 0.1  # sharpe ~ ret/vol

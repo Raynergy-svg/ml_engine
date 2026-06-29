@@ -267,3 +267,4 @@ trained_data/oanda/
 trained_data/axiom/
 market_data/oanda_books/
 market_data/multi_asset/
+market_data/factor/
