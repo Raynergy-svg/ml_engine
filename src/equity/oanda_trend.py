@@ -233,6 +233,82 @@ def rebalance_delta(target: int, current: int, *, band_pct: float = 0.02, min_un
     return delta if abs(delta) >= band else 0
 
 
+# --- TP/SL brackets + margin/liquidation guard (TASK A) ---
+DEFAULT_ATR_PERIOD = 14
+DEFAULT_ATR_SL_MULT = 2.0       # protective stop = entry - sl_mult*ATR (long-or-flat)
+DEFAULT_ATR_TP_MULT = 4.0       # optional take-profit (OFF by default — trend rides winners)
+DEFAULT_ENABLE_SL = True
+DEFAULT_ENABLE_TP = False
+DEFAULT_MAX_MARGIN_UTIL = 0.50  # margin rail: cap projected margin at 50% of NAV
+DEFAULT_MARGIN_RATE = 0.04      # conservative FX-major margin (~25:1) for the guard estimate
+
+
+def compute_atr(candles_by_instrument: Dict[str, dict], *, period: int = DEFAULT_ATR_PERIOD) -> Dict[str, float]:
+    """Average True Range (in price units) per instrument from COMPLETE candle OHLC."""
+    out: Dict[str, float] = {}
+    for inst, resp in (candles_by_instrument or {}).items():
+        trs: List[float] = []
+        prev_close: Optional[float] = None
+        for c in (resp or {}).get("candles", []) or []:
+            if not c.get("complete", False):
+                continue
+            m = c.get("mid") or {}
+            try:
+                hi, lo, cl = float(m["h"]), float(m["l"]), float(m["c"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            tr = (hi - lo) if prev_close is None else max(hi - lo, abs(hi - prev_close), abs(lo - prev_close))
+            trs.append(tr)
+            prev_close = cl
+        if len(trs) >= period:
+            out[inst] = sum(trs[-period:]) / period
+    return out
+
+
+def bracket_prices(entry: float, atr: Optional[float], *, sl_mult: float = DEFAULT_ATR_SL_MULT,
+                   tp_mult: float = DEFAULT_ATR_TP_MULT, enable_sl: bool = DEFAULT_ENABLE_SL,
+                   enable_tp: bool = DEFAULT_ENABLE_TP):
+    """Long-side ATR brackets -> (stop_loss_price, take_profit_price). None when unavailable.
+
+    SL = entry - sl_mult*ATR (protective; default ON). TP = entry + tp_mult*ATR (default OFF
+    — a trend strategy rides winners; capping upside fights the edge). No ATR -> no bracket
+    (refuse to fabricate a stop at a made-up distance)."""
+    if not (atr and atr > 0 and entry and entry > 0):
+        return None, None
+    sl = entry - sl_mult * atr if enable_sl else None
+    if sl is not None and sl <= 0:
+        sl = None
+    tp = entry + tp_mult * atr if enable_tp else None
+    return sl, tp
+
+
+def margin_projection(want_units: Dict[str, int], last_px: Dict[str, float], *,
+                      margin_rate: float = DEFAULT_MARGIN_RATE, home_ccy: str = "USD") -> float:
+    """Projected margin (home ccy) for a target book: sum(|units| * base->home * margin_rate)."""
+    total = 0.0
+    for inst, u in want_units.items():
+        rate = base_to_home_rate(inst, last_px, home_ccy=home_ccy)
+        if rate and rate > 0:
+            total += abs(int(u)) * rate * float(margin_rate)
+    return total
+
+
+def margin_scale(want_units: Dict[str, int], last_px: Dict[str, float], nav: float, *,
+                 max_margin_util: float = DEFAULT_MAX_MARGIN_UTIL,
+                 margin_rate: float = DEFAULT_MARGIN_RATE):
+    """Margin/liquidation RAIL: scale the book so projected margin <= max_margin_util*NAV.
+
+    Returns ``(scaled_units, scale_factor)``; ``factor < 1`` means the guard clamped the
+    book (refused the excess exposure). This caps margin usage REGARDLESS of the leverage
+    dial — the binding safety rail under aggressive sizing."""
+    projected = margin_projection(want_units, last_px, margin_rate=margin_rate)
+    cap = float(max_margin_util) * float(nav)
+    if projected <= cap or projected <= 0:
+        return dict(want_units), 1.0
+    factor = cap / projected
+    return {i: int(int(u) * factor) for i, u in want_units.items()}, factor
+
+
 def run_oanda_trend_cycle(
     *,
     client: "OandaPracticeClient",
@@ -243,6 +319,13 @@ def run_oanda_trend_cycle(
     sma_window: int = DEFAULT_SMA,
     candle_count: int = DEFAULT_CANDLE_COUNT,
     gross_leverage: float = DEFAULT_GROSS_LEVERAGE,
+    enable_sl: bool = DEFAULT_ENABLE_SL,
+    enable_tp: bool = DEFAULT_ENABLE_TP,
+    atr_sl_mult: float = DEFAULT_ATR_SL_MULT,
+    atr_tp_mult: float = DEFAULT_ATR_TP_MULT,
+    atr_period: int = DEFAULT_ATR_PERIOD,
+    max_margin_util: float = DEFAULT_MAX_MARGIN_UTIL,
+    margin_rate: float = DEFAULT_MARGIN_RATE,
     dry_run: bool = False,
     now: Optional[datetime] = None,
 ) -> OandaTrendResult:
@@ -275,6 +358,7 @@ def run_oanda_trend_cycle(
     panel = candles_to_close_panel(candles)
     if panel.empty:
         return OandaTrendResult(False, "no_data", {}, 0)
+    atr = compute_atr(candles, period=atr_period)   # for protective SL/TP brackets
     targets = trend_targets(panel, sma_window=sma_window)
     on = {k: v for k, v in targets.items() if v > 0}
     logger.info("OANDA trend targets: %d on / %d flat — on=%s",
@@ -310,6 +394,15 @@ def run_oanda_trend_cycle(
         logger.warning("on-signal but sized 0 (no base->home rate, add its USD leg): %s",
                        silently_flat)
 
+    # MARGIN/LIQUIDATION RAIL: clamp the book so projected margin <= max_margin_util*NAV,
+    # regardless of the leverage dial. factor<1 => the guard refused the excess exposure.
+    want, margin_factor = margin_scale(want, last_px, nav,
+                                       max_margin_util=max_margin_util, margin_rate=margin_rate)
+    if margin_factor < 1.0:
+        logger.warning("MARGIN GUARD fired — clamped book to %.0f%% NAV margin cap "
+                       "(scale=%.3f; leverage dial would have over-exposed)",
+                       max_margin_util * 100, margin_factor)
+
     pos_resp = client.get_open_positions() or {}
     current: Dict[str, int] = {}
     for p in pos_resp.get("positions", []) or []:
@@ -324,8 +417,16 @@ def run_oanda_trend_cycle(
         delta = rebalance_delta(want.get(inst, 0), current.get(inst, 0))
         if delta == 0:
             continue
-        client.create_market_order(instrument=inst, units=delta, client_tag="ml_engine_trend_demo")
+        sl = tp = None
+        if delta > 0:   # opening/increasing a long -> attach protective brackets
+            sl, tp = bracket_prices(last_px.get(inst), atr.get(inst),
+                                    sl_mult=atr_sl_mult, tp_mult=atr_tp_mult,
+                                    enable_sl=enable_sl, enable_tp=enable_tp)
+        client.create_market_order(instrument=inst, units=delta,
+                                   stop_loss_price=sl, take_profit_price=tp,
+                                   client_tag="ml_engine_trend_demo")
         placed += 1
-        logger.info("OANDA PAPER order: %s units=%+d (target=%d current=%d)",
-                    inst, delta, want.get(inst, 0), current.get(inst, 0))
+        logger.info("OANDA PAPER order: %s units=%+d (target=%d current=%d) SL=%s TP=%s",
+                    inst, delta, want.get(inst, 0), current.get(inst, 0),
+                    f"{sl:.5f}" if sl else "-", f"{tp:.5f}" if tp else "-")
     return OandaTrendResult(True, "executed", targets, placed)

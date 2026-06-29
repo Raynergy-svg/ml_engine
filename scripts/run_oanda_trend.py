@@ -79,23 +79,43 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--gross-leverage", type=float, default=None,
                     help="total exposure as a multiple of NAV (env OANDA_GROSS_LEVERAGE; "
                          "default 3.0; capped at 15x to stay clear of margin call)")
+    ap.add_argument("--atr-sl-mult", type=float, default=None,
+                    help="stop-loss = entry - mult*ATR (env OANDA_ATR_SL_MULT; default 2.0)")
+    ap.add_argument("--no-sl", action="store_true", help="disable protective stop-loss")
+    ap.add_argument("--enable-tp", action="store_true",
+                    help="attach take-profit (default OFF — trend rides winners)")
+    ap.add_argument("--max-margin-util", type=float, default=None,
+                    help="margin rail: cap projected margin at this fraction of NAV "
+                         "(env OANDA_MAX_MARGIN_UTIL; default 0.50)")
     ap.add_argument("--loop", type=float, default=0.0, help="seconds between cycles (>0 = persist)")
     ap.add_argument("--max-cycles", type=int, default=0)
     args = ap.parse_args(argv)
 
     from src.scanner.config import ScannerConfig
-    from src.equity.oanda_trend import DEFAULT_GROSS_LEVERAGE, run_oanda_trend_cycle
+    from src.equity.oanda_trend import (
+        DEFAULT_ATR_SL_MULT, DEFAULT_GROSS_LEVERAGE, DEFAULT_MAX_MARGIN_UTIL,
+        run_oanda_trend_cycle,
+    )
     config = ScannerConfig()
     assert config.oanda_environment == "practice", "HARD LINE: env must stay practice"
 
-    # Leverage dial: CLI > env OANDA_GROSS_LEVERAGE > default (clamped in the cycle).
+    # Dials: CLI > env > default. Leverage clamped in the cycle; SL/TP + margin guard too.
     import os as _os
-    try:
-        gross_leverage = (args.gross_leverage if args.gross_leverage is not None
-                          else float(_os.getenv("OANDA_GROSS_LEVERAGE", DEFAULT_GROSS_LEVERAGE)))
-    except (ValueError, TypeError):
-        logger.warning("bad OANDA_GROSS_LEVERAGE -> default %.1f", DEFAULT_GROSS_LEVERAGE)
-        gross_leverage = DEFAULT_GROSS_LEVERAGE
+
+    def _f(cli, env, default):
+        if cli is not None:
+            return cli
+        try:
+            return float(_os.getenv(env, default))
+        except (ValueError, TypeError):
+            logger.warning("bad %s -> default %s", env, default)
+            return default
+
+    gross_leverage = _f(args.gross_leverage, "OANDA_GROSS_LEVERAGE", DEFAULT_GROSS_LEVERAGE)
+    atr_sl_mult = _f(args.atr_sl_mult, "OANDA_ATR_SL_MULT", DEFAULT_ATR_SL_MULT)
+    max_margin_util = _f(args.max_margin_util, "OANDA_MAX_MARGIN_UTIL", DEFAULT_MAX_MARGIN_UTIL)
+    enable_sl = not args.no_sl
+    enable_tp = bool(args.enable_tp or _os.getenv("OANDA_ENABLE_TP"))
     logger.info("gross_leverage = %.1fx NAV (dial via --gross-leverage / OANDA_GROSS_LEVERAGE)",
                 gross_leverage)
 
@@ -120,7 +140,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             r = run_oanda_trend_cycle(
                 client=client, config=config, instruments=instruments,
                 project_root=REPO_ROOT, granularity=args.granularity,
-                sma_window=args.sma, gross_leverage=gross_leverage, dry_run=args.dry_run,
+                sma_window=args.sma, gross_leverage=gross_leverage,
+                enable_sl=enable_sl, enable_tp=enable_tp, atr_sl_mult=atr_sl_mult,
+                max_margin_util=max_margin_util, dry_run=args.dry_run,
             )
         except Exception as exc:
             print(f"OANDA_BLOCKER: cycle failed ({type(exc).__name__}: {exc}) — "

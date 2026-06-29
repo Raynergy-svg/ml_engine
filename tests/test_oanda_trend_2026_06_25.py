@@ -18,6 +18,45 @@ from src.equity.oanda_trend import (
 )
 
 
+def test_compute_atr_from_ohlc_candles():
+    from src.equity.oanda_trend import compute_atr
+    # 20 complete candles, constant 1.0-wide range -> ATR == 1.0; incomplete excluded.
+    candles = {"X": {"candles": (
+        [{"complete": True, "mid": {"h": "11", "l": "10", "c": "10.5"}} for _ in range(20)]
+        + [{"complete": False, "mid": {"h": "99", "l": "0", "c": "50"}}]
+    )}}
+    atr = compute_atr(candles, period=14)
+    assert abs(atr["X"] - 1.0) < 1e-9
+
+
+def test_bracket_prices_long_sl_on_tp_off_by_default():
+    from src.equity.oanda_trend import bracket_prices
+    sl, tp = bracket_prices(100.0, 2.0, sl_mult=2.0, tp_mult=4.0)   # defaults: SL on, TP off
+    assert abs(sl - 96.0) < 1e-9 and tp is None
+    sl2, tp2 = bracket_prices(100.0, 2.0, sl_mult=2.0, tp_mult=4.0, enable_tp=True)
+    assert abs(sl2 - 96.0) < 1e-9 and abs(tp2 - 108.0) < 1e-9
+    assert bracket_prices(100.0, None) == (None, None)             # no ATR -> no fabricated stop
+    assert bracket_prices(100.0, 2.0, enable_sl=False)[0] is None
+
+
+def test_margin_guard_clamps_under_stress():
+    from src.equity.oanda_trend import margin_scale, margin_projection
+    px = {"EUR_USD": 1.10, "USD_JPY": 150.0}
+    # base-USD pair USD_JPY: rate 1.0; EUR_USD: rate 1.10. margin_rate 0.04.
+    want = {"USD_JPY": 1_000_000, "EUR_USD": 1_000_000}
+    nav = 100_000.0
+    proj = margin_projection(want, px, margin_rate=0.04)
+    assert proj > 0.5 * nav                                        # this book breaches a 50% cap
+    scaled, factor = margin_scale(want, px, nav, max_margin_util=0.50, margin_rate=0.04)
+    assert factor < 1.0                                            # GUARD FIRED
+    # post-scale projected margin is at/below the cap
+    assert margin_projection(scaled, px, margin_rate=0.04) <= 0.50 * nav + 1
+    # a small book within the cap is untouched
+    small = {"USD_JPY": 100}
+    _, f2 = margin_scale(small, px, nav, max_margin_util=0.50, margin_rate=0.04)
+    assert f2 == 1.0
+
+
 def test_clamp_leverage_bounds():
     from src.equity.oanda_trend import DEFAULT_GROSS_LEVERAGE, MAX_GROSS_LEVERAGE, clamp_leverage
     assert clamp_leverage(3.0) == 3.0
