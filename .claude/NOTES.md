@@ -4,9 +4,26 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-06-24 by Claude (corrected record: equity four-pillar work is dormant scaffolding,
-NOT running — see In-flight + L-017). Note: `state.json halted=true` again (re-flipped; operator
-directs it STAYS true). Report rule: every status claim states running:yes/no, verified from disk (L-017).
+Last touched: 2026-06-29 by Claude (crypto edge-hunt H1 result). Note: `state.json halted=true`
+(operator directs it STAYS true). Report rule: every status claim states running:yes/no, verified
+from disk (L-017).
+
+## Crypto edge-hunt (2026-06-29, operator-approved new direction) — research/backtest ONLY
+
+Pivoted the gated harness into crypto. **Data layer built + committed (`9c14a6f`):**
+`src/crypto/data_layer.py` — Binance static dumps (funding+klines, 2020-01→now, 733 USDT perps
+incl. delisted → survivorship-aware; trading API geo-blocked here but the static dump bucket is NOT)
++ OKX/Hyperliquid cross-checks. Cache → `crypto_cache/` (gitignored). Pre-registration (frozen,
+committed before results): `docs/experiment-crypto-edge-hunt-2026-06-29.md`.
+
+**H1 perp funding carry = NEGATIVE, gate FAIL, independently verifier-CONFIRMED (TRUSTWORTHY).**
+`scripts/experiment_crypto_funding_carry.py`. OOS(2024+) net Sharpe **−0.25** (need ≥0.40), maxDD
+30% OOS / 38% full (need ≤25%), not significant. KEY: it IS market-neutral (BTC-β −0.04, NOT
+short-beta — my "mostly short-beta" prior was WRONG). Carry is real (+0.32/yr, Sharpe ~17 drip) but
+net dies to **price adverse-selection** (shorting high-funding = shorting momentum; payoff flipped
++0.41→−0.21/yr IS→OOS) + **costs** (~0.16/yr). Full-sample Sharpe +1.20 would have lied; OOS holdout
+caught it. Binding caveat: ~6.5y < 10y → never an unqualified ship even if it had cleared.
+**HELD before H2 (XS momentum) / H3 (order-flow) pending operator go-ahead.** No live execution.
 
 ## Operating mode — delegated authority (2026-06-23, survives fresh sessions)
 

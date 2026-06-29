@@ -169,6 +169,46 @@ A verifier-caught false claim triggers the L-018 fail-closed reject + quarantine
 
 ## 7. Results (appended after the fact — empty at pre-registration time)
 
-### H1 — funding carry: _pending run_
-### H2 — XS momentum: _pending run_
+### H1 — funding carry: **NEGATIVE (gate FAIL) — independently CONFIRMED** (2026-06-29)
+
+Run: `scripts/experiment_crypto_funding_carry.py` →
+`trained_data/backtests/crypto_funding_carry_20260629T213504Z.json`.
+Universe: 693 ever-liquid USDT perps (27 delisted-during-sample), 2020-01→2026-05.
+
+| Block | net Sharpe | gross Sharpe | carry ann | price ann | cost ann | maxDD | BTC-β |
+|---|---|---|---|---|---|---|---|
+| IS (pre-2024) | **+1.98** | +2.78 | +0.175 | **+0.410** | 0.169 | −0.265 | −0.00 |
+| **OOS (2024+)** | **−0.25** | +0.60 | +0.319 | **−0.207** | 0.158 | **−0.299** | **−0.04** |
+| Full | +1.20 | +2.01 | +0.229 | +0.178 | 0.165 | **−0.381** | −0.01 |
+| Stress 2× OOS | −1.09 | +0.60 | +0.319 | −0.207 | 0.316 | −0.435 | −0.04 |
+| Survivor-only OOS | −0.31 | +0.54 | +0.319 | −0.218 | 0.158 | −0.305 | −0.04 |
+
+OOS significance: PSR(>0)=0.35, DSR=0.11 (bench ann-Sharpe 0.55), bootstrap p(mean≤0)=0.63.
+
+**Gate:** net Sharpe≥0.40 ✗ (−0.25) · maxDD≤0.25 ✗ (0.30 OOS / 0.38 full) · OOS-confirmed
+✗ (sign flip vs IS) · DSR≥0.95 & p<0.0167 ✗ · **|BTC-β|≤0.15 ✓ (−0.04)** ·
+history≥10y ✗ (by construction). → `clears_ex_history = FALSE`.
+
+**Decomposition (return-vs-risk):** the carry IS real and large (+0.32/yr OOS, Sharpe ~17 —
+a low-variance funding drip), and the book IS genuinely **market-neutral** (BTC-β −0.04 —
+NOT short-beta, NOT "beta dressed as alpha"). It dies to (1) **price adverse-selection**:
+shorting the highest-funding coins = shorting euphoria/momentum, whose payoff **flipped sign
+IS→OOS** (+0.41/yr → −0.21/yr) — a non-stationary price relationship; and (2) **costs**
+(~0.16/yr from 0.43 daily turnover). Dead-coin carry inflation ≈ 0 in OOS (LUNA/FTT deaths
+fell in the IS window). Full-sample Sharpe (+1.20) would have LIED; the OOS holdout caught it.
+
+**Separate-verifier (Code Reviewer, full-universe independent re-derivation):** MATCH on every
+sign/magnitude (OOS net Sharpe −0.287 vs −0.247; carry-ann & β near-exact). Causality: no
+lookahead (signal & ADV `.shift(1)`, P&L from prior-bar weights). Survivorship: dead coins
+held while alive, NOT dropped; LUNA's −99.97% crash IS captured (only the final liquidation
+gap uncounted → tail under-count is small and biases carry *optimistically*). Costs/funding
+sign-correct, no double-count. **VERDICT: TRUSTWORTHY — honest negative, no bug.**
+
+**Plain verdict:** Naive cross-sectional perp funding carry has **NO cost-surviving,
+OOS-confirmed market-neutral RETURN alpha** at this scale. The funding premium is real but is
+a payment for taking the losing, non-stationary side of short-term momentum, and costs finish
+it. Honest negative = success. (Binding caveat stands: even had it cleared, ~6.5y / ~1.5
+cycles < 10y → never an unqualified ship.)
+
+### H2 — XS momentum: _pending run (HELD for operator go-ahead)_
 ### H3 — order-flow imbalance: _pending (conditional)_
