@@ -100,6 +100,16 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   also defaults to L3 (was 5); operator can still raise explicitly via config / `--max-autonomy` /
   `TIER7_MAX_AUTONOMY`. No profile dict overrides it. verify_gate PASS (28 checks, hard_no_ok=True) +
   risk_monitor GREEN post-flip. This safety-TIGHTENING relaxes no Hard NO.
+  **RAISED 2026-06-29 (operator-approved): `run_tier7_loop.py` autonomy default L3->L5 (FULL).** Operator
+  ungated full self-heal autonomy on the supervisor. Bounds RE-DERIVED FROM DISK and HOLD at L5: the retrain
+  handlers `_handle_retrain_gates` -> repo-root `online_retrainer.py` (writes ONLY xgb_momentum/rf_risk/
+  ridge_confidence `.pkl` sklearn baselines via pickle.dump; ZERO halt/env/promote/champion/quarantine/
+  execute/order/`.keras` patterns) and `_handle_retrain_rl_position_sizer` (marker file only). So even at L5
+  the supervisor CANNOT unhalt, flip env, touch real money, promote/un-quarantine, or write a `.keras` champion
+  (directional transformer stays closed). NOTE: the `online_retrainer` self_heal calls is the REPO-ROOT module,
+  NOT `src/core/modular_inference.py`'s `.keras` trigger_retrain (different function, not on this path).
+  ScannerConfig dataclass default stays 3 (global safe for other consumers); only the supervisor runs L5.
+  Supervisor restarted L5 (running:True). Lower again with `--max-autonomy 3` if desired.
 - **(SUPERSEDED) Equity-harvester H1 / IBKR-paper lane (2026-06-25 earlier):** harvester shadow loop ran
   (running:YES via oracle, simulated fills) but IBKR paper needs `ib_async`+gateway+login. Operator chose
   OANDA instead; harvester code (`scripts/run_equity_harvester.py`, runner `execute_order` inject) retained,

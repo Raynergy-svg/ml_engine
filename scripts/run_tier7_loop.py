@@ -114,18 +114,21 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--once", action="store_true", help="single tick then exit")
     ap.add_argument("--max-cycles", type=int, default=0, help="stop after N (0 = until killed)")
     ap.add_argument("--max-autonomy", type=int, default=None,
-                    help="self-heal action ceiling (env TIER7_MAX_AUTONOMY; default 3 = "
-                         "reversible operational heals only; 4=guarded, 5=allow retrains). "
-                         "Operator raises explicitly; the unattended default stays low.")
+                    help="self-heal action ceiling (env TIER7_MAX_AUTONOMY; default 5 = full: "
+                         "3=reversible operational heals only, 4=guarded, 5=allow retrains). "
+                         "Operator-raised to 5 on 2026-06-29. Lower with --max-autonomy 3 if desired.")
     args = ap.parse_args(argv)
 
-    # Clamp the self-heal autonomy LOW by default (doctrine = 3; ScannerConfig default
-    # is 5). Operator can raise via --max-autonomy / TIER7_MAX_AUTONOMY. Bounded to [3,5].
-    raw = args.max_autonomy if args.max_autonomy is not None else os.getenv("TIER7_MAX_AUTONOMY", "3")
+    # Self-heal autonomy ceiling. Operator RAISED the default 3->5 on 2026-06-29 (full
+    # autonomy). Structural immutables hold even at L5 (verifier-confirmed + disk re-derived):
+    # the retrain handlers only rewrite sklearn gate baselines / a marker — they CANNOT
+    # unhalt, flip env, touch real money, promote/un-quarantine, or write a .keras champion.
+    # Bounded to [3,5]; bad input -> 5.
+    raw = args.max_autonomy if args.max_autonomy is not None else os.getenv("TIER7_MAX_AUTONOMY", "5")
     try:
         max_autonomy = min(5, max(3, int(raw)))
     except (ValueError, TypeError):
-        max_autonomy = 3
+        max_autonomy = 5   # default after the 2026-06-29 operator raise
     logger.info("Tier 7 self-heal supervisor START (pid %d, bounded: no trade/unhalt/env path; "
                 "self_heal max_autonomy_level=%d)", os.getpid(), max_autonomy)
     cycle = 0
