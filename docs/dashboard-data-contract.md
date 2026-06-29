@@ -32,7 +32,9 @@ Written by `src/brokers/oanda_v20.py:snapshot_account_state`.
   "currency": "USD",          // str
   "account_id": "101-...",    // str (PRACTICE, prefix 101)
   "positions": [              // array, one per open net position
-    {"instrument": "USD_JPY", "net_units": 76597.0, "unrealized_pl": -12.37}
+    {"instrument": "USD_JPY", "net_units": 76597.0, "unrealized_pl": -12.37,
+     "stop_loss": 160.579,    // float|null — broker-side SL of the position's largest open lot
+     "take_profit": null}     // float|null — broker-side TP (null = none, e.g. trend rides)
   ]
 }
 ```

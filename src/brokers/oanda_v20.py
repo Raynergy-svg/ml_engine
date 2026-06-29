@@ -261,12 +261,50 @@ class TransactionLedger:
         return LedgerSummary(n, n_fill, round(pl, 4), round(fin, 4), last_id)
 
 
+def _position_brackets(client) -> Dict[str, Dict[str, Optional[float]]]:
+    """Map instrument -> {stop_loss, take_profit} from OPEN trades' broker-side orders.
+
+    A netted position can have several trade lots; we report the brackets of the
+    LARGEST lot (the representative risk level). Best-effort: a fetch failure yields
+    an empty map (positions then render SL/TP=None, never a fabricated level)."""
+    try:
+        trades = (client.get_trades(state="OPEN") or {}).get("trades", []) or []
+    except Exception as exc:  # noqa: BLE001 - display data, never blocks the snapshot
+        logger.warning("get_trades for brackets failed (non-blocking): %s", exc)
+        return {}
+    out: Dict[str, Dict[str, Optional[float]]] = {}
+    best_units: Dict[str, float] = {}
+
+    def _price(order: Optional[dict]) -> Optional[float]:
+        if not order:
+            return None
+        try:
+            return float(order.get("price"))
+        except (TypeError, ValueError):
+            return None
+
+    for t in trades:
+        inst = t.get("instrument")
+        if not inst:
+            continue
+        try:
+            units = abs(float(t.get("currentUnits", 0) or 0))
+        except (TypeError, ValueError):
+            units = 0.0
+        if inst not in out or units > best_units.get(inst, -1.0):
+            best_units[inst] = units
+            out[inst] = {"stop_loss": _price(t.get("stopLossOrder")),
+                         "take_profit": _price(t.get("takeProfitOrder"))}
+    return out
+
+
 def snapshot_account_state(client, *, out_dir: Path = Path(LEDGER_DIR_DEFAULT)) -> dict:
     """Write account summary + open positions to disk for the TUI; return a digest."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     summary = client.get_account_summary() or {}
     positions = client.get_open_positions() or {}
+    brackets = _position_brackets(client)
     acct = summary.get("account", {})
     digest = {
         "nav": float(acct.get("NAV", 0) or 0),
@@ -281,7 +319,11 @@ def snapshot_account_state(client, *, out_dir: Path = Path(LEDGER_DIR_DEFAULT)) 
             {"instrument": p.get("instrument"),
              "net_units": float((p.get("long") or {}).get("units", 0) or 0)
              + float((p.get("short") or {}).get("units", 0) or 0),
-             "unrealized_pl": float(p.get("unrealizedPL", 0) or 0)}
+             "unrealized_pl": float(p.get("unrealizedPL", 0) or 0),
+             # SL/TP for the position's representative (largest) open trade lot; None
+             # when no broker-side bracket is attached. Read-only display for AXIOM.
+             "stop_loss": (brackets.get(p.get("instrument")) or {}).get("stop_loss"),
+             "take_profit": (brackets.get(p.get("instrument")) or {}).get("take_profit")}
             for p in positions.get("positions", []) or []
         ],
     }

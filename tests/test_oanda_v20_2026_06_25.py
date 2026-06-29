@@ -17,9 +17,41 @@ from src.brokers.oanda_v20 import (
     TransactionLedger,
     _assert_practice,
     _backoff_seq,
+    _position_brackets,
     consume_stream,
     run_stream,
 )
+
+
+class _TradesClient:
+    """Minimal real object (no mock lib): returns a canned get_trades payload."""
+
+    def __init__(self, trades):
+        self._trades = trades
+
+    def get_trades(self, *, state="OPEN", count=500, instrument=None):
+        return {"trades": self._trades}
+
+
+def test_position_brackets_largest_lot_and_none_when_absent():
+    client = _TradesClient([
+        {"instrument": "USD_JPY", "currentUnits": "10000",
+         "stopLossOrder": {"price": "160.50"}, "takeProfitOrder": {"price": "165.00"}},
+        {"instrument": "USD_JPY", "currentUnits": "76000",   # largest lot -> representative
+         "stopLossOrder": {"price": "160.58"}},
+        {"instrument": "EUR_USD", "currentUnits": "5000"},   # no brackets -> None
+    ])
+    b = _position_brackets(client)
+    assert abs(b["USD_JPY"]["stop_loss"] - 160.58) < 1e-9   # largest lot's SL
+    assert b["USD_JPY"]["take_profit"] is None              # largest lot had no TP
+    assert b["EUR_USD"] == {"stop_loss": None, "take_profit": None}
+
+
+def test_position_brackets_fetch_failure_is_empty_not_fabricated():
+    class _Boom:
+        def get_trades(self, **kw):
+            raise RuntimeError("network")
+    assert _position_brackets(_Boom()) == {}
 
 
 def test_assert_practice_refuses_live_host():
