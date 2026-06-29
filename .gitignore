@@ -266,3 +266,4 @@ trained_data/oanda/
 .claude/tier7_selfheal_events.jsonl
 trained_data/axiom/
 market_data/oanda_books/
+market_data/multi_asset/
