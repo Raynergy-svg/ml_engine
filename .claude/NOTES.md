@@ -180,6 +180,16 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
 
 ## In-flight work (from session memory, not re-verified this turn — confirm before relying)
 
+- **STATUS-ORACLE TRAP FIXED (2026-06-29).** `running_status.py` reported ONLY the dormant equity-harvester
+  (IBKR, superseded) lane -> "running:NO" even though the LIVE OANDA-trend + Tier7 lane was running -> caused a
+  false "nothing running". Rewrote it to report TWO clearly-LABELED lanes: **LIVE LANE** (OANDA trend + Tier7;
+  running:YES if `run_oanda_trend.py` proc alive OR `trained_data/oanda/account_state.json` fresh<=2h OR
+  `.claude/heartbeat.json` fresh<=90s + pid alive) and **HARVESTER LANE** (dormant/legacy; "running:NO is
+  EXPECTED, not a fault"). `--assert-running` now asserts the LIVE lane. 4 no-mock tests. Also force-killed a
+  duplicate uvicorn (46367 — had a stale :8888 SSE connection; canonical listener 53816 kept, health ok).
+  **DAILY MONITOR should read the LIVE lane:** `python3 .claude/loop/running_status.py --assert-running`
+  (exit 0=up, 3=down); or raw disk: tier7 = `.claude/tier7_state.json` `running:true`; trader =
+  `trained_data/oanda/account_state.json` mtime <=2h. NEVER the harvester lane (always NO = dormant).
 - **Multi-strategy sleeve program — Phase 0 DONE; no-spend frontier exhausted (2026-06-25, running:NO,
   offline-eval only).** Plan doc `docs/multi-strategy-sleeve-architecture-2026-06-24.md` (commit 3a7038b).
   Phase-0 (commit 65015bd): built Sleeve A = multi-asset trend/managed-futures (long-or-flat ETFs,
