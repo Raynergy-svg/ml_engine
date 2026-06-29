@@ -263,3 +263,4 @@ STATE.md
 loop.log
 trained_data/oanda/
 .claude/tier7_state.json
+.claude/tier7_selfheal_events.jsonl

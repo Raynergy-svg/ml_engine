@@ -62,6 +62,23 @@ def _last_meta_event(root: Path) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _recent_selfheal_events(root: Path, *, limit: int = 10) -> list:
+    """Last ``limit`` self-heal events written by the Tier 7 supervisor (real apply()
+    results — no fabricated 'healed' claims; empty if none)."""
+    path = root / ".claude" / "tier7_selfheal_events.jsonl"
+    try:
+        lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    except OSError:
+        return []
+    out = []
+    for ln in lines[-limit:]:
+        try:
+            out.append(json.loads(ln))
+        except ValueError:
+            continue
+    return out
+
+
 def build_tier7_state(project_root: Path = Path("."), *, now: Optional[datetime] = None,
                       fresh_seconds: int = DEFAULT_FRESH_SECONDS) -> Dict[str, Any]:
     """Build the consolidated, read-only Tier 7 state snapshot (honest running flag)."""
@@ -97,6 +114,7 @@ def build_tier7_state(project_root: Path = Path("."), *, now: Optional[datetime]
     meta = _last_meta_event(root) or {}
     sh_budget = _read_json(root / ".claude" / "self_heal_action_budget.json")
     sh_debounce = _read_json(root / ".claude" / "self_heal_debounce.json")
+    sh_recent = _recent_selfheal_events(root, limit=10)
 
     return {
         "generated_at": now.astimezone(timezone.utc).isoformat(),
@@ -120,6 +138,7 @@ def build_tier7_state(project_root: Path = Path("."), *, now: Optional[datetime]
         "self_heal": {
             "action_budget": sh_budget,
             "debounce": sh_debounce,
+            "recent_events": sh_recent,
         },
         "meta_last_event": {
             k: meta.get(k) for k in ("change_id", "stage", "event", "kind", "deploy_target", "updated_at")
