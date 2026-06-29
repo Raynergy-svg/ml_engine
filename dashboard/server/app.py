@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -104,9 +105,24 @@ def root() -> Dict[str, Any]:
                           "/api/candles/{instrument}", "/api/instruments", "/api/stream"]}
 
 
+# --------------------------------------------------------------------------- #
+# Phase 2 control router — mounted ONLY when explicitly enabled. Default OFF =>
+# not mounted => every /api/control/* route 404s. DO NOT enable until the separate
+# safety verifier PASSes and the operator confirms the action set (CONTROL_DESIGN.md).
+# --------------------------------------------------------------------------- #
+_CONTROL_ENABLED = os.environ.get("AXIOM_CONTROL_ENABLED", "").lower() in ("1", "true", "yes")
+if _CONTROL_ENABLED:
+    from dashboard.server.control import router as control_router
+    app.include_router(control_router)
+    logger.warning("AXIOM CONTROL ROUTER MOUNTED (write path ACTIVE) — AXIOM_CONTROL_ENABLED is set.")
+else:
+    logger.info("AXIOM control router NOT mounted (read-only). Set AXIOM_CONTROL_ENABLED=1 to enable.")
+
+
 @app.get("/api/health")
 def health() -> Dict[str, Any]:
-    return {"ok": True, "oanda_connected": _client() is not None, "environment": "practice"}
+    return {"ok": True, "oanda_connected": _client() is not None,
+            "environment": "practice", "control_enabled": _CONTROL_ENABLED}
 
 
 @app.get("/api/account")

@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_AXIOM_API_URL || "http://localhost:8888";
+// Same-origin: the browser talks ONLY to the authed Next server, which proxies
+// `/api/*` server-side to the loopback FastAPI. No direct cross-origin call, no API
+// token in the client, and the session cookie rides along automatically (incl. SSE).
+export const API_BASE = "";
 
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });

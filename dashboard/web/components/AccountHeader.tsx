@@ -86,6 +86,16 @@ export function AccountHeader() {
             {status?.account_snapshot_age_s != null && ` · cycle ${ago(status.account_snapshot_age_s)}`}
           </span>
         </div>
+        <button
+          onClick={async () => {
+            await fetch("/auth/logout", { method: "POST" });
+            window.location.href = "/login";
+          }}
+          title="Lock / sign out"
+          className="ml-1 rounded-md border px-2 py-1 font-mono text-[10px] text-faint hairline hover:text-dim"
+        >
+          lock
+        </button>
       </div>
     </header>
   );
