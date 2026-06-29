@@ -59,9 +59,27 @@ These are structural — not UI-hidden. A crafted/malicious request cannot reach
 | Any control call with flag OFF | router unmounted → `404` → **no surface** |
 | Any control call without session / confirm | `401` / `403` → **no unauth action** |
 
+## Scaffold implementation status (what's live in code, all behind the OFF flag)
+- `halt` — **functional** (StateEngine.set_halted(True)); fail-safe (only stops trading).
+- `unhalt` — **deferred (501)**: guarded + audited but NOT wired, pending the unhalt-eligibility
+  gate (model freshness / drawdown / ship-gate) — resuming a possibly-broken system on a single
+  confirm is unsafe (verifier MED-1). Must wire that gate before `unhalt` performs an effect.
+- `set_gross_leverage` / `start_loop` / `stop_loop` — **deferred (501)**: guarded + audited;
+  exact effect mechanism pending operator confirm (no dead-write, no process-exec surface yet).
+
+## Separate safety verifier — VERDICT: PASS (2026-06-29)
+Independent Security Engineer audit: **Phase 1 PASS, Phase 2 PASS**. Explicit verdict — a crafted
+request (flag ON) canNOT reach live / real-money / api-fxtrade / a Hard-NO / a ship-gate-failing
+promotion / over-leverage >15× / arbitrary exec: **NO for every one** (structurally absent, not
+UI-hidden). No HIGH findings. MED-1 (unhalt) and MED-2 (loopback bind + CORS) addressed in code;
+LOW items (login rate-limit, 7-day TTL revocation) documented below.
+
 ## Exposure checklist (all required before flipping the flag)
-- [ ] Separate safety verifier: **PASS** (no crafted request reaches live/real-money/Hard-NO).
-- [ ] Operator confirms the action set above (and the leverage cap value).
+- [x] Separate safety verifier: **PASS** (no crafted request reaches live/real-money/Hard-NO).
+- [ ] **Operator confirms the action set above** (and the 15× leverage cap value).
+- [ ] Wire `unhalt` eligibility gate (freshness/drawdown/ship-gate) before it leaves 501.
+- [ ] Confirm + wire the `set_gross_leverage` / loop-control effect mechanisms.
+- [ ] Add login rate-limit/backoff (LOW-1) and consider a shorter session TTL (LOW-2).
 - [ ] Wire UI with explicit confirm modals per action (and surface the audit log read-only).
 - [ ] Then, and only then, set `AXIOM_CONTROL_ENABLED=1`.
 

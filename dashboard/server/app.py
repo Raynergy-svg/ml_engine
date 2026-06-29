@@ -52,8 +52,11 @@ app = FastAPI(title="AXIOM data layer", version="1.0",
               description="Read-only terminal API for the Buddy trading engine", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    # Local-only dev tool: allow any localhost port (Next dev may auto-assign one).
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    # No cross-origin browser access: the browser talks ONLY to the authed Next origin,
+    # which proxies here SERVER-SIDE (CORS doesn't apply to server-side fetch). So no
+    # browser origin is allowed — even if :8888 were ever exposed, a foreign tab can't
+    # read it. (verifier MED-2; tightened from the earlier localhost-any-port regex.)
+    allow_origins=[],
     allow_credentials=False,
     allow_methods=["GET"],          # READ-ONLY: GET only, no POST/PUT/DELETE
     allow_headers=["*"],
@@ -251,4 +254,10 @@ async def stream() -> StreamingResponse:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("dashboard.server.app:app", host="127.0.0.1", port=8888, reload=False)
+    # LOOPBACK ONLY (verifier MED-2): this data layer must never bind a routable
+    # interface — it is reached only by the authed Next proxy on the same host. The
+    # tunnel exposes Next, never :8888.
+    host = os.environ.get("AXIOM_API_HOST", "127.0.0.1")
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        raise SystemExit(f"refusing non-loopback bind host={host!r}; AXIOM data layer is loopback-only")
+    uvicorn.run("dashboard.server.app:app", host=host, port=8888, reload=False)

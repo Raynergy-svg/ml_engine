@@ -44,25 +44,26 @@ def _run(action: str, params: Dict[str, Any]):
         raise HTTPException(status_code=403, detail=str(exc))
 
     # --- effects (only reached after ALL immutables passed) ---
+    # Only HALT is functional — it is fail-safe (it can only STOP trading). Every other
+    # action is guarded + audited but its effect is DEFERRED (501) until the enable step:
+    #   unhalt           — needs the unhalt-eligibility gate (model freshness / drawdown /
+    #                       ship-gate) wired first; resuming a possibly-broken system on a
+    #                       single confirm is unsafe (verifier MED-1). Stays 501 until wired.
+    #   set_gross_leverage / start_loop / stop_loop — exact mechanism pending operator confirm.
     if action == "halt":
         from src.scanner.automation.state_engine import StateEngine
         StateEngine().set_halted(True)
-        result = "halted"
-    elif action == "unhalt":
-        # practice already re-asserted in enforce(); unhalt resumes PRACTICE trading only.
-        from src.scanner.automation.state_engine import StateEngine
-        StateEngine().set_halted(False)
-        result = "unhalted"
-    else:
-        # set_gross_leverage / start_loop / stop_loop — guarded + audited, effect deferred.
-        cs.audit({"action": action, "params": normalized, "allowed": True, "reason": "guards passed",
-                  "result": "accepted_not_wired"})
-        raise HTTPException(status_code=501,
-                            detail=f"{action} accepted + audited but effect not wired in scaffold "
-                                   "(pending operator confirm of mechanism)")
+        cs.audit({"action": action, "params": normalized, "allowed": True,
+                  "reason": "guards passed", "result": "halted"})
+        return {"ok": True, "action": action, "result": "halted"}
 
-    cs.audit({"action": action, "params": normalized, "allowed": True, "reason": "guards passed", "result": result})
-    return {"ok": True, "action": action, "result": result}
+    cs.audit({"action": action, "params": normalized, "allowed": True,
+              "reason": "guards passed", "result": "accepted_not_wired"})
+    deferred_note = {
+        "unhalt": "unhalt requires the unhalt-eligibility gate (freshness/drawdown/ship-gate) "
+                  "to be wired before it can resume PRACTICE trading",
+    }.get(action, "effect not wired in scaffold (pending operator confirm of mechanism)")
+    raise HTTPException(status_code=501, detail=f"{action} accepted + audited — {deferred_note}")
 
 
 @router.post("/halt")
