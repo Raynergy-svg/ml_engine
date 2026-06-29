@@ -140,6 +140,15 @@ export interface Tier7MetaEvent {
   deploy_target?: string;
   updated_at?: string;
 }
+export interface Tier7SelfHealEvent {
+  ts?: string;
+  cycle?: number;
+  status?: string;        // "degraded" | "ok" | ... (bounded-autonomy state)
+  degraded?: boolean;
+  halted?: boolean;
+  n_actions?: number;
+  actions?: string[];
+}
 export interface Tier7SelfHeal {
   action_budget?: {
     actions_today?: string[];
@@ -147,6 +156,7 @@ export interface Tier7SelfHeal {
     last_action_label?: string;
   };
   debounce?: Record<string, string>;
+  recent_events?: Tier7SelfHealEvent[];
 }
 export interface Tier7 {
   connected: boolean;

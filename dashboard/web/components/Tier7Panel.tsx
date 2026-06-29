@@ -52,6 +52,11 @@ export function Tier7Panel() {
   const actionsToday = sh?.actions_today?.length ?? 0;
   const meta = data.meta_last_event;
   const lc = data.last_cycle;
+  // Self-heal event feed (newest first) + the bounded-autonomy status it reports.
+  const healEvents = [...(data.self_heal?.recent_events ?? [])].reverse();
+  const latestHeal = healEvents[0];
+  const degraded = latestHeal?.degraded === true || latestHeal?.status === "degraded";
+  const healStatusColor = degraded ? "#f5b14c" : latestHeal?.status === "ok" ? "#2bd17e" : "#8b98a9";
 
   return (
     <Card className="flex h-full flex-col">
@@ -93,48 +98,67 @@ export function Tier7Panel() {
           {data.goal && <div className="mt-0.5 font-mono text-[10.5px] text-dim">goal: {data.goal}</div>}
         </div>
 
-        {/* last meta-pipeline event (incident→…→close) */}
-        <div className="rounded-md border p-2.5 hairline">
-          <span className="eyebrow">Last meta-pipeline event</span>
-          {meta?.change_id ? (
-            <div className="mt-1 font-mono text-[11.5px]">
-              <div className="flex items-center gap-2">
-                <span className="text-text">{meta.event ?? "event"}</span>
-                <span
-                  className="rounded px-1.5 py-0.5 text-[9.5px] uppercase"
-                  style={{
-                    color: STAGE_COLOR[meta.stage ?? ""] ?? "#8b98a9",
-                    border: `1px solid ${STAGE_COLOR[meta.stage ?? ""] ?? "#1e2733"}`,
-                  }}
-                >
-                  {meta.stage ?? "?"}
-                </span>
-                <span className="text-faint">{meta.deploy_target}</span>
-              </div>
-              <div className="mt-0.5 text-[10.5px] text-faint tnum">
-                {meta.change_id} · {meta.kind} · {shortTime(meta.updated_at)}
-              </div>
-            </div>
-          ) : (
-            <div className="mt-1 font-mono text-[11px] text-faint">no meta event recorded</div>
-          )}
-        </div>
+        {/* last meta-pipeline event (incident→…→close) — compact one-liner */}
+        {meta?.change_id && (
+          <div className="flex items-center gap-2 px-0.5 font-mono text-[10.5px]">
+            <span className="eyebrow">meta</span>
+            <span className="text-dim">{meta.event}</span>
+            <span
+              className="rounded px-1.5 py-0.5 text-[9px] uppercase"
+              style={{
+                color: STAGE_COLOR[meta.stage ?? ""] ?? "#8b98a9",
+                border: `1px solid ${STAGE_COLOR[meta.stage ?? ""] ?? "#1e2733"}`,
+              }}
+            >
+              {meta.stage}
+            </span>
+            <span className="truncate text-faint">{meta.change_id} · {shortTime(meta.updated_at)}</span>
+          </div>
+        )}
 
-        {/* self-heal control plane */}
-        <div className="rounded-md border p-2.5 hairline">
+        {/* self-heal control plane + bounded-autonomy status + event feed */}
+        <div className="flex min-h-0 flex-1 flex-col rounded-md border p-2.5 hairline">
           <div className="flex items-center justify-between">
             <span className="eyebrow">Self-heal</span>
-            <span className="font-mono text-[10px] text-faint tnum">{actionsToday} actions today</span>
+            <div className="flex items-center gap-2">
+              {latestHeal?.status && (
+                <Badge color={healStatusColor} dot>
+                  {degraded ? "DEGRADED · bounded" : String(latestHeal.status).toUpperCase()}
+                </Badge>
+              )}
+              <span className="font-mono text-[10px] text-faint tnum">{actionsToday} today</span>
+            </div>
           </div>
-          {sh?.last_action_label ? (
+          {sh?.last_action_label && (
             <div className="mt-1 font-mono text-[11px]">
               <span className="text-magenta">{sh.last_action_label}</span>
-              {sh.last_action_at && (
-                <span className="text-faint"> · {shortTime(sh.last_action_at)}</span>
-              )}
+              {sh.last_action_at && <span className="text-faint"> · {shortTime(sh.last_action_at)}</span>}
+            </div>
+          )}
+          {healEvents.length > 0 ? (
+            <div className="scroll-thin mt-2 min-h-0 flex-1 overflow-auto">
+              {healEvents.map((e, i) => (
+                <div key={i} className="flex items-start gap-2 border-t py-1.5 hairline first:border-t-0">
+                  <StatusDot color={e.degraded || e.status === "degraded" ? "#f5b14c" : "#2bd17e"} />
+                  <div className="min-w-0 flex-1 font-mono text-[10.5px]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-dim">
+                        cycle {e.cycle} · <span style={{ color: e.degraded ? "#f5b14c" : "#8b98a9" }}>{e.status}</span>
+                        {e.n_actions != null && ` · ${e.n_actions} actions`}
+                      </span>
+                      <span className="shrink-0 text-faint tnum">{shortTime(e.ts)}</span>
+                    </div>
+                    {e.actions?.length ? (
+                      <div className="truncate text-[10px] text-faint" title={e.actions.join(", ")}>
+                        {e.actions.join(" · ")}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="mt-1 font-mono text-[11px] text-faint">no self-heal actions recorded</div>
+            <div className="mt-2 font-mono text-[11px] text-faint">no self-heal events recorded</div>
           )}
         </div>
 
