@@ -124,7 +124,10 @@ def make_signal(name, close, taker_ratio, cols):
     if name == "momentum":
         raw = close[cols] / close[cols].shift(lb) - 1.0
     elif name == "orderflow":
-        raw = taker_ratio[cols] - 0.5
+        # reindex (not strict select): a few ever-liquid symbols lack a taker
+        # column (e.g. tokenized-stock perps / flaky downloads) -> NaN -> excluded
+        # from ranking by the dropna in backtest(). Avoids a hard KeyError.
+        raw = taker_ratio.reindex(columns=cols) - 0.5
     else:
         raise ValueError(name)
     return raw.shift(1)  # known at t-1 (causal)

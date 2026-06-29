@@ -16,14 +16,22 @@ incl. delisted → survivorship-aware; trading API geo-blocked here but the stat
 + OKX/Hyperliquid cross-checks. Cache → `crypto_cache/` (gitignored). Pre-registration (frozen,
 committed before results): `docs/experiment-crypto-edge-hunt-2026-06-29.md`.
 
-**H1 perp funding carry = NEGATIVE, gate FAIL, independently verifier-CONFIRMED (TRUSTWORTHY).**
-`scripts/experiment_crypto_funding_carry.py`. OOS(2024+) net Sharpe **−0.25** (need ≥0.40), maxDD
-30% OOS / 38% full (need ≤25%), not significant. KEY: it IS market-neutral (BTC-β −0.04, NOT
-short-beta — my "mostly short-beta" prior was WRONG). Carry is real (+0.32/yr, Sharpe ~17 drip) but
-net dies to **price adverse-selection** (shorting high-funding = shorting momentum; payoff flipped
-+0.41→−0.21/yr IS→OOS) + **costs** (~0.16/yr). Full-sample Sharpe +1.20 would have lied; OOS holdout
-caught it. Binding caveat: ~6.5y < 10y → never an unqualified ship even if it had cleared.
-**HELD before H2 (XS momentum) / H3 (order-flow) pending operator go-ahead.** No live execution.
+**CAMPAIGN CONCLUSION: honest NEGATIVE across all 3 (H1/H2/H3) — all verifier-CONFIRMED
+TRUSTWORTHY.** No cost-surviving, OOS-confirmed, market-neutral RETURN alpha at this scale.
+Scripts: `experiment_crypto_funding_carry.py` (H1), `experiment_crypto_xs_signals.py` (H2/H3).
+- **H1 funding carry:** OOS net Sharpe **−0.25**, market-neutral (β −0.04, NOT short-beta — my
+  "mostly short-beta" prior was WRONG). Carry real (+0.32/yr, Sharpe ~17 drip) but net dies to
+  price adverse-selection (high-funding = momentum; flipped +0.41→−0.21/yr IS→OOS) + ~0.16/yr cost.
+- **H2 XS 14d momentum = the one lead.** OOS net Sharpe **+0.75**, market-neutral (β −0.07),
+  price-driven (+0.31/yr). FAILS gate: maxDD −49%, not significant (DSR 0.62, p 0.10), cost-fragile
+  (+0.09 at 2×). A fresh-pre-registered refinement (vol-target / DD-control / lower turnover) is the
+  only forward lever worth trying.
+- **H3 contrarian order-flow:** OOS net Sharpe **−4.45** — uneconomical (~50%/yr turnover cost,
+  negative price leg). Decisive negative.
+- **Structural walls:** effective-N ≈ 3.9 (crypto cross-section ≈ one factor; breadth illusory);
+  history ~6.5y < 10y (never an unqualified ship). Mirrors FX/equity verdict — gated harness did its
+  job (full-sample Sharpe would have lied; OOS + multiple-testing + DD gate told the truth).
+Verdict doc: `docs/experiment-crypto-edge-hunt-2026-06-29.md`. Paper/research only, no live execution.
 
 ## Operating mode — delegated authority (2026-06-23, survives fresh sessions)
 

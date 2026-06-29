@@ -248,4 +248,60 @@ market-neutral, price-driven OOS — but it **fails the gate** on drawdown, sign
 cost-fragility. A suggestive, fat-tailed risk premium, NOT a robust deployable alpha at this
 turnover/cost. Qualified negative.
 
-### H3 — order-flow imbalance: _running (klines taker re-fetch in progress)_
+### H3 — order-flow imbalance: **STRONG NEGATIVE (gate FAIL)** (2026-06-29)
+
+Run: `scripts/experiment_crypto_xs_signals.py orderflow` →
+`trained_data/backtests/crypto_xs_orderflow_20260629T223849Z.json`. Signal = trailing-1d
+taker-buy ratio (`taker_base/volume`) − 0.5, contrarian (long low-OFI / short high-OFI).
+Universe 693 (≤9 symbols lacking a taker column reindexed to NaN/excluded — benign).
+
+| Block | net Sharpe | price Sharpe | net ann | cost ann | turnover/day | maxDD | BTC-β |
+|---|---|---|---|---|---|---|---|
+| IS (pre-2024) | −4.12 | −1.74 | −0.82 | 0.42 | 1.16 | −0.97 | +0.01 |
+| **OOS (2024+)** | **−4.45** | −1.33 | −0.78 | **0.505** | **1.38** | **−0.86** | +0.05 |
+| Full | −4.23 | −1.59 | −0.81 | 0.45 | 1.24 | −0.995 | +0.02 |
+| Stress 2× OOS | −7.31 | −1.33 | −1.29 | 1.01 | 1.38 | −0.96 | +0.05 |
+
+OOS significance: PSR(>0)=0.0, DSR=0.0, bootstrap p(mean≤0)=1.0 → definitively ≤0.
+
+**Gate:** every criterion FAIL except |BTC-β|≤0.15 (+0.05). → `clears_ex_history = FALSE`.
+
+**Plain verdict:** Decisive negative. Contrarian daily order-flow imbalance is **uneconomical**:
+turnover ~1.38/day (the daily flow ranks reshuffle the whole book) → **~50%/yr cost**, and the
+contrarian price leg is itself negative (−1.33). The signal is too high-frequency for a
+daily-rebalance cost structure; even the opposite (momentum-of-flow, +1.33 gross price) could
+not survive ~50%/yr turnover cost. No edge.
+
+---
+
+## 8. CAMPAIGN CONCLUSION (H1 + H2 + H3) — 2026-06-29
+
+**No hypothesis cleared the gate. Honest negative across all three** — no cost-surviving,
+OOS-confirmed, market-neutral RETURN alpha in free crypto data at this scale.
+
+| Hyp | OOS net Sharpe | market-neutral (β) | gate | one-line |
+|---|---|---|---|---|
+| H1 funding carry | −0.25 | ✓ (−0.04) | FAIL | real carry, but adverse-selection + costs net-negative |
+| **H2 XS momentum** | **+0.75** | ✓ (−0.07) | **FAIL** | **best lead**: positive/neutral/price-driven, but DD −49%, p≈0.10, dies at 2× cost |
+| H3 order-flow | −4.45 | ✓ (+0.05) | FAIL | uneconomical: ~50%/yr turnover cost, negative price leg |
+
+**The one real takeaway — H2 cross-sectional momentum is the lead worth refining.** It is the
+only signal that is positive, genuinely market-neutral, and price-driven OOS (+0.75 Sharpe,
++31%/yr). It does NOT clear the gate as-is (fat-tailed −49% DD; not significant after
+multiple-testing — DSR 0.62, p 0.10; cost-fragile — +0.09 at 2×). A disciplined refinement
+*within a fresh pre-registration* could test whether vol-targeting / drawdown control / lower
+turnover (slower rebalance) / a liquidity-tiered universe turns it from "suggestive" into
+"gate-clearing." That is a NEW pre-registered hypothesis (increments the test count), not a
+tweak of H2.
+
+**Two structural walls (both verifier-surfaced):**
+1. **Effective-N ≈ 3.9.** The crypto cross-section is ~one market factor (avg pairwise corr
+   0.46; top eigenvalue = 50% of variance). Nominal breadth (~150-250 names) is illusory →
+   significance is far weaker than name-count implies; multiple-testing correction bites hard.
+2. **History ≥10y is unmeetable** (~6.5y / ~1.5 cycles). Even a gate-clearing crypto result
+   would carry the binding insufficient-history caveat → never an unqualified ship.
+
+**Honest negative = success** (per L-018). This mirrors the FX/equity verdict: the durable
+asset is the *gated harness*, and it did its job — H2's full-sample Sharpe (+0.40) and IS
+optimism would have lied; the OOS holdout + multiple-testing + DD gate told the truth.
+Paper/research only; no live execution; immutables intact.
