@@ -25,6 +25,7 @@ contrarian signal (retail crowding -> fade). Reserve for a pre-registered test.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import tempfile
 from dataclasses import dataclass
@@ -373,8 +374,8 @@ def run_oanda_trend_cycle(
 
     # NAV glitch guard (verifier rec): a transient summary error -> nav<=0 would size
     # every name to the 1-unit floor (noise orders). Refuse the cycle instead.
-    if nav <= 0:
-        logger.warning("OANDA trend cycle skipped — NAV unavailable/<=0 (transient?)")
+    if not math.isfinite(nav) or nav <= 0:
+        logger.warning("OANDA trend cycle skipped — NAV unavailable/nan/<=0 (transient?)")
         return OandaTrendResult(False, "no_nav", targets, 0)
 
     # Autonomous-safety drawdown rail: stop adding risk if the demo NAV bleeds.

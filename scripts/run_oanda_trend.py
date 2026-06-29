@@ -152,8 +152,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         # state + ingest the transaction ledger (trade history + realized P&L).
         try:
             from src.brokers import oanda_v20 as v20
+            from src.scanner.automation.tier7_state import write_tier7_state
             v20.snapshot_account_state(client)
             v20.TransactionLedger(client).sync()
+            write_tier7_state(REPO_ROOT)   # read-only Tier 7 snapshot for AXIOM
         except Exception as exc:  # never let monitoring break a cycle
             logger.warning("monitor snapshot failed (non-blocking): %s", exc)
         on = sum(1 for v in r.targets.values() if v > 0)
