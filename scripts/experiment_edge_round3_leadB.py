@@ -38,6 +38,7 @@ N_TRIALS = 20
 BONFERRONI_P = 0.05 / N_TRIALS  # 0.0025
 ANN = 252.0
 OOS_FRACTION = 0.35
+TARGET_VOL = 0.10   # FROZEN pre-reg spec (§2) — explicit, NOT the code default 0.12
 
 UNIVERSE = ["SPY", "QQQ", "IWM", "EFA", "EEM", "VGK", "EWJ",
             "TLT", "IEF", "SHY", "LQD", "HYG", "EMB", "TIP",
@@ -100,7 +101,7 @@ def main():
     print(f"panel: {len(px)} dates, {len(have)}/{len(UNIVERSE)} assets: {have}")
 
     streams = trend_streams(px, cost_bps=cost_bps)
-    net = combined_portfolio(px, cost_bps=cost_bps)
+    net = combined_portfolio(px, cost_bps=cost_bps, target_vol=TARGET_VOL)
     if net.empty:
         print("empty portfolio")
         return 1

@@ -134,19 +134,29 @@ assets, 9753 daily bars (1990-2026 where available), OOS = last 35%.
 **Effective-N of the trend-stream matrix = 13.07** (vs crypto's 2.82 — breadth raised it ~5×, the
 hypothesis worked).
 
+> **CORRECTION (verifier-caught pre-reg deviation, fixed):** the first run used the code default
+> `DEFAULT_TARGET_VOL=0.12` (12%) because the runner never passed `target_vol`; the frozen pre-reg
+> §2 specifies **10%**. The runner now passes `target_vol=0.10` explicitly. The table below is the
+> SPEC-CORRECT 10% run. Verdict unchanged (DSR-OOS is binding and fails at both 10% and 12%); but
+> the off-spec 12% numbers I first reported (maxDD 0.195/0.187, p-OOS 0.0034) are superseded by the
+> 10% numbers here (maxDD 0.167/0.162, p-OOS 0.002). At 10% the bootstrap-p half PASSES; only DSR
+> misses. Full honesty note in §4.
+
 | cost | full Sharpe | full maxDD | full DSR(N20) | full p | OOS Sharpe | OOS maxDD | OOS DSR(N20) | OOS p |
 |---|---|---|---|---|---|---|---|---|
-| 2 bps | 0.64 | 0.195 | **0.98 ✓** | **0.0 ✓** | 0.764 | 0.187 | **0.819 ✗** | 0.0034 ✗ |
-| 5 bps | — | — | — | — | ~0.74 | — | 0.807 ✗ | 0.0038 ✗ |
+| 2 bps | 0.665 | 0.167 | **0.987 ✓** | **0.0 ✓** | 0.788 | 0.162 | **0.843 ✗** | **0.002 ✓** |
+| 5 bps | 0.63 | — | — | — | 0.752 | — | 0.831 ✗ | 0.0022 ✓ |
 
 **Gate:** OOS Sharpe≥0.40 ✓ · maxDD≤0.25 ✓ · majority-years-positive ✓ (23/34) · OOS-confirmed ✓ ·
-**FULL-sample significance ✓ (DSR 0.98, p 0.0)** · **OOS significance ✗ (DSR 0.819<0.95; p 0.0034>
-0.0025 Bonferroni)** → `clears_gate = FALSE`. A genuine NEAR-MISS: breadth lifted effective-N 5× and
-made full-sample significance clear decisively; the OOS-only test narrowly misses, primarily a
-holdout-length/power issue (OOS = ~10y vs full ~34y), not a signal-quality collapse.
+**FULL-sample significance ✓ (DSR 0.987, p 0.0)** · **OOS significance ✗ — passes the bootstrap-p
+half (p 0.002 < 0.0025 Bonferroni, even at 5bps 0.0022) but FAILS DSR-OOS (0.843 < 0.95, short by
+0.107)** → `clears_gate = FALSE`. A genuine NEAR-MISS that misses on ONE half of ONE criterion: the
+DSR-OOS bar. Breadth lifted effective-N 5× and made full-sample significance clear decisively; the
+OOS DSR misses on holdout-length/power (DSR haircut ∝ 1/√T; OOS T=3,414 bars vs full 9,752), NOT a
+signal-quality collapse — the OOS Sharpe (0.788) is actually HIGHER than full-sample (0.665).
 
-**Return-vs-risk decomposition (L-021): it is NOT alpha.** OOS Sharpe 0.764 LOSES to EW buy-hold
-(1.10) and 60/40 (1.28); β-to-SPY 0.14 (low), maxDD 0.187 (vs EW −0.765). It is a low-beta,
+**Return-vs-risk decomposition (L-021): it is NOT alpha.** OOS Sharpe 0.788 LOSES to EW buy-hold
+(1.10) and 60/40 (1.28); β-to-SPY 0.128 (low), maxDD 0.162 (vs EW −0.765). It is a low-beta,
 low-drawdown RISK-CONTROL book — drawdown-controlled risk-premium harvesting — that does not beat
 passive on return in this OOS. Reported as risk-control, not edge.
 
@@ -173,16 +183,26 @@ retail price-taker). Lead B = honest near-miss (breadth IS the right lever — e
 full-sample significance clears — but the result is risk-control, not alpha, and the OOS-only
 significance narrowly misses on holdout power).
 
-**VERIFIER (§4) — Lead B causality leak-probe (independent recompute): CAUSAL, leakage-free.**
-Forward-lag probe (re-derived independently): look-ahead (lag=0) OOS Sharpe +1.106 vs as-run
-(lag=1) +1.086 vs extra-lag (lag=2/3) +1.072/+0.916 — **monotonic, gentle degradation; the
-look-ahead "cheat" buys only +0.02**, the fingerprint of a real causal signal with NO material
-HRP/overlay/SMA look-ahead. (The construction `single_asset_trend_returns`/`overlay` was already
-verifier-confirmed causal in the prior multi-asset work; this re-confirms it on the expanded
-universe.) All headline numbers reproduced on re-run. Survivorship bias (current-survivor ETFs +
-yfinance crypto) is disclosed and biases the trend result mildly OPTIMISTIC — yet it STILL does not
-clear, so the negative is conservative. Separate Code-Reviewer corroboration was dispatched in
-parallel. **Lead B is an honest, leakage-free NEAR-MISS — does not clear, is risk-control not alpha.**
+**VERIFIER (§4) — TWO independent checks: TRUSTWORTHY, causal, leakage-free.**
+1. **My forward-lag probe (`scripts/experiment_edge_round3_leadB_lagprobe.py`):** look-ahead (lag=0)
+   OOS Sharpe +1.106 vs as-run (lag=1) +1.086 vs extra-lag +1.072/+0.916 — monotonic, gentle
+   degradation; the look-ahead "cheat" buys only +0.02 → no material look-ahead.
+2. **Separate Code-Reviewer agent (full independent re-derivation):** reproduced EVERY headline
+   number bit-for-bit (eff-N 13.07, full 0.665/0.167, OOS 0.788/0.162, DSR-full 0.987, DSR-OOS
+   0.843, p-OOS, β 0.128). Leakage audit CLEAN, HIGH confidence: (a) trend signal double-lagged
+   (`sma.shift(1)`, `px.shift(1)>sma`, `applied=w.shift(1)`) — its own SPY look-ahead probe scored
+   0.874 vs causal 0.801, lag is load-bearing; (b) **HRP combiner `combine_sleeves` re-estimates
+   weights from the trailing window through t−1 only — NO full-sample correlation matrix, causal**;
+   (c) overlay uses `rvol.shift(1)`/`dd.shift(1)` — no contemporaneous peek; (d) OOS is the tail of
+   a causally-generated stream, no refit-then-evaluate leak. **Survivorship: removing the
+   survivorship-biased crypto sleeve IMPROVES the result (OOS 0.788→0.882, DD→0.093, p→0.0008) — the
+   edge lives in the survivorship-CLEAN ETF/futures cross-section; the disclosed bias is conservative,
+   not inflating.** Significance math sound; OOS DSR miss confirmed as a power/holdout-length issue
+   (OOS Sharpe is HIGHER than full, yet DSR lower because the haircut grows ∝ 1/√T). Framing honest
+   both ways. **One finding: the 12% vs frozen-10% vol-target deviation (now corrected above) — does
+   NOT flip the verdict (DSR-OOS binding, fails at both), no false gate-clear claimed, no L-018
+   violation.** **VERDICT: TRUSTWORTHY — honest, leakage-free NEAR-MISS; does not clear; risk-control
+   not alpha.**
 
 ## 6. FINAL VERDICT — come-back-(b): definitively exhausted, closest-yet, named remaining lever
 
@@ -194,20 +214,21 @@ resolved:
   gated; the retail slice does not survive).
 - **Lead B (breadth for significance): the closest the campaign has ever come — a verified near-miss,
   but risk-control, not alpha.** Breadth WORKED on its own terms: effective-N 2.82→13.07, and
-  full-sample significance CLEARS decisively (DSR 0.98, p≈0). It misses on exactly ONE frozen
-  criterion — **OOS statistical significance: DSR-OOS 0.819 (needs ≥0.95, short by 0.13) and
-  bootstrap p-OOS 0.0034 (significant at conventional p<0.01, but fails the Bonferroni-for-20-trials
-  bar of 0.0025 by a hair).** That miss is a **statistical-power limit of a ~10-year OOS holdout**,
-  not a fake signal (causality verified). AND — decisively — even if it cleared, the return-vs-risk
-  decomposition shows it is **NOT alpha**: OOS Sharpe 0.764 loses to EW buy-hold (1.10) and 60/40
-  (1.28); it is a low-beta (0.14), low-drawdown (0.19) RISK-CONTROL book (L-021).
+  full-sample significance CLEARS decisively (DSR 0.987, p≈0). At the frozen 10% spec it misses on
+  exactly ONE half of ONE criterion — it **PASSES the bootstrap-p half of OOS significance (p 0.002
+  < 0.0025 Bonferroni-N20, even at 5bps 0.0022) and misses ONLY the DSR-OOS bar: 0.843 vs ≥0.95,
+  short by 0.107.** That miss is a **statistical-power limit of a ~10-year OOS holdout** (the DSR
+  haircut grows ∝ 1/√T; the OOS Sharpe 0.788 is actually HIGHER than full-sample 0.665), not a fake
+  signal — causality independently verified twice. AND — decisively — even if it cleared, the
+  return-vs-risk decomposition shows it is **NOT alpha**: OOS Sharpe 0.788 loses to EW buy-hold
+  (1.10) and 60/40 (1.28); it is a low-beta (0.128), low-drawdown (0.162) RISK-CONTROL book (L-021).
 
 **The one missing criterion, plainly:** the broad trend book is a real, causal, statistically-strong-
-over-34-years risk premium whose 10-year holdout is *almost* significant after correcting for 20
-trials. What would close that gap is NOT a better signal or cost model — it is **more independent
-out-of-sample history** and/or **more genuinely-independent return drivers**, both of which are
-structurally capped (cross-asset macro has ~7–10 truly independent drivers; OOS calendar length is
-fixed). No no-spend lever changes that.
+over-34-years risk premium whose 10-year holdout is *almost* DSR-significant after correcting for 20
+trials. What would close that 0.107 DSR gap is NOT a better signal or cost model — it is **more
+independent out-of-sample history** and/or **more genuinely-independent return drivers**, both of
+which are structurally capped (cross-asset macro has ~7–10 truly independent drivers; OOS calendar
+length is fixed). No no-spend lever changes that.
 
 **The named remaining lever (requires a SPEND — operator's decision, NOT taken):**
 - For **return-ALPHA** (the original goal): the only literature-endorsed accessible edges need PAID
