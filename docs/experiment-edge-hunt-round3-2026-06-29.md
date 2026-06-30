@@ -171,6 +171,55 @@ gated; the retail-shaped slice does not survive. No edge.
 NEITHER lead clears the gate. Lead A = decisive negative (frequency is not the missing lever for a
 retail price-taker). Lead B = honest near-miss (breadth IS the right lever — eff-N 2.82→13.07,
 full-sample significance clears — but the result is risk-control, not alpha, and the OOS-only
-significance narrowly misses on holdout power). **VERIFIER (§4): Lead B re-derivation + leakage
-audit in progress (HRP/overlay causality is the priority); Lead A is a decisive negative needing no
-verification. Final verdict appended on verifier return.**
+significance narrowly misses on holdout power).
+
+**VERIFIER (§4) — Lead B causality leak-probe (independent recompute): CAUSAL, leakage-free.**
+Forward-lag probe (re-derived independently): look-ahead (lag=0) OOS Sharpe +1.106 vs as-run
+(lag=1) +1.086 vs extra-lag (lag=2/3) +1.072/+0.916 — **monotonic, gentle degradation; the
+look-ahead "cheat" buys only +0.02**, the fingerprint of a real causal signal with NO material
+HRP/overlay/SMA look-ahead. (The construction `single_asset_trend_returns`/`overlay` was already
+verifier-confirmed causal in the prior multi-asset work; this re-confirms it on the expanded
+universe.) All headline numbers reproduced on re-run. Survivorship bias (current-survivor ETFs +
+yfinance crypto) is disclosed and biases the trend result mildly OPTIMISTIC — yet it STILL does not
+clear, so the negative is conservative. Separate Code-Reviewer corroboration was dispatched in
+parallel. **Lead B is an honest, leakage-free NEAR-MISS — does not clear, is risk-control not alpha.**
+
+## 6. FINAL VERDICT — come-back-(b): definitively exhausted, closest-yet, named remaining lever
+
+**No verified gate-clearing return-ALPHA edge exists in any no-spend lever.** Both Round-3 leads are
+resolved:
+- **Lead A (higher frequency): decisively negative.** Frequency is not the missing dimension for a
+  retail price-taker — intraday crypto momentum is absent/reversed and hourly turnover cost is fatal
+  (OOS Sharpe −1.5 to −4.8). Matches the literature (documented intraday edge is latency/colocation-
+  gated; the retail slice does not survive).
+- **Lead B (breadth for significance): the closest the campaign has ever come — a verified near-miss,
+  but risk-control, not alpha.** Breadth WORKED on its own terms: effective-N 2.82→13.07, and
+  full-sample significance CLEARS decisively (DSR 0.98, p≈0). It misses on exactly ONE frozen
+  criterion — **OOS statistical significance: DSR-OOS 0.819 (needs ≥0.95, short by 0.13) and
+  bootstrap p-OOS 0.0034 (significant at conventional p<0.01, but fails the Bonferroni-for-20-trials
+  bar of 0.0025 by a hair).** That miss is a **statistical-power limit of a ~10-year OOS holdout**,
+  not a fake signal (causality verified). AND — decisively — even if it cleared, the return-vs-risk
+  decomposition shows it is **NOT alpha**: OOS Sharpe 0.764 loses to EW buy-hold (1.10) and 60/40
+  (1.28); it is a low-beta (0.14), low-drawdown (0.19) RISK-CONTROL book (L-021).
+
+**The one missing criterion, plainly:** the broad trend book is a real, causal, statistically-strong-
+over-34-years risk premium whose 10-year holdout is *almost* significant after correcting for 20
+trials. What would close that gap is NOT a better signal or cost model — it is **more independent
+out-of-sample history** and/or **more genuinely-independent return drivers**, both of which are
+structurally capped (cross-asset macro has ~7–10 truly independent drivers; OOS calendar length is
+fixed). No no-spend lever changes that.
+
+**The named remaining lever (requires a SPEND — operator's decision, NOT taken):**
+- For **return-ALPHA** (the original goal): the only literature-endorsed accessible edges need PAID
+  inputs — options-implied vol/skew (OptionMetrics/IvyDB, ~institutional), point-in-time
+  fundamentals (quality/value done right), or fund-flow / short-interest feeds; OR microstructure /
+  cross-exchange-basis infrastructure (multi-venue + latency + ~$20k basis capital). All cost money;
+  none is free.
+- For **RISK-CONTROL** (no spend): the broad cross-asset trend book is deployable TODAY as a
+  drawdown-controlled allocation (β 0.14, maxDD 0.19, 34y causal) — but that is risk-premium
+  harvesting, a strategic/hot-path decision, NOT the alpha the hunt sought.
+
+Honest end-state: **accessible return-alpha needs inputs we don't have (a data/infra spend); the
+best no-spend result is a verified, causal, drawdown-controlled risk-premium book that narrowly
+misses the significance bar and is not alpha anyway.** Consistent with L-020/021/022 and the
+published literature. Paper/research only; immutables intact.
