@@ -69,6 +69,45 @@ def _make_client():
         return None, f"OANDA client init failed: {type(exc).__name__}: {exc}"
 
 
+def _control_override_path() -> Path:
+    return REPO_ROOT / "trained_data" / "axiom" / "control_overrides.json"
+
+
+def _read_control_leverage(fallback: float) -> float:
+    """Live AXIOM override: dashboard writes the gross-leverage dial here."""
+    try:
+        import json as _json
+        _ov = _json.loads(_control_override_path().read_text(encoding="utf-8"))
+        if isinstance(_ov.get("gross_leverage"), (int, float)):
+            return float(_ov["gross_leverage"])
+    except (OSError, ValueError, TypeError):
+        pass
+    return fallback
+
+
+def _override_mtime() -> float:
+    try:
+        return _control_override_path().stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _sleep_until_next_cycle(seconds: float, *, poll_s: float = 5.0) -> None:
+    """Sleep for the cadence, but wake early when AXIOM controls change."""
+    import time
+    deadline = time.monotonic() + float(seconds)
+    seen = _override_mtime()
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(float(poll_s), remaining))
+        current = _override_mtime()
+        if current > seen:
+            logger.info("AXIOM control override changed — waking trend cycle early")
+            return
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -83,7 +122,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="stop-loss = entry - mult*ATR (env OANDA_ATR_SL_MULT; default 2.0)")
     ap.add_argument("--no-sl", action="store_true", help="disable protective stop-loss")
     ap.add_argument("--enable-tp", action="store_true",
-                    help="attach take-profit (default OFF — trend rides winners)")
+                    help="attach take-profit (kept for compatibility; TP is ON by default)")
+    ap.add_argument("--no-tp", action="store_true",
+                    help="disable take-profit; diagnostic only, not Tier 7 default flow")
     ap.add_argument("--max-margin-util", type=float, default=None,
                     help="margin rail: cap projected margin at this fraction of NAV "
                          "(env OANDA_MAX_MARGIN_UTIL; default 0.50)")
@@ -115,9 +156,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     atr_sl_mult = _f(args.atr_sl_mult, "OANDA_ATR_SL_MULT", DEFAULT_ATR_SL_MULT)
     max_margin_util = _f(args.max_margin_util, "OANDA_MAX_MARGIN_UTIL", DEFAULT_MAX_MARGIN_UTIL)
     enable_sl = not args.no_sl
-    enable_tp = bool(args.enable_tp or _os.getenv("OANDA_ENABLE_TP"))
-    logger.info("gross_leverage = %.1fx NAV (dial via --gross-leverage / OANDA_GROSS_LEVERAGE)",
-                gross_leverage)
+    enable_tp = not bool(args.no_tp or _os.getenv("OANDA_DISABLE_TP"))
+    _effective_lev = _read_control_leverage(gross_leverage)
+    if abs(_effective_lev - gross_leverage) > 1e-9:
+        logger.info("gross_leverage = %.2fx NAV EFFECTIVE — AXIOM control override active "
+                    "(supersedes default %.1fx from --gross-leverage / OANDA_GROSS_LEVERAGE)",
+                    _effective_lev, gross_leverage)
+    else:
+        logger.info("gross_leverage = %.1fx NAV (dial via --gross-leverage / OANDA_GROSS_LEVERAGE; "
+                    "no AXIOM override active)", gross_leverage)
 
     client, blocker = _make_client()
     if client is None:
@@ -139,14 +186,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         # AXIOM control override: operator may dial gross-leverage live from the
         # dashboard. The override is read each cycle so a running loop honors it
         # without restart; run_oanda_trend_cycle re-clamps to the 15x cap.
-        lev = gross_leverage
-        try:
-            import json as _json
-            _ov = _json.loads((REPO_ROOT / "trained_data" / "axiom" / "control_overrides.json").read_text())
-            if isinstance(_ov.get("gross_leverage"), (int, float)):
-                lev = float(_ov["gross_leverage"])
-        except (OSError, ValueError, TypeError):
-            pass
+        lev = _read_control_leverage(gross_leverage)
+        logger.info("effective gross_leverage for this cycle = %.2fx", lev)
         try:
             r = run_oanda_trend_cycle(
                 client=client, config=config, instruments=instruments,
@@ -183,7 +224,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             n += 1
             if args.max_cycles and n >= args.max_cycles:
                 return 0
-            time.sleep(float(args.loop))
+            _sleep_until_next_cycle(float(args.loop))
     return _cycle()
 
 
