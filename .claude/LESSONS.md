@@ -42,6 +42,9 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | ANY "pillar/feature/phase complete", "it now does X", "wired", "running" status/completion claim (esp. when evidence is "tests pass"/"committed") | **L-017** shipped ≠ running — state running:YES/NO from disk (process? cycles executed? non-test invocation?); never narrate dormant/unit-tested code in active present tense; cite `.claude/loop/running_status.py` |
 | a separate verifier or the operator catches a false/unsupported status/causal/"done" claim | **L-018** lie-policy: fail-closed reject + quarantine the record + close the hole (gate/lesson) + downgrade that role's self-attestation; no punitive theater; name deliberate-vs-honest |
 | a subproject dev server (preview_start/launch.json) starts but never binds a port; `npm --prefix` "runs" but nothing listens | **L-019** dev-server cwd + preview-wrapper trap — set launch `cwd`/`cd`; fall back to Bash-run + Playwright |
+| a backtest fails the gate on drawdown / cost-fragility / turnover, OR you're tempted to blame "our harsh cost model / daily rebalance" (or to fix infra and call it edge) | **L-020** infra tuning moves the COSMETIC gate-failures (DD/cost/turnover) but NOT significance — significance is gated by effective-N + history (structural, untunable) |
+| a trend / TS-momentum book posts strong Sharpe + low DD + beats buy-hold and you're tempted to call it "edge"/"alpha"; any plan to deploy/scale trend | **L-021** trend/TS-momentum = reproducible drawdown-controlled RISK-PREMIUM, not alpha — report on both axes; never call a non-significance-clearing trend book "alpha" |
+| ANY free-data daily-bar return/direction alpha hunt ("test signal X", "more data/news/sentiment/a new model will find edge", a fresh edge-hunt without a materially new input) | **L-022** no free-data small-operator-accessible return-ALPHA exists (whole campaign + 5-source literature sweep) — don't re-run the exhausted hunt without a MATERIALLY new input |
 
 ---
 
@@ -358,3 +361,80 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
   bound under `npm --prefix dashboard/web run dev`; Bash `PORT=51999 npm run dev` from dashboard/web
   bound in ~205ms; verified via Playwright. Single-observation DEV-TOOLING lesson, promoted by
   operator request (not catastrophic evidence — below the usual 3+ bar; recorded by directive).
+
+## L-020 — infrastructure tuning moves COSMETIC gate-failures, not significance   [ACTIVE] (operator-sourced campaign conclusion)
+- Trigger: a backtest fails the gate on drawdown / cost-fragility / turnover, and you're tempted
+  either to conclude "no signal" OR — the more dangerous error — to blame "our harsh cost model /
+  daily rebalance" and assume fixing the infra will yield edge.
+- Root cause: cost level, rebalance frequency, and a vol/DD overlay are INFRASTRUCTURE choices that
+  move the *cosmetic* gate criteria (maxDD, cost drag, turnover) a great deal — crypto H2 momentum's
+  −49% drawdown went to −16% and its cost-fragility vanished under weekly rebalance + 10% vol-target +
+  literature-realistic 5–6 bps cost, lifting it from 1/5 to 4/5 gate criteria. But the SIGNIFICANCE
+  criterion (Deflated Sharpe ≥ 0.95 + Bonferroni bootstrap-p, multiple-testing-corrected) did NOT move
+  across 12 swept configs. Significance is gated by the asset class's EFFECTIVE-N (number of
+  independent bets) and HISTORY LENGTH — crypto eff-N ≈ 2.82 (verifier-rederived; the cross-section is
+  ≈ one factor) and ~6.5y — neither of which any assumption-tuning changes.
+- Rule: when a real signal fails the gate, SEPARATE the cosmetic failures (DD / cost / turnover —
+  infra-tunable; worth a bounded robustness decomposition that reuses the *verified* harness) from the
+  substantive one (significance — structural, untunable). NEVER treat an infra-driven DD/cost
+  improvement as evidence of edge. The significance gate is the real rail and is immune to
+  cost/turnover/overlay choices; correct it over the WHOLE search budget (a robustness sweep is itself
+  a search — count its configs in N) and re-check effective-N. Answer to "is it our infra suppressing
+  edge?" is: infra can make a real signal LOOK shippable on DD/cost without making it statistically
+  distinguishable from luck.
+- Scope: every gated backtest / research harness; the crypto, factor, and multi-asset campaigns.
+- Source: 2026-06-29 crypto Round-2 infra-stress (`scripts/experiment_crypto_h2_infra_stress.py` +
+  `experiment_crypto_round2.py`; `docs/experiment-crypto-edge-hunt-round2-2026-06-29.md`);
+  separate-verifier-confirmed eff-N ≈ 2.82, significance fails at BOTH harsh N=15 and lenient N=3.
+
+## L-021 — trend / TS-momentum is reproducible drawdown-controlled RISK-PREMIUM, not alpha   [ACTIVE] (operator-sourced campaign conclusion)
+- Trigger: a trend / time-series-momentum book posts a strong Sharpe + low drawdown + beats buy-hold,
+  and you're tempted to call it "edge" / "alpha"; OR any plan to deploy/scale trend as if it were a
+  prediction edge.
+- Root cause: trend/TS-momentum is the ONE liquid, small-operator-accessible strategy that survives
+  replication across asset classes (FX, multi-asset, crypto) — but the published record is explicit
+  that it is a RISK PREMIUM (compensation for crash/tail risk), NOT mispricing alpha. Crypto TS-trend
+  (Round-2 H5, pre-registered, verifier-confirmed leakage-free) cleared 4/5 ex-history gate criteria —
+  OOS +1.13 / IS +0.91 (no sign-flip), maxDD −0.16, market-neutral (β −0.07), near-zero turnover,
+  beating buy-hold BTC on BOTH Sharpe (1.13 vs 0.72) and drawdown (−16% vs −50%) — yet FAILED the
+  significance gate (DSR 0.50; bootstrap p 0.031 fails even the lenient N=3 Bonferroni 0.0167) on
+  structural thin-breadth (eff-N 2.82) + short history. Same property as multi-asset trend
+  (drawdown-control, ties/beats passive), now confirmed in a second asset class.
+- Rule: report trend/TS-momentum on TWO axes — (a) the market-neutral-alpha gate (which it fails on
+  significance) and (b) a return-vs-risk decomposition (where it legitimately wins as
+  drawdown-controlled risk-premium harvesting). NEVER call a non-significance-clearing trend book "an
+  edge" / "alpha"; it is a risk premium harvested by bearing crash risk. A vol-targeted book's
+  drawdown/Sharpe-vs-passive win is the overlay controlling the tail, not alpha — frame it as such.
+  Standing trend up as a sleeve is a strategic risk-budget decision (operator's), NOT an alpha
+  discovery, and is a hot-path/new-market call to escalate.
+- Scope: all trend / managed-futures / TS-momentum work across asset classes; sleeve/deploy decisions.
+- Source: 2026-06-29 crypto Round-2 H5 (verifier TRUSTWORTHY, leakage-free); mirrors the multi-asset-
+  trend verdict (2026-06-29, NOTES); literature: Moskowitz-Ooi-Pedersen 2012, AQR "Century of
+  Evidence", Han et al. JFQA 2025 trend factor, Han-Kang-Ryu 2024 (crypto TS survives cost, XS dies).
+
+## L-022 — no free-data, small-operator-accessible return-ALPHA exists; don't re-run the exhausted hunt   [ACTIVE] (operator-sourced campaign conclusion)
+- Trigger: ANY plan to hunt for return/direction alpha on free daily bars in liquid markets (FX,
+  equities, multi-asset, crypto) — "let's test signal X", "more data / a new model / news / sentiment /
+  order-flow will find edge", or a fresh edge-hunt without a MATERIALLY new input.
+- Root cause: an exhaustive, verifier-confirmed campaign found NO cost-surviving, OOS-confirmed,
+  significance-clearing return-alpha anywhere — FX direction ~52%, daily factor ≈0, multi-horizon,
+  quality/value/low-vol/HRP, carry (fat tail), news fusion, meta-labeling, order-book sentiment, and
+  crypto funding/momentum/order-flow + infra-corrected variants. A 5-source literature sweep
+  (2026-06-29) confirmed this MATCHES the published record: 64–85% of the anomaly zoo dies once microcap
+  inflation is stripped (Hou-Xue-Zhang), survivors lose ~half post-publication (McLean-Pontiff), FX
+  cannot beat a random walk OOS (Meese-Rogoff), equity anomalies are eaten by borrow fees ("the borrow
+  fee IS the anomaly" — Muravyev-Pearson-Pollet 2025), and the only liquid survivor is
+  trend-as-risk-premium (L-021). Accessible documented PREDICTION edges (options-implied, PEAD,
+  fund-flows) all need a DATA PURCHASE; free signals (sentiment, Google Trends, FOMC/index/listing
+  effects) are short-lived reversals or already arbitraged.
+- Rule: do NOT re-run free-data daily-bar return-alpha hunts without a MATERIALLY NEW INPUT
+  (higher-frequency/microstructure data we can actually capture without colocation, a paid
+  PIT-fundamentals or options-implied feed, or cross-exchange/basis infra — all flagged, none free).
+  The honest end-state: accessible return-alpha needs inputs we don't have; staying fail-closed on
+  direction prediction is the literature-consistent call. The durable asset is the GATED HARNESS
+  (pre-registration + untouched OOS + multiple-testing + separate verifier), which repeatedly caught
+  IS/full-sample optimism that would have lied. Honest negative = success.
+- Scope: all future "find profitable trades" / edge-hunt planning; research-direction decisions.
+- Source: 2026-06-29 crypto Round-2 + the whole campaign; 5-source literature sweep (Harvey-Liu-Zhu,
+  Hou-Xue-Zhang, McLean-Pontiff, Meese-Rogoff, Muravyev-Pearson-Pollet 2025, Novy-Marx-Velikov,
+  Han-Kang-Ryu 2024); verdict docs in `docs/`. Builds on L-016 (FX retired) + L-021.
