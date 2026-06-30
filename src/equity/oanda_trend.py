@@ -55,7 +55,7 @@ MAX_GROSS_LEVERAGE = 15.0
 
 
 def clamp_leverage(value: float) -> float:
-    """Clamp gross leverage to (0, MAX_GROSS_LEVERAGE]; warn if it was capped.
+    """Clamp gross leverage to [0, MAX_GROSS_LEVERAGE]; warn if it was capped.
 
     Non-finite (nan/inf) inputs fall back to the default (verifier hardening: a
     nan would otherwise slip both comparisons and reach the sizer)."""
@@ -64,7 +64,7 @@ def clamp_leverage(value: float) -> float:
         v = float(value)
     except (ValueError, TypeError):
         return DEFAULT_GROSS_LEVERAGE
-    if not math.isfinite(v) or v <= 0:
+    if not math.isfinite(v) or v < 0:
         return DEFAULT_GROSS_LEVERAGE
     if v > MAX_GROSS_LEVERAGE:
         logger.warning("gross_leverage %.1f exceeds cap %.1f — clamping (margin-call guard)",
@@ -181,8 +181,9 @@ def target_units(
     sized 0 (refuse, don't fabricate). Long-or-flat => units >= 0.
     """
     out: Dict[str, int] = {}
+    leverage = float(gross_leverage)
     for inst, w in targets.items():
-        if w <= 0:
+        if w <= 0 or leverage <= 0:
             out[inst] = 0
             continue
         rate = base_to_home_rate(inst, last_prices, home_ccy=home_ccy)
@@ -191,7 +192,10 @@ def target_units(
                            home_ccy, inst)
             out[inst] = 0
             continue
-        notional_home = float(w) * float(nav) * float(gross_leverage)
+        notional_home = float(w) * float(nav) * leverage
+        if notional_home <= 0:
+            out[inst] = 0
+            continue
         out[inst] = max(int(notional_home / float(rate)), 1)
     return out
 
@@ -237,11 +241,12 @@ def rebalance_delta(target: int, current: int, *, band_pct: float = 0.02, min_un
 # --- TP/SL brackets + margin/liquidation guard (TASK A) ---
 DEFAULT_ATR_PERIOD = 14
 DEFAULT_ATR_SL_MULT = 2.0       # protective stop = entry - sl_mult*ATR (long-or-flat)
-DEFAULT_ATR_TP_MULT = 4.0       # optional take-profit (OFF by default — trend rides winners)
+DEFAULT_ATR_TP_MULT = 4.0       # take-profit = entry + tp_mult*ATR (2:1 R:R by default)
 DEFAULT_ENABLE_SL = True
-DEFAULT_ENABLE_TP = False
+DEFAULT_ENABLE_TP = True
 DEFAULT_MAX_MARGIN_UTIL = 0.50  # margin rail: cap projected margin at 50% of NAV
 DEFAULT_MARGIN_RATE = 0.04      # conservative FX-major margin (~25:1) for the guard estimate
+MIN_REPAIR_RR = 1.2
 
 
 def compute_atr(candles_by_instrument: Dict[str, dict], *, period: int = DEFAULT_ATR_PERIOD) -> Dict[str, float]:
@@ -271,15 +276,54 @@ def bracket_prices(entry: float, atr: Optional[float], *, sl_mult: float = DEFAU
                    enable_tp: bool = DEFAULT_ENABLE_TP):
     """Long-side ATR brackets -> (stop_loss_price, take_profit_price). None when unavailable.
 
-    SL = entry - sl_mult*ATR (protective; default ON). TP = entry + tp_mult*ATR (default OFF
-    — a trend strategy rides winners; capping upside fights the edge). No ATR -> no bracket
-    (refuse to fabricate a stop at a made-up distance)."""
+    SL = entry - sl_mult*ATR (protective; default ON). TP = entry + tp_mult*ATR
+    (default ON for Tier 7 bounded exits). No ATR -> no bracket (refuse to
+    fabricate a stop/target at a made-up distance)."""
     if not (atr and atr > 0 and entry and entry > 0):
         return None, None
     sl = entry - sl_mult * atr if enable_sl else None
     if sl is not None and sl <= 0:
         sl = None
     tp = entry + tp_mult * atr if enable_tp else None
+    return sl, tp
+
+
+def bracket_distances(atr: Optional[float], *, sl_mult: float = DEFAULT_ATR_SL_MULT,
+                      tp_mult: float = DEFAULT_ATR_TP_MULT, enable_sl: bool = DEFAULT_ENABLE_SL,
+                      enable_tp: bool = DEFAULT_ENABLE_TP):
+    """ATR bracket DISTANCES (price units) -> (sl_distance, tp_distance).
+
+    For attaching via OANDA ``stopLossOnFill.distance`` / ``takeProfitOnFill.distance``,
+    which anchor to the ACTUAL FILL price. SL distance = sl_mult*ATR, TP distance =
+    tp_mult*ATR, so the realized R:R is a constant tp_mult/sl_mult for EVERY
+    instrument (JPY or not) and never depends on the gap between the last candle
+    close and the live fill. This is the fix for the 2026-06-30 stale-anchor bug
+    where absolute brackets computed from ``last_px`` (last complete daily close)
+    skewed R:R per-instrument and dropped USD_JPY to 0.89 < 1.2. No ATR -> no
+    distances (refuse to fabricate a stop at a made-up distance)."""
+    if not (atr and atr > 0):
+        return None, None
+    sl = sl_mult * atr if enable_sl else None
+    tp = tp_mult * atr if enable_tp else None
+    return sl, tp
+
+
+def repair_bracket_prices(*, entry: float, current: float, atr: float,
+                          sl_mult: float = DEFAULT_ATR_SL_MULT,
+                          tp_mult: float = DEFAULT_ATR_TP_MULT,
+                          min_rr: float = MIN_REPAIR_RR):
+    """Absolute SL/TP to REPAIR an already-open long, anchored to the trade's ENTRY.
+
+    A trade has already filled, so there is no ``*OnFill`` anchor — the repair must
+    use absolute prices. The correct reference is the trade's ENTRY (``trade['price']``),
+    NOT the moving ``current`` price (the old bug). Computed levels are clamped so
+    ``sl < current < tp`` — a late repair can never post a leg on the wrong side of
+    the market and fire immediately — and the TP keeps at least ``min_rr`` R:R against
+    the (possibly clamped) stop. Returns ``(sl, tp)``."""
+    buffer = 0.10 * sl_mult * atr  # keep legs strictly off the current market
+    sl = min(entry - sl_mult * atr, current - buffer)
+    tp = entry + tp_mult * atr
+    tp = max(tp, current + buffer, current + min_rr * (current - sl))
     return sl, tp
 
 
@@ -308,6 +352,85 @@ def margin_scale(want_units: Dict[str, int], last_px: Dict[str, float], nav: flo
         return dict(want_units), 1.0
     factor = cap / projected
     return {i: int(int(u) * factor) for i, u in want_units.items()}, factor
+
+
+def _order_price(order: Optional[dict]) -> Optional[float]:
+    try:
+        return float((order or {}).get("price"))
+    except (ValueError, TypeError):
+        return None
+
+
+def repair_missing_trade_brackets(
+    client: "OandaPracticeClient",
+    *,
+    last_px: Dict[str, float],
+    atr: Dict[str, float],
+    enable_sl: bool = DEFAULT_ENABLE_SL,
+    enable_tp: bool = DEFAULT_ENABLE_TP,
+    atr_sl_mult: float = DEFAULT_ATR_SL_MULT,
+    atr_tp_mult: float = DEFAULT_ATR_TP_MULT,
+) -> int:
+    """Attach missing required brackets to existing open long trades.
+
+    Existing bracket orders are left untouched. Repairs are anchored to the trade's
+    ENTRY price (``repair_bracket_prices``), preserving the intended 2:1 R:R, and
+    clamped so ``SL < current < TP`` — a late repair can never post a leg on the
+    wrong side of the market and fire immediately. If a required bracket is missing
+    but cannot be computed safely, the caller should fail the cycle closed.
+    """
+    trades = (client.get_trades(state="OPEN") or {}).get("trades", []) or []
+    repaired = 0
+    for trade in trades:
+        inst = trade.get("instrument")
+        trade_id = str(trade.get("id") or "")
+        try:
+            units = float(trade.get("currentUnits") or trade.get("initialUnits") or 0)
+        except (ValueError, TypeError):
+            units = 0.0
+        current = float(last_px.get(inst) or 0.0)
+        inst_atr = float(atr.get(inst) or 0.0)
+        if not inst or not trade_id or units <= 0:
+            continue
+        has_sl = bool(trade.get("stopLossOrder"))
+        has_tp = bool(trade.get("takeProfitOrder"))
+        if (not enable_sl or has_sl) and (not enable_tp or has_tp):
+            continue
+        if current <= 0 or inst_atr <= 0:
+            raise ValueError(f"cannot repair missing brackets for {inst} trade {trade_id}: no price/ATR")
+
+        # Anchor the repair to the trade's ENTRY price (trade['price']), not the
+        # moving current price — same root-cause fix as the open path. Levels are
+        # clamped inside repair_bracket_prices so sl < current < tp (a late repair
+        # can't fire immediately) while preserving the entry-anchored 2:1 R:R.
+        entry_px = _order_price(trade) or current
+        cand_sl, cand_tp = repair_bracket_prices(
+            entry=entry_px, current=current, atr=inst_atr,
+            sl_mult=atr_sl_mult, tp_mult=atr_tp_mult, min_rr=MIN_REPAIR_RR)
+        existing_sl = _order_price(trade.get("stopLossOrder"))
+        sl = tp = None
+        if enable_sl and not has_sl:
+            if cand_sl <= 0 or cand_sl >= current:
+                raise ValueError(f"invalid repair SL for {inst} trade {trade_id}: {cand_sl}")
+            sl = cand_sl
+            existing_sl = sl
+        if enable_tp and not has_tp:
+            if existing_sl is not None and existing_sl < current:
+                cand_tp = max(cand_tp, current + MIN_REPAIR_RR * (current - existing_sl))
+            if cand_tp <= current:
+                raise ValueError(f"invalid repair TP for {inst} trade {trade_id}: {cand_tp}")
+            tp = cand_tp
+
+        client.set_trade_dependent_orders(
+            trade_id=trade_id,
+            instrument=inst,
+            stop_loss_price=sl,
+            take_profit_price=tp,
+        )
+        repaired += 1
+        logger.warning("OANDA bracket repair: %s trade=%s SL=%s TP=%s",
+                       inst, trade_id, f"{sl:.5f}" if sl else "-", f"{tp:.5f}" if tp else "-")
+    return repaired
 
 
 def run_oanda_trend_cycle(
@@ -413,21 +536,45 @@ def run_oanda_trend_cycle(
         if inst:
             current[inst] = net
 
+    try:
+        repair_missing_trade_brackets(
+            client,
+            last_px=last_px,
+            atr=atr,
+            enable_sl=enable_sl,
+            enable_tp=enable_tp,
+            atr_sl_mult=atr_sl_mult,
+            atr_tp_mult=atr_tp_mult,
+        )
+    except Exception as exc:
+        logger.error("OANDA trend cycle REFUSED — missing-bracket repair failed: %s", exc)
+        return OandaTrendResult(False, "bracket_repair_failed", targets, 0)
+
     placed = 0
     for inst in instruments:
         delta = rebalance_delta(want.get(inst, 0), current.get(inst, 0))
         if delta == 0:
             continue
-        sl = tp = None
+        sl_dist = tp_dist = None
         if delta > 0:   # opening/increasing a long -> attach protective brackets
-            sl, tp = bracket_prices(last_px.get(inst), atr.get(inst),
-                                    sl_mult=atr_sl_mult, tp_mult=atr_tp_mult,
-                                    enable_sl=enable_sl, enable_tp=enable_tp)
+            # Size brackets as DISTANCES (sl_mult*ATR / tp_mult*ATR) and attach via
+            # *OnFill.distance so OANDA anchors them to the ACTUAL FILL — not the
+            # stale last complete candle close. Guarantees a constant tp:sl R:R for
+            # every instrument (JPY and non-JPY) regardless of fill-vs-close drift.
+            sl_dist, tp_dist = bracket_distances(atr.get(inst),
+                                                 sl_mult=atr_sl_mult, tp_mult=atr_tp_mult,
+                                                 enable_sl=enable_sl, enable_tp=enable_tp)
+            if (enable_sl and sl_dist is None) or (enable_tp and tp_dist is None):
+                logger.error("OANDA trend order REFUSED for %s — missing required bracket(s) "
+                             "SLd=%s TPd=%s atr=%s",
+                             inst, sl_dist, tp_dist, atr.get(inst))
+                continue
         client.create_market_order(instrument=inst, units=delta,
-                                   stop_loss_price=sl, take_profit_price=tp,
+                                   stop_loss_distance=sl_dist, take_profit_distance=tp_dist,
                                    client_tag="ml_engine_trend_demo")
         placed += 1
-        logger.info("OANDA PAPER order: %s units=%+d (target=%d current=%d) SL=%s TP=%s",
+        _dec = 3 if str(inst).endswith("_JPY") else 5
+        logger.info("OANDA PAPER order: %s units=%+d (target=%d current=%d) SLdist=%s TPdist=%s",
                     inst, delta, want.get(inst, 0), current.get(inst, 0),
-                    f"{sl:.5f}" if sl else "-", f"{tp:.5f}" if tp else "-")
+                    f"{sl_dist:.{_dec}f}" if sl_dist else "-", f"{tp_dist:.{_dec}f}" if tp_dist else "-")
     return OandaTrendResult(True, "executed", targets, placed)

@@ -13,6 +13,8 @@ from src.equity.oanda_trend import (
     base_to_home_rate,
     candles_to_close_panel,
     rebalance_delta,
+    repair_missing_trade_brackets,
+    run_oanda_trend_cycle,
     target_units,
     trend_targets,
 )
@@ -29,12 +31,10 @@ def test_compute_atr_from_ohlc_candles():
     assert abs(atr["X"] - 1.0) < 1e-9
 
 
-def test_bracket_prices_long_sl_on_tp_off_by_default():
+def test_bracket_prices_long_sl_and_tp_on_by_default():
     from src.equity.oanda_trend import bracket_prices
-    sl, tp = bracket_prices(100.0, 2.0, sl_mult=2.0, tp_mult=4.0)   # defaults: SL on, TP off
-    assert abs(sl - 96.0) < 1e-9 and tp is None
-    sl2, tp2 = bracket_prices(100.0, 2.0, sl_mult=2.0, tp_mult=4.0, enable_tp=True)
-    assert abs(sl2 - 96.0) < 1e-9 and abs(tp2 - 108.0) < 1e-9
+    sl, tp = bracket_prices(100.0, 2.0, sl_mult=2.0, tp_mult=4.0)
+    assert abs(sl - 96.0) < 1e-9 and abs(tp - 108.0) < 1e-9
     assert bracket_prices(100.0, None) == (None, None)             # no ATR -> no fabricated stop
     assert bracket_prices(100.0, 2.0, enable_sl=False)[0] is None
 
@@ -60,7 +60,7 @@ def test_margin_guard_clamps_under_stress():
 def test_clamp_leverage_bounds():
     from src.equity.oanda_trend import DEFAULT_GROSS_LEVERAGE, MAX_GROSS_LEVERAGE, clamp_leverage
     assert clamp_leverage(3.0) == 3.0
-    assert clamp_leverage(0) == DEFAULT_GROSS_LEVERAGE       # invalid -> default
+    assert clamp_leverage(0) == 0.0                          # control 0x means flat/no exposure
     assert clamp_leverage(-5) == DEFAULT_GROSS_LEVERAGE
     assert clamp_leverage(999) == MAX_GROSS_LEVERAGE         # capped at margin-call guard
     assert clamp_leverage(10) == 10.0
@@ -99,6 +99,137 @@ def _candles(closes, *, complete=True, start="2020-01-01"):
         {"time": t.isoformat() + "Z", "complete": complete, "mid": {"c": f"{c:.5f}"}}
         for t, c in zip(idx, closes)
     ]}
+
+
+def _ohlc_candles(closes, *, start="2020-01-01"):
+    import pandas as pd
+    idx = pd.bdate_range(start, periods=len(closes))
+    return {"candles": [
+        {
+            "time": t.isoformat() + "Z",
+            "complete": True,
+            "mid": {"h": f"{c + 0.001:.5f}", "l": f"{c - 0.001:.5f}", "c": f"{c:.5f}"},
+        }
+        for t, c in zip(idx, closes)
+    ]}
+
+
+class _Config:
+    oanda_environment = "practice"
+
+
+class _FakeClient:
+    def __init__(self, candles, trades=None):
+        self.candles = candles
+        self.trades = trades or []
+        self.orders = []
+        self.bracket_repairs = []
+
+    def get_candles(self, instrument, **_kwargs):
+        return self.candles[instrument]
+
+    def get_account_summary(self):
+        return {"account": {"NAV": "100000"}}
+
+    def get_open_positions(self):
+        return {"positions": []}
+
+    def get_trades(self, *, state="OPEN"):
+        assert state == "OPEN"
+        return {"trades": self.trades}
+
+    def create_market_order(self, **kwargs):
+        self.orders.append(kwargs)
+        return {"orderCreateTransaction": {"id": str(len(self.orders))}}
+
+    def set_trade_dependent_orders(self, **kwargs):
+        self.bracket_repairs.append(kwargs)
+        return {"relatedTransactionIDs": ["1"]}
+
+
+def test_repair_missing_trade_brackets_adds_tp_without_replacing_sl():
+    client = _FakeClient({}, trades=[{
+        "id": "42",
+        "instrument": "EUR_USD",
+        "currentUnits": "1000",
+        "stopLossOrder": {"price": "1.09000"},
+    }])
+
+    repaired = repair_missing_trade_brackets(
+        client,
+        last_px={"EUR_USD": 1.1000},
+        atr={"EUR_USD": 0.0020},
+    )
+
+    assert repaired == 1
+    repair = client.bracket_repairs[0]
+    assert repair["trade_id"] == "42"
+    assert repair["stop_loss_price"] is None
+    assert repair["take_profit_price"] > 1.1000
+    assert repair["take_profit_price"] >= 1.1000 + 1.2 * (1.1000 - 1.0900)
+
+
+def test_repair_missing_trade_brackets_fails_closed_without_atr():
+    client = _FakeClient({}, trades=[{
+        "id": "42",
+        "instrument": "EUR_USD",
+        "currentUnits": "1000",
+        "stopLossOrder": {"price": "1.09000"},
+    }])
+
+    import pytest
+    with pytest.raises(ValueError):
+        repair_missing_trade_brackets(client, last_px={"EUR_USD": 1.1000}, atr={})
+    assert client.bracket_repairs == []
+
+
+def test_trend_cycle_sends_sl_and_tp_on_new_long(tmp_path):
+    closes = list(np.linspace(1.05, 1.20, 160))
+    client = _FakeClient({"EUR_USD": _ohlc_candles(closes)})
+
+    result = run_oanda_trend_cycle(
+        client=client,
+        config=_Config(),
+        instruments=["EUR_USD"],
+        project_root=tmp_path,
+        sma_window=20,
+        candle_count=160,
+        gross_leverage=0.01,
+    )
+
+    assert result.orders_placed == 1
+    order = client.orders[0]
+    assert order["units"] > 0
+    # Brackets are now sent as fill-anchored DISTANCES (sl_mult*ATR / tp_mult*ATR),
+    # not absolute prices — so R:R is a constant 2.0 regardless of fill-vs-close drift
+    # (the 2026-06-30 stale-anchor fix). No absolute price is sent on the new long.
+    assert order.get("stop_loss_price") is None
+    assert order.get("take_profit_price") is None
+    sl_d = order["stop_loss_distance"]
+    tp_d = order["take_profit_distance"]
+    assert sl_d is not None and tp_d is not None
+    assert sl_d > 0 and tp_d > 0
+    assert abs(tp_d / sl_d - 2.0) < 1e-9      # tp_mult/sl_mult = 4/2
+    assert tp_d / sl_d >= 1.2                  # R:R invariant holds by construction
+
+
+def test_trend_cycle_refuses_new_long_when_required_brackets_missing(tmp_path):
+    closes = list(np.linspace(1.05, 1.20, 80))
+    client = _FakeClient({"EUR_USD": _candles(closes)})
+
+    result = run_oanda_trend_cycle(
+        client=client,
+        config=_Config(),
+        instruments=["EUR_USD"],
+        project_root=tmp_path,
+        sma_window=20,
+        candle_count=80,
+        gross_leverage=0.01,
+    )
+
+    assert result.ran is True
+    assert result.orders_placed == 0
+    assert client.orders == []
 
 
 def test_panel_drops_incomplete_candles():
@@ -144,6 +275,15 @@ def test_target_units_equal_home_notional_and_correct_base_semantics():
     usd_jpy = units["USD_JPY"] * base_to_home_rate("USD_JPY", px)
     assert abs(usd_eur - 2500) < 5 and abs(usd_jpy - 2500) < 5   # consistent, not 150x off
     assert units["USD_JPY"] > 2000           # base-USD: ~2500 units (NOT ~17 as before)
+
+
+def test_target_units_zero_leverage_flattens_on_signals():
+    targets = {"EUR_USD": 0.5, "USD_JPY": 0.5}
+    px = {"EUR_USD": 1.10, "USD_JPY": 150.0}
+    assert target_units(targets, nav=10000.0, last_prices=px, gross_leverage=0.0) == {
+        "EUR_USD": 0,
+        "USD_JPY": 0,
+    }
 
 
 def test_empty_panel_yields_no_targets():
