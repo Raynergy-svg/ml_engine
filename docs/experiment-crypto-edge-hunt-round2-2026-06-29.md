@@ -158,9 +158,68 @@ tuning). A verifier-caught false claim → L-018 fail-closed reject + quarantine
 
 ---
 
-## 7. Results (appended after the fact — EMPTY at pre-registration time)
+## 7. Results (appended after the fact — separate commit from §0-6)
 
-_(to be filled by a separate commit after H4/H5 run + verifier)_
+Run: `scripts/experiment_crypto_round2.py` → `crypto_round2_20260630T011421Z.json`.
+Universe 693 ever-liquid USDT perps (incl. delisted), 2020-01→2026-05. N_TRIALS=15,
+Bonferroni α=0.0033.
+
+| | OOS net Sh | IS net Sh | OOS gross Sh | full maxDD | OOS β | turnover | DSR(N15) | boot p |
+|---|---|---|---|---|---|---|---|---|
+| **H4** infra-corrected XS mom | +0.80 | **−0.07** | +1.10 | −0.232 | −0.036 | 0.093 | 0.298 | 0.099 |
+| **H5** TS-trend | **+1.13** | **+0.91** | +1.23 | **−0.162** | −0.073 | 0.029 | 0.496 | 0.031 |
+
+**Gate (ex-history):**
+- **H4:** sharpe✓ · DD✓ · **oos-confirmed ✗ (IS −0.07 → sign-flip)** · significance✗ ·
+  neutral✓ → `clears_ex_history = FALSE`. A CLEANER negative than pre-stated: the infra-
+  corrected XS book's OOS positivity is **not IS-confirmed** (regime-dependent on 2024+),
+  on top of failing significance. The infra fixes cosmetics (DD, cost) but the XS signal
+  itself is not robust across the holdout split.
+- **H5:** sharpe✓ · DD✓ · **oos-confirmed ✓ (IS +0.91, OOS +1.13, no sign-flip)** ·
+  neutral✓ (β −0.073) · **significance ✗** (DSR 0.496 < 0.95; boot p 0.031) · history✗ →
+  `clears_ex_history = FALSE`. **Clears 4 of 5 ex-history criteria** — the best-shaped
+  crypto result of the campaign — failing ONLY significance + history.
+
+**The significance failure is robust to the N choice (not an over-harsh-N artifact):** H5's
+bootstrap p = 0.031 fails even the LENIENT Round-1 Bonferroni (0.05/3 = 0.0167), not just
+the harsh N=15 (0.0033). And DSR (which corrects for non-normality + trials) is 0.50, far
+under 0.95. The wall is the crypto cross-section's effective-N ≈ 3.9 (≈ one factor) + ~6.5y
+history — **structural to the asset class, NOT an infrastructure artifact.**
+
+**H5 risk-control axis (return-vs-risk decomposition):**
+| book | OOS Sharpe | OOS maxDD |
+|---|---|---|
+| **H5 TS-trend** | **+1.13** | **−0.162** |
+| buy-hold BTC | +0.72 | −0.496 |
+| equal-weight long-only | −0.30 | −0.886 |
+
+H5 **beats buy-hold BTC on BOTH Sharpe (1.13 vs 0.72) and drawdown (−0.16 vs −0.50)** and
+crushes equal-weight long-only — at near-zero turnover (0.029) and cost (0.011/yr). On the
+risk-control axis it is a **genuine win**: drawdown-controlled, market-neutral, cost-robust,
+beats passive. This mirrors the multi-asset-trend finding — **trend = drawdown-controlled
+risk-premium harvesting** — now in crypto, and here it even beats passive on Sharpe (the
+multi-asset version only tied). It is NOT verified return-ALPHA (it does not clear the
+significance gate); it IS the strongest risk-control / risk-premium result found anywhere
+in the campaign.
+
+**Plain verdict (provisional — pending separate verifier, §6):** Round 2 answers the
+operator's question cleanly. (1) Our **infrastructure WAS partially suppressing** the
+signal — daily rebalance + no vol-overlay + a 2× cost stress turned a slow-decay, low-DD
+trend premium into a fat-tailed cost-fragile mess; correcting those (weekly, vol-target,
+realistic cost) clears DD + cost + neutrality. (2) But **the substantive wall — statistical
+significance after honest multiple-testing — is NOT infra**; it is the asset class's thin
+effective-breadth (eff-N≈3.9) and short history, which no overlay can change. (3) The
+honest **return-vs-risk decomposition**: no verified return-alpha (significance fails), but
+the **strongest risk-control finding of the campaign** — crypto TS-trend beats passive on
+both Sharpe and drawdown, market-neutral, cost-robust, pre-registered (not dredged). Per
+L-018, a non-cleared gate is NOT "an edge" — it is a suggestive, risk-premium-shaped result
+that needs more independent history to ever clear significance, which crypto cannot yet
+provide. Honest negative on ALPHA = success; honest risk-control win is reported as exactly
+that, not oversold.
+
+**VERIFIER (§6):** _in progress — separate Code Reviewer re-deriving H4/H5 from cache,
+auditing leakage (lag/PIT/survivorship/look-ahead vol-scaling), config-vs-prereg match, and
+the N=15 + effective-N math. Verdict appended on return._
 
 ---
 
