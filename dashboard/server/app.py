@@ -39,6 +39,7 @@ from dashboard.server.safety import build_readonly_client  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("axiom.app")
 
+
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
     # Built once; None if token missing/stale (live views degrade honestly).

@@ -31,7 +31,12 @@ export function AccountHeader() {
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     for (const t of trades.trades) {
-      if (new Date(t.time).getTime() >= startOfDay.getTime()) realizedToday += t.pl;
+      // Only ORDER_FILL rows carry realized P&L; bracket/financing/cancel rows also
+      // have a `pl` field (usually 0) but summing them diverges from the canonical
+      // realized figure (mirror backend read_equity, which sums FILL pl only). (F-H5)
+      if (t.type === "ORDER_FILL" && new Date(t.time).getTime() >= startOfDay.getTime()) {
+        realizedToday += t.pl;
+      }
     }
   }
   const unrealized = acct?.unrealized_pl ?? 0;

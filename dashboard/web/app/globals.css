@@ -67,3 +67,18 @@ body {
 
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .live-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
+
+/* F-C1: Tailwind v4 defaults `border` color to currentColor (v3 used gray-200).
+   AXIOM expects a subtle hairline; without this, every bare `border`/`border-t`
+   utility rendered in the element's TEXT color (bright cyan/white) — washing out
+   the terminal aesthetic across ~200 elements. Reset the default border color to
+   the brand token, and give the `hairline` class components already reference a
+   real definition. Explicit `border-{color}` utilities still override this. */
+@layer base {
+  *, ::after, ::before, ::backdrop {
+    border-color: var(--color-border);
+  }
+}
+@utility hairline {
+  border-color: var(--color-border);
+}

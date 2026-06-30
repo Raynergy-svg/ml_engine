@@ -101,9 +101,13 @@ export function Tier7Cockpit() {
   const mismatch = data.connected === true && tier7Proc != null && tier7ProcRunning !== running;
   const sh = data.self_heal;
   const ab = sh?.action_budget;
-  const actionsToday = ab?.actions_today ?? [];
-  const debounce = sh?.debounce ? Object.entries(sh.debounce) : [];
-  const events = [...(sh?.recent_events ?? [])].reverse();
+  // Defensive: self_heal is untyped passthrough from disk. If the bot ever writes
+  // these as a non-array/non-object (contract drift), a bare spread/Object.entries
+  // throws and — with no error boundary above — white-screens the whole tab (F-M4).
+  const actionsToday = Array.isArray(ab?.actions_today) ? ab.actions_today : [];
+  const debounce = sh?.debounce && typeof sh.debounce === "object" && !Array.isArray(sh.debounce)
+    ? Object.entries(sh.debounce) : [];
+  const events = Array.isArray(sh?.recent_events) ? [...sh.recent_events].reverse() : [];
   const degraded = events[0]?.degraded === true || events[0]?.status === "degraded";
   const lc = data.last_cycle;
   const meta = data.meta_last_event;

@@ -21,19 +21,45 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const es = new EventSource(`${API_BASE}/api/stream`);
-    esRef.current = es;
-    es.onopen = () => setConnected(true);
-    es.onmessage = (ev) => {
-      try {
-        setPayload(JSON.parse(ev.data) as StreamPayload);
-        setConnected(true);
-      } catch {
-        /* ignore malformed frame */
-      }
+    let stopped = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoff = 1000; // ms, capped — reset on a healthy message
+
+    const connect = () => {
+      if (stopped) return;
+      const es = new EventSource(`${API_BASE}/api/stream`);
+      esRef.current = es;
+      es.onopen = () => setConnected(true);
+      es.onmessage = (ev) => {
+        try {
+          setPayload(JSON.parse(ev.data) as StreamPayload);
+          setConnected(true);
+          backoff = 1000; // healthy frame → reset backoff
+        } catch {
+          /* ignore malformed frame */
+        }
+      };
+      es.onerror = () => {
+        setConnected(false);
+        // EventSource auto-retries only on transient network errors. On a CLOSED
+        // state (clean server close, proxy 502, backend restart) it does NOT —
+        // so reconnect manually with capped backoff instead of showing a permanent
+        // false "offline" until a page reload (F-M1).
+        if (es.readyState === EventSource.CLOSED && !stopped) {
+          es.close();
+          if (retryTimer) clearTimeout(retryTimer);
+          retryTimer = setTimeout(connect, backoff);
+          backoff = Math.min(backoff * 2, 15000);
+        }
+      };
     };
-    es.onerror = () => setConnected(false); // EventSource retries automatically
-    return () => es.close();
+
+    connect();
+    return () => {
+      stopped = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      esRef.current?.close();
+    };
   }, []);
 
   return <StreamCtx.Provider value={{ payload, connected }}>{children}</StreamCtx.Provider>;

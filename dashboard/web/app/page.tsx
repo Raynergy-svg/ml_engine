@@ -23,12 +23,15 @@ type Tab = (typeof TABS)[number];
 function useStoredValue(key: string, fallback: string) {
   const [value, setValueState] = useState(fallback);
 
+  // Hydrate from localStorage on mount — synchronously (no setTimeout). The prior
+  // 1000ms delay showed the DEFAULT tab/pair for a full second after every load,
+  // then jumped; a mid-second click acted on the wrong panel (F-H1). One render
+  // is unavoidable with SSR (server has no localStorage); 1000ms was the bug.
   useEffect(() => {
-    const load = setTimeout(() => {
-      setValueState(window.localStorage.getItem(key) || fallback);
-    }, 1000);
-    return () => clearTimeout(load);
-  }, [key, fallback]);
+    const stored = window.localStorage.getItem(key);
+    if (stored !== null && stored !== value) setValueState(stored);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   const setValue = (next: string) => {
     setValueState(next);
