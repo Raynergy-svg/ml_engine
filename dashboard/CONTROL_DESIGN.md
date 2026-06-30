@@ -1,11 +1,16 @@
-# AXIOM Phase 2 — bounded remote control (DESIGN; built DISABLED)
+# AXIOM Phase 2 — bounded operator control (ENABLED 2026-06-30)
 
-> **STATUS: NOT EXPOSED.** This layer is built behind a feature flag that defaults
-> **OFF** (`AXIOM_CONTROL_ENABLED` unset → the control router is not even mounted →
-> every control route 404s). It will not be turned on until **(a)** the separate safety
-> verifier returns PASS ("can a crafted request reach live / real-money / a Hard-NO? →
-> NO") **and (b)** the operator confirms the action set below. The UI has no control
-> affordance yet. This is AXIOM's first-ever write path — treated as a major safety surface.
+> **STATUS: ENABLED (localhost).** Per the 2026-06-30 mandate, AXIOM is the primary
+> Buddy client and operates the practice bot. The control router is mounted when
+> `AXIOM_CONTROL_ENABLED=1` (still default OFF → 404 if unset). All actions are
+> functional; the separate safety verifier returned **PASS** (all 7 escape questions →
+> NO; see verdict below). The Control tab in the UI drives these via the authed proxy.
+>
+> ⚠️ **AUTH BEFORE REMOTE.** Control is safe on **localhost** (loopback FastAPI + authed
+> Next proxy). It is **NOT** safe to expose remotely (Tailscale/phone) until strong auth
+> is in front — a control-enabled endpoint reachable without auth would let anyone
+> halt/start/leverage the bot. Keep `tailscale serve` + a strong `AXIOM_PASSWORD` (and
+> rotate `AXIOM_AUTH_SECRET`) before any remote use. This round is localhost-only.
 
 ## Proposed action set (CONFIRM before enabling)
 All POST, **auth-gated** (Phase-1 session) + **explicit per-action confirm** + **audit-logged**:
@@ -59,28 +64,33 @@ These are structural — not UI-hidden. A crafted/malicious request cannot reach
 | Any control call with flag OFF | router unmounted → `404` → **no surface** |
 | Any control call without session / confirm | `401` / `403` → **no unauth action** |
 
-## Scaffold implementation status (what's live in code, all behind the OFF flag)
-- `halt` — **functional** (StateEngine.set_halted(True)); fail-safe (only stops trading).
-- `unhalt` — **deferred (501)**: guarded + audited but NOT wired, pending the unhalt-eligibility
-  gate (model freshness / drawdown / ship-gate) — resuming a possibly-broken system on a single
-  confirm is unsafe (verifier MED-1). Must wire that gate before `unhalt` performs an effect.
-- `set_gross_leverage` / `start_loop` / `stop_loop` — **deferred (501)**: guarded + audited;
-  exact effect mechanism pending operator confirm (no dead-write, no process-exec surface yet).
+## Implementation status — ALL FUNCTIONAL (2026-06-30)
+- `halt` — functional (StateEngine.set_halted(True)); fail-safe.
+- `unhalt` — functional via `assert_unhalt_eligible`: refuses unless **practice** + **NAV
+  drawdown < 20%** + **verify_gate GREEN**. Model age is surfaced but INFORMATIONAL (the live
+  lane is the non-ML trend strategy; FX/ML is retired/L-016, so blocking on its permanent
+  staleness would deadlock the unhalt→start-loop resume flow). Verified round-trip on practice.
+- `set_gross_leverage` — functional: writes a clamped `[0,15]` override to
+  `trained_data/axiom/control_overrides.json`; `run_oanda_trend.py` re-reads it each cycle and
+  `clamp_leverage` re-caps to 15× (double-clamped).
+- `start_loop` / `stop_loop` — functional via fixed-whitelist subprocess (`trend`→run_oanda_trend.py
+  --loop, `tier7`→run_tier7_loop.py); stop by pgrep-needle + SIGTERM. No shell, no user input in argv.
 
-## Separate safety verifier — VERDICT: PASS (2026-06-29)
-Independent Security Engineer audit: **Phase 1 PASS, Phase 2 PASS**. Explicit verdict — a crafted
-request (flag ON) canNOT reach live / real-money / api-fxtrade / a Hard-NO / a ship-gate-failing
-promotion / over-leverage >15× / arbitrary exec: **NO for every one** (structurally absent, not
-UI-hidden). No HIGH findings. MED-1 (unhalt) and MED-2 (loopback bind + CORS) addressed in code;
-LOW items (login rate-limit, 7-day TTL revocation) documented below.
+## Separate safety verifier — VERDICT: PASS (re-run 2026-06-30, control FUNCTIONAL+ENABLED)
+Independent Security Engineer re-audit of the functional control: all 7 escape questions → **NO** —
+a crafted request (via the control endpoints OR the Next POST proxy) cannot reach live / real-money
+/ api-fxtrade / relax a Hard-NO / promote a ship-gate-failing artifact / over-leverage >15× (clamped
+on BOTH dashboard + loop) / arbitrary-exec (argv fixed by whitelist, no shell) / skip the unhalt gate
+/ POST a non-control endpoint. No HIGH findings. MED-1 (unhalt freshness) addressed: lane snapshot
+age now surfaced (informational, non-blocking by design). LOW items: audit-write failure surfacing,
+no secret on the control router (relies on loopback + authed proxy — hence the auth-before-remote rule).
 
-## Exposure checklist (all required before flipping the flag)
-- [x] Separate safety verifier: **PASS** (no crafted request reaches live/real-money/Hard-NO).
-- [ ] **Operator confirms the action set above** (and the 15× leverage cap value).
-- [ ] Wire `unhalt` eligibility gate (freshness/drawdown/ship-gate) before it leaves 501.
-- [ ] Confirm + wire the `set_gross_leverage` / loop-control effect mechanisms.
-- [ ] Add login rate-limit/backoff (LOW-1) and consider a shorter session TTL (LOW-2).
-- [ ] Wire UI with explicit confirm modals per action (and surface the audit log read-only).
-- [ ] Then, and only then, set `AXIOM_CONTROL_ENABLED=1`.
-
-Until every box is checked, control stays **disabled** and unexposed.
+## Exposure checklist
+- [x] Separate safety verifier: **PASS** (functional + enabled re-run).
+- [x] Operator confirmed the action set (2026-06-30 mandate) + 15× cap.
+- [x] `unhalt` eligibility gate wired (practice + drawdown + gates GREEN).
+- [x] `set_gross_leverage` / loop-control effect mechanisms wired.
+- [x] UI Control tab with per-action confirm + read-only audit-log view.
+- [x] Enabled on **localhost** (`AXIOM_CONTROL_ENABLED=1`); halt→unhalt round-trip verified on practice.
+- [ ] **REMOTE GATE (still required):** strong auth (Tailscale + strong `AXIOM_PASSWORD`) +
+      login rate-limit before ANY remote/phone exposure. Localhost-only until then.

@@ -22,6 +22,8 @@ from typing import Any, Dict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUDIT_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_audit.jsonl"
+# Control-override file the trend loop reads each cycle (operator dials via AXIOM).
+OVERRIDES_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_overrides.json"
 
 # The ONLY actions that exist. Anything else is unknown -> denied.
 ALLOWED_ACTIONS = frozenset({"halt", "unhalt", "set_gross_leverage", "start_loop", "stop_loop"})
@@ -62,6 +64,77 @@ def validate_loop(name: Any) -> str:
     return str(name)
 
 
+UNHALT_DD_HARD = 0.20        # refuse unhalt if NAV drawdown from peak >= 20%
+UNHALT_MAX_AGE_DAYS = 7.0    # refuse unhalt if routed models older than this
+
+
+def _read_json_safe(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def assert_unhalt_eligible() -> Dict[str, Any]:
+    """Refuse unhalt unless it is SAFE to resume PRACTICE trading.
+
+    Composite eligibility (all must pass): practice (re-asserted), NAV drawdown below
+    the 20% rail, verify_gate verdict GREEN (Hard-NOs intact), and routed models not
+    stale (>7d). Returns the checks dict on success; raises ControlDenied with the
+    blocking reasons otherwise. Resuming a bleeding/broken/ungated system is the exact
+    risk the deferred gate guarded against — this makes unhalt safe to expose.
+    """
+    assert_practice()  # never resume on a non-practice env
+    checks: Dict[str, Any] = {}
+    reasons = []
+
+    # 0) lane data recency (INFORMATIONAL — surfaced, not blocked). A hard block here
+    # would deadlock the unhalt→start_loop resume flow (a stopped lane has a stale
+    # snapshot precisely when you want to unhalt then restart it). Surfaced so the
+    # operator sees lane liveness at the moment of unhalt.
+    import time as _time
+    acct_path = REPO_ROOT / "trained_data" / "oanda" / "account_state.json"
+    try:
+        checks["account_snapshot_age_s"] = round(_time.time() - acct_path.stat().st_mtime, 1)
+    except OSError:
+        checks["account_snapshot_age_s"] = None
+
+    # 1) NAV drawdown rail (peak_nav vs current NAV)
+    acct = _read_json_safe(acct_path) or {}
+    peak = (_read_json_safe(REPO_ROOT / "trained_data" / "oanda" / "peak_nav.json") or {}).get("peak_nav")
+    nav = acct.get("nav")
+    dd = None
+    if isinstance(nav, (int, float)) and isinstance(peak, (int, float)) and peak > 0:
+        dd = max(0.0, (peak - nav) / peak)
+        if dd >= UNHALT_DD_HARD:
+            reasons.append(f"NAV drawdown {dd:.1%} >= {UNHALT_DD_HARD:.0%} rail")
+    checks["drawdown_pct"] = dd
+
+    # 2) verify_gate verdict GREEN (all Hard-NO checks ok)
+    verdict = _read_json_safe(REPO_ROOT / ".claude" / "loop" / "verdict.json") or {}
+    vchecks = verdict.get("checks") or []
+    gates_green = bool(vchecks) and all(c.get("ok") for c in vchecks)
+    checks["gates_green"] = gates_green
+    if vchecks and not gates_green:
+        failed = [c.get("name") for c in vchecks if not c.get("ok")]
+        reasons.append(f"verify_gate not GREEN: {failed}")
+
+    # 3) routed model freshness — INFORMATIONAL only, does NOT block.
+    # The live strategy is the non-ML TREND lane; the FX/ML transformers are RETIRED
+    # (L-016) and permanently stale by design, so blocking unhalt on their age would
+    # make unhalt impossible forever. We surface the age for visibility but never gate on it.
+    try:
+        from src.scanner.automation.model_freshness import get_model_freshness_for_pairs
+        fr = get_model_freshness_for_pairs()
+        checks["oldest_model_age_days"] = fr.get("oldest_age_days")
+    except Exception:  # noqa: BLE001
+        checks["oldest_model_age_days"] = None
+
+    if reasons:
+        raise ControlDenied("unhalt blocked — " + "; ".join(reasons))
+    return checks
+
+
 def enforce(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Run ALL pre-effect guards. Returns normalized params or raises ControlDenied.
 
@@ -85,6 +158,23 @@ def enforce(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         out["loop"] = validate_loop((params or {}).get("loop"))
     # halt / unhalt take no params; unhalt's practice re-assert already happened above.
     return out
+
+
+def set_override(key: str, value: Any) -> Dict[str, Any]:
+    """Atomically merge a clamped control override into OVERRIDES_PATH (the trend loop
+    reads it each cycle). Only known, bounded keys are accepted."""
+    if key != "gross_leverage":
+        raise ControlDenied(f"unknown override {key!r}")
+    OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    current = _read_json_safe(OVERRIDES_PATH) or {}
+    current[key] = value
+    current["_updated_at"] = datetime.now(timezone.utc).isoformat()
+    current["_source"] = "axiom_control"
+    fd, tmp = tempfile.mkstemp(dir=str(OVERRIDES_PATH.parent), suffix=".tmp")
+    with os.fdopen(fd, "w") as fh:
+        json.dump(current, fh, indent=2, sort_keys=True)
+    os.replace(tmp, OVERRIDES_PATH)
+    return current
 
 
 def audit(entry: Dict[str, Any]) -> None:

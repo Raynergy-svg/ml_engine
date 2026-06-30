@@ -136,11 +136,22 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     def _cycle() -> int:
+        # AXIOM control override: operator may dial gross-leverage live from the
+        # dashboard. The override is read each cycle so a running loop honors it
+        # without restart; run_oanda_trend_cycle re-clamps to the 15x cap.
+        lev = gross_leverage
+        try:
+            import json as _json
+            _ov = _json.loads((REPO_ROOT / "trained_data" / "axiom" / "control_overrides.json").read_text())
+            if isinstance(_ov.get("gross_leverage"), (int, float)):
+                lev = float(_ov["gross_leverage"])
+        except (OSError, ValueError, TypeError):
+            pass
         try:
             r = run_oanda_trend_cycle(
                 client=client, config=config, instruments=instruments,
                 project_root=REPO_ROOT, granularity=args.granularity,
-                sma_window=args.sma, gross_leverage=gross_leverage,
+                sma_window=args.sma, gross_leverage=lev,
                 enable_sl=enable_sl, enable_tp=enable_tp, atr_sl_mult=atr_sl_mult,
                 max_margin_util=max_margin_util, dry_run=args.dry_run,
             )

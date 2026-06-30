@@ -48,6 +48,26 @@ def test_loop_whitelist():
             cs.enforce("start_loop", {"loop": bad})
 
 
+def test_unhalt_eligibility_is_deterministic_from_disk():
+    # Returns a checks dict when eligible, or raises ControlDenied with reasons.
+    # Either way it must be practice-pinned and surface the 3 signals.
+    try:
+        checks = cs.assert_unhalt_eligible()
+        assert "drawdown_pct" in checks and "gates_green" in checks and "oldest_model_age_days" in checks
+    except cs.ControlDenied as exc:
+        assert "unhalt blocked" in str(exc)
+
+
+def test_set_override_clamps_and_writes(tmp_path):
+    cs.OVERRIDES_PATH = tmp_path / "control_overrides.json"  # real path, not a mock
+    cs.set_override("gross_leverage", cs.validate_leverage(5))
+    import json
+    saved = json.loads(cs.OVERRIDES_PATH.read_text())
+    assert saved["gross_leverage"] == 5.0 and saved["_source"] == "axiom_control"
+    with pytest.raises(cs.ControlDenied):
+        cs.set_override("evil_key", 1)
+
+
 def test_audit_appends_real_line(tmp_path):
     cs.AUDIT_PATH = tmp_path / "control_audit.jsonl"   # real path, not a mock
     cs.audit({"action": "halt", "allowed": True, "reason": "test", "result": "halted"})

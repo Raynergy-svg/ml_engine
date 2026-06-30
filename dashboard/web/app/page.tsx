@@ -13,8 +13,9 @@ import { SentimentPlaceholder } from "@/components/SentimentPlaceholder";
 import { Tier7Panel } from "@/components/Tier7Panel";
 import { Tier7Cockpit } from "@/components/Tier7Cockpit";
 import { HealthPanel } from "@/components/HealthPanel";
+import { ControlPanel } from "@/components/ControlPanel";
 
-const TABS = ["Overview", "Tier 7", "Strategy", "Health", "Ledger"] as const;
+const TABS = ["Overview", "Tier 7", "Strategy", "Health", "Ledger", "Control"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function Home() {
@@ -71,6 +72,8 @@ export default function Home() {
         )}
 
         {tab === "Health" && <HealthPanel />}
+
+        {tab === "Control" && <ControlPanel />}
 
         {tab === "Ledger" && (
           <>
