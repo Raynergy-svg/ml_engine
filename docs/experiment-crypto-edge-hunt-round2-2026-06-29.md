@@ -217,9 +217,26 @@ that needs more independent history to ever clear significance, which crypto can
 provide. Honest negative on ALPHA = success; honest risk-control win is reported as exactly
 that, not oversold.
 
-**VERIFIER (§6):** _in progress — separate Code Reviewer re-deriving H4/H5 from cache,
-auditing leakage (lag/PIT/survivorship/look-ahead vol-scaling), config-vs-prereg match, and
-the N=15 + effective-N math. Verdict appended on return._
+**VERIFIER (§6) — separate Code Reviewer, independent re-derivation: BOTH TRUSTWORTHY, no
+bug, no L-018 trigger.** Ran `experiment_crypto_round2.py` itself (51.9s); every headline
+number reproduced bit-for-bit (H5 OOS 1.133 / IS 0.913 / maxDD −0.162 / β −0.073 / turnover
+0.029 / DSR 0.496 / p 0.0306; H4 OOS 0.80 / IS −0.074 sign-flip). Leakage audit CLEAN on all
+six surfaces: (1) signal causal — adding lag monotonically degrades OOS (1.30→1.04→0.97), the
+signature of real decaying signal; look-ahead variant does NOT dominate; (2) vol-target
+leverage lagged — as-run 1.133 vs contemporaneous-vol look-ahead 1.124 (no overlay leak);
+(3) leverage cap 3.0 respected, only 5.4% of days pinned (not a leverage artifact); (4) PIT
+eligibility shifted; (5) survivorship — 693 incl. 27 delisted, LUNA/SRM/ANT held-then-closed,
+not dropped; (6) gross-normalization single-row, no cross-time peek. Config EXACT-MATCHES the
+frozen pre-reg (no post-hoc tuning, no violation). **Effective-N independently re-derived ≈
+2.82** (mean pairwise OOS corr 0.353 across 498 coins) — LOWER than the worker's ~3.9, so the
+multiple-testing penalty is, if anything, lenient toward the strategy; significance FAIL is
+NOT understated. Significance fails at BOTH N=15 (α 0.0033) and lenient N=3 (α 0.0167) — robust
+to the N choice. H5 is a genuine TIME-SERIES trend (net exposure std 0.683, 44% net-long /
+56% net-short rebalances; β=−0.073 is emergent, not a hard-zero constraint). Risk-control
+claim sound (Sharpe leverage-invariant; maxDD advantage is the overlay's purpose, framed
+correctly as "controls the tail," not alpha). **Verdict: H4 honest gate-fail; H5 a real,
+leakage-free, suggestive risk-premium-shaped result that does NOT clear the gate — reported
+correctly as a non-cleared risk-control keeper, not "an edge."**
 
 ---
 

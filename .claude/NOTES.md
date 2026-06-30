@@ -36,6 +36,33 @@ Scripts: `experiment_crypto_funding_carry.py` (H1), `experiment_crypto_xs_signal
   job (full-sample Sharpe would have lied; OOS + multiple-testing + DD gate told the truth).
 Verdict doc: `docs/experiment-crypto-edge-hunt-2026-06-29.md`. Paper/research only, no live execution.
 
+## Crypto edge-hunt ROUND 2 (2026-06-29) — literature sweep + infra-stress + H4/H5, research-only
+
+Operator's sharp question: findable edge, or is OUR INFRA suppressing it? Answer (all verifier-
+confirmed): **BOTH, cleanly split.** Docs: `docs/experiment-crypto-edge-hunt-round2-2026-06-29.md`
+(frozen pre-reg committed b09b61a BEFORE results; results 4ed728d; verifier verdict appended). Scripts:
+`experiment_crypto_h2_infra_stress.py` (H2 robustness decomposition, regression-checked == verified
+harness) + `experiment_crypto_round2.py` (H4/H5).
+- **LITERATURE (5 sourced sub-reports):** our daily-bar negatives are FULLY consistent w/ the published
+  record — no free-data small-operator return-ALPHA was missed. The one surviving liquid edge is
+  trend/TS-momentum AS A RISK PREMIUM. Our 10bps cost is about-right-to-conservative (NOT too harsh);
+  the load-bearing problem is TURNOVER not the per-trade rate. Han-Kang-Ryu 2024: crypto TS-momentum
+  survives realistic cost, XS dies — exactly our Round-1 result.
+- **INFRA-STRESS (is it us?): PARTIALLY YES.** Vol-target + weekly rebalance fix H2's DD (−49%→−16%) +
+  cost-fragility (turnover 0.42→0.13); realistic 4-6bps cost gives OOS Sharpe +1.0-1.15. BUT the
+  significance wall (DSR/p) survives EVERY config — that's eff-N≈2.82 (verifier-rederived; cross-section
+  ≈ one factor) + ~6.5y history, STRUCTURAL to the asset class, NOT infra.
+- **H5 TS-trend = BEST-SHAPED RESULT OF THE CAMPAIGN, still NOT alpha.** Pre-registered (not dredged):
+  OOS +1.13 / IS +0.91 (no sign-flip), maxDD −0.162, β −0.073 (market-neutral), turnover 0.029. Clears
+  4/5 ex-history gate criteria; FAILS ONLY significance (DSR 0.50<0.95; boot p 0.031 fails even lenient
+  N=3 Bonferroni 0.0167) + 10y-history. Risk-control axis: BEATS buy-hold BTC on Sharpe (1.13 vs 0.72)
+  AND drawdown (−0.16 vs −0.50) — drawdown-controlled risk-premium harvesting (same property as multi-
+  asset trend, here beating passive). H4 (infra-corrected XS) = cleaner negative (IS sign-flip → not
+  OOS-confirmed + significance fail). **Verifier (separate Code Reviewer): BOTH TRUSTWORTHY, leakage-
+  free, no L-018 trigger; H5 correctly reported as a non-cleared risk-control keeper, NOT "an edge".**
+  Net: no verified return-alpha anywhere; crypto TS-trend is the strongest risk-control finding; path to
+  a SIGNIFICANT crypto edge needs more independent history (unavailable). Paper/research only.
+
 ## Operating mode — delegated authority (2026-06-23, survives fresh sessions)
 
 The operator delegated standing approval authority. From here on:
