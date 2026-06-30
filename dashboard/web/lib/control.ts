@@ -1,12 +1,14 @@
 "use client";
 
+import type { ControlState } from "./types";
+
 // Operator control client. Each call POSTs to the bounded control endpoint with the
 // per-action confirm header the bot's control layer requires. The server re-enforces
 // every immutable (practice-pin, leverage cap, eligibility) regardless of this client.
 export interface ControlResult {
   status: number;
   ok: boolean;
-  data: Record<string, unknown>;
+  data: Record<string, unknown> & { state?: ControlState };
 }
 
 export async function control(

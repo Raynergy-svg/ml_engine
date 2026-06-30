@@ -474,14 +474,21 @@ def read_tier7() -> Dict[str, Any]:
         except OSError:
             pass
 
+    snapshot_stale = snap_age is not None and snap_age > TIER7_FRESH_S
+    running = bool(data.get("running")) and not snapshot_stale
+    running_reason = data.get("running_reason")
+    if snapshot_stale:
+        running_reason = f"snapshot stale ({int(snap_age)}s > {int(TIER7_FRESH_S)}s)" if snap_age is not None else "snapshot stale"
+
     return {
         "connected": True,
         "source": rel,
         "snapshot_age_s": round(snap_age, 1) if snap_age is not None else None,
-        "snapshot_stale": (snap_age is not None and snap_age > TIER7_FRESH_S),
-        # honest, bot-derived liveness (do NOT recompute — trust the bot's pid+heartbeat check)
-        "running": bool(data.get("running")),
-        "running_reason": data.get("running_reason"),
+        "snapshot_stale": snapshot_stale,
+        # honest liveness: trust the bot's pid+heartbeat check only while the
+        # exported snapshot itself is fresh; an old "fresh heartbeat" is stale truth.
+        "running": running,
+        "running_reason": running_reason,
         "halted": data.get("halted"),
         "mode": data.get("mode"),
         "status": data.get("status"),

@@ -1,7 +1,7 @@
 "use client";
 import { usePoll } from "@/lib/api";
 import { useStream } from "@/lib/stream";
-import type { SystemHealth } from "@/lib/types";
+import type { ApiHealth, SystemHealth } from "@/lib/types";
 import { StatusDot } from "./ui";
 import { ago } from "@/lib/format";
 
@@ -21,6 +21,7 @@ function Pill({ color, label, value, title }: { color: string; label: string; va
 
 export function GlobalStatusStrip() {
   const { data } = usePoll<SystemHealth>("/api/system_health", 5000);
+  const { data: apiHealth } = usePoll<ApiHealth>("/api/health", 10000);
   const { payload } = useStream();
   const halted = payload?.status?.halted ?? null;
 
@@ -58,9 +59,16 @@ export function GlobalStatusStrip() {
         label="Alerts"
         value={alerts?.count ? `${alerts.count} ${sev ?? ""}`.trim() : "none"}
       />
-      <div className="ml-auto flex items-center gap-2 whitespace-nowrap" title="OANDA fxPractice (demo) — read-only">
-        <StatusDot color="#22d3ee" />
-        <span className="font-mono text-[10px] text-faint">PRACTICE · read-only</span>
+      <div
+        className="ml-auto flex items-center gap-2 whitespace-nowrap"
+        title={apiHealth?.control_enabled
+          ? "OANDA fxPractice (demo) — bounded control enabled"
+          : "OANDA fxPractice (demo) — read-only"}
+      >
+        <StatusDot color={apiHealth?.control_enabled ? "#f5b14c" : "#22d3ee"} />
+        <span className="font-mono text-[10px] text-faint">
+          PRACTICE · {apiHealth?.control_enabled ? "control enabled" : "read-only"}
+        </span>
       </div>
     </div>
   );

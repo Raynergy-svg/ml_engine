@@ -3,9 +3,9 @@ import { useState } from "react";
 import { usePoll } from "@/lib/api";
 import { useStream } from "@/lib/stream";
 import { control, type ControlResult } from "@/lib/control";
-import type { SystemHealth } from "@/lib/types";
+import type { ControlState, SystemHealth, Tier7 } from "@/lib/types";
 import { Card, SectionTitle, Badge, StatusDot } from "./ui";
-import { shortTime } from "@/lib/format";
+import { ago, shortTime } from "@/lib/format";
 
 interface AuditEntry {
   ts: string; action: string; allowed?: boolean; reason?: string; result?: string;
@@ -61,14 +61,38 @@ function ConfirmButton({
 }
 
 export function ControlPanel() {
-  const { data: audit, error } = usePoll<AuditResp>("/api/control/audit?limit=25", 4000);
+  const { data: audit } = usePoll<AuditResp>("/api/control/audit?limit=25", 4000);
+  const { data: polledControlState, error: stateError } = usePoll<ControlState>("/api/control/state", 3000);
+  const { data: tier7 } = usePoll<Tier7>("/api/tier7", 4000);
   const { data: health } = usePoll<SystemHealth>("/api/system_health", 5000);
   const { payload } = useStream();
-  const [lev, setLev] = useState(3);
+  const [actionControlState, setActionControlState] = useState<ControlState | null>(null);
+  const [pendingLev, setPendingLev] = useState<number | null>(null);
 
-  const halted = payload?.status?.halted ?? null;
-  const laneRunning = health?.lanes?.running === true;
-  const disabled = !!error && /404/.test(error);
+  async function runControl(action: string, params: Record<string, unknown> = {}) {
+    const result = await control(action, params);
+    if (result.data.state) {
+      setActionControlState(result.data.state);
+      if (typeof result.data.state.gross_leverage === "number") setPendingLev(null);
+    }
+    return result;
+  }
+
+  const controlState = polledControlState ?? actionControlState;
+  const halted = controlState?.halted ?? payload?.status?.halted ?? null;
+  const laneRunning = controlState?.loops?.trend?.running ?? health?.lanes?.running === true;
+  const tier7Proc = controlState?.loops?.tier7;
+  const tier7ProcRunning = tier7Proc?.running === true;
+  const tier7SnapshotConnected = tier7?.connected === true;
+  const tier7BotRunning = tier7SnapshotConnected ? tier7?.running === true : null;
+  const tier7Running = tier7BotRunning ?? tier7ProcRunning;
+  const tier7Mismatch = tier7SnapshotConnected && tier7ProcRunning !== (tier7?.running === true);
+  const tier7LatestHeal = [...(tier7?.self_heal?.recent_events ?? [])].reverse()[0];
+  const tier7StatusColor = tier7Mismatch ? "#f5b14c" : tier7Running ? "#2bd17e" : "#ff4d6d";
+  const disabled = !!stateError && /404/.test(stateError);
+  const leverageCap = controlState?.leverage_cap ?? 15;
+  const persistedLeverage = typeof controlState?.gross_leverage === "number" ? controlState.gross_leverage : null;
+  const lev = pendingLev ?? persistedLeverage ?? 3;
 
   if (disabled) {
     return (
@@ -97,6 +121,11 @@ export function ControlPanel() {
             <StatusDot color={laneRunning ? "#2bd17e" : "#f5b14c"} pulse={laneRunning} />
             trend lane {laneRunning ? "running" : "offline"}
           </span>
+          <span className="flex items-center gap-1.5">
+            <StatusDot color={tier7StatusColor} pulse={tier7Running === true && !tier7Mismatch} />
+            tier 7 {tier7Running === true ? "running" : tier7Running === false ? "offline" : "unknown"}
+            {tier7Mismatch && <span className="text-warn">mismatch</span>}
+          </span>
           <span className="text-faint">every action: explicit confirm · server re-enforces practice + caps</span>
         </div>
 
@@ -104,37 +133,82 @@ export function ControlPanel() {
           <div className="flex items-center justify-between rounded-md border p-3 hairline">
             <div><div className="font-mono text-[12px] text-text">Halt trading</div>
               <div className="font-mono text-[10px] text-faint">fail-safe — stops new orders</div></div>
-            <ConfirmButton label="HALT" color="#ff4d6d" onRun={() => control("halt")} disabled={halted === true} />
+            <ConfirmButton label="HALT" color="#ff4d6d" onRun={() => runControl("halt")} disabled={halted === true} />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3 hairline">
             <div><div className="font-mono text-[12px] text-text">Unhalt trading</div>
               <div className="font-mono text-[10px] text-faint">gated: drawdown &lt; 20% · gates GREEN · practice</div></div>
-            <ConfirmButton label="UNHALT" color="#2bd17e" onRun={() => control("unhalt")} disabled={halted === false} />
+            <ConfirmButton label="UNHALT" color="#2bd17e" onRun={() => runControl("unhalt")} disabled={halted === false} />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3 hairline">
             <div><div className="font-mono text-[12px] text-text">Trend loop</div>
               <div className="font-mono text-[10px] text-faint">start / stop the OANDA trend lane</div></div>
             <span className="flex gap-1.5">
-              <ConfirmButton label="START" color="#2bd17e" onRun={() => control("start_loop", { loop: "trend" })} />
-              <ConfirmButton label="STOP" color="#ff4d6d" onRun={() => control("stop_loop", { loop: "trend" })} />
+              <ConfirmButton label="START" color="#2bd17e" onRun={() => runControl("start_loop", { loop: "trend" })} disabled={laneRunning} />
+              <ConfirmButton label="STOP" color="#ff4d6d" onRun={() => runControl("stop_loop", { loop: "trend" })} disabled={!laneRunning} />
             </span>
           </div>
-          <div className="flex items-center justify-between rounded-md border p-3 hairline">
-            <div><div className="font-mono text-[12px] text-text">Tier 7 loop</div>
-              <div className="font-mono text-[10px] text-faint">start / stop the self-heal loop</div></div>
-            <span className="flex gap-1.5">
-              <ConfirmButton label="START" color="#2bd17e" onRun={() => control("start_loop", { loop: "tier7" })} />
-              <ConfirmButton label="STOP" color="#ff4d6d" onRun={() => control("stop_loop", { loop: "tier7" })} />
-            </span>
+          <div className="rounded-md border p-3 hairline">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <StatusDot color={tier7StatusColor} pulse={tier7Running === true && !tier7Mismatch} />
+                  <div className="font-mono text-[12px] text-text">Tier 7 loop</div>
+                </div>
+                <div className="mt-0.5 font-mono text-[10px] text-faint">
+                  controller pids {tier7Proc?.pids?.length ? tier7Proc.pids.join(", ") : "—"}
+                  {" · "}
+                  bot {tier7SnapshotConnected ? (tier7?.running ? "heartbeat running" : "not running") : "snapshot missing"}
+                </div>
+              </div>
+              <span className="flex shrink-0 gap-1.5">
+                <ConfirmButton label="START" color="#2bd17e" onRun={() => runControl("start_loop", { loop: "tier7" })} disabled={tier7ProcRunning} />
+                <ConfirmButton label="STOP" color="#ff4d6d" onRun={() => runControl("stop_loop", { loop: "tier7" })} disabled={!tier7ProcRunning} />
+              </span>
+            </div>
+            <div className="mt-2 grid gap-1.5 font-mono text-[10.5px] text-faint sm:grid-cols-2">
+              <div className="truncate" title={tier7?.running_reason ?? undefined}>
+                reason: <span className={tier7Mismatch ? "text-warn" : "text-dim"}>{tier7?.running_reason ?? "—"}</span>
+              </div>
+              <div>
+                heartbeat: <span className="tnum">{tier7?.last_cycle?.age_seconds != null ? ago(tier7.last_cycle.age_seconds) : "—"}</span>
+                {tier7?.last_cycle?.pid_alive === false && <span className="text-warn"> · pid dead</span>}
+              </div>
+              <div>
+                cycle: <span className="tnum">#{tier7?.scan_cycle_count ?? tier7?.last_cycle?.cycle_count ?? "—"}</span>
+              </div>
+              <div>
+                snapshot:{" "}
+                <span className={tier7?.snapshot_stale ? "text-warn" : "text-dim"}>
+                  {tier7?.snapshot_age_s != null ? ago(tier7.snapshot_age_s) : "—"}
+                  {tier7?.snapshot_stale ? " stale" : ""}
+                </span>
+              </div>
+              <div className="truncate sm:col-span-2" title={tier7LatestHeal?.actions?.join(", ")}>
+                self-heal:{" "}
+                <span className="text-dim">
+                  {tier7LatestHeal
+                    ? `cycle ${tier7LatestHeal.cycle ?? "—"} · ${tier7LatestHeal.status ?? "—"} · ${(tier7LatestHeal.actions ?? []).join(" · ") || "no actions"}`
+                    : "—"}
+                </span>
+              </div>
+              {tier7Mismatch && (
+                <div className="sm:col-span-2 text-warn">
+                  controller process state and bot heartbeat disagree; trust heartbeat for liveness, STOP targets controller pids.
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center justify-between rounded-md border p-3 hairline sm:col-span-2">
             <div><div className="font-mono text-[12px] text-text">Gross leverage</div>
-              <div className="font-mono text-[10px] text-faint">total exposure × NAV · hard-capped 15× server-side</div></div>
+              <div className="font-mono text-[10px] text-faint">
+                total exposure × NAV · persisted {persistedLeverage === null ? "—" : `${persistedLeverage.toFixed(1)}×`} · cap {leverageCap.toFixed(0)}×
+              </div></div>
             <span className="flex items-center gap-2">
-              <input type="range" min={0} max={15} step={0.5} value={lev}
-                onChange={(e) => setLev(parseFloat(e.target.value))} className="w-32" />
+              <input type="range" min={0} max={leverageCap} step={0.5} value={lev}
+                onChange={(e) => setPendingLev(parseFloat(e.target.value))} className="w-32" />
               <span className="w-10 font-mono text-[13px] font-semibold text-cyan tnum">{lev.toFixed(1)}×</span>
-              <ConfirmButton label="SET" color="#22d3ee" onRun={() => control("set_gross_leverage", { gross_leverage: lev })} />
+              <ConfirmButton label="SET" color="#22d3ee" onRun={() => runControl("set_gross_leverage", { gross_leverage: lev })} />
             </span>
           </div>
         </div>

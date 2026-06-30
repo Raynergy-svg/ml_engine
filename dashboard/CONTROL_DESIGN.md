@@ -19,7 +19,7 @@ All POST, **auth-gated** (Phase-1 session) + **explicit per-action confirm** + *
 |---|---|---|---|
 | `halt` | `StateEngine.set_halted(True)` | none (fail-safe) | always allowed; stops new trades |
 | `unhalt` | `StateEngine.set_halted(False)` | medium | re-asserts `env==practice` + rails intact first |
-| `set_gross_leverage` | set the trend lane's gross-leverage dial | medium | **clamped to [0, 15]**; out-of-range rejected |
+| `set_gross_leverage` | set the OANDA gross-exposure dial/cap | medium | **clamped to [0, 15]**; out-of-range rejected |
 | `start_loop` / `stop_loop` | start/stop a **named** loop (`trend` \| `tier7`) | medium | whitelist only; **no arbitrary command exec** |
 
 Nothing else. No threshold edits, no gate edits, no model promotion, no env/account changes.
@@ -71,8 +71,10 @@ These are structural — not UI-hidden. A crafted/malicious request cannot reach
   lane is the non-ML trend strategy; FX/ML is retired/L-016, so blocking on its permanent
   staleness would deadlock the unhalt→start-loop resume flow). Verified round-trip on practice.
 - `set_gross_leverage` — functional: writes a clamped `[0,15]` override to
-  `trained_data/axiom/control_overrides.json`; `run_oanda_trend.py` re-reads it each cycle and
-  `clamp_leverage` re-caps to 15× (double-clamped).
+  `trained_data/axiom/control_overrides.json`; `run_oanda_trend.py` re-reads it each cycle
+  and sizes the trend book to the dial, while OANDA-backed scanner execution re-reads it
+  before each broker order and enforces it as a total gross-notional cap. Both paths
+  re-cap/refuse values outside the 15× server-side bound.
 - `start_loop` / `stop_loop` — functional via fixed-whitelist subprocess (`trend`→run_oanda_trend.py
   --loop, `tier7`→run_tier7_loop.py); stop by pgrep-needle + SIGTERM. No shell, no user input in argv.
 

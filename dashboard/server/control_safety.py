@@ -22,7 +22,7 @@ from typing import Any, Dict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUDIT_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_audit.jsonl"
-# Control-override file the trend loop reads each cycle (operator dials via AXIOM).
+# Control-override file the OANDA trend loop and scanner execution path read.
 OVERRIDES_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_overrides.json"
 
 # The ONLY actions that exist. Anything else is unknown -> denied.
@@ -175,6 +175,12 @@ def set_override(key: str, value: Any) -> Dict[str, Any]:
         json.dump(current, fh, indent=2, sort_keys=True)
     os.replace(tmp, OVERRIDES_PATH)
     return current
+
+
+def read_overrides() -> Dict[str, Any]:
+    """Read persisted operator overrides. Missing/corrupt files mean no override."""
+    data = _read_json_safe(OVERRIDES_PATH)
+    return data if isinstance(data, dict) else {}
 
 
 def audit(entry: Dict[str, Any]) -> None:

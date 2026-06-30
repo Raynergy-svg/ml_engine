@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStream } from "@/lib/stream";
 import { usePoll } from "@/lib/api";
 import type { Strategy } from "@/lib/types";
@@ -16,7 +16,7 @@ export function PriceTiles({
 }: { selected: string; onSelect: (i: string) => void }) {
   const { payload } = useStream();
   const { data: strat } = usePoll<Strategy>("/api/strategy", 60000);
-  const prices = payload?.prices?.prices ?? {};
+  const prices = useMemo(() => payload?.prices?.prices ?? {}, [payload?.prices?.prices]);
   const onSet = new Set(strat?.on ?? []);
   const prev = useRef<Record<string, number>>({});
   const [flash, setFlash] = useState<Record<string, "up" | "down">>({});
@@ -30,9 +30,12 @@ export function PriceTiles({
       if (p != null) prev.current[m] = p;
     }
     if (Object.keys(next).length) {
-      setFlash(next);
-      const t = setTimeout(() => setFlash({}), 600);
-      return () => clearTimeout(t);
+      const show = setTimeout(() => setFlash(next), 0);
+      const hide = setTimeout(() => setFlash({}), 600);
+      return () => {
+        clearTimeout(show);
+        clearTimeout(hide);
+      };
     }
   }, [prices]);
 

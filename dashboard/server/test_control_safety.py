@@ -64,8 +64,17 @@ def test_set_override_clamps_and_writes(tmp_path):
     import json
     saved = json.loads(cs.OVERRIDES_PATH.read_text())
     assert saved["gross_leverage"] == 5.0 and saved["_source"] == "axiom_control"
+    assert cs.read_overrides()["gross_leverage"] == 5.0
     with pytest.raises(cs.ControlDenied):
         cs.set_override("evil_key", 1)
+
+
+def test_read_overrides_missing_or_corrupt_returns_empty(tmp_path):
+    cs.OVERRIDES_PATH = tmp_path / "missing.json"
+    assert cs.read_overrides() == {}
+    cs.OVERRIDES_PATH = tmp_path / "corrupt.json"
+    cs.OVERRIDES_PATH.write_text("{bad", encoding="utf-8")
+    assert cs.read_overrides() == {}
 
 
 def test_audit_appends_real_line(tmp_path):

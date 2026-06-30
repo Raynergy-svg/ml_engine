@@ -26,10 +26,11 @@ export function StatusDot({ color, pulse = false }: { color: string; pulse?: boo
 }
 
 export function Badge({
-  children, color = "#8b98a9", dot = false, pulse = false,
-}: { children: React.ReactNode; color?: string; dot?: boolean; pulse?: boolean }) {
+  children, color = "#8b98a9", dot = false, pulse = false, title,
+}: { children: React.ReactNode; color?: string; dot?: boolean; pulse?: boolean; title?: string }) {
   return (
     <span
+      title={title}
       className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[11px] font-semibold tnum"
       style={{ color, borderColor: "var(--color-border)" }}
     >

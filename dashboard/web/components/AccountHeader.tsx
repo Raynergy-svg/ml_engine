@@ -71,7 +71,7 @@ export function AccountHeader() {
         </Stat>
       </div>
 
-      <div className="flex items-center gap-2 pl-4">
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 pl-0 sm:pl-4">
         <Badge color="#22d3ee" dot>PRACTICE</Badge>
         <Badge color={apiHealth?.control_enabled ? "#f5b14c" : "#5a6677"} dot>
           {apiHealth?.control_enabled ? "CONTROL" : "READ-ONLY"}
@@ -88,9 +88,9 @@ export function AccountHeader() {
             STALE{acct.snapshot_age_s != null ? ` ${ago(acct.snapshot_age_s)}` : ""}
           </Badge>
         )}
-        <div className="flex items-center gap-1.5 pl-1" title="SSE stream to data layer">
+        <div className="flex min-w-0 items-center gap-1.5 pl-1" title="SSE stream to data layer">
           <StatusDot color={connected ? "#34e5a1" : "#5a6677"} pulse={connected} />
-          <span className="font-mono text-[10px] text-faint">
+          <span className="min-w-0 font-mono text-[10px] text-faint">
             {connected ? "live" : "offline"}
             {status?.account_snapshot_age_s != null && ` · cycle ${ago(status.account_snapshot_age_s)}`}
           </span>

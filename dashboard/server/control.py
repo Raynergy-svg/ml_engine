@@ -9,7 +9,8 @@ Functional actions (all practice-pinned + bounded by control_safety):
   halt               — StateEngine.set_halted(True) (fail-safe; always allowed).
   unhalt             — StateEngine.set_halted(False) ONLY after assert_unhalt_eligible
                        passes (practice + drawdown<20% + gates GREEN + models fresh).
-  set_gross_leverage — writes a clamped [0,15] override the trend loop reads each cycle.
+  set_gross_leverage — writes a clamped [0,15] override; the trend loop sizes to it
+                       and OANDA scanner execution enforces it as a gross cap.
   start_loop/stop_loop — fixed-WHITELIST process control (no arbitrary exec): trend ->
                        run_oanda_trend.py --loop, tier7 -> run_tier7_loop.py; stop by pid.
 """
@@ -17,11 +18,12 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
@@ -51,25 +53,42 @@ class ActionBody(BaseModel):
     params: Dict[str, Any] = {}
 
 
-def _confirm(action: str, header_val: str | None) -> None:
+def _confirm(action: str, header_val: Optional[str]) -> None:
     if header_val != action:
         raise HTTPException(status_code=403, detail="missing/incorrect X-AXIOM-Confirm header")
 
 
 def _loop_pids(loop: str) -> list[int]:
-    """pgrep the FIXED needle for a whitelisted loop (list args, no shell)."""
+    """Return exact loop process pids for a whitelisted loop.
+
+    Avoid ``pgrep -f`` substring matches: shell commands, tests, or grep/rg probes
+    can mention ``run_tier7_loop.py`` without being the loop the control panel can
+    actually start/stop.
+    """
+    script_name = Path(LOOP_NEEDLES[loop]).name
     try:
-        out = subprocess.run(["pgrep", "-f", LOOP_NEEDLES[loop]], capture_output=True, text=True, timeout=5)
+        out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
         return []
     pids = []
-    for line in out.stdout.split():
+    for line in out.stdout.splitlines():
         try:
-            pid = int(line)
-            if pid != os.getpid():
-                pids.append(pid)
+            pid_txt, command = line.strip().split(None, 1)
+            pid = int(pid_txt)
         except ValueError:
             continue
+        if pid == os.getpid():
+            continue
+        try:
+            argv = shlex.split(command)
+        except ValueError:
+            argv = command.split()
+        exe = (Path(argv[0]).name if argv else "").lower()
+        exe_is_python = exe.startswith("python")
+        exe_is_script = exe == script_name
+        script_arg = any(Path(arg).name == script_name for arg in argv[1:])
+        if exe_is_script or (exe_is_python and script_arg):
+            pids.append(pid)
     return pids
 
 
@@ -93,6 +112,26 @@ def _stop_loop(loop: str) -> Dict[str, Any]:
         except OSError:
             pass
     return {"result": "stopped" if pids else "not_running", "pids": pids}
+
+
+def _state() -> Dict[str, Any]:
+    """Current persisted control state for dashboard hydration/readback."""
+    from src.scanner.automation.state_engine import StateEngine
+
+    overrides = cs.read_overrides()
+    loops = {}
+    for loop in sorted(LOOP_CMDS):
+        pids = _loop_pids(loop)
+        loops[loop] = {"running": bool(pids), "pids": pids}
+    return {
+        "ok": True,
+        "environment": cs.assert_practice(),
+        "halted": StateEngine().get_halted(),
+        "gross_leverage": overrides.get("gross_leverage"),
+        "override_updated_at": overrides.get("_updated_at"),
+        "leverage_cap": cs.LEVERAGE_CAP,
+        "loops": loops,
+    }
 
 
 def _run(action: str, params: Dict[str, Any]):
@@ -125,7 +164,13 @@ def _run(action: str, params: Dict[str, Any]):
 
     cs.audit({"action": action, "params": normalized, "allowed": True, "reason": "guards passed", **result})
     logger.warning("AXIOM CONTROL executed: %s -> %s", action, result.get("result"))
-    return {"ok": True, "action": action, **result}
+    return {"ok": True, "action": action, **result, "state": _state()}
+
+
+@router.get("/state")
+def state():
+    """Read-only control state: persisted dials + loop/halt readback."""
+    return _state()
 
 
 @router.get("/audit")
@@ -146,30 +191,30 @@ def audit_log(limit: int = 50):
 
 
 @router.post("/halt")
-def halt(body: ActionBody | None = None, *, x_axiom_confirm: str | None = Header(default=None)):
+def halt(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
     _confirm("halt", x_axiom_confirm)
     return _run("halt", body.params if body else {})
 
 
 @router.post("/unhalt")
-def unhalt(body: ActionBody | None = None, *, x_axiom_confirm: str | None = Header(default=None)):
+def unhalt(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
     _confirm("unhalt", x_axiom_confirm)
     return _run("unhalt", body.params if body else {})
 
 
 @router.post("/set_gross_leverage")
-def set_gross_leverage(body: ActionBody | None = None, *, x_axiom_confirm: str | None = Header(default=None)):
+def set_gross_leverage(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
     _confirm("set_gross_leverage", x_axiom_confirm)
     return _run("set_gross_leverage", body.params if body else {})
 
 
 @router.post("/start_loop")
-def start_loop(body: ActionBody | None = None, *, x_axiom_confirm: str | None = Header(default=None)):
+def start_loop(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
     _confirm("start_loop", x_axiom_confirm)
     return _run("start_loop", body.params if body else {})
 
 
 @router.post("/stop_loop")
-def stop_loop(body: ActionBody | None = None, *, x_axiom_confirm: str | None = Header(default=None)):
+def stop_loop(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
     _confirm("stop_loop", x_axiom_confirm)
     return _run("stop_loop", body.params if body else {})
