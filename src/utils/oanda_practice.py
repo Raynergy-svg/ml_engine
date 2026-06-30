@@ -312,6 +312,14 @@ class OandaPracticeClient:
     def get_account_summary(self) -> Any:
         return self._request("GET", f"/accounts/{self._config.account_id}/summary")
 
+    def get_instruments(self) -> Any:
+        """List the tradable instruments for this PRACTICE account (v20).
+
+        GET /v3/accounts/{accountID}/instruments — returns FX majors/minors and
+        whatever CFDs the account enables (XAU_USD, XAG_USD, indices, commodities).
+        """
+        return self._request("GET", f"/accounts/{self._config.account_id}/instruments")
+
     def get_open_positions(self) -> Any:
         """List currently open positions for the account."""
         return self._request("GET", f"/accounts/{self._config.account_id}/openPositions")
@@ -704,6 +712,14 @@ class OandaPracticeClient:
             f"/accounts/{self._config.account_id}/trades",
             params=params,
         )
+
+    def get_transactions_since(self, transaction_id: str, *, type_filter: Optional[str] = None) -> Any:
+        """All transactions NEWER than ``transaction_id`` (the audit-ledger tail)."""
+        params: Dict[str, Any] = {"id": str(transaction_id)}
+        if type_filter:
+            params["type"] = type_filter
+        return self._request(
+            "GET", f"/accounts/{self._config.account_id}/transactions/sinceid", params=params)
 
     def get_transactions(
         self,

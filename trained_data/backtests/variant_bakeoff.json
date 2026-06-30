@@ -1,0 +1,115 @@
+{
+  "full_sample": {
+    "arms": {
+      "baseline_ew": {
+        "gate_pass": true,
+        "max_dd": 0.229,
+        "net_sharpe": 0.829,
+        "positive_years": 17,
+        "total_years": 21
+      },
+      "hrp": {
+        "gate_pass": true,
+        "max_dd": 0.22,
+        "net_sharpe": 0.804,
+        "positive_years": 17,
+        "total_years": 21
+      },
+      "lowvol": {
+        "gate_pass": true,
+        "max_dd": 0.22,
+        "net_sharpe": 0.822,
+        "positive_years": 17,
+        "total_years": 21
+      },
+      "quality": {
+        "reason": "no point-in-time fundamental data available for the universe (financial-datasets returns latest-FY snapshot only; yfinance is current-snapshot only). A current ROE applied historically would be lookahead + survivorship (L-018). Supply a real PIT quality panel to evaluate this arm.",
+        "status": "NOT_EVALUATED"
+      }
+    },
+    "end": "2026-05-30",
+    "ranking": {
+      "baseline_ew": {
+        "beats_baseline": false,
+        "gate_pass": true,
+        "margin_vs_baseline": 0.0,
+        "max_dd": 0.229,
+        "net_sharpe": 0.829
+      },
+      "hrp": {
+        "beats_baseline": false,
+        "gate_pass": true,
+        "margin_vs_baseline": -0.025,
+        "max_dd": 0.22,
+        "net_sharpe": 0.804
+      },
+      "lowvol": {
+        "beats_baseline": false,
+        "gate_pass": true,
+        "margin_vs_baseline": -0.007,
+        "max_dd": 0.22,
+        "net_sharpe": 0.822
+      }
+    },
+    "start": "2006-01-03"
+  },
+  "generated_at": "reverify",
+  "members": 38,
+  "out_of_sample": {
+    "arms": {
+      "baseline_ew": {
+        "gate_pass": false,
+        "max_dd": 0.229,
+        "net_sharpe": 1.015,
+        "positive_years": 7,
+        "total_years": 8
+      },
+      "hrp": {
+        "gate_pass": false,
+        "max_dd": 0.198,
+        "net_sharpe": 0.826,
+        "positive_years": 7,
+        "total_years": 8
+      },
+      "lowvol": {
+        "gate_pass": false,
+        "max_dd": 0.22,
+        "net_sharpe": 0.935,
+        "positive_years": 7,
+        "total_years": 8
+      },
+      "quality": {
+        "reason": "no point-in-time fundamental data available for the universe (financial-datasets returns latest-FY snapshot only; yfinance is current-snapshot only). A current ROE applied historically would be lookahead + survivorship (L-018). Supply a real PIT quality panel to evaluate this arm.",
+        "status": "NOT_EVALUATED"
+      }
+    },
+    "end": "2026-05-29",
+    "fraction": 0.34,
+    "ranking": {
+      "baseline_ew": {
+        "beats_baseline": false,
+        "gate_pass": false,
+        "margin_vs_baseline": 0.0,
+        "max_dd": 0.229,
+        "net_sharpe": 1.015
+      },
+      "hrp": {
+        "beats_baseline": false,
+        "gate_pass": false,
+        "margin_vs_baseline": -0.189,
+        "max_dd": 0.198,
+        "net_sharpe": 0.826
+      },
+      "lowvol": {
+        "beats_baseline": false,
+        "gate_pass": false,
+        "margin_vs_baseline": -0.08,
+        "max_dd": 0.22,
+        "net_sharpe": 0.935
+      }
+    },
+    "start": "2019-06-19"
+  },
+  "running": "NO (offline backtest evaluation)",
+  "universe_hash": "26c92e1d08e05819234333fe91a3eeee640c804f6232bc674ae9c5071f31b1ac"
+}

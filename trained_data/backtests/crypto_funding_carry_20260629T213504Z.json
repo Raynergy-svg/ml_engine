@@ -1,0 +1,123 @@
+{
+  "blocks": {
+    "full_IS_pre2024": {
+      "avg_turnover": 0.462,
+      "btc_beta": -0.004,
+      "carry_ann_ret": 0.1747,
+      "carry_sharpe": 16.607,
+      "cost_ann": 0.1685,
+      "gross_sharpe": 2.784,
+      "label": "full_IS_pre2024",
+      "max_drawdown": -0.265,
+      "n_days": 1461,
+      "net_ann_ret": 0.4162,
+      "net_sharpe": 1.979,
+      "price_ann_ret": 0.41,
+      "price_sharpe": 1.962
+    },
+    "full_OOS_2024+": {
+      "avg_turnover": 0.432,
+      "btc_beta": -0.042,
+      "carry_ann_ret": 0.3185,
+      "carry_sharpe": 17.375,
+      "cost_ann": 0.1578,
+      "gross_sharpe": 0.596,
+      "label": "full_OOS_2024+",
+      "max_drawdown": -0.299,
+      "n_days": 882,
+      "net_ann_ret": -0.0463,
+      "net_sharpe": -0.247,
+      "price_ann_ret": -0.207,
+      "price_sharpe": -1.105
+    },
+    "full_all": {
+      "avg_turnover": 0.451,
+      "btc_beta": -0.013,
+      "carry_ann_ret": 0.2289,
+      "carry_sharpe": 15.841,
+      "cost_ann": 0.1645,
+      "gross_sharpe": 2.013,
+      "label": "full_all",
+      "max_drawdown": -0.381,
+      "n_days": 2343,
+      "net_ann_ret": 0.2421,
+      "net_sharpe": 1.198,
+      "price_ann_ret": 0.1777,
+      "price_sharpe": 0.882
+    },
+    "stress2x_OOS": {
+      "avg_turnover": 0.432,
+      "btc_beta": -0.042,
+      "carry_ann_ret": 0.3185,
+      "carry_sharpe": 17.375,
+      "cost_ann": 0.3156,
+      "gross_sharpe": 0.596,
+      "label": "stress2x_OOS",
+      "max_drawdown": -0.435,
+      "n_days": 882,
+      "net_ann_ret": -0.2041,
+      "net_sharpe": -1.092,
+      "price_ann_ret": -0.207,
+      "price_sharpe": -1.105
+    },
+    "survivoronly_OOS": {
+      "avg_turnover": 0.433,
+      "btc_beta": -0.043,
+      "carry_ann_ret": 0.3185,
+      "carry_sharpe": 17.351,
+      "cost_ann": 0.1579,
+      "gross_sharpe": 0.535,
+      "label": "survivoronly_OOS",
+      "max_drawdown": -0.305,
+      "n_days": 882,
+      "net_ann_ret": -0.0577,
+      "net_sharpe": -0.308,
+      "price_ann_ret": -0.2183,
+      "price_sharpe": -1.165
+    }
+  },
+  "clears_ex_history": false,
+  "decomposition_oos": {
+    "btc_beta": -0.042,
+    "carry_ann_ret": 0.3185,
+    "dead_coin_carry_inflation": 0.0,
+    "price_ann_ret": -0.207,
+    "survivoronly_carry_ann_ret": 0.3185
+  },
+  "elapsed_s": 2962.3,
+  "experiment": "H1_crypto_funding_carry",
+  "frozen_params": {
+    "cost_bps_per_side": 10.0,
+    "lookback_d": 3,
+    "min_adv_usd": 10000000,
+    "min_history_d": 90,
+    "n_trials": 3,
+    "oos_start": "2024-01-01",
+    "quintile": 0.2
+  },
+  "gate": {
+    "btc_beta_neutral(|b|<=0.15)": true,
+    "history_depth>=10y": false,
+    "max_drawdown<=0.25": false,
+    "multiple_testing(DSR>=.95 & p<.0167)": false,
+    "oos_confirmed": false,
+    "oos_net_sharpe>=0.40": false
+  },
+  "pre_registered": "docs/experiment-crypto-edge-hunt-2026-06-29.md",
+  "significance_oos": {
+    "bonferroni_alpha": 0.0167,
+    "bootstrap_p_mean_le0": 0.6338,
+    "deflated_sr": 0.1075,
+    "dsr_bench_ann_sharpe": 0.549,
+    "psr_gt0": 0.35
+  },
+  "universe": {
+    "alive_at_end": 666,
+    "delisted_during_sample": 27,
+    "ever_liquid": 693,
+    "span": [
+      "2020-01-01",
+      "2026-05-31"
+    ]
+  }
+}

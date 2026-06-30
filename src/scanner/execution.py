@@ -6470,16 +6470,45 @@ class ExecutionManager:
 
     # ── US-510 Per-Trade Manual Close ─────────────────────────────────
 
-    async def close_trade(self, trade_id: str, reason: str = "operator") -> Dict[str, Any]:
+    async def close_trade(self, trade_id: str, reason: str = "operator",
+                          operator_override: bool = False) -> Dict[str, Any]:
         """Market-close a single open trade by ID and journal the outcome.
 
         Args:
             trade_id: OANDA trade ID to close.
             reason: Human-readable reason (default 'operator' for TUI manual close).
+            operator_override: When True, bypass the halt guard for an EXPLICIT
+                operator-initiated close (e.g. the TUI's halt-aware confirm). Default
+                False blocks autonomous/programmatic closes while state.halted=True.
 
         Returns:
             Dict with keys: success (bool), trade_id, exit_price, realized_pl, error (on failure).
         """
+        # Halt guard (operator-directed safety-ADD 2026-06-24) — mirrors execute_trade's mid-cycle
+        # guard (~2093). A halt means "no new exposure"; a close is risk-REDUCING, so an EXPLICIT
+        # operator-initiated close may pass via operator_override=True (e.g. the TUI's halt-aware
+        # confirm). AUTONOMOUS/programmatic closes (default operator_override=False) are BLOCKED while
+        # halted — fail-closed; the operator can also use the sanctioned unhalt-then-close flow. This
+        # can only make close MORE restrictive, never less. Read-only; never raises out of the guard.
+        if not operator_override:
+            try:
+                from src.scanner.automation.state_engine import StateEngine
+                if StateEngine().get_halted():
+                    logger.warning(
+                        "close_trade BLOCKED — state.halted=True (autonomous close); trade_id=%s "
+                        "(operator may pass operator_override=True after explicit confirm, or "
+                        "unhalt-then-close)",
+                        trade_id,
+                    )
+                    return {
+                        "success": False,
+                        "trade_id": trade_id,
+                        "error": "BLOCKED: state.halted=True",
+                    }
+            except Exception as _halt_exc:  # noqa: BLE001
+                # Halt-check must never block a close due to its own failure (matches execute_trade).
+                logger.warning("close_trade halt re-check failed (%s); proceeding", _halt_exc)
+
         import json
         import random
         import time

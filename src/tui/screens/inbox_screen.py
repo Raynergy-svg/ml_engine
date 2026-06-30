@@ -516,6 +516,84 @@ class HomeworkEditModal(ModalScreen[Optional[dict]]):
         self.dismiss(None)
 
 
+# ── EquityAlertsBanner (P1-7) ────────────────────────────────────────
+
+
+class EquityAlertsBanner(Static):
+    """Read-only equity-harvester alerts strip for the F2 Inbox (P1-7).
+
+    Fed by ``DataProvider.get_alerts_status()`` (alerts_state.json +
+    alerts_audit/*.json). Renders the most recent HALT / DD_BREACH / etc.
+    notifications (type + severity + timestamp) plus the per-alert-type
+    cooldown log. Hidden when no alert state exists yet so the inbox looks
+    unchanged for the FX-only operator. Independent of the unified queue —
+    it never touches _load_proposals or the queue DataTable.
+    """
+
+    DEFAULT_CSS = """
+    EquityAlertsBanner {
+        height: auto;
+        max-height: 8;
+        padding: 0 1;
+        background: #0a0e1a;
+        border-bottom: solid #26304f;
+        display: none;
+    }
+    """
+
+    _SEVERITY_COLORS = {
+        "CRITICAL": "#ff1744",
+        "WARNING": "#ffb000",
+    }
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._status: dict[str, Any] = {"available": False}
+
+    def update_status(self, status: dict[str, Any]) -> None:
+        self._status = status or {"available": False}
+        # Hide entirely when there is no equity alert state yet — keeps the
+        # inbox visually identical for an FX-only / pre-launch operator.
+        self.display = bool(self._status.get("available"))
+        self.refresh()
+
+    def render(self) -> Text:
+        t = Text()
+        s = self._status
+        if not s.get("available"):
+            return t
+
+        t.append("  ⚠ EQUITY ALERTS", style="bold #ff2bd6")
+        last_updated = s.get("last_updated")
+        if last_updated:
+            t.append(f"   updated {str(last_updated)[:19]}", style="#26304f")
+        t.append("\n")
+
+        alerts = s.get("alerts") or []
+        if not alerts:
+            t.append("  No alerts fired (cooldown log only)\n", style="#7483b8")
+        for a in alerts[:5]:
+            atype = str(a.get("alert_type") or "?")
+            severity = str(a.get("severity") or "")
+            ts = str(a.get("timestamp") or "")[:19]
+            msg = str(a.get("message") or "")
+            sev_color = self._SEVERITY_COLORS.get(severity, "#e8f7ff")
+            t.append(f"  {atype:<18}", style=f"bold {sev_color}")
+            t.append(f"{severity:<9}", style=sev_color)
+            t.append(f"{ts}  ", style="#7483b8")
+            if msg:
+                t.append(msg[:48], style="#e8f7ff")
+            t.append("\n")
+
+        last_fired = s.get("last_fired") or {}
+        if last_fired:
+            t.append("  Cooldown active: ", style="#7483b8")
+            t.append(
+                ", ".join(sorted(last_fired.keys())), style="#ffb000"
+            )
+        return t
+
+
 # ── InboxScreen ──────────────────────────────────────────────────────
 
 
@@ -706,6 +784,12 @@ class InboxScreen(Container):
                 id="approve-all-progress",
             )
 
+        # Equity-harvester alerts banner (P1-7). Read-only surface fed by
+        # DataProvider.get_alerts_status(); sits ABOVE the unified queue and
+        # is completely independent of the config-adjustment / homework / meta
+        # feed below — never touches _load_proposals or the queue DataTable.
+        yield EquityAlertsBanner(id="inbox-equity-alerts")
+
         with Horizontal(id="filter-bar"):
             yield Button("All", id="filter-all", classes="filter-pill active")
             yield Button("📚 Homework", id="filter-homework", classes="filter-pill")
@@ -739,6 +823,19 @@ class InboxScreen(Container):
         self._load_proposals()
         self.set_interval(5.0, self._load_proposals)
         self._subscribe_events()
+
+    def update_equity_alerts(self, status: dict[str, Any]) -> None:
+        """Feed equity-harvester alerts into the banner (P1-7).
+
+        ``status`` is ``DataProvider.get_alerts_status()`` output. Wholly
+        independent of the config-adjustment / homework / meta queue — a
+        missing equity loop leaves the existing inbox wiring untouched.
+        """
+        try:
+            banner = self.query_one("#inbox-equity-alerts", EquityAlertsBanner)
+        except NoMatches:
+            return
+        banner.update_status(status or {"available": False})
 
     # ------------------------------------------------------------------
     # Data loading

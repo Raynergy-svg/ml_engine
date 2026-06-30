@@ -1,0 +1,102 @@
+{
+  "bonferroni_alpha": 0.0025,
+  "clears_gate": false,
+  "cost_bps_per_side": 2.0,
+  "effective_n_trend_streams": 13.07,
+  "elapsed_s": 12.0,
+  "experiment": "round3_leadB_broad_cross_asset_trend",
+  "full_sample": {
+    "gate_pass": true,
+    "max_dd": 0.195,
+    "net_sharpe": 0.64,
+    "positive_years": 23,
+    "total_years": 34
+  },
+  "gate": {
+    "majority_years_positive": true,
+    "max_dd<=0.25(full)": true,
+    "oos_confirmed": true,
+    "oos_net_sharpe>=0.40": true,
+    "significance(DSR_N20>=.95 & p<.0025)_OOS": false,
+    "significance_FULL": true
+  },
+  "in_sample": {
+    "gate_pass": true,
+    "max_dd": 0.195,
+    "net_sharpe": 0.568,
+    "positive_years": 17,
+    "total_years": 25
+  },
+  "n_assets": 37,
+  "n_trials": 20,
+  "out_of_sample": {
+    "gate_pass": true,
+    "max_dd": 0.187,
+    "net_sharpe": 0.764,
+    "positive_years": 7,
+    "total_years": 10
+  },
+  "pre_registered": "docs/experiment-edge-hunt-round3-2026-06-29.md",
+  "return_vs_risk": {
+    "ew_buyhold_oos_maxDD": -0.765,
+    "ew_buyhold_oos_sharpe": 1.096,
+    "sixty_forty_oos_maxDD": -0.161,
+    "sixty_forty_oos_sharpe": 1.279,
+    "trend_oos_beta_to_SPY": 0.14,
+    "trend_oos_maxDD": 0.187,
+    "trend_oos_sharpe": 0.764
+  },
+  "significance": {
+    "bonferroni_alpha_N20": 0.0025,
+    "bootstrap_p_full": 0.0,
+    "bootstrap_p_oos": 0.0034,
+    "dsr_full_N20": 0.98,
+    "dsr_oos_N20": 0.819
+  },
+  "universe": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "VGK",
+    "EWJ",
+    "TLT",
+    "IEF",
+    "SHY",
+    "LQD",
+    "HYG",
+    "EMB",
+    "TIP",
+    "USO",
+    "UNG",
+    "DBC",
+    "DBA",
+    "CORN",
+    "WEAT",
+    "GLD",
+    "SLV",
+    "CPER",
+    "VNQ",
+    "UUP",
+    "FXE",
+    "FXY",
+    "FXB",
+    "FXA",
+    "BTC-USD",
+    "ETH-USD",
+    "SOL-USD",
+    "XRP-USD",
+    "LTC-USD",
+    "BCH-USD",
+    "DOGE-USD",
+    "ADA-USD"
+  ],
+  "window": {
+    "end": "2026-06-30",
+    "n_days": 9752,
+    "oos_fraction": 0.35,
+    "oos_start": "2017-02-24",
+    "start": "1993-02-01"
+  }
+}

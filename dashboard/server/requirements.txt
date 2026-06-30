@@ -1,0 +1,3 @@
+# AXIOM data layer — read-only. (pandas comes from the repo's own env.)
+fastapi>=0.110
+uvicorn[standard]>=0.27

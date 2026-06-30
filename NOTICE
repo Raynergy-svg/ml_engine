@@ -1,0 +1,75 @@
+ML Engine — Buddy FX/Equity Trading Bot
+=========================================
+
+This product includes software developed by third parties under
+permissive open source licenses. Third-party attributions are listed
+below by component.
+
+-----------------------------------------------------------------------
+Hummingbot — Apache License, Version 2.0
+-----------------------------------------------------------------------
+
+This product includes code derived from Hummingbot
+(https://github.com/hummingbot/hummingbot):
+
+1. The depth-walk math from ``hummingbot/core/data_type/order_book.pyx``
+   (the ``get_price_for_volume`` and ``get_vwap_for_volume`` reference
+   implementations).
+2. The ``strategy_v2/executors`` pattern — abstract ``ExecutorBase``
+   status state machine with ``PositionExecutor`` / ``TWAPExecutor``
+   specialisations driving child orders through a broker connector.
+
+Affected file(s) in this repository:
+
+* ``src/equity/depth_pricing.py`` (US-014 — depth-aware equity
+  execution pricing). Clean-room re-derivation in pure Python; the
+  original Hummingbot file is not vendored.
+* ``src/equity/executors.py`` (US-015 — order-lifecycle executor
+  framework: ``ExecutorBase``, ``PositionExecutor``, ``TWAPExecutor``
+  adapted from ``hummingbot/strategy_v2/executors``). Clean-room
+  re-derivation in pure Python; the original Hummingbot files are not
+  vendored.
+
+Hummingbot is Copyright Hummingbot Foundation and contributors,
+licensed under the Apache License, Version 2.0. A copy of the Apache
+License, Version 2.0 may be obtained at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+implied. See the License for the specific language governing
+permissions and limitations under the License.
+
+-----------------------------------------------------------------------
+TradingAgents — Apache License, Version 2.0
+-----------------------------------------------------------------------
+
+This product includes a clean-room reimplementation of the reflection
+loop pattern from TradingAgents
+(https://github.com/TauricResearch/TradingAgents): a planning-layer
+agent logs each decision as pending, computes alpha against a
+benchmark on outcome maturity, distills a compact alpha-cited lesson,
+and injects curated lessons into the next planning prompt.
+
+Affected file(s) in this repository:
+
+* ``src/equity/reflection.py`` (US-019 — outcome-grounded reflection
+  loop, Tier-7 planning surface only). ~100 lines of pure Python; no
+  source from TradingAgents is copied or vendored. The "lesson" text
+  is rendered deterministically from a template — no LLM call is made
+  in this module, which keeps ``src/equity/`` LLM-free per the
+  ``tests/test_no_llm_in_equity_path.py`` canary.
+
+TradingAgents is Copyright the TauricResearch authors and contributors,
+licensed under the Apache License, Version 2.0. A copy of the Apache
+License, Version 2.0 may be obtained at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+implied. See the License for the specific language governing
+permissions and limitations under the License.

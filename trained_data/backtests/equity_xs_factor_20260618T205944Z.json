@@ -1,0 +1,54 @@
+{
+  "books": [
+    {
+      "book": "momentum L/S",
+      "cagr": 0.0057,
+      "gate": false,
+      "max_dd": 0.253,
+      "net_sharpe": 0.106,
+      "pos_years": "7/17"
+    },
+    {
+      "book": "low_vol L/S",
+      "cagr": -0.0797,
+      "gate": false,
+      "max_dd": 0.778,
+      "net_sharpe": -0.736,
+      "pos_years": "2/17"
+    },
+    {
+      "book": "reversal L/S",
+      "cagr": -0.118,
+      "gate": false,
+      "max_dd": 0.874,
+      "net_sharpe": -1.118,
+      "pos_years": "0/17"
+    },
+    {
+      "book": "combo(mom+lowvol+rev) L/S",
+      "cagr": -0.0851,
+      "gate": false,
+      "max_dd": 0.797,
+      "net_sharpe": -0.789,
+      "pos_years": "3/17"
+    },
+    {
+      "book": "combo long-only Q5",
+      "cagr": 0.0609,
+      "gate": true,
+      "max_dd": 0.204,
+      "net_sharpe": 0.586,
+      "pos_years": "12/17"
+    },
+    {
+      "book": "SPY buy&hold",
+      "cagr": 0.143,
+      "gate": null,
+      "max_dd": 0.337,
+      "net_sharpe": 0.867,
+      "pos_years": "-"
+    }
+  ],
+  "span": "2010-01-04->2026-05-29",
+  "universe_n": 115
+}

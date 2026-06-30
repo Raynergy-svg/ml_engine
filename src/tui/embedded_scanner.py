@@ -210,6 +210,10 @@ class EmbeddedScanner:
         self._reconciler = None
         self._reconciler_task = None
         self._reconciler_thread = None
+        # The dedicated asyncio event loop the reconciler runs on. Captured so
+        # shutdown() can stop it cross-thread (call_soon_threadsafe) and join
+        # the daemon thread — otherwise the loop + thread leak past app exit.
+        self._reconciler_loop = None
         self._maintenance = None  # IdleMaintenance — journal sync + retrain
         self._freshness_check_interval = 10  # every N cycles
         self._maintenance_interval = 5  # run IdleMaintenance.run_if_needed every N cycles
@@ -558,13 +562,28 @@ class EmbeddedScanner:
         import asyncio as _asyncio
 
         def _runner() -> None:
+            loop = None
             try:
                 loop = _asyncio.new_event_loop()
                 _asyncio.set_event_loop(loop)
+                self._reconciler_loop = loop
                 self._reconciler_task = loop.create_task(self._reconciler.run_forever())
                 loop.run_forever()
             except Exception as exc:  # noqa: BLE001
                 logger.error("StateReconciler thread crashed: %s", exc)
+            finally:
+                # run_forever() has returned (loop.stop() was called from
+                # shutdown). Drain + close so the loop releases its resources
+                # rather than leaking a half-open selector.
+                if loop is not None:
+                    try:
+                        if self._reconciler_task is not None:
+                            self._reconciler_task.cancel()
+                        loop.run_until_complete(loop.shutdown_asyncgens())
+                    except Exception:  # noqa: BLE001
+                        pass
+                    finally:
+                        loop.close()
 
         t = threading.Thread(target=_runner, name="state-reconciler", daemon=True)
         t.start()
@@ -1498,6 +1517,31 @@ class EmbeddedScanner:
                 self._maintenance.stop()
             except Exception:
                 pass
+
+        # StateReconciler — stop the dedicated asyncio loop cross-thread, then
+        # join the daemon thread so it doesn't outlive the app. Previously the
+        # loop ran forever and the thread was never joined (leak on every
+        # shutdown). stop() makes run_forever() return; the _runner finally
+        # block closes the loop; join(timeout=2) reaps the thread.
+        loop = self._reconciler_loop
+        if loop is not None:
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except Exception:
+                pass
+        thread = self._reconciler_thread
+        if thread is not None and thread.is_alive():
+            try:
+                thread.join(timeout=2.0)
+            except Exception:
+                pass
+            if thread.is_alive():
+                logger.warning(
+                    "StateReconciler thread did not stop within 2s of shutdown"
+                )
+        self._reconciler_loop = None
+        self._reconciler_thread = None
+        self._reconciler_task = None
 
         # Final GC
         gc.collect()

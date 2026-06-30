@@ -1,0 +1,189 @@
+{
+  "buy_and_hold_baseline": {
+    "full": {
+      "ann_return": 0.2102,
+      "ann_vol": 0.2761,
+      "gate_pass": false,
+      "max_dd": 0.678,
+      "net_sharpe": 0.761,
+      "positive_years": 26,
+      "total_years": 34
+    },
+    "oos": {
+      "ann_return": 0.3456,
+      "ann_vol": 0.3862,
+      "end": "2026-06-29",
+      "gate_pass": false,
+      "max_dd": 0.678,
+      "net_sharpe": 0.895,
+      "positive_years": 8,
+      "start": "2017-02-24",
+      "total_years": 10
+    }
+  },
+  "combinations": {
+    "carry+trend": {
+      "combined": {
+        "full": {
+          "ann_return": 0.0586,
+          "ann_vol": 0.0939,
+          "gate_pass": false,
+          "max_dd": 0.268,
+          "net_sharpe": 0.624,
+          "positive_years": 17,
+          "total_years": 28
+        },
+        "oos": {
+          "ann_return": 0.0408,
+          "ann_vol": 0.0833,
+          "end": "2026-06-18",
+          "gate_pass": true,
+          "max_dd": 0.139,
+          "net_sharpe": 0.491,
+          "positive_years": 6,
+          "start": "2016-11-04",
+          "total_years": 11
+        }
+      },
+      "common_window": {
+        "end": "2026-06-18",
+        "n": 6858,
+        "start": "1999-01-04"
+      },
+      "constituents": {
+        "carry": {
+          "full": {
+            "ann_return": 0.0476,
+            "ann_vol": 0.0734,
+            "gate_pass": false,
+            "max_dd": 0.333,
+            "net_sharpe": 0.649,
+            "positive_years": 19,
+            "total_years": 28
+          },
+          "oos": {
+            "ann_return": 0.014,
+            "ann_vol": 0.0432,
+            "end": "2026-06-18",
+            "gate_pass": false,
+            "max_dd": 0.094,
+            "net_sharpe": 0.323,
+            "positive_years": 7,
+            "start": "2016-11-04",
+            "total_years": 11
+          }
+        },
+        "trend": {
+          "full": {
+            "ann_return": 0.081,
+            "ann_vol": 0.1032,
+            "gate_pass": true,
+            "max_dd": 0.189,
+            "net_sharpe": 0.785,
+            "positive_years": 22,
+            "total_years": 28
+          },
+          "oos": {
+            "ann_return": 0.11,
+            "ann_vol": 0.1064,
+            "end": "2026-06-18",
+            "gate_pass": true,
+            "max_dd": 0.156,
+            "net_sharpe": 1.034,
+            "positive_years": 9,
+            "start": "2016-11-04",
+            "total_years": 11
+          }
+        }
+      },
+      "members": [
+        "carry",
+        "trend"
+      ]
+    },
+    "trend+harvester": {
+      "combined": {
+        "full": {
+          "ann_return": 0.1257,
+          "ann_vol": 0.1131,
+          "gate_pass": true,
+          "max_dd": 0.218,
+          "net_sharpe": 1.112,
+          "positive_years": 14,
+          "total_years": 15
+        },
+        "oos": {
+          "ann_return": 0.1079,
+          "ann_vol": 0.1096,
+          "end": "2026-06-24",
+          "gate_pass": false,
+          "max_dd": 0.218,
+          "net_sharpe": 0.984,
+          "positive_years": 5,
+          "start": "2021-05-27",
+          "total_years": 6
+        }
+      },
+      "common_window": {
+        "end": "2026-06-24",
+        "n": 3638,
+        "start": "2012-01-04"
+      },
+      "constituents": {
+        "harvester": {
+          "full": {
+            "ann_return": 0.1299,
+            "ann_vol": 0.1226,
+            "gate_pass": true,
+            "max_dd": 0.231,
+            "net_sharpe": 1.06,
+            "positive_years": 13,
+            "total_years": 15
+          },
+          "oos": {
+            "ann_return": 0.114,
+            "ann_vol": 0.1234,
+            "end": "2026-06-24",
+            "gate_pass": false,
+            "max_dd": 0.231,
+            "net_sharpe": 0.924,
+            "positive_years": 5,
+            "start": "2021-05-27",
+            "total_years": 6
+          }
+        },
+        "trend": {
+          "full": {
+            "ann_return": 0.0829,
+            "ann_vol": 0.1066,
+            "gate_pass": true,
+            "max_dd": 0.167,
+            "net_sharpe": 0.777,
+            "positive_years": 12,
+            "total_years": 15
+          },
+          "oos": {
+            "ann_return": 0.0548,
+            "ann_vol": 0.1004,
+            "end": "2026-06-24",
+            "gate_pass": false,
+            "max_dd": 0.167,
+            "net_sharpe": 0.546,
+            "positive_years": 4,
+            "start": "2021-05-27",
+            "total_years": 6
+          }
+        }
+      },
+      "members": [
+        "trend",
+        "harvester"
+      ]
+    }
+  },
+  "generated_at": "2026-06-29T19:54:13.672066+00:00",
+  "metric_note": "ann_return = RETURN side; ann_vol/max_dd = RISK side. Combo Sharpe > BOTH constituents AND buy-hold by a real OOS margin = RETURN edge; Sharpe up only via lower vol/DD (ann_return not up) = drawdown-only (the known finding, not alpha).",
+  "pre_registration": "docs/experiment-sleeve-combinations-2026-06-29.md",
+  "running": "NO (offline pre-registered test)",
+  "ship_gate_min_net_sharpe": 0.4
+}

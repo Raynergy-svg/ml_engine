@@ -146,6 +146,14 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "meta_manager_use_llm": False,
         "staged_deploy_shadow_cycles": 20,
         "staged_deploy_canary_trades": 10,
+        # US-006: Equity-beta harvester overlay knobs.
+        "equity_harvester_target_vol": 0.12,
+        "equity_harvester_dd_soft": 0.10,
+        "equity_harvester_dd_hard": 0.20,
+        "equity_harvester_max_lev": 1.0,
+        "equity_harvester_vol_lookback": 21,
+        "equity_harvester_long_only": True,
+        "equity_harvester_ship_gate_path": "trained_data/backtests/SHIP_GATE.json",
     },
     # Fewer trades, higher signal quality requirements.
     "conservative": {
@@ -453,6 +461,22 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # Activates the SOTA raw-sequence model (instead of legacy ensemble)
     # and neural agents (in shadow mode until bootstrap threshold met).
     # Use for backtesting and gradual rollout only.
+    "sota_ab_regime": {
+        "blocked_pairs": [],
+        # Path B: SOTA regime veto only, legacy ensemble for direction
+        "use_sota_regime_only": True,
+        "use_sota_inference": False,
+        "use_neural_agents": True,
+        "shadow_neural_agents": True,
+        "neural_agent_min_samples": 500,
+        # Conservative baseline from "balanced"
+        "sub_inference_min_confidence": 0.30,
+        "min_agent_consensus_ratio": 0.50,
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.60,
+        "devil_advocate_warn_threshold": 0.40,
+        "soft_uncertainty_blocking": True,
+    },
     "sota_ab": {
         "blocked_pairs": [],
         # SOTA toggles
@@ -655,7 +679,11 @@ class ScannerConfig:
     # else is logged + skipped. Set to 4 to allow guarded actions; 5 (NOT
     # recommended) opens the gate to retrains. Consumed by
     # ``SelfHeal._check_action_level`` in ``src/scanner/feedback/self_heal.py``.
-    self_heal_max_autonomy_level: int = 5
+    # Default changed 5->3 on 2026-06-29 (operator-approved) so the dataclass
+    # matches this docstring — fail-closed for every ScannerConfig() consumer, not
+    # just the Tier 7 supervisor. Raise explicitly via config / the supervisor's
+    # --max-autonomy / TIER7_MAX_AUTONOMY flag.
+    self_heal_max_autonomy_level: int = 3
 
     # Meta-labeler threshold (configurable for 0.52-0.53 range)
     # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
@@ -735,6 +763,7 @@ class ScannerConfig:
     # ═══════════════════════════════════════════════════════════════════════════════
     # Goal 1: End-to-end deep learning signal core (replaces classical ensemble)
     use_sota_inference: bool = False  # Use RawSequenceModel for direction + regime
+    use_sota_regime_only: bool = False  # Path B: SOTA for regime veto only, legacy ensemble for direction
     use_hybrid_inference: bool = False  # Use HybridInference ensemble (US-008)
     sota_model_path: str = "trained_data/models/sota_finetuned/sota_model.keras"
     # Goal 2: Neural agent policies (replaces rule-based heuristic agents)
@@ -865,7 +894,7 @@ class ScannerConfig:
     enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator (legacy flag — kept for backward compatibility)
     enable_devil_advocate_agent: bool = True  # Agent #14: Canonical _agent-suffixed toggle (supersedes enable_devil_advocate)
     enable_order_flow_agent: bool = True  # Agent #15: Order-flow / book-depth agent
-    enable_llm_macro_agent: bool = True  # Agent #16: LLM macro reasoning (US-001)
+    enable_llm_macro_agent: bool = False  # Agent #16: LLM macro reasoning (US-001). Reverted to False 2026-06-16: evaluate() runs _fetch_fred_all (8 blocking FRED GETs, timeout=15ea) + optional live LLM call per-scan/per-pair BEFORE the cache check — up to 120s synchronous HTTP in the scan hot path + violates the no-LLM-in-hot-path rule.
     enable_llm_macro_shadow: bool = True   # Log LLM macro votes without affecting ensemble
     # --- Reflection / observability surfaces ---
     # BriefingSnapshotWriter (Angle 1') — deterministic per-cycle snapshot of
@@ -1230,6 +1259,25 @@ class ScannerConfig:
     meta_manager_use_llm: bool = False
     staged_deploy_shadow_cycles: int = 20
     staged_deploy_canary_trades: int = 10
+
+    # --- Equity-Beta Harvester (US-006) ---
+    # Master enable flag for the equity harvester runner (N1, 2026-06-24).
+    # Default OFF (fail-closed): the shadow runner refuses to run a cycle
+    # unless this is True. Live broker/order routing is a separate,
+    # operator-authorized hot-path step (H1/H3) — this flag only gates the
+    # non-hot-path shadow lane.
+    enable_equity_harvester: bool = False
+    # Causal vol-target + drawdown overlay knobs that gate the harvester's
+    # exposure scalar. Defaults match src.equity.ship_gate (the validated
+    # ship-gate config). Consumers read these via getattr(config, ...) so
+    # absence falls back to the strategy's own DEFAULTS without crashing.
+    equity_harvester_target_vol: float = 0.12
+    equity_harvester_dd_soft: float = 0.10
+    equity_harvester_dd_hard: float = 0.20
+    equity_harvester_max_lev: float = 1.0
+    equity_harvester_vol_lookback: int = 21
+    equity_harvester_long_only: bool = True
+    equity_harvester_ship_gate_path: str = "trained_data/backtests/SHIP_GATE.json"
 
     # Loaded YAML config (lazy loaded)
     _yaml_config: Optional[Dict[str, Any]] = field(default=None, repr=False)

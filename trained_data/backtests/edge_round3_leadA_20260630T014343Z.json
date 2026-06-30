@@ -1,0 +1,123 @@
+{
+  "any_signal_clears": false,
+  "bonferroni_alpha": 0.0025,
+  "elapsed_s": 124.4,
+  "experiment": "round3_leadA_intraday_1h",
+  "n_trials": 20,
+  "panel": {
+    "coins": 30,
+    "hours": 56232,
+    "span": [
+      "2020-01-01 00:00:00+00:00",
+      "2026-05-31 23:00:00+00:00"
+    ]
+  },
+  "pre_registered": "docs/experiment-edge-hunt-round3-2026-06-29.md",
+  "signals": {
+    "A1_hourly_tsmom_realistic_5bps": {
+      "full_maxDD": -0.657,
+      "gate": {
+        "btc_neutral(|b|<=0.15)": true,
+        "maxDD<=0.25": false,
+        "oos_confirmed": false,
+        "oos_sharpe>=0.40": false,
+        "significance(DSR>=.95&p<.0025)": false
+      },
+      "is_sharpe": -1.337,
+      "label": "A1",
+      "oos_ann_ret": -0.1653,
+      "oos_bootstrap_p": 0.9896,
+      "oos_btc_beta": -0.039,
+      "oos_dsr_N20": 0.0,
+      "oos_maxDD": -0.348,
+      "oos_sharpe": -1.536
+    },
+    "A1_hourly_tsmom_stress_9bps": {
+      "full_maxDD": -0.865,
+      "gate": {
+        "btc_neutral(|b|<=0.15)": true,
+        "maxDD<=0.25": false,
+        "oos_confirmed": false,
+        "oos_sharpe>=0.40": false,
+        "significance(DSR>=.95&p<.0025)": false
+      },
+      "is_sharpe": -2.683,
+      "label": "A1",
+      "oos_ann_ret": -0.3091,
+      "oos_bootstrap_p": 1.0,
+      "oos_btc_beta": -0.039,
+      "oos_dsr_N20": 0.0,
+      "oos_maxDD": -0.539,
+      "oos_sharpe": -2.87
+    },
+    "A2_intraday_first6_last6_realistic_5bps": {
+      "full_maxDD": -0.769,
+      "gate": {
+        "btc_neutral(|b|<=0.15)": true,
+        "maxDD<=0.25": false,
+        "oos_confirmed": false,
+        "oos_sharpe>=0.40": false,
+        "significance(DSR>=.95&p<.0025)": false
+      },
+      "is_sharpe": -0.337,
+      "label": "A2",
+      "oos_ann_ret": -0.3936,
+      "oos_bootstrap_p": 1.0,
+      "oos_btc_beta": 0.006,
+      "oos_dsr_N20": 0.0,
+      "oos_maxDD": -0.624,
+      "oos_sharpe": -2.761
+    },
+    "A2_intraday_first6_last6_stress_9bps": {
+      "full_maxDD": -0.951,
+      "gate": {
+        "btc_neutral(|b|<=0.15)": true,
+        "maxDD<=0.25": false,
+        "oos_confirmed": false,
+        "oos_sharpe>=0.40": false,
+        "significance(DSR>=.95&p<.0025)": false
+      },
+      "is_sharpe": -1.783,
+      "label": "A2",
+      "oos_ann_ret": -0.6856,
+      "oos_bootstrap_p": 1.0,
+      "oos_btc_beta": 0.006,
+      "oos_dsr_N20": 0.0,
+      "oos_maxDD": -0.813,
+      "oos_sharpe": -4.809
+    }
+  },
+  "universe": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "1000PEPEUSDT",
+    "DOGEUSDT",
+    "LUNAUSDT",
+    "BNBUSDT",
+    "SUIUSDT",
+    "HYPEUSDT",
+    "WIFUSDT",
+    "ADAUSDT",
+    "MATICUSDT",
+    "FARTCOINUSDT",
+    "LINKUSDT",
+    "ENAUSDT",
+    "AVAXUSDT",
+    "LTCUSDT",
+    "WLDUSDT",
+    "TRUMPUSDT",
+    "DOTUSDT",
+    "1000SHIBUSDT",
+    "ASTERUSDT",
+    "FILUSDT",
+    "BCHUSDT",
+    "OPUSDT",
+    "ARBUSDT",
+    "NEARUSDT",
+    "ORDIUSDT",
+    "RIVERUSDT"
+  ],
+  "universe_top_n": 30
+}

@@ -584,6 +584,6 @@ neural_agents:
 # LLM MACRO AGENT — flipped 2026-06-16
 # ═══════════════════════════════════════════════════════════════════════════════
 llm_macro:
-  enable_llm_macro_agent: true
+  enable_llm_macro_agent: false  # reverted 2026-06-16: per-scan FRED-hammer + hot-path LLM regression
   llm_macro_shadow_mode: true
   llm_macro_model: "claude-sonnet-4-6"

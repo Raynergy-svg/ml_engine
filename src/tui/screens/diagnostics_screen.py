@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 import re
 import time
 from collections import deque
@@ -406,7 +405,6 @@ class DiagnosticsScreen(Container):
         self._error_log_entries: list[dict[str, Any]] = []
         self._severity_filter: str = "All"
         self._refresh_timer: Any = None
-        self._demo_log_counter: int = 0
         self._latest_snapshot: DashboardSnapshot | None = None
 
     def compose(self) -> ComposeResult:
@@ -485,10 +483,14 @@ class DiagnosticsScreen(Container):
         self._refresh_models()
         self._refresh_maintenance()
         self._refresh_inventory()
-        if self._live:
-            self._refresh_error_log()
-        else:
-            self._seed_error_log()
+        # P0-1 (2026-06-21 audit): render REAL diagnostics from repo artifacts
+        # regardless of live/demo. Previously demo mode seeded hardcoded FX
+        # lines ("OANDA connection established", "EUR/GBP spread elevated")
+        # and a 5s demo-entry tick kept appending fake FX log lines — pure
+        # fiction now that the equity harvester is the live stack. We read the
+        # same real log sources in both modes and show an honest empty state
+        # when nothing is on disk.
+        self._refresh_error_log()
 
         # Start auto-refresh every 5 seconds
         self._refresh_timer = self.set_interval(5.0, self._on_refresh_tick)
@@ -540,14 +542,16 @@ class DiagnosticsScreen(Container):
     # ------------------------------------------------------------------
 
     def _on_refresh_tick(self) -> None:
-        """Called every 5 seconds to refresh vitals (+ demo log entries if not live)."""
+        """Called every 5 seconds to refresh vitals + real diagnostics.
+
+        P0-1 (2026-06-21 audit): no longer appends fake FX demo entries in
+        demo mode. Real log sources are read in both live and demo mode; an
+        honest empty state is shown when nothing is on disk.
+        """
         self._refresh_vitals()
         self._refresh_models(self._latest_snapshot)
         self._refresh_maintenance(self._latest_snapshot)
-        if self._live:
-            self._refresh_error_log()
-        else:
-            self._add_demo_log_entry()
+        self._refresh_error_log()
 
     # ------------------------------------------------------------------
     # Private: system vitals
@@ -807,69 +811,6 @@ class DiagnosticsScreen(Container):
     # Private: error log
     # ------------------------------------------------------------------
 
-    def _seed_error_log(self) -> None:
-        """Seed the error log with initial demo entries."""
-        now = datetime.now(timezone.utc)
-        seed_entries = [
-            {"ts": now - timedelta(minutes=12), "sev": "INFO", "msg": "Scanner initialized — 7 pairs loaded"},
-            {"ts": now - timedelta(minutes=10), "sev": "INFO", "msg": "OANDA connection established"},
-            {"ts": now - timedelta(minutes=8), "sev": "INFO", "msg": "Direction: Transformer ready"},
-            {"ts": now - timedelta(minutes=7), "sev": "INFO", "msg": "Confidence/Momentum/Risk: LightGBM ready"},
-            {"ts": now - timedelta(minutes=6), "sev": "INFO", "msg": "Meta-labeler: XGBoost ready"},
-            {"ts": now - timedelta(minutes=5), "sev": "WARN", "msg": "EUR/GBP spread elevated: 3.2 pips (threshold: 2.5)"},
-            {"ts": now - timedelta(minutes=3), "sev": "INFO", "msg": "Scan cycle #427 completed — 2 tradeable setups"},
-            {"ts": now - timedelta(minutes=2), "sev": "WARN", "msg": "GBP/JPY model disagreement: 0.31 > 0.30 threshold"},
-            {"ts": now - timedelta(minutes=1), "sev": "ERR", "msg": "Rate limit warning: 95/120 requests in last 60s"},
-            {"ts": now, "sev": "INFO", "msg": "Diagnostics screen initialized"},
-        ]
-        self._error_log_entries = seed_entries
-        self._refilter_error_log()
-
-    def _add_demo_log_entry(self) -> None:
-        """Add a simulated log entry periodically."""
-        self._demo_log_counter += 1
-
-        # Generate a realistic log entry every few ticks
-        if self._demo_log_counter % 3 != 0:
-            return
-
-        now = datetime.now(timezone.utc)
-        templates = [
-            ("INFO", "Scan cycle #{n} completed — {t:.1f}s"),
-            ("INFO", "Agent weights refreshed from RL feedback"),
-            ("INFO", "Correlation filter: all pairs within limits"),
-            ("WARN", "Latency spike detected: {lat:.0f}ms"),
-            ("WARN", "Memory usage elevated: {mem:.0f}MB RSS"),
-            ("DEBUG", "Heartbeat: OANDA API responding normally"),
-            ("INFO", "Drawdown guardian check: {dd:.1f}% — OK"),
-            ("ERR", "OANDA timeout on pricing stream (retry #{r})"),
-            ("WARN", "Model staleness: Ridge model trained {d}d ago"),
-            ("INFO", "Journal compaction: {j} entries archived"),
-        ]
-
-        sev, tmpl = random.choice(templates)
-        msg = tmpl.format(
-            n=self._demo_log_counter + 400,
-            t=random.uniform(0.3, 2.5),
-            lat=random.uniform(200, 800),
-            mem=random.uniform(300, 600),
-            dd=random.uniform(1.0, 6.0),
-            r=random.randint(1, 3),
-            d=random.randint(2, 14),
-            j=random.randint(10, 50),
-        )
-
-        entry = {"ts": now, "sev": sev, "msg": msg}
-        self._error_log_entries.append(entry)
-
-        # Keep log bounded
-        if len(self._error_log_entries) > 200:
-            self._error_log_entries = self._error_log_entries[-200:]
-
-        # Only write if passes current filter
-        if self._severity_filter == "All" or self._severity_filter == sev:
-            self._write_log_entry(entry)
-
     def _refresh_error_log(self) -> None:
         """Load recent live diagnostics and runtime errors from repo artifacts."""
         entries = self._load_live_log_entries()
@@ -914,7 +855,10 @@ class DiagnosticsScreen(Container):
             default={},
         )
         if isinstance(health, dict) and health:
-            rejected = int(health.get("cycles_rejected", 0) or 0)
+            try:
+                rejected = int(health.get("cycles_rejected", 0) or 0)
+            except (TypeError, ValueError):
+                rejected = 0
             states = health.get("module_states", {}) or {}
             failing = [
                 name for name, state in states.items()
@@ -929,14 +873,20 @@ class DiagnosticsScreen(Container):
             )
             if failing:
                 msg += f", failing: {', '.join(failing[:4])}"
-            entries.append({
-                "ts": datetime.fromtimestamp(
-                    (self._project_root / "trained_data" / "health_registry_log.json").stat().st_mtime,
+            # health_registry_log.json can be rotated/removed by the live
+            # registry between the _read_json above and this stat(); fall back
+            # to now() so one missing file can't crash the 5s refresh tick.
+            try:
+                _health_ts = datetime.fromtimestamp(
+                    (
+                        self._project_root / "trained_data"
+                        / "health_registry_log.json"
+                    ).stat().st_mtime,
                     tz=timezone.utc,
-                ),
-                "sev": sev,
-                "msg": msg,
-            })
+                )
+            except OSError:
+                _health_ts = datetime.now(timezone.utc)
+            entries.append({"ts": _health_ts, "sev": sev, "msg": msg})
 
         entries.sort(key=lambda e: e.get("ts", datetime.min.replace(tzinfo=timezone.utc)))
         return entries[-200:]

@@ -47,6 +47,17 @@ def patch_scanner_for_sota(scanner: Any) -> None:
         except Exception as e:
             logger.warning(f"Failed to patch SOTA inference: {e}")
 
+    # --- Path B: SOTA Regime-Only Veto ---
+    if getattr(cfg, "use_sota_regime_only", False):
+        try:
+            from src.scanner.sota_integration import resolve_regime_detector
+            detector = resolve_regime_detector(cfg)
+            if detector is not None:
+                scanner._sota_regime_detector = detector
+                logger.info("Scanner patched: SOTA regime detector wired (Path B)")
+        except Exception as e:
+            logger.warning(f"Failed to wire SOTA regime detector: {e}")
+
     # --- Goal 2: Neural Agent Team ---
     # Only fully replace ScannerAgentTeam with NeuralAgentTeam when shadow mode
     # is disabled. In shadow mode, ScannerAgentTeam hosts the neural agents

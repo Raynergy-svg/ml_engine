@@ -1,0 +1,115 @@
+{
+  "common_window": {
+    "end": "2026-06-24",
+    "start": "2012-01-03"
+  },
+  "data_honesty": {
+    "fundamentals": "TRUE-PIT (SEC EDGAR XBRL, filing-date-aligned); pit=True",
+    "membership": "survivorship-aware S&P500 reconstruction (Wikipedia change-log)",
+    "prices": "yfinance adjusted close (PRICES ONLY; never used for fundamentals)",
+    "residual_bias_labelled": [
+      "delisting returns UNDERSTATED (forward-fill flattens final gap; most S&P removals are acquisitions near-market, bankruptcies hidden)",
+      "price-availability survivorship: yfinance lacks some delisted tickers -> dropped",
+      "EDGAR XBRL floor ~2010 -> clean window ~2012-2026"
+    ]
+  },
+  "full_sample": {
+    "baseline_ew": {
+      "gate_pass": true,
+      "max_dd": 0.195,
+      "net_sharpe": 0.74,
+      "positive_years": 12,
+      "total_years": 15
+    },
+    "net_sharpe_margin": -0.6,
+    "quality": {
+      "gate_pass": false,
+      "max_dd": 0.387,
+      "net_sharpe": 0.14,
+      "positive_years": 7,
+      "total_years": 15
+    },
+    "quality_beats_baseline": false
+  },
+  "generated_at": "2026-06-25-pit-quality",
+  "out_of_sample": {
+    "baseline_ew": {
+      "gate_pass": false,
+      "max_dd": 0.195,
+      "net_sharpe": 0.355,
+      "positive_years": 5,
+      "total_years": 6
+    },
+    "end": "2026-06-24",
+    "fraction": 0.34,
+    "net_sharpe_margin": -0.324,
+    "quality": {
+      "gate_pass": false,
+      "max_dd": 0.315,
+      "net_sharpe": 0.031,
+      "positive_years": 3,
+      "total_years": 6
+    },
+    "quality_beats_baseline": false,
+    "start": "2021-07-20"
+  },
+  "pre_registered": {
+    "score": "mean available cross-sectional z of {+gross_margin,+net_margin,-debt_to_equity}, tilt=1.0 (annual 10-K, filing-date PIT)",
+    "test": "quality-tilt vs EW baseline net Sharpe, full + OOS, same gate; + disjoint-5y sub-period stability (anti-p-hacking)"
+  },
+  "robustness_sensitivities": {
+    "interpretation": "canonical drag is largely the non-robust -debt_to_equity z (bank/REIT/negative-equity tails); the clean margin-only tilt merely MATCHES EW (no shippable edge).",
+    "margin_only": {
+      "full_margin_vs_ew": -0.017,
+      "full_net_sharpe": 0.723,
+      "oos_margin_vs_ew": 0.026,
+      "oos_net_sharpe": 0.381
+    },
+    "margin_only_winsorized": {
+      "full_margin_vs_ew": -0.018,
+      "full_net_sharpe": 0.722,
+      "oos_margin_vs_ew": -0.017,
+      "oos_net_sharpe": 0.338
+    },
+    "purpose": "is the canonical negative a debt_to_equity-outlier artifact?",
+    "winsorized_z_clip3": {
+      "full_margin_vs_ew": -0.447,
+      "full_net_sharpe": 0.293,
+      "oos_margin_vs_ew": -0.219,
+      "oos_net_sharpe": 0.136
+    }
+  },
+  "running": "NO (offline backtest evaluation)",
+  "sub_period_stability": [
+    {
+      "baseline_net_sharpe": 0.863,
+      "end": "2016-12-30",
+      "margin": -0.925,
+      "quality_beats": false,
+      "quality_net_sharpe": -0.062,
+      "start": "2012-01-03"
+    },
+    {
+      "baseline_net_sharpe": 0.974,
+      "end": "2021-12-31",
+      "margin": -0.571,
+      "quality_beats": false,
+      "quality_net_sharpe": 0.403,
+      "start": "2017-01-03"
+    },
+    {
+      "baseline_net_sharpe": 0.353,
+      "end": "2026-06-24",
+      "margin": -0.285,
+      "quality_beats": false,
+      "quality_net_sharpe": 0.068,
+      "start": "2022-01-03"
+    }
+  ],
+  "universe": {
+    "evaluated_with_price_and_pit_fundamentals": 624,
+    "ever_members_in_window": 873,
+    "quality_panel_coverage": 0.9554,
+    "since_removed_included": 108
+  }
+}
