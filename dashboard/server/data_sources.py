@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -67,6 +68,75 @@ def _pip_size(instrument: str) -> float:
     return 0.01 if instrument.endswith("_JPY") else 0.0001
 
 
+def _to_float(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _str_or_none(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _fill_kind(t: Dict[str, Any]) -> Optional[str]:
+    if t.get("type") != "ORDER_FILL":
+        return None
+    opened = bool(t.get("tradeOpened"))
+    reduced = bool(t.get("tradeReduced"))
+    closed = bool(t.get("tradesClosed"))
+    if opened and (reduced or closed):
+        return "OPEN+REDUCE"
+    if opened:
+        return "OPEN"
+    if closed:
+        return "CLOSE"
+    if reduced:
+        return "REDUCE"
+    return "FILL"
+
+
+def _trade_refs(t: Dict[str, Any]) -> List[str]:
+    refs: List[str] = []
+    if t.get("tradeID"):
+        refs.append(str(t.get("tradeID")))
+    opened = t.get("tradeOpened")
+    if isinstance(opened, dict) and opened.get("tradeID"):
+        refs.append(str(opened.get("tradeID")))
+    reduced = t.get("tradeReduced")
+    if isinstance(reduced, dict) and reduced.get("tradeID"):
+        refs.append(str(reduced.get("tradeID")))
+    closed = t.get("tradesClosed")
+    if isinstance(closed, list):
+        for item in closed:
+            if isinstance(item, dict) and item.get("tradeID"):
+                refs.append(str(item.get("tradeID")))
+    return refs
+
+
+def _transaction_status(t: Dict[str, Any], fills_by_order: Dict[str, Dict[str, Any]],
+                        cancelled_order_ids: set[str]) -> str:
+    tx_type = str(t.get("type") or "UNKNOWN")
+    tx_id = str(t.get("id") or "")
+    if t.get("rejectReason") or tx_type.endswith("_REJECT"):
+        return "REJECTED"
+    if tx_type == "ORDER_FILL":
+        return "FILLED"
+    if tx_type == "ORDER_CANCEL":
+        return "CANCELLED"
+    if tx_type == "DAILY_FINANCING":
+        return "POSTED"
+    if tx_id in fills_by_order:
+        return "FILLED"
+    if tx_id in cancelled_order_ids:
+        return "CANCELLED"
+    if tx_type.endswith("_ORDER"):
+        return "ACTIVE"
+    return "RECORDED"
+
+
 # --------------------------------------------------------------------------- #
 # File-backed readers (no network) — what the bot itself wrote
 # --------------------------------------------------------------------------- #
@@ -93,16 +163,30 @@ def read_account() -> Dict[str, Any]:
         out["drawdown_pct"] = max(0.0, (out["peak_nav"] - nav) / out["peak_nav"])
     else:
         out["drawdown_pct"] = None
+    # Freshness: the trend lane rewrites this snapshot each cycle. A stopped lane
+    # leaves a stale-but-parseable file — surface its age + a stale flag so the UI
+    # never presents an old snapshot as live truth (honesty: D-C1).
+    try:
+        out["snapshot_age_s"] = round(time.time() - (OANDA_DIR / "account_state.json").stat().st_mtime, 1)
+    except OSError:
+        out["snapshot_age_s"] = None
+    out["stale"] = out["snapshot_age_s"] is None or out["snapshot_age_s"] > LANE_FRESH_S
     return out
 
 
 def _last_fill_time() -> Optional[str]:
-    """Cheap tail-read of the transaction ledger for the most recent fill time."""
+    """Cheap tail-read of the ledger for the most recent ORDER_FILL time.
+
+    Scans only an ORDER_FILL (not bracket-order/financing/cancel rows, which also
+    carry a ``time``) so the value matches the field name (D-H2). Reads a 64 KB tail
+    — large enough to clear a run of non-fill rows; returns None (honest "no recent
+    fill") if no fill is in the window rather than a misleading non-fill timestamp.
+    """
     path = OANDA_DIR / "transactions.jsonl"
     try:
         size = path.stat().st_size
         with open(path, "rb") as fh:
-            fh.seek(max(0, size - 16384))
+            fh.seek(max(0, size - 65536))
             tail = fh.read().decode("utf-8", errors="replace")
     except OSError:
         return None
@@ -114,7 +198,7 @@ def _last_fill_time() -> Optional[str]:
             obj = json.loads(line)
         except ValueError:
             continue
-        if obj.get("time"):
+        if obj.get("type") == "ORDER_FILL" and obj.get("time"):
             return obj.get("time")
     return None
 
@@ -144,13 +228,29 @@ def read_status(now_iso: Optional[str] = None) -> Dict[str, Any]:
         except (ValueError, TypeError):
             pass
 
-    # Trend lane liveness = age of the account snapshot it rewrites each cycle.
+    # Account snapshot age — kept as an INFORMATIONAL signal only.
     acct_age = None
     try:
         acct_age = now.timestamp() - (OANDA_DIR / "account_state.json").stat().st_mtime
     except OSError:
         pass
-    lane_running = acct_age is not None and acct_age <= LANE_FRESH_S
+
+    # Lane liveness: defer to the FIXED live-lane oracle (running_status.live_lane_running)
+    # — the SAME source /api/system_health uses — so status / system_health / strategy
+    # can never disagree on "is the bot live?" (D-H1). Snapshot-age is only a fallback
+    # when the oracle module can't be loaded.
+    running_source = "oracle"
+    mod = _load_running_status()
+    if mod is not None and hasattr(mod, "live_lane_running"):
+        try:
+            lane_running = bool(mod.live_lane_running().get("running"))
+        except Exception as exc:  # noqa: BLE001 — oracle optional; degrade to snapshot age
+            logger.warning("read_status oracle failed, falling back to snapshot age: %s", exc)
+            lane_running = acct_age is not None and acct_age <= LANE_FRESH_S
+            running_source = "snapshot_age_fallback"
+    else:
+        lane_running = acct_age is not None and acct_age <= LANE_FRESH_S
+        running_source = "snapshot_age_fallback"
 
     return {
         "halted": bool(state.get("halted", True)),  # fail-closed default: assume halted
@@ -160,6 +260,7 @@ def read_status(now_iso: Optional[str] = None) -> Dict[str, Any]:
         "environment": "practice",  # immutable Hard NO
         "running": bool(lane_running),
         "lane_running": bool(lane_running),
+        "running_source": running_source,
         "account_snapshot_age_s": round(acct_age, 1) if acct_age is not None else None,
         "last_fill_time": _last_fill_time(),
         "scanner_heartbeat_alive": bool(hb_alive),
@@ -170,32 +271,82 @@ def read_status(now_iso: Optional[str] = None) -> Dict[str, Any]:
 
 
 def read_trades(limit: int = 100) -> Dict[str, Any]:
-    """Parse ORDER_FILL transactions into a trade-history table (most recent first)."""
-    fills: List[Dict[str, Any]] = []
-    for t in _iter_jsonl(OANDA_DIR / "transactions.jsonl"):
-        if t.get("type") != "ORDER_FILL":
-            continue
-        try:
-            units = float(t.get("units") or 0)
-        except (ValueError, TypeError):
-            units = 0.0
-        fills.append({
+    """Parse the local OANDA transaction ledger, not just fills.
+
+    The frontend route name remains ``/api/trades`` for compatibility, but this
+    is a transaction ledger: order submissions, fills, bracket orders,
+    cancellations, financing, and rejects all need to be visible so operators
+    can distinguish "submitted but active/cancelled" from "filled".
+    """
+    txns = list(_iter_jsonl(OANDA_DIR / "transactions.jsonl"))
+    fills_by_order: Dict[str, Dict[str, Any]] = {}
+    cancelled_order_ids: set[str] = set()
+    instrument_by_trade_id: Dict[str, str] = {}
+    instrument_by_order_id: Dict[str, str] = {}
+    for t in txns:
+        tx_id = str(t.get("id") or "")
+        instrument = t.get("instrument")
+        if tx_id and instrument:
+            instrument_by_order_id[tx_id] = str(instrument)
+        if t.get("type") == "ORDER_FILL" and t.get("orderID"):
+            fills_by_order[str(t.get("orderID"))] = t
+            if instrument:
+                for trade_id in _trade_refs(t):
+                    instrument_by_trade_id[trade_id] = str(instrument)
+        if t.get("type") == "ORDER_CANCEL" and t.get("orderID"):
+            cancelled_order_ids.add(str(t.get("orderID")))
+
+    rows: List[Dict[str, Any]] = []
+    for t in txns:
+        units = _to_float(t.get("units")) or 0.0
+        tx_type = str(t.get("type") or "UNKNOWN")
+        tx_id = str(t.get("id") or "")
+        order_id = _str_or_none(t.get("orderID") if tx_type in {"ORDER_FILL", "ORDER_CANCEL"} else t.get("id"))
+        linked_fill = fills_by_order.get(tx_id)
+        instrument = t.get("instrument")
+        if not instrument and t.get("tradeID"):
+            instrument = instrument_by_trade_id.get(str(t.get("tradeID")))
+        if not instrument and t.get("orderID"):
+            instrument = instrument_by_order_id.get(str(t.get("orderID")))
+        price = _to_float(t.get("price"))
+        pl = _to_float(t.get("pl")) or 0.0
+        client_extensions = t.get("clientExtensions") if isinstance(t.get("clientExtensions"), dict) else {}
+        linked_price = _to_float(linked_fill.get("price")) if linked_fill else None
+        linked_pl = _to_float(linked_fill.get("pl")) if linked_fill else None
+        rows.append({
             "id": t.get("id"),
             "time": t.get("time"),
-            "instrument": t.get("instrument"),
+            "type": tx_type,
+            "status": _transaction_status(t, fills_by_order, cancelled_order_ids),
+            "instrument": instrument,
             "units": units,
             "side": "BUY" if units >= 0 else "SELL",
-            "price": float(t.get("price") or 0) or None,
-            "pl": float(t.get("pl") or 0),
-            "financing": float(t.get("financing") or 0),
-            "half_spread_cost": float(t.get("halfSpreadCost") or 0),
+            "price": price,
+            "pl": pl,
+            "financing": _to_float(t.get("financing")) or 0.0,
+            "half_spread_cost": _to_float(t.get("halfSpreadCost")) or 0.0,
             "reason": t.get("reason"),
-            "balance": float(t.get("accountBalance") or 0) or None,
-            "tag": (t.get("clientExtensions") or {}).get("tag"),
+            "balance": _to_float(t.get("accountBalance")),
+            "tag": client_extensions.get("tag"),
+            "order_id": order_id,
+            "linked_fill_id": str(linked_fill.get("id")) if linked_fill else (tx_id if tx_type == "ORDER_FILL" else None),
+            "linked_fill_price": linked_price,
+            "linked_fill_pl": linked_pl,
+            "fill_kind": _fill_kind(t),
+            "trade_ids": _trade_refs(t),
+            "reject_reason": t.get("rejectReason"),
         })
-    fills.reverse()  # most recent first
-    return {"connected": bool(fills), "source": "transactions.jsonl",
-            "count": len(fills), "trades": fills[: int(limit)]}
+    rows.reverse()  # most recent first
+    fill_count = sum(1 for t in txns if t.get("type") == "ORDER_FILL")
+    order_count = sum(1 for t in txns if str(t.get("type") or "").endswith("_ORDER"))
+    return {
+        "connected": bool(rows),
+        "source": "transactions.jsonl",
+        "count": len(rows),
+        "fill_count": fill_count,
+        "order_count": order_count,
+        "trades": rows[: int(limit)],
+    }
 
 
 def read_equity() -> Dict[str, Any]:
@@ -226,13 +377,49 @@ def read_equity() -> Dict[str, Any]:
 
 
 def read_sentiment() -> Dict[str, Any]:
-    """Order/position-book sentiment snapshot. LABELED PLACEHOLDER — data-only."""
+    """Order/position-book sentiment snapshot plus live order_flow wiring metadata."""
     data = _read_json(OANDA_DIR / "sentiment_snapshot.json", {})
+    books = data.get("books", {})
+    features: Dict[str, Any] = {}
+    try:
+        from src.data.order_book import extract_position_features
+        for inst, buckets in books.items():
+            if not isinstance(buckets, list):
+                continue
+            prices = []
+            for bucket in buckets:
+                try:
+                    prices.append(float(bucket.get("price")))
+                except (AttributeError, TypeError, ValueError):
+                    continue
+            current_price = prices[len(prices) // 2] if prices else 1.0
+            features[inst] = extract_position_features(buckets, current_price)
+    except Exception as exc:  # noqa: BLE001 — sentiment panel must degrade honestly
+        logger.warning("sentiment feature extraction failed: %s", exc)
+        features = {}
+
+    order_flow_enabled = True
+    order_flow_weight = 0.95
+    try:
+        from src.scanner.config import ScannerConfig
+        from src.scanner.agents._team import ScannerAgentTeam
+        order_flow_enabled = bool(getattr(ScannerConfig(), "enable_order_flow_agent", True))
+        order_flow_weight = float(ScannerAgentTeam._BASE_WEIGHTS.get("order_flow", order_flow_weight))
+    except Exception:
+        pass
+
     return {
         "connected": bool(data.get("books")),
-        "wired_into_strategy": False,
-        "note": data.get("note", "DATA-ONLY; not wired into strategy"),
-        "books": data.get("books", {}),
+        "wired_into_strategy": order_flow_enabled,
+        "strategy_agent": "order_flow",
+        "agent_weight": order_flow_weight,
+        "note": (
+            "Position-book crowding feeds the scanner order_flow agent."
+            if order_flow_enabled
+            else data.get("note", "DATA-ONLY; order_flow agent disabled.")
+        ),
+        "books": books,
+        "features": features,
         "source": "sentiment_snapshot.json",
     }
 
@@ -302,6 +489,10 @@ def read_tier7() -> Dict[str, Any]:
         "improvement_focus": data.get("improvement_focus"),
         "scan_cycle_count": data.get("scan_cycle_count"),
         "current_action": data.get("current_action"),
+        "autonomy_level": data.get("autonomy_level"),
+        "max_autonomy": data.get("max_autonomy"),
+        "bounded": data.get("bounded"),
+        "runtime": data.get("runtime"),
         "last_cycle": data.get("last_cycle") or {},
         "self_heal": data.get("self_heal") or {},
         "meta_last_event": data.get("meta_last_event") or {},
@@ -417,12 +608,21 @@ def live_prices(client, instruments: List[str]) -> Dict[str, Any]:
         except (ValueError, TypeError, IndexError, AttributeError):
             continue
         mid = (bid + ask) / 2.0
+        # NEVER fabricate tradeability: use the broker's explicit flag if present,
+        # else derive from status, else None (honest unknown). Defaulting to True
+        # would paint a halted/closed market as tradeable (D-C2).
+        if "tradeable" in p:
+            tradeable: Optional[bool] = bool(p["tradeable"])
+        elif p.get("status"):
+            tradeable = (p.get("status") == "tradeable")
+        else:
+            tradeable = None
         prices[inst] = {
             "bid": bid, "ask": ask, "mid": mid,
             "spread_pips": round((ask - bid) / _pip_size(inst), 2),
             "time": p.get("time"),
             "status": p.get("status"),
-            "tradeable": p.get("tradeable", True),
+            "tradeable": tradeable,
         }
     return {"connected": bool(prices), "prices": prices}
 

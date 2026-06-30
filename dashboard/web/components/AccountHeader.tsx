@@ -1,7 +1,7 @@
 "use client";
 import { useStream } from "@/lib/stream";
 import { usePoll } from "@/lib/api";
-import type { Trades } from "@/lib/types";
+import type { ApiHealth, Trades } from "@/lib/types";
 import { Logo } from "./Logo";
 import { Badge, StatusDot } from "./ui";
 import { fmtMoney, fmtSigned, pnlClass, fmtNum, ago } from "@/lib/format";
@@ -19,6 +19,7 @@ function Stat({ label, children, sub }: { label: string; children: React.ReactNo
 export function AccountHeader() {
   const { payload, connected } = useStream();
   const { data: trades } = usePoll<Trades>("/api/trades?limit=500", 15000);
+  const { data: apiHealth } = usePoll<ApiHealth>("/api/health", 10000);
   const acct = payload?.account;
   const status = payload?.status;
 
@@ -72,12 +73,20 @@ export function AccountHeader() {
 
       <div className="flex items-center gap-2 pl-4">
         <Badge color="#22d3ee" dot>PRACTICE</Badge>
+        <Badge color={apiHealth?.control_enabled ? "#f5b14c" : "#5a6677"} dot>
+          {apiHealth?.control_enabled ? "CONTROL" : "READ-ONLY"}
+        </Badge>
         {halted ? (
           <Badge color="#ff4d6d" dot>HALTED</Badge>
         ) : running ? (
           <Badge color="#2bd17e" dot pulse>RUNNING</Badge>
         ) : (
           <Badge color="#f5b14c" dot>IDLE</Badge>
+        )}
+        {acct?.stale && (
+          <Badge color="#f5b14c" dot title="Account snapshot is stale — the trend lane may be stopped. Figures are last-known, not live.">
+            STALE{acct.snapshot_age_s != null ? ` ${ago(acct.snapshot_age_s)}` : ""}
+          </Badge>
         )}
         <div className="flex items-center gap-1.5 pl-1" title="SSE stream to data layer">
           <StatusDot color={connected ? "#34e5a1" : "#5a6677"} pulse={connected} />

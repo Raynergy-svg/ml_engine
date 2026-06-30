@@ -24,6 +24,10 @@ export interface Account {
   positions: Position[];
   peak_nav: number | null;
   drawdown_pct: number | null;
+  // Freshness of the on-disk snapshot (the trend lane rewrites it each cycle).
+  // stale=true => a stopped/lagging lane; the UI must not present it as live truth.
+  snapshot_age_s: number | null;
+  stale: boolean;
 }
 
 export interface Status {
@@ -34,6 +38,7 @@ export interface Status {
   environment: string;
   running: boolean;
   lane_running: boolean;
+  running_source?: string; // "oracle" | "snapshot_age_fallback" — which path decided `running`
   account_snapshot_age_s: number | null;
   last_fill_time: string | null;
   scanner_heartbeat_alive: boolean;
@@ -49,7 +54,7 @@ export interface Price {
   spread_pips: number;
   time: string;
   status: string;
-  tradeable: boolean;
+  tradeable: boolean | null; // null = broker didn't report it (never fabricated true)
 }
 export interface Prices {
   connected: boolean;
@@ -60,18 +65,34 @@ export interface Prices {
 export interface Trade {
   id: string;
   time: string;
-  instrument: string;
+  type: string;
+  status: "FILLED" | "ACTIVE" | "CANCELLED" | "REJECTED" | "POSTED" | "RECORDED";
+  instrument: string | null;
   units: number;
   side: "BUY" | "SELL";
   price: number | null;
   pl: number;
   financing: number;
   half_spread_cost: number;
-  reason: string;
+  reason: string | null;
   balance: number | null;
   tag: string | null;
+  order_id: string | null;
+  linked_fill_id: string | null;
+  linked_fill_price: number | null;
+  linked_fill_pl: number | null;
+  fill_kind: string | null;
+  trade_ids: string[];
+  reject_reason: string | null;
 }
-export interface Trades { connected: boolean; source: string; count: number; trades: Trade[]; }
+export interface Trades {
+  connected: boolean;
+  source: string;
+  count: number;
+  fill_count: number;
+  order_count: number;
+  trades: Trade[];
+}
 
 export interface EquityPoint { time: string; balance: number; }
 export interface Equity {
@@ -119,8 +140,11 @@ export interface Strategy {
 export interface Sentiment {
   connected: boolean;
   wired_into_strategy: boolean;
+  strategy_agent?: string;
+  agent_weight?: number;
   note: string;
   books: Record<string, { price: string; longCountPercent: string; shortCountPercent: string }[]>;
+  features?: Record<string, Record<string, number>>;
   source: string;
 }
 
@@ -175,7 +199,15 @@ export interface Tier7 {
   scan_cycle_count?: number | null;
   current_action?: string | null;
   autonomy_level?: string | number | null; // e.g. "L5" — optional; honest empty if absent
+  max_autonomy?: number | null;
   bounded?: boolean | null;
+  runtime?: {
+    updated_at?: string;
+    pid?: number;
+    max_autonomy?: number;
+    autonomy_level?: string | number;
+    bounded?: boolean;
+  } | null;
   last_cycle?: Tier7LastCycle;
   self_heal?: Tier7SelfHeal;
   meta_last_event?: Tier7MetaEvent;
@@ -221,6 +253,28 @@ export interface Alerts {
   last_updated: string | null;
 }
 export interface SystemHealth { lanes: LaneOracle; gates: Gates; alerts: Alerts }
+
+export interface ApiHealth {
+  ok: boolean;
+  oanda_connected: boolean;
+  environment: string;
+  control_enabled: boolean;
+}
+
+export interface ControlLoopState {
+  running: boolean;
+  pids: number[];
+}
+
+export interface ControlState {
+  ok: boolean;
+  environment: string;
+  halted: boolean;
+  gross_leverage: number | null;
+  override_updated_at: string | null;
+  leverage_cap: number;
+  loops: Record<string, ControlLoopState>;
+}
 
 export interface StreamPayload {
   ts: number;
