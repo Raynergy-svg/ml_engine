@@ -174,12 +174,53 @@ export interface Tier7 {
   improvement_focus?: string | null;
   scan_cycle_count?: number | null;
   current_action?: string | null;
+  autonomy_level?: string | number | null; // e.g. "L5" — optional; honest empty if absent
+  bounded?: boolean | null;
   last_cycle?: Tier7LastCycle;
   self_heal?: Tier7SelfHeal;
   meta_last_event?: Tier7MetaEvent;
   generated_at?: string | null;
   note?: string | null;
 }
+
+export interface LaneOracle {
+  available: boolean;
+  running?: boolean;
+  oanda_trend_proc?: boolean;
+  account_state_fresh?: boolean;
+  account_state_age_s?: number;
+  tier7_heartbeat_fresh?: boolean;
+  tier7_heartbeat_age_s?: number;
+  tier7_pid_alive?: boolean;
+  error?: string;
+}
+export interface GateCheck { name: string; ok: boolean; hard_no?: boolean; detail?: string }
+export interface Gates {
+  available: boolean;
+  all_ok: boolean;
+  status: string; // GREEN | RED | UNKNOWN
+  checks: GateCheck[];
+  hard_no_count: number;
+  verdict_age_s: number | null;
+}
+export interface AlertItem {
+  alert_type: string;
+  severity: string;
+  message: string;
+  timestamp: string;
+  value?: number;
+  threshold?: number;
+  pair?: string;
+  acknowledged?: boolean;
+}
+export interface Alerts {
+  available: boolean;
+  active: AlertItem[];
+  count: number;
+  max_severity: string | null;
+  last_updated: string | null;
+}
+export interface SystemHealth { lanes: LaneOracle; gates: Gates; alerts: Alerts }
 
 export interface StreamPayload {
   ts: number;

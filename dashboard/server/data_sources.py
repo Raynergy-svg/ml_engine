@@ -310,6 +310,90 @@ def read_tier7() -> Dict[str, Any]:
     }
 
 
+LOOP_DIR = CLAUDE_DIR / "loop"
+_running_status_mod = None
+
+
+def _load_running_status():
+    """Import the bot's live-lane oracle (.claude/loop/running_status.py) by path."""
+    global _running_status_mod
+    if _running_status_mod is not None:
+        return _running_status_mod
+    import importlib.util
+    path = LOOP_DIR / "running_status.py"
+    try:
+        spec = importlib.util.spec_from_file_location("axiom_running_status", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        _running_status_mod = mod
+        return mod
+    except Exception as exc:  # noqa: BLE001 — oracle optional; health degrades honestly
+        logger.warning("running_status oracle unavailable: %s", exc)
+        return None
+
+
+def read_health() -> Dict[str, Any]:
+    """System health: live-lane oracle + verify-gate Hard-NO checks + active alerts.
+
+    Mirrors the bot's own honest signals — the FIXED live-lane oracle
+    (`running_status.live_lane_running`), the recorded `verify_gate` verdict, and the
+    AlertManager state. Fail-soft: any missing source degrades to a labeled empty,
+    never a fabricated 'all good'.
+    """
+    from datetime import datetime, timezone
+
+    # 1) lanes — the authoritative running:yes/no oracle (live lane vs dormant harvester)
+    lanes: Dict[str, Any] = {"available": False}
+    mod = _load_running_status()
+    if mod is not None and hasattr(mod, "live_lane_running"):
+        try:
+            lanes = {"available": True, **mod.live_lane_running()}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("live_lane_running failed: %s", exc)
+            lanes = {"available": False, "error": type(exc).__name__}
+
+    # 2) gates — recorded verify_gate Hard-NO checks (verdict.json) + freshness
+    verdict = _read_json(LOOP_DIR / "verdict.json", {})
+    checks = verdict.get("checks") or []
+    gate_age = None
+    try:
+        gate_age = datetime.now(timezone.utc).timestamp() - (LOOP_DIR / "verdict.json").stat().st_mtime
+    except OSError:
+        pass
+    hard_no = [c for c in checks if c.get("hard_no")]
+    all_ok = bool(checks) and all(c.get("ok") for c in checks)
+    gates = {
+        "available": bool(checks),
+        "all_ok": all_ok,
+        "status": "GREEN" if all_ok else ("RED" if checks else "UNKNOWN"),
+        "checks": checks,
+        "hard_no_count": len(hard_no),
+        "verdict_age_s": round(gate_age, 1) if gate_age is not None else None,
+    }
+
+    # 3) alerts — AlertManager active alerts (consecutive losses, drawdown, win-rate)
+    alert_state = _read_json(CLAUDE_DIR / "alert_state.json", {})
+    active = alert_state.get("active_alerts") or []
+    alerts = {
+        "available": bool(alert_state),
+        "active": active,
+        "count": len(active),
+        "max_severity": _max_severity(active),
+        "last_updated": alert_state.get("last_updated"),
+    }
+    return {"lanes": lanes, "gates": gates, "alerts": alerts}
+
+
+def _max_severity(active: List[Dict[str, Any]]) -> Optional[str]:
+    order = {"INFO": 0, "WARNING": 1, "CRITICAL": 2, "ALARM": 3}
+    best = None
+    for a in active:
+        sev = a.get("severity")
+        if sev in order and (best is None or order[sev] > order[best]):
+            best = sev
+    return best
+
+
 # --------------------------------------------------------------------------- #
 # Live read-only OANDA views (degrade to connected:False, never fabricate)
 # --------------------------------------------------------------------------- #
