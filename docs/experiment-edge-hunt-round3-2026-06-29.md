@@ -124,6 +124,53 @@ fail-closed reject + quarantine. No gate-clear is reported to the operator as re
 
 ---
 
-## 5. Results (appended after the fact — EMPTY at pre-registration time)
+## 5. Results (appended after the fact — separate commit from §0-4)
 
-_(filled in a separate commit after the runs + verifier)_
+### LEAD B — broad cross-asset trend: NEAR-MISS (does NOT clear; breadth worked, OOS significance narrowly fails)
+
+Run: `scripts/experiment_edge_round3_leadB.py` → `edge_round3_leadB_{2,5}bps_*.json`. Panel: 37/37
+assets, 9753 daily bars (1990-2026 where available), OOS = last 35%.
+
+**Effective-N of the trend-stream matrix = 13.07** (vs crypto's 2.82 — breadth raised it ~5×, the
+hypothesis worked).
+
+| cost | full Sharpe | full maxDD | full DSR(N20) | full p | OOS Sharpe | OOS maxDD | OOS DSR(N20) | OOS p |
+|---|---|---|---|---|---|---|---|---|
+| 2 bps | 0.64 | 0.195 | **0.98 ✓** | **0.0 ✓** | 0.764 | 0.187 | **0.819 ✗** | 0.0034 ✗ |
+| 5 bps | — | — | — | — | ~0.74 | — | 0.807 ✗ | 0.0038 ✗ |
+
+**Gate:** OOS Sharpe≥0.40 ✓ · maxDD≤0.25 ✓ · majority-years-positive ✓ (23/34) · OOS-confirmed ✓ ·
+**FULL-sample significance ✓ (DSR 0.98, p 0.0)** · **OOS significance ✗ (DSR 0.819<0.95; p 0.0034>
+0.0025 Bonferroni)** → `clears_gate = FALSE`. A genuine NEAR-MISS: breadth lifted effective-N 5× and
+made full-sample significance clear decisively; the OOS-only test narrowly misses, primarily a
+holdout-length/power issue (OOS = ~10y vs full ~34y), not a signal-quality collapse.
+
+**Return-vs-risk decomposition (L-021): it is NOT alpha.** OOS Sharpe 0.764 LOSES to EW buy-hold
+(1.10) and 60/40 (1.28); β-to-SPY 0.14 (low), maxDD 0.187 (vs EW −0.765). It is a low-beta,
+low-drawdown RISK-CONTROL book — drawdown-controlled risk-premium harvesting — that does not beat
+passive on return in this OOS. Reported as risk-control, not edge.
+
+### LEAD A — higher-frequency (1h) intraday crypto: DECISIVE NEGATIVE
+
+Run: `scripts/experiment_edge_round3_leadA.py --top 30` → `edge_round3_leadA_*.json`. 1h panel:
+56,232 hours × 30 coins (top-30 by ADV, survivorship-aware incl. LUNA), OOS 2024+.
+
+| signal | cost | OOS Sharpe | IS Sharpe | full maxDD | DSR | p | β | clears |
+|---|---|---|---|---|---|---|---|---|
+| A1 hourly TS-momentum | 5 bps | −1.54 | −1.34 | −0.66 | 0.0 | 0.99 | −0.04 | ✗ |
+| A1 hourly TS-momentum | 9 bps | −2.87 | −2.68 | −0.87 | 0.0 | 1.0 | −0.04 | ✗ |
+| A2 first-6h→last-6h | 5 bps | −2.76 | −0.34 | −0.77 | 0.0 | 1.0 | +0.01 | ✗ |
+| A2 first-6h→last-6h | 9 bps | −4.81 | −1.78 | −0.95 | 0.0 | 1.0 | +0.01 | ✗ |
+
+**Decisive negative on both signals at both cost levels.** Higher frequency surfaces NO retail-
+accessible edge in crypto — hourly turnover cost is fatal and the intraday-momentum effect is
+absent/reversed. Consistent with the literature: documented intraday edge is latency/colocation-
+gated; the retail-shaped slice does not survive. No edge.
+
+### Synthesis
+NEITHER lead clears the gate. Lead A = decisive negative (frequency is not the missing lever for a
+retail price-taker). Lead B = honest near-miss (breadth IS the right lever — eff-N 2.82→13.07,
+full-sample significance clears — but the result is risk-control, not alpha, and the OOS-only
+significance narrowly misses on holdout power). **VERIFIER (§4): Lead B re-derivation + leakage
+audit in progress (HRP/overlay causality is the priority); Lead A is a decisive negative needing no
+verification. Final verdict appended on verifier return.**
