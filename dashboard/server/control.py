@@ -16,6 +16,7 @@ Functional actions (all practice-pinned + bounded by control_safety):
 """
 from __future__ import annotations
 
+import fcntl
 import logging
 import os
 import shlex
@@ -93,15 +94,26 @@ def _loop_pids(loop: str) -> list[int]:
 
 
 def _start_loop(loop: str) -> Dict[str, Any]:
-    if _loop_pids(loop):
-        return {"result": "already_running", "pids": _loop_pids(loop)}
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    logf = open(LOG_DIR / f"{loop}_loop.out", "a")  # noqa: SIM115 — handed to the child
-    proc = subprocess.Popen(  # noqa: S603 — fixed argv from LOOP_CMDS, no shell, no user input
-        LOOP_CMDS[loop], cwd=str(REPO_ROOT), stdout=logf, stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
-    return {"result": "started", "pid": proc.pid}
+    # C-B3: serialize check-and-spawn under a per-loop file lock. Without it, two
+    # concurrent start_loop requests (a double-click within the ~3s poll-lag window)
+    # both pass the pid check and spawn TWO trading loops on the same account. The
+    # lock fd is close-on-exec by default (PEP 446), so the child never holds it.
+    lock_path = LOG_DIR / f"{loop}.start.lock"
+    with open(lock_path, "w") as lockf:  # noqa: SIM115
+        try:
+            fcntl.flock(lockf, fcntl.LOCK_EX)
+        except OSError:
+            pass  # lock unavailable -> proceed; pid check below still guards best-effort
+        existing = _loop_pids(loop)
+        if existing:
+            return {"result": "already_running", "pids": existing}
+        logf = open(LOG_DIR / f"{loop}_loop.out", "a")  # noqa: SIM115 — handed to the child
+        proc = subprocess.Popen(  # noqa: S603 — fixed argv from LOOP_CMDS, no shell, no user input
+            LOOP_CMDS[loop], cwd=str(REPO_ROOT), stdout=logf, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        return {"result": "started", "pid": proc.pid}
 
 
 def _stop_loop(loop: str) -> Dict[str, Any]:
@@ -145,22 +157,46 @@ def _run(action: str, params: Dict[str, Any]):
         raise HTTPException(status_code=403, detail=str(exc))
 
     # --- effects (only reached after ALL immutables + eligibility passed) ---
+    # C-B1: the effect is wrapped so a failure AFTER the guards pass (Popen OSError,
+    # disk-full on set_halted/override) is AUDITED, not silently lost. Previously audit
+    # ran only after a successful effect, so a mutating attempt that then raised left no
+    # record. Every attempt is now audited: denied (above), effect_error (here), or ok.
     from src.scanner.automation.state_engine import StateEngine
-    if action == "halt":
-        StateEngine().set_halted(True)
-        result: Dict[str, Any] = {"result": "halted"}
-    elif action == "unhalt":
-        StateEngine().set_halted(False)  # eligibility already enforced above
-        result = {"result": "unhalted", "eligibility": normalized.get("eligibility")}
-    elif action == "set_gross_leverage":
-        ov = cs.set_override("gross_leverage", normalized["gross_leverage"])
-        result = {"result": "leverage_set", "gross_leverage": ov["gross_leverage"]}
-    elif action == "start_loop":
-        result = _start_loop(normalized["loop"])
-    elif action == "stop_loop":
-        result = _stop_loop(normalized["loop"])
-    else:  # unreachable — enforce() allowlist guarantees one of the above
-        raise HTTPException(status_code=500, detail="unhandled action")
+    try:
+        if action == "halt":
+            # C-B2: idempotent check-and-set — report already_halted instead of blindly
+            # re-flipping on a double-submit (UI disable lags the 3s poll).
+            eng = StateEngine()
+            if eng.get_halted():
+                result: Dict[str, Any] = {"result": "already_halted", "changed": False}
+            else:
+                eng.set_halted(True)
+                result = {"result": "halted", "changed": True}
+        elif action == "unhalt":
+            eng = StateEngine()  # eligibility already enforced above
+            if not eng.get_halted():
+                result = {"result": "already_unhalted", "changed": False,
+                          "eligibility": normalized.get("eligibility")}
+            else:
+                eng.set_halted(False)
+                result = {"result": "unhalted", "changed": True,
+                          "eligibility": normalized.get("eligibility")}
+        elif action == "set_gross_leverage":
+            ov = cs.set_override("gross_leverage", normalized["gross_leverage"])
+            result = {"result": "leverage_set", "gross_leverage": ov["gross_leverage"]}
+        elif action == "start_loop":
+            result = _start_loop(normalized["loop"])
+        elif action == "stop_loop":
+            result = _stop_loop(normalized["loop"])
+        else:  # unreachable — enforce() allowlist guarantees one of the above
+            raise HTTPException(status_code=500, detail="unhandled action")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — guards passed but the effect failed
+        cs.audit({"action": action, "params": normalized, "allowed": True,
+                  "reason": "guards passed", "result": "effect_error", "error": repr(exc)})
+        logger.error("AXIOM CONTROL effect FAILED: %s -> %r", action, exc)
+        raise HTTPException(status_code=500, detail=f"control effect failed: {type(exc).__name__}")
 
     cs.audit({"action": action, "params": normalized, "allowed": True, "reason": "guards passed", **result})
     logger.warning("AXIOM CONTROL executed: %s -> %s", action, result.get("result"))

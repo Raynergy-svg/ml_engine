@@ -84,3 +84,62 @@ def test_audit_appends_real_line(tmp_path):
     assert len(lines) == 1
     rec = json.loads(lines[0])
     assert rec["action"] == "halt" and rec["allowed"] is True and "ts" in rec
+
+
+# --------------------------------------------------------------------------- #
+# S-A1: unhalt eligibility must FAIL-CLOSED — unverifiable rails BLOCK, never pass.
+# Real files under a tmp REPO_ROOT (monkeypatched path constant — no mocks).
+# --------------------------------------------------------------------------- #
+def _build_repo(tmp_path, *, nav=100_000.0, peak=100_500.0, verdict_checks=None,
+                write_peak=True, write_verdict=True, verdict_age_s=0.0):
+    import os
+    import time
+    (tmp_path / "trained_data" / "oanda").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".claude" / "loop").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "trained_data" / "oanda" / "account_state.json").write_text(
+        json.dumps({"nav": nav}), encoding="utf-8")
+    if write_peak:
+        (tmp_path / "trained_data" / "oanda" / "peak_nav.json").write_text(
+            json.dumps({"peak_nav": peak}), encoding="utf-8")
+    if write_verdict:
+        vp = tmp_path / ".claude" / "loop" / "verdict.json"
+        checks = verdict_checks if verdict_checks is not None else [{"name": "practice", "ok": True}]
+        vp.write_text(json.dumps({"checks": checks}), encoding="utf-8")
+        if verdict_age_s:
+            old = time.time() - verdict_age_s
+            os.utime(vp, (old, old))
+    return tmp_path
+
+
+def test_unhalt_eligible_when_healthy(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "REPO_ROOT", _build_repo(tmp_path))
+    checks = cs.assert_unhalt_eligible()  # GREEN+fresh verdict, valid peak/nav -> eligible
+    assert checks["gates_green"] is True and checks["drawdown_pct"] is not None
+
+
+def test_unhalt_blocked_when_verdict_missing(tmp_path, monkeypatch):
+    # The core S-A1 bug: a missing verdict used to pass (gates_green:False, no reason).
+    monkeypatch.setattr(cs, "REPO_ROOT", _build_repo(tmp_path, write_verdict=False))
+    with pytest.raises(cs.ControlDenied, match="verdict missing/empty"):
+        cs.assert_unhalt_eligible()
+
+
+def test_unhalt_blocked_when_peak_nav_missing(tmp_path, monkeypatch):
+    # Missing peak_nav used to silently skip the entire drawdown rail.
+    monkeypatch.setattr(cs, "REPO_ROOT", _build_repo(tmp_path, write_peak=False))
+    with pytest.raises(cs.ControlDenied, match="drawdown rail UNVERIFIABLE"):
+        cs.assert_unhalt_eligible()
+
+
+def test_unhalt_blocked_when_verdict_stale(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "REPO_ROOT",
+                        _build_repo(tmp_path, verdict_age_s=cs.UNHALT_VERDICT_MAX_AGE_S + 3600))
+    with pytest.raises(cs.ControlDenied, match="stale"):
+        cs.assert_unhalt_eligible()
+
+
+def test_unhalt_blocked_when_drawdown_breaches_rail(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "REPO_ROOT",
+                        _build_repo(tmp_path, nav=70_000.0, peak=100_000.0))  # 30% dd
+    with pytest.raises(cs.ControlDenied, match="drawdown"):
+        cs.assert_unhalt_eligible()

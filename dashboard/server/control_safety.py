@@ -64,8 +64,9 @@ def validate_loop(name: Any) -> str:
     return str(name)
 
 
-UNHALT_DD_HARD = 0.20        # refuse unhalt if NAV drawdown from peak >= 20%
-UNHALT_MAX_AGE_DAYS = 7.0    # refuse unhalt if routed models older than this
+UNHALT_DD_HARD = 0.20            # refuse unhalt if NAV drawdown from peak >= 20%
+UNHALT_MAX_AGE_DAYS = 7.0        # refuse unhalt if routed models older than this
+UNHALT_VERDICT_MAX_AGE_S = 86400.0  # refuse unhalt if the verify-gate verdict is >24h stale
 
 
 def _read_json_safe(path: Path) -> Any:
@@ -99,25 +100,48 @@ def assert_unhalt_eligible() -> Dict[str, Any]:
     except OSError:
         checks["account_snapshot_age_s"] = None
 
-    # 1) NAV drawdown rail (peak_nav vs current NAV)
+    # 1) NAV drawdown rail (peak_nav vs current NAV) — FAIL-CLOSED (S-A1).
+    # If drawdown CANNOT be verified (missing/zero/corrupt nav or peak_nav), REFUSE.
+    # Previously dd stayed None and NO reason was appended, so a missing peak_nav.json
+    # silently removed the entire drawdown rail. Unverifiable rail => block.
     acct = _read_json_safe(acct_path) or {}
     peak = (_read_json_safe(REPO_ROOT / "trained_data" / "oanda" / "peak_nav.json") or {}).get("peak_nav")
     nav = acct.get("nav")
     dd = None
-    if isinstance(nav, (int, float)) and isinstance(peak, (int, float)) and peak > 0:
+    if isinstance(nav, (int, float)) and isinstance(peak, (int, float)) and peak > 0 and nav > 0:
         dd = max(0.0, (peak - nav) / peak)
         if dd >= UNHALT_DD_HARD:
             reasons.append(f"NAV drawdown {dd:.1%} >= {UNHALT_DD_HARD:.0%} rail")
+    else:
+        reasons.append("NAV drawdown rail UNVERIFIABLE (missing/invalid nav or peak_nav) — fail-closed")
     checks["drawdown_pct"] = dd
 
-    # 2) verify_gate verdict GREEN (all Hard-NO checks ok)
-    verdict = _read_json_safe(REPO_ROOT / ".claude" / "loop" / "verdict.json") or {}
+    # 2) verify_gate verdict GREEN + FRESH (all Hard-NO checks ok) — FAIL-CLOSED (S-A1).
+    # A missing/empty verdict, ANY failed check, an unknown age, or a >24h-stale verdict
+    # ALL block unhalt with an explicit reason. Previously an empty/missing verdict set
+    # gates_green=False but appended NO reason (the append was guarded by `if vchecks`),
+    # so unhalt PROCEEDED while reporting gates_green:False. Re-run /verify-task to refresh
+    # verdict.json before unhalting; a stale "GREEN" must not authorize resuming trading.
+    verdict_path = REPO_ROOT / ".claude" / "loop" / "verdict.json"
+    verdict = _read_json_safe(verdict_path) or {}
     vchecks = verdict.get("checks") or []
     gates_green = bool(vchecks) and all(c.get("ok") for c in vchecks)
     checks["gates_green"] = gates_green
-    if vchecks and not gates_green:
+    verdict_age_s = None
+    try:
+        verdict_age_s = round(_time.time() - verdict_path.stat().st_mtime, 1)
+    except OSError:
+        verdict_age_s = None
+    checks["verdict_age_s"] = verdict_age_s
+    if not vchecks:
+        reasons.append("verify_gate verdict missing/empty — fail-closed (cannot confirm Hard-NOs)")
+    elif not gates_green:
         failed = [c.get("name") for c in vchecks if not c.get("ok")]
         reasons.append(f"verify_gate not GREEN: {failed}")
+    elif verdict_age_s is None:
+        reasons.append("verify_gate verdict age unknown — fail-closed")
+    elif verdict_age_s > UNHALT_VERDICT_MAX_AGE_S:
+        reasons.append(f"verify_gate verdict stale ({int(verdict_age_s)}s > {int(UNHALT_VERDICT_MAX_AGE_S)}s) — re-run verify")
 
     # 3) routed model freshness — INFORMATIONAL only, does NOT block.
     # The live strategy is the non-ML TREND lane; the FX/ML transformers are RETIRED
