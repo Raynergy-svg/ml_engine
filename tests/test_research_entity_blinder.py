@@ -239,3 +239,49 @@ def test_blindedtext_carries_no_ticker_or_cik_fields():
     assert "ticker" not in field_names
     assert "cik" not in field_names
     assert field_names == {"as_of", "form", "filed", "text", "audit"}
+
+
+# ---------------------------------------------------------------------------
+# Review hardening (2026-06-30): ticker-boundary leak + numeric/state
+# fingerprints that previously survived with a false residual count of 0.
+# ---------------------------------------------------------------------------
+
+
+def test_ticker_redacted_across_underscore_and_digit_boundaries():
+    """`AAPL_10K` / `AAPL10K` glued to `_`/digits previously survived because
+    `\\w` boundaries treat them as word chars. Letter boundaries fix it."""
+    out = blind_filing(
+        _apple_filing("See AAPL_10K.pdf and AAPL10K and (AAPL)."), _apple_bundle()
+    )
+    assert "AAPL" not in out.text  # no ticker form survives anywhere
+
+
+def test_numeric_fingerprint_sets_leak_signal():
+    """An exact comma-grouped figure ($394,328 = Apple FY22) is a fingerprint;
+    the audit must flag it, not report a falsely-clean count of 0."""
+    out = blind_filing(
+        _apple_filing("Total net sales were $394,328 million."), _apple_bundle()
+    )
+    rr = out.audit["residual_risk"]
+    assert rr["numeric_fingerprint_count"] >= 1
+    assert rr["any_leak_signal"] is True
+
+
+def test_surviving_state_sets_leak_signal():
+    """A bare state-of-incorporation ('California') is a single-token leak the
+    multiword scan misses — must be flagged."""
+    out = blind_filing(
+        _apple_filing("We are incorporated in California."), _apple_bundle()
+    )
+    rr = out.audit["residual_risk"]
+    assert "California" in rr["survived_state_sample"]
+    assert rr["any_leak_signal"] is True
+
+
+def test_any_leak_signal_false_when_truly_clean():
+    """No identifiers, no fingerprints, no states -> demonstrably clean."""
+    out = blind_filing(
+        _apple_filing("The product line performed well during the period."),
+        _apple_bundle(),
+    )
+    assert out.audit["residual_risk"]["any_leak_signal"] is False

@@ -213,18 +213,49 @@ def _bit_reversal_order(n: int) -> List[int]:
     return sorted(range(n), key=lambda i: (_rev(i), i))
 
 
+def _derangement_order(n: int) -> List[int]:
+    """A deterministic, RNG-free DERANGEMENT of range(n) that scatters order.
+
+    Starts from the decorrelating bit-reversal scatter (:func:`_bit_reversal_order`)
+    and repairs its fixed points so that ``order[i] != i`` for every ``i``. The
+    bit-reversal alone fixes index 0 and clusters fixed points near powers of two
+    (e.g. n=64 → 8 fixed points); a fixed point would let that ticker keep its OWN
+    real composite in the placebo, leaking signal into the experiment's primary
+    falsification control (reviewers HIGH, 2026-06-30). The repair below makes the
+    near-zero placebo behaviour a PROPERTY of the permutation, not luck of ``n``.
+    """
+    if n < 2:
+        return list(range(n))
+    order = _bit_reversal_order(n)
+    fixed = [i for i in range(n) if order[i] == i]
+    if len(fixed) == 1:
+        # Swap the lone fixed value with its neighbour's. The neighbour's value
+        # != i (it's a permutation), so neither position is fixed afterward.
+        i = fixed[0]
+        j = (i + 1) % n
+        order[i], order[j] = order[j], order[i]
+    elif len(fixed) >= 2:
+        # Rotate the fixed positions' values among themselves by one: position
+        # f_k receives f_{k+1}'s value (!= f_k), erasing every fixed point while
+        # staying a permutation (only these positions are touched).
+        vals = [order[f] for f in fixed]
+        rotated = vals[1:] + vals[:1]
+        for f, v in zip(fixed, rotated):
+            order[f] = v
+    return order
+
+
 def _placebo_permute(
     composites: Dict[str, float],
 ) -> Dict[str, float]:
     """Deterministically permute composite VALUES across tickers (no RNG).
 
     Destroys the score<->ticker link while preserving the marginal distribution
-    of composite values for the rebalance. The permutation is a fixed
-    bit-reversal scatter (see :func:`_bit_reversal_order`) keyed by the
-    sorted-ticker index, so it is reproducible AND order-decorrelating: unlike a
-    roll/rotation it does not keep the top-composite names contiguous, so a
-    monotone score ramp does not leak through into the placebo's top quintile.
-    Returns a ticker -> permuted-composite dict.
+    of composite values for the rebalance. Uses a fixed-point-free DERANGEMENT
+    (see :func:`_derangement_order`) keyed by the sorted-ticker index, so it is
+    reproducible AND order-decorrelating, and — crucially — NO ticker ever keeps
+    its own composite (which would leak real signal into the placebo top
+    quintile). Returns a ticker -> permuted-composite dict.
     """
     tickers = sorted(composites)
     values = [composites[t] for t in tickers]
@@ -233,7 +264,7 @@ def _placebo_permute(
         # Single name: a permutation is a no-op; the placebo arm will be ~empty
         # signal anyway. Return as-is rather than inventing a value.
         return dict(composites)
-    order = _bit_reversal_order(n)
+    order = _derangement_order(n)
     # ticker[i] (sorted) receives the value at scattered position order[i].
     return {tickers[i]: values[order[i]] for i in range(n)}
 
@@ -688,11 +719,45 @@ def _build_summary(results: Dict[str, object]) -> Dict[str, object]:
     placebo_s = _sharpe(ARM_PLACEBO)
 
     placebo_clean = placebo_s is not None and abs(placebo_s) < 0.15
+    # §1.2 "no in-sample->OOS sign flip" is only meaningful when the full arm
+    # actually shows a positive edge. A both-negative case is NOT "consistent"
+    # (there is no edge to confirm) — the old `full_s<=0 or post_s>0` form
+    # mislabelled it True. Require: full shows an edge AND post-cutoff keeps the
+    # same sign without collapsing (post must stay positive).
     post_consistent = (
         full_s is not None
         and post_s is not None
-        and (full_s <= 0 or post_s > 0)  # no in-sample->OOS sign flip
+        and full_s > 0           # there is a full-sample edge to confirm
+        and post_s > 0           # it survives into the clean window (no sign flip)
     )
+    arm_gate_passed = {
+        arm: bool(results[arm].get("gate_passed", False))
+        if isinstance(results.get(arm), dict)
+        else False
+        for arm in ALL_ARMS
+    }
+
+    # §4.7 BINDING verdict — controls OVERRIDE any arm gate pass. The blinding
+    # audit (§1.1) is a separate human/LLM verifier step not computed here, so it
+    # is an INPUT we cannot assert True from code: until it is wired, the binding
+    # verdict can never be REAL on its own (fail-closed — an uncomputed control is
+    # treated as not-yet-satisfied, never as passed).
+    blinding_audit_clean = None  # not computed in-harness (§1.1, MEDIUM-2)
+    controls_satisfied = (
+        placebo_clean
+        and post_consistent
+        and blinding_audit_clean is True
+    )
+    full_gate = arm_gate_passed.get(ARM_FULL, False)
+    if controls_satisfied and full_gate:
+        overall_verdict = "REAL"
+    elif full_gate and not controls_satisfied:
+        # The dangerous case the §1 apparatus exists to catch: a contaminated
+        # full-sample arm clears the gate but the controls do not confirm it.
+        overall_verdict = "LOOKAHEAD_CONTAMINATED"
+    else:
+        overall_verdict = "INSUFFICIENT"  # no full-arm gate pass to adjudicate
+
     return {
         "arm_net_sharpe": {
             ARM_FULL: full_s,
@@ -700,18 +765,19 @@ def _build_summary(results: Dict[str, object]) -> Dict[str, object]:
             ARM_POST_CUTOFF: post_s,
             ARM_PLACEBO: placebo_s,
         },
-        "arm_gate_passed": {
-            arm: bool(results[arm].get("gate_passed", False))
-            if isinstance(results.get(arm), dict)
-            else False
-            for arm in ALL_ARMS
-        },
+        "arm_gate_passed": arm_gate_passed,
         "placebo_is_clean": bool(placebo_clean),
         "post_cutoff_consistent_with_full": bool(post_consistent),
+        "blinding_audit_clean": blinding_audit_clean,
+        # THE single field a consumer must read. Fuses gate + §1 controls; a
+        # contaminated full-arm pass can NEVER read as REAL here.
+        "overall_verdict": overall_verdict,
         "controls_note": (
-            "reportable as real edge ONLY IF post-cutoff consistent with full "
-            "AND placebo ~0 (|Sharpe|<0.15); entity-blinding audit is a "
-            "separate verifier step not computed here (§1.1)"
+            "overall_verdict is BINDING (§4.7): REAL requires full-arm gate pass "
+            "AND placebo ~0 (|Sharpe|<0.15) AND post-cutoff confirms the edge "
+            "(full>0 and post>0) AND a clean blinding audit (§1.1, human verifier "
+            "— uncomputed here, so REAL is unreachable until it is wired). "
+            "Read overall_verdict, NOT any single arm's gate_passed."
         ),
     }
 

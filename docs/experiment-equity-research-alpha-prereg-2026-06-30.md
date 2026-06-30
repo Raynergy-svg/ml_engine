@@ -181,3 +181,52 @@ _To be filled by the run. Will record: research model + cutoff, universe_hash, N
 (= max(EDGAR floor, model cutoff) for the clean arm), per-arm {full / pre-cutoff / post-cutoff / placebo}
 net Sharpe, maxDD, positive years, DSR-OOS(N=22), p-OOS, effective-N, blinding-audit verdict, L-021
 decomposition, and the frozen prompt/blinding hashes. Verifier verdict attached on any clear._
+
+---
+
+## 8. Build + independent review (2026-06-30) — pipeline plumbing, NOT yet a result
+
+The offline pipeline was built (`src/equity/research/{contracts,pit_text_loader,entity_blinder,harness}.py`,
+58 no-mock tests) and put through **three independent reviewers** (Model QA vs this pre-reg,
+Security adversarial-attack on the blinder, Code Reviewer on loader+harness correctness). Their
+findings were triaged against disk and the confirmed ones fixed. The §0–§6 design above is FROZEN
+and unchanged; this section records the engineering reality.
+
+**Reframing forced by review (important, HIGH confidence — both Security + Model QA converged):**
+the entity-blinder (§1.1) is **NOT the load-bearing control it is billed as.** It is moderately
+leaky by construction — exact numeric fingerprints (`$394,328 million` → Apple FY22), bare
+state-of-incorporation, segment/counterparty names the caller never supplies, all survive — and a
+pretrained model re-identifies many issuers from "blinded" text. **The load-bearing control is the
+post-cutoff arm (§1.2):** pretraining cannot contain post-cutoff outcomes, so any blinding leak that
+inflates the FULL/PRE arms only *widens* the full-vs-post divergence that the conjunctive rule reads
+as contamination. A leaky blinder **cannot manufacture a false PASS** — it adds noise to the
+contaminated arms. Treat the blinder as a noise-reducer; lean the verdict on post-cutoff + placebo.
+
+**Fixed this round (committed, tested):**
+- **Binding §4.7 verdict** — the harness now emits `overall_verdict ∈ {REAL, LOOKAHEAD_CONTAMINATED,
+  INSUFFICIENT}` that OVERRIDES any single arm's `gate_passed`. It is fail-closed: REAL requires
+  full-arm gate pass AND placebo ~0 AND post-cutoff confirms (full>0 & post>0) AND a clean blinding
+  audit — and since the human blinding audit (§1.1) is uncomputed in-harness, **REAL is currently
+  unreachable from code** (an uncomputed control is treated as not-satisfied, never as passed).
+- **Placebo derangement** — the bit-reversal permutation fixed up to 16 indices (n=128); a fixed
+  point lets a name keep its OWN composite, leaking signal into the falsification control. Replaced
+  with a deterministic fixed-point-free derangement (proven 0 fixed points for all n∈2..512).
+- **Sign-flip consistency** — `post_cutoff_consistent_with_full` no longer mislabels a both-negative
+  case as "consistent" (requires full>0 AND post>0).
+- **Blinder audit false-`count:0`** — residual scan now also surfaces numeric fingerprints + surviving
+  US state names and exposes a top-level `any_leak_signal`; ticker redaction uses letter boundaries
+  so `AAPL_10K` / `AAPL10K` are caught. The audit can no longer read "clean" while a fingerprint
+  survives.
+
+**Deferred — required before a trustworthy number, tracked here (NOT yet built):**
+1. **The §3.1 research scorer** (`BlindedText → ResearchScore`) — the offline LLM pass. Without it the
+   pipeline cannot produce real scores end-to-end. This is the next build.
+2. **DSR-OOS(N=22) + Bonferroni block-bootstrap p-OOS** (gate criterion §4.5) — currently an explicit
+   `None`/TODO (honestly surfaced, never faked); criterion 5 is therefore unenforced until built.
+3. **A short-window clean-arm decision rule** — the post-cutoff arm structurally cannot clear the
+   10-year gate, so "post-cutoff confirms" needs a real small-sample rule, not just a sign check.
+4. **Loader paging gap** — for sparse/delisted filers `load_pit_filing` can return `None` when an older
+   qualifying filing exists (degrades safe — under-coverage, never lookahead); fix before a
+   production-scale run that includes delisted names.
+5. **Wire the 30-sample human/LLM blinding re-identification audit** into the binding verdict (and
+   enlarge it; instruct the auditor to re-identify from financials/segments, not just proper nouns).

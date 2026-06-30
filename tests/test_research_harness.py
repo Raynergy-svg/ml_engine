@@ -321,3 +321,65 @@ def test_empty_scores_rejected():
     _, prices, cutoff = _build_world()
     with pytest.raises(ResearchHarnessError):
         run_research_backtest([], prices, cutoff)
+
+
+# ---------------------------------------------------------------------------
+# Review fixes (2026-06-30): derangement placebo + binding §4.7 verdict +
+# real sign-flip consistency. No mocks — pure logic on real summary dicts.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("n", [2, 3, 7, 16, 32, 50, 64, 127, 128, 256])
+def test_placebo_derangement_has_no_fixed_points(n):
+    """The placebo permutation must be a DERANGEMENT (no ticker keeps its own
+    composite) — a fixed point would leak real signal into the falsification
+    control. bit-reversal alone fixed up to 16 indices at n=128."""
+    order = H._derangement_order(n)
+    assert sorted(order) == list(range(n))  # valid permutation
+    assert all(order[i] != i for i in range(n))  # zero fixed points
+
+
+def _arm(sharpe, gate):
+    return {"report": {"net_sharpe": float(sharpe)}, "gate_passed": bool(gate)}
+
+
+def test_binding_verdict_contaminated_when_full_passes_but_placebo_dirty():
+    """§4.7 override: a full-arm gate pass with a non-clean placebo MUST read
+    LOOKAHEAD_CONTAMINATED, never REAL — the exact failure mode §1 exists for."""
+    results = {
+        ARM_FULL: _arm(2.0, True),
+        ARM_POST_CUTOFF: _arm(1.5, False),
+        ARM_PLACEBO: _arm(0.9, False),   # dirty (|Sharpe| >= 0.15)
+        ARM_PRE_CUTOFF: _arm(2.0, False),
+    }
+    summary = H._build_summary(results)
+    assert summary["overall_verdict"] == "LOOKAHEAD_CONTAMINATED"
+
+
+def test_binding_verdict_never_real_while_blinding_audit_uncomputed():
+    """Fail-closed: even a clean placebo + confirming post-cutoff cannot yield
+    REAL while the human blinding audit (§1.1) is uncomputed."""
+    results = {
+        ARM_FULL: _arm(2.0, True),
+        ARM_POST_CUTOFF: _arm(1.5, False),
+        ARM_PLACEBO: _arm(0.05, False),  # clean
+        ARM_PRE_CUTOFF: _arm(2.0, False),
+    }
+    summary = H._build_summary(results)
+    assert summary["blinding_audit_clean"] is None
+    assert summary["overall_verdict"] != "REAL"
+    assert summary["post_cutoff_consistent_with_full"] is True
+
+
+def test_consistency_false_when_both_arms_negative():
+    """A both-negative case is NOT 'consistent' — there is no edge to confirm.
+    The old `full<=0 or post>0` form wrongly returned True here."""
+    results = {
+        ARM_FULL: _arm(-0.5, False),
+        ARM_POST_CUTOFF: _arm(-0.3, False),
+        ARM_PLACEBO: _arm(0.05, False),
+        ARM_PRE_CUTOFF: _arm(-0.5, False),
+    }
+    summary = H._build_summary(results)
+    assert summary["post_cutoff_consistent_with_full"] is False
+    assert summary["overall_verdict"] == "INSUFFICIENT"

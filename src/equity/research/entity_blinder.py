@@ -136,6 +136,34 @@ _RESIDUAL_STOPWORDS = frozenset({
     "august", "october", "november",
 })
 
+# Numeric FINGERPRINTS — comma-grouped figures (>=4 digits) and $-magnitudes are
+# near-unique per issuer (e.g. "$394,328 million" -> Apple FY22). A pretrained
+# model re-identifies from these even with every proper noun redacted, and the
+# deny-list never touches numbers, so the residual scan MUST surface them or its
+# count=0 gives false comfort (2026-06-30 review CRITICAL-1).
+_RE_NUMERIC_FINGERPRINT = re.compile(
+    r"\$\s?\d{1,3}(?:,\d{3})+(?:\.\d+)?"          # $394,328
+    r"|\$\s?\d+(?:\.\d+)?\s*(?:million|billion|thousand)\b"  # $1.5 billion
+    r"|\b\d{1,3}(?:,\d{3}){1,}(?:\.\d+)?\b",      # 394,328
+    re.IGNORECASE,
+)
+
+# US state / common state-of-incorporation names. A bare surviving state (e.g.
+# "incorporated in California") is a single-token leak the Title-Case multiword
+# scan misses; this fixed list keeps it LOW-noise (50 states) but caught.
+_US_STATES = frozenset({
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+    "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+    "missouri", "montana", "nebraska", "nevada", "ohio", "oklahoma", "oregon",
+    "pennsylvania", "tennessee", "texas", "utah", "vermont", "virginia",
+    "wisconsin", "wyoming",
+})
+_RE_STATE = re.compile(
+    r"\b(" + "|".join(sorted(_US_STATES)) + r")\b", re.IGNORECASE
+)
+
 
 def _dedup_surface_forms(terms: Sequence[str]) -> List[str]:
     """Strip / drop blanks / case-insensitively dedup, then sort longest-first.
@@ -318,7 +346,7 @@ def _parse_as_of(as_of: str) -> date:
         ) from exc
 
 
-def _build_denylist_pattern(term: str) -> str:
+def _build_denylist_pattern(term: str, *, letter_boundary: bool = False) -> str:
     """Build a regex fragment for one deny-list term.
 
     Handles: case-insensitivity (caller applies the flag), interior whitespace
@@ -326,6 +354,14 @@ def _build_denylist_pattern(term: str) -> str:
     ``'s``, and optional trailing legal-suffix punctuation already embedded in
     the term. Word boundaries guard against substring hits inside other words
     (so "Apple" does not redact "Applesauce").
+
+    ``letter_boundary`` uses LETTER-only boundaries instead of ``\\w`` ones. It
+    exists for TICKERS, which routinely glue onto digits/underscores in filenames
+    and accession refs ("AAPL_10K", "AAPL10K"): a ``\\w`` boundary treats ``_``
+    and digits as word chars and so FAILS to redact the ticker there (a confirmed
+    leak, 2026-06-30 review). Letter boundaries break on ``_``/digits, redacting
+    the ticker; the only cost is occasional safe over-redaction of a short ticker
+    glued to a number ("CAT5"), which is acceptable for a lookahead control.
     """
     # Split on whitespace; rejoin allowing flexible interior whitespace.
     parts = [re.escape(p) for p in term.split()]
@@ -333,7 +369,9 @@ def _build_denylist_pattern(term: str) -> str:
     # Left boundary: not a word char before. Right boundary: optional possessive,
     # then a non-word char or end. We use lookarounds so adjacent punctuation
     # (",", ".", "'s") is handled without consuming it destructively.
-    return r"(?<![\w])" + body + r"(?:['’]s)?(?![\w])"
+    left = r"(?<![A-Za-z])" if letter_boundary else r"(?<![\w])"
+    right = r"(?![A-Za-z])" if letter_boundary else r"(?![\w])"
+    return left + body + r"(?:['’]s)?" + right
 
 
 def _redact_denylist(
@@ -350,7 +388,9 @@ def _redact_denylist(
     """
     for category in _DENYLIST_CATEGORIES:
         for canonical_key, term in terms_by_cat.get(category, []):
-            pattern = _build_denylist_pattern(term)
+            pattern = _build_denylist_pattern(
+                term, letter_boundary=(category == CAT_TICKER)
+            )
             placeholder = registry.placeholder_for(category, canonical_key)
 
             def _sub(_match: "re.Match[str]", _ph: str = placeholder) -> str:
@@ -565,15 +605,33 @@ def _residual_risk_scan(
         _consider(tok)
 
     candidates.sort()
+
+    # Low-noise, high-value single-token leaks the multiword scan misses.
+    numeric = sorted({m.group(0).strip() for m in _RE_NUMERIC_FINGERPRINT.finditer(text)})
+    states = sorted({m.group(1) for m in _RE_STATE.finditer(text)})
+
+    # The headline: ANY of the three channels firing means "not demonstrably
+    # clean". A consumer must read THIS, never leak_candidate_count alone — a
+    # count=0 proper-noun scan said nothing about numeric/state fingerprints.
+    any_leak_signal = bool(candidates or numeric or states)
+
     return {
         "leak_candidate_count": len(candidates),
         "leak_candidate_sample": candidates[:sample_limit],
+        "numeric_fingerprint_count": len(numeric),
+        "numeric_fingerprint_sample": numeric[:sample_limit],
+        "survived_state_count": len(states),
+        "survived_state_sample": states[:sample_limit],
+        "any_leak_signal": any_leak_signal,
         "heuristic": (
-            "Title-Case multiword sequences + 3-6 char ALL-CAPS tokens not in "
-            "the supplied deny-list. Deny-list + heuristic is NOT exhaustive; "
-            "a single-word brand never supplied by the caller will not be "
-            "caught. Verifier should treat a non-empty sample as POSSIBLE "
-            "(not certain) un-redacted issuer signal."
+            "Three channels: (1) Title-Case multiword + 3-6 char ALL-CAPS "
+            "tokens, (2) comma-grouped/$-magnitude numeric fingerprints, "
+            "(3) surviving US state names. Deny-list + heuristic is NOT "
+            "exhaustive; a single-word brand never supplied by the caller will "
+            "not be caught. Read any_leak_signal, NOT leak_candidate_count "
+            "alone; treat a True as POSSIBLE (not certain) un-redacted issuer "
+            "signal — and note the load-bearing lookahead control is the "
+            "post-cutoff arm, not this blinder."
         ),
     }
 
