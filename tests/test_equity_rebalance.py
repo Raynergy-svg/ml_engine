@@ -17,6 +17,7 @@ import pytest
 
 from src.equity.rebalance import (
     DEFAULT_NO_TRADE_BAND,
+    ExecResult,
     Order,
     OrderStatus,
     RebalanceError,
@@ -511,3 +512,83 @@ def test_state_round_trip_via_dict() -> None:
     assert revived.last_rebalance_asof == state.last_rebalance_asof
     assert revived.current_actual_weights == state.current_actual_weights
     assert revived.active_plan is None
+
+
+# ---------------------------------------------------------------------------
+# execute_plan tri-state — broker ACCEPTANCE must NOT book a fill (C3 fix,
+# 2026-06-30). Fail-closed: ACCEPTED → SENT, ledger untouched until reconcile.
+# ---------------------------------------------------------------------------
+
+
+def _exec_plan(tmp_path: Path, send_order: Callable[[Order], object]):
+    sched = _make_scheduler(tmp_path)
+    targets = {f"T{i:02d}": 0.10 for i in range(3)}
+    plan = sched.plan_and_persist(
+        target_weights=targets,
+        asof=pd.Timestamp("2026-06-20", tz="UTC"),
+    )
+    sched.execute_plan(plan, send_order)
+    return sched, plan
+
+
+def test_execute_plan_acceptance_marks_sent_not_filled(tmp_path: Path) -> None:
+    """The load-bearing C3 fix: a broker that merely ACCEPTED an order (no
+    confirmed fill) must leave it SENT and must NOT touch the actual-weights
+    ledger that drives the next drift calc."""
+    sched, plan = _exec_plan(tmp_path, lambda o: ExecResult.ACCEPTED)
+
+    assert all(o.status == OrderStatus.SENT.value for o in plan.orders)
+    assert all(not o.is_filled for o in plan.orders)
+    assert all(o.fill_weight == 0.0 for o in plan.orders)
+    # Ledger MUST stay empty — nothing was actually filled.
+    assert sched.load_state().current_actual_weights == {}
+    # Plan is not complete; finalize must refuse.
+    assert plan.remaining_orders()
+    with pytest.raises(RebalanceError):
+        sched.finalize_plan(plan)
+
+
+def test_execute_plan_confirmed_fill_books_position(tmp_path: Path) -> None:
+    sched, plan = _exec_plan(tmp_path, lambda o: ExecResult.FILLED)
+    assert all(o.is_filled for o in plan.orders)
+    assert sched.load_state().current_actual_weights == {
+        o.ticker: o.target_weight for o in plan.orders
+    }
+
+
+def test_execute_plan_rejected_marks_failed(tmp_path: Path) -> None:
+    sched, plan = _exec_plan(tmp_path, lambda o: ExecResult.REJECTED)
+    assert all(o.status == OrderStatus.FAILED.value for o in plan.orders)
+    assert sched.load_state().current_actual_weights == {}
+
+
+def test_legacy_bool_true_still_fills(tmp_path: Path) -> None:
+    """Backward-compat: the shadow simulator returns bare ``True`` for a
+    genuine synchronous fill — that must still map to FILLED."""
+    sched, plan = _exec_plan(tmp_path, lambda o: True)
+    assert all(o.is_filled for o in plan.orders)
+
+
+def test_sent_order_is_not_resubmitted(tmp_path: Path) -> None:
+    """A SENT (in-flight) order must NOT be re-sent on a subsequent
+    execute_plan pass — that would risk a restart double-submit. It awaits
+    reconcile instead."""
+    sched = _make_scheduler(tmp_path)
+    targets = {"AAA": 0.5}
+    plan = sched.plan_and_persist(
+        target_weights=targets, asof=pd.Timestamp("2026-06-20", tz="UTC")
+    )
+    sched.execute_plan(plan, lambda o: ExecResult.ACCEPTED)
+    assert plan.orders[0].status == OrderStatus.SENT.value
+
+    calls: List[str] = []
+
+    def _counting(order: Order) -> ExecResult:
+        calls.append(order.client_order_id)
+        return ExecResult.FILLED
+
+    sched.execute_plan(plan, _counting)
+    # The SENT order was skipped — send_order was never called again.
+    assert calls == []
+    assert plan.orders[0].status == OrderStatus.SENT.value
+    assert sched.load_state().current_actual_weights == {}

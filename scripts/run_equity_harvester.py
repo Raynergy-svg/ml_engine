@@ -80,29 +80,39 @@ def _make_ibkr_paper_fill(broker, prices: pd.DataFrame) -> Callable[[Order], boo
     """
     from src.brokers.instrument import Instrument
     from src.equity.order_lifecycle import whole_share_round
+    from src.equity.rebalance import ExecResult
 
     nav = float(broker.get_nav())
     last_close = prices.ffill().iloc[-1]
 
-    def _fill(order: Order) -> bool:
+    def _fill(order: Order) -> ExecResult:
         price = float(last_close.get(order.ticker, float("nan")))
         if not (price > 0):
             logger.warning("paper fill SKIP %s — no price", order.ticker)
-            return False
+            return ExecResult.REJECTED
         shares = int(whole_share_round(
             ticker=order.ticker, target_weight=order.target_weight,
             nav=nav, price=price,
         ).shares)
         if shares <= 0:
-            return True  # nothing to trade for this name
+            return ExecResult.FILLED  # nothing to trade — target already met
         instrument = Instrument(
             symbol=order.ticker, broker_symbol=order.ticker, asset_class="EQUITY",
             price_precision=2, margin_requirement=0.0, exchange="SMART", currency="USD",
         )
         result = broker.place_equity_order(instrument, order.side, shares)
-        ok = getattr(result, "filled_quantity", 0) > 0 or getattr(result, "status", "") in ("FILLED", "SUBMITTED")
+        status = str(getattr(result, "status", "") or "").upper()
         logger.info("paper order %s %s x%d -> %s", order.side, order.ticker, shares, result)
-        return bool(ok)
+        # A CONFIRMED fill is the only thing that books a position. Broker
+        # ACCEPTANCE (PENDING/SUBMITTED/PRESUBMITTED) is in-flight, NOT a fill —
+        # returning ExecResult.ACCEPTED makes execute_plan mark the order SENT
+        # and leave the ledger untouched until a reconcile confirms the shares.
+        # (Pre-2026-06-30 this returned True on acceptance → phantom fills, C3.)
+        if getattr(result, "filled_quantity", 0) > 0 or status == "FILLED":
+            return ExecResult.FILLED
+        if status in ("PENDING", "SUBMITTED", "PRESUBMITTED", "ACCEPTED"):
+            return ExecResult.ACCEPTED
+        return ExecResult.REJECTED
 
     return _fill
 
