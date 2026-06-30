@@ -63,6 +63,29 @@ harness) + `experiment_crypto_round2.py` (H4/H5).
   Net: no verified return-alpha anywhere; crypto TS-trend is the strongest risk-control finding; path to
   a SIGNIFICANT crypto edge needs more independent history (unavailable). Paper/research only.
 
+## Edge-hunt ROUNDS 3 + 4 (2026-06-29/30) — no-spend frontier DEFINITIVELY CLOSED, research-only
+
+Docs: `docs/experiment-edge-hunt-round3-2026-06-29.md`, `docs/experiment-edge-hunt-round4-2026-06-30.md`.
+Scripts: `experiment_edge_round3_leadA.py` (intraday), `experiment_edge_round3_leadB.py` (breadth),
+`experiment_edge_round3_leadB_lagprobe.py`, `experiment_edge_round4.py` (breadth+history expansion).
+- **R3 Lead A (1h intraday crypto): decisive NEGATIVE** — A1 hourly TS-mom + A2 first6→last6 both
+  −1.5 to −4.8 OOS at 5/9bps; higher frequency surfaces no retail edge (latency-gated per lit).
+- **R3 Lead B (broad 37-asset cross-asset trend): verified NEAR-MISS** — eff-N 2.82→13.07,
+  full-sig clears (DSR 0.987), OOS passes p (0.002) but misses ONLY DSR-OOS (0.843<0.95). Two
+  independent verifiers (my lag-probe + separate Code Reviewer): CAUSAL, leakage-free, survivorship
+  CONSERVATIVE (removing crypto sleeve IMPROVES it). Risk-control NOT alpha (loses to passive). Fixed
+  a verifier-caught pre-reg deviation (12%→frozen 10% vol-target); verdict unchanged (DSR-OOS binding).
+- **R4 (ONE pre-registered breadth+history expansion, 59-asset 1928-2026): the significance lever
+  WORKED but the gate MOVED.** OOS bars 3413→9278, eff-N 13.07→15.79 → **DSR-OOS 0.843→0.99 CLEARED**
+  (p 0.0002). BUT full-century history reveals maxDD 0.167→0.275 > 0.25 → fails the DRAWDOWN gate
+  instead. clears_gate=FALSE at 2 and 5 bps. Did NOT lower vol-target to rescue maxDD (would dredge the
+  now-binding metric, L-018). Still risk-control not alpha (OOS Sharpe 0.703 < 60/40 1.16).
+- **DEFINITIVE CLOSE (come-back-b):** no no-spend lever yields a verified full-gate clear. The book
+  misses by one criterion at a time — significance at ~10y history, drawdown at ~100y history — and is
+  never alpha. Accessible return-ALPHA needs a PAID input (options-implied / PIT-fundamentals /
+  fund-flows) or infra (cross-exchange / basis / latency). Operator deciding among spend-required
+  levers; HOLD — start none. Lessons L-020/021/022 already capture the doctrine. Immutables intact.
+
 ## Operating mode — delegated authority (2026-06-23, survives fresh sessions)
 
 The operator delegated standing approval authority. From here on:

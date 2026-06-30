@@ -90,6 +90,54 @@ a fully-gate-passing, deployable RISK-CONTROL artifact vs. a near-miss. The retu
 closed without a paid input regardless. Separate verifier (L-018) re-derives + leakage-audits any
 clear before it is reported as real.
 
-## 6. Results (appended after the fact — EMPTY at pre-registration time)
+## 6. Results (appended after the fact — separate commit from §0-5)
 
-_(filled in a separate commit after the ONE run + verifier)_
+Run: `scripts/experiment_edge_round4.py` → `edge_round4_{2,5}bps_*.json`. Panel: 59/59 assets,
+**26,507 daily bars, 1928-01-03 → 2026-06-30**; OOS = last 35% → **OOS_start 1995-08-14, 9,278 OOS
+bars** (vs Round-3's 3,413 — the history lever delivered ~2.7× more OOS bars). Effective-N **15.79**
+(vs Round-3's 13.07 — the breadth lever raised it too).
+
+| cost | full Sharpe | full maxDD | DSR-full | OOS Sharpe | OOS maxDD | **DSR-OOS(N21)** | p-OOS |
+|---|---|---|---|---|---|---|---|
+| 2 bps | 0.511 | **0.275** | 1.00 | 0.703 | 0.275 | **0.99 ✓** | 0.0002 ✓ |
+| 5 bps | 0.503 | 0.278 | — | 0.691 | 0.278 | **0.988 ✓** | 0.0002 ✓ |
+
+**Gate:** OOS Sharpe≥0.40 ✓ · **maxDD≤0.25 ✗ (0.275)** · majority-years-positive ✓ (63/99) ·
+OOS-confirmed ✓ · **DSR-OOS(N21)≥0.95 ✓ (0.99) & p-OOS<0.00238 ✓ (0.0002)** → `clears_gate = FALSE`.
+
+**What happened — the lever worked, the gate moved:** the expansion did EXACTLY what it was designed
+to. The Round-3 binding miss — **DSR-OOS — is now decisively CLEARED (0.843 → 0.99)**: more
+independent history (9,278 vs 3,413 OOS bars) shrank the power haircut, and effective-N rose
+13.07 → 15.79. The hypothesis (breadth+history raises OOS-DSR power) is VINDICATED. **But extending
+the panel to 1928 surfaced the deeper drawdowns of the 1930s/1970s/2008: full-sample maxDD rose
+0.167 → 0.275, now breaching the 0.25 gate.** The book does not clear — it now fails a DIFFERENT
+criterion (drawdown), at both cost levels. This is the honest cost of a full-century lookback: more
+history buys statistical power AND reveals deeper tails.
+
+**Return-vs-risk (L-021): still NOT alpha.** OOS Sharpe 0.703 loses to 60/40 (1.16) and EW buy-hold
+(0.917); β-to-SPY 0.18. A drawdown-controlled risk-premium book — and over the full century its
+drawdown control is weaker (0.275) than the gate demands.
+
+**Anti-p-hacking note (binding):** maxDD 0.275 misses the 0.25 cap by 0.025. Lowering the vol-target
+(e.g. to 8%) would pull maxDD under 0.25 — but that is dredging the NOW-binding metric (the exact
+L-018 trap), so it is NOT done. ONE pre-registered run, accepted. No verifier dispatched: the pre-reg
+gates separate-verifier re-derivation on a FULL-gate CLEAR (condition a); this is a non-clear on a
+deterministic maxDD, so condition (b) — definitive close — applies. The construction is the
+already-twice-verifier-confirmed causal one (Round 3); only the universe changed.
+
+## 7. FINAL VERDICT — definitive close of the no-spend frontier (come-back-(b))
+
+The no-spend frontier is now FINAL. The single most plausible no-spend path to a gate-clear — breadth
++ history expansion of the cross-asset trend book — was pre-registered and run ONCE. It **closed the
+significance miss decisively (DSR-OOS 0.843 → 0.99)** but does **not clear the full gate**: the
+full-century history reveals maxDD 0.275 > 0.25. The book remains, at every scale tested,
+RISK-CONTROL, not return-alpha (loses to passive on return).
+
+**No no-spend lever produces a verified, full-gate-clearing result.** Across the whole campaign —
+FX/equity/multi-asset/crypto; daily and intraday; infra-corrected; breadth- and history-expanded —
+the conclusion is consistent and now exhaustive: **accessible return-ALPHA requires a paid input
+(options-implied / PIT-fundamentals / fund-flows) or infrastructure (cross-exchange / basis /
+latency) we do not have.** The best no-spend artifact is a real, causal, century-significant
+risk-premium TREND book that misses the full gate by one criterion at a time (significance at
+~10y history; drawdown at ~100y history) and is not alpha regardless. Operator's decision among the
+spend-required levers. Paper/research only; immutables intact.
