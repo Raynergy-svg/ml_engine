@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySessionToken, authConfigured } from "@/lib/auth";
+import { SESSION_COOKIE, verifySessionToken, authReady } from "@/lib/auth";
 
 // Next 16 request proxy (formerly "middleware"). Auth gate for ALL routes: pages,
 // the /api/* read-only proxy, and SSE. Everything except the login surface requires
@@ -22,11 +22,12 @@ export async function proxy(req: NextRequest) {
 
   const isApi = pathname.startsWith("/api/") || pathname.startsWith("/auth/");
 
-  // Fail-closed: unconfigured auth denies everything (never default open).
-  if (!authConfigured()) {
+  // Fail-closed: unconfigured OR weak/dev auth (in production) denies EVERYTHING — a
+  // cloud deployment cannot serve (and thus cannot expose control) behind weak auth.
+  if (!authReady()) {
     if (isApi) {
       return NextResponse.json(
-        { error: "auth_not_configured", detail: "Set AXIOM_AUTH_SECRET + AXIOM_PASSWORD in the server env." },
+        { error: "auth_not_ready", detail: "Auth unconfigured or not production-safe (set a strong AXIOM_PASSWORD + 32+ char AXIOM_AUTH_SECRET)." },
         { status: 503 },
       );
     }

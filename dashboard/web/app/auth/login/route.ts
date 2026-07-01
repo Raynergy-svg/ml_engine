@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, createSessionToken, checkPassword, authConfigured } from "@/lib/auth";
+import { SESSION_COOKIE, createSessionToken, checkPassword, authReady } from "@/lib/auth";
+import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  if (!authConfigured()) {
-    return NextResponse.json({ error: "auth_not_configured" }, { status: 503 });
+  // Fail-closed: unconfigured OR weak/dev auth in production refuses login.
+  if (!authReady()) {
+    return NextResponse.json({ error: "auth_not_ready" }, { status: 503 });
+  }
+  // Rate-limit BEFORE checking the password — caps guessing on the one open route.
+  const rl = rateLimit(clientIp(req.headers));
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "too_many_attempts", retry_after_sec: rl.retryAfterSec },
+      { status: 429, headers: { "retry-after": String(rl.retryAfterSec) } },
+    );
   }
   let password = "";
   try {

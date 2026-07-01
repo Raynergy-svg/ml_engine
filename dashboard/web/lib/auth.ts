@@ -39,6 +39,35 @@ export function authConfigured(): boolean {
   return !!(process.env.AXIOM_AUTH_SECRET && process.env.AXIOM_PASSWORD);
 }
 
+// Known dev/weak values that must NEVER guard a production deployment.
+const WEAK_PASSWORDS = new Set([
+  "axiom-dev-login", "password", "changeme", "admin", "secret", "test", "axiom",
+]);
+
+/**
+ * Production-grade auth config check. In production we refuse to run on the dev
+ * password or a short secret — so a cloud deployment with control enabled CANNOT
+ * boot behind weak/default auth (the one forbidden combination). In development the
+ * dev password is allowed for local convenience.
+ *
+ * Returns {ok:true} when safe to serve, else {ok:false, reason} (fail-closed).
+ */
+export function authProductionSafe(): { ok: boolean; reason?: string } {
+  if (!authConfigured()) return { ok: false, reason: "AXIOM_AUTH_SECRET + AXIOM_PASSWORD not set" };
+  if (process.env.NODE_ENV !== "production") return { ok: true }; // dev: convenience
+  const pw = process.env.AXIOM_PASSWORD || "";
+  const secret = process.env.AXIOM_AUTH_SECRET || "";
+  if (WEAK_PASSWORDS.has(pw.toLowerCase())) return { ok: false, reason: "AXIOM_PASSWORD is a known dev/weak value" };
+  if (pw.length < 12) return { ok: false, reason: "AXIOM_PASSWORD too short (need >= 12 chars in production)" };
+  if (secret.length < 32) return { ok: false, reason: "AXIOM_AUTH_SECRET too short (need >= 32 chars in production)" };
+  return { ok: true };
+}
+
+/** True only when auth is configured AND production-safe — the gate to serve anything. */
+export function authReady(): boolean {
+  return authProductionSafe().ok;
+}
+
 export async function createSessionToken(): Promise<string> {
   const secret = process.env.AXIOM_AUTH_SECRET;
   if (!secret) throw new Error("AXIOM_AUTH_SECRET not configured");
