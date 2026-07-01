@@ -1,5 +1,5 @@
 {
-  "candles": 65000,
+  "candles": 25000,
   "failed": 1,
   "instrument": "EUR_USD",
   "params": {
@@ -25,17 +25,17 @@
   "passed": 0,
   "results": [
     {
-      "duration_s": 166.3,
-      "gap": 0.2444897196749699,
+      "duration_s": 205.5,
+      "gap": 0.16590382286572947,
       "instrument": "EUR_USD",
       "model": "transformer",
       "passed": false,
-      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/EUR_USD/_quarantine/transformer_direction-20260610T185849Z",
+      "quarantine_dir": "/home/user/ml_engine/trained_data/models/EUR_USD/_quarantine/transformer_direction-20260615T224250Z",
       "quarantined": true,
-      "train_acc": 0.7637279629707336,
-      "val_acc": 0.5192382432957637
+      "train_acc": 0.7006486654281616,
+      "val_acc": 0.5347448425624322
     }
   ],
-  "timestamp": "2026-06-10 14:58:50",
-  "total_duration_s": 166.6
+  "timestamp": "2026-06-15 22:42:52",
+  "total_duration_s": 206.5
 }
