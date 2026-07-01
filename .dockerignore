@@ -1,0 +1,35 @@
+# Keep images lean + secret-free. Mutable STATE comes from the persistent volume at
+# runtime (see deploy/entrypoint.sh), never baked into the image.
+.git
+.gitignore
+**/node_modules
+**/.next
+**/.turbo
+dashboard/web/.next
+
+# Secrets — NEVER in an image (creds arrive as host env/secrets at runtime).
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.local
+
+# Mutable bot state — supplied by the volume, not the image.
+trained_data
+.claude
+logs
+.cache
+.remember
+.playwright-mcp
+.axiom-shots
+
+# Python/build cruft
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+*.log
+.DS_Store
+
+# macOS-only / heavy artifacts not needed in a Linux container
+requirements_tf_metal.txt

@@ -1,0 +1,26 @@
+# AXIOM bot loops — OANDA daily-trend loop + Tier 7 bounded self-heal supervisor.
+# PRACTICE only. Build context = repo root: docker build -f deploy/Dockerfile.bot -t axiom-bot .
+FROM python:3.11-slim AS base
+
+ARG REQS=deploy/requirements-deploy.txt
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    APP_DIR=/app \
+    STATE_DIR=/data \
+    OANDA_ENVIRONMENT=practice
+
+WORKDIR /app
+
+COPY ${REQS} /tmp/reqs.txt
+RUN pip install -r /tmp/reqs.txt && pip install "supervisor==4.2.5"
+
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY dashboard/__init__.py ./dashboard/__init__.py
+COPY dashboard/server/ ./dashboard/server/
+COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY deploy/supervisord.bot.conf /app/supervisord.bot.conf
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["supervisord", "-c", "/app/supervisord.bot.conf"]
