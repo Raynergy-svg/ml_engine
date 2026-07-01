@@ -16,10 +16,14 @@ const RANGES = [
   { label: "1Y", days: 365 }, { label: "ALL", days: Infinity },
 ];
 
+type EquityMode = "unrealized" | "realized";
+
 export function EquityCurve() {
   const { data, loading } = usePoll<Equity>("/api/equity", 20000);
   const { payload } = useStream();
   const [range, setRange] = useState("1W");
+  const [mode, setMode] = useState<EquityMode>("unrealized");
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
@@ -45,7 +49,9 @@ export function EquityCurve() {
   }, []);
 
   // Real client-side range filter over the real ledger points — no fabricated data,
-  // just a different honest window into the same real balance history.
+  // just a different honest window into the same real balance history. This series
+  // IS the realized curve: `balance` only moves on realized fills/financing, never
+  // on the floating P&L of a still-open trade.
   const filteredSeries = useMemo(() => {
     if (!data?.points?.length) return [];
     const byT = new Map<number, number>();
@@ -69,16 +75,33 @@ export function EquityCurve() {
     return entries.map(([time, value]) => ({ time, value }));
   }, [data, range]);
 
+  const liveNav = payload?.account?.nav ?? null;
+  // "Unrealized" appends ONE real, live point (now, current NAV = balance + open
+  // trades' floating P&L). We don't have a historical floating-P&L series (that
+  // would require replaying tick history against each past open position — not
+  // attempted here), so we never fabricate a full unrealized curve; the honest
+  // scope is: realized history is exact, and the live edge reflects the real,
+  // currently-open floating P&L via the streaming NAV.
+  const chartSeries = useMemo(() => {
+    if (mode !== "unrealized" || liveNav == null || !filteredSeries.length) return filteredSeries;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const lastPoint = filteredSeries[filteredSeries.length - 1];
+    if (nowSec <= lastPoint.time) return filteredSeries;
+    return [...filteredSeries, { time: nowSec, value: liveNav }];
+  }, [filteredSeries, mode, liveNav]);
+
   useEffect(() => {
-    if (!filteredSeries.length || !seriesRef.current) return;
-    seriesRef.current.setData(filteredSeries as never);
+    if (!chartSeries.length || !seriesRef.current) return;
+    seriesRef.current.setData(chartSeries as never);
     chartRef.current?.timeScale().fitContent();
-  }, [filteredSeries]);
+  }, [chartSeries]);
 
   const empty = data && !data.points?.length;
-  const currentEquity = payload?.account?.nav ?? (data?.points?.length ? data.points[data.points.length - 1].balance : null);
+  const lastBalance = data?.points?.length ? data.points[data.points.length - 1].balance : null;
+  const currentEquity = mode === "unrealized" ? (liveNav ?? lastBalance) : lastBalance;
   // Real day% derived from the real ledger: first balance point at/after UTC midnight
-  // vs the current live NAV — not a second network call, just the data already here.
+  // vs the mode's current equity figure — not a second network call, just the data
+  // already here.
   const dayOpenBalance = useMemo(() => {
     if (!data?.points?.length) return null;
     const startOfDay = new Date(); startOfDay.setUTCHours(0, 0, 0, 0);
@@ -90,7 +113,37 @@ export function EquityCurve() {
 
   return (
     <Card className="flex h-full flex-col">
-      <SectionTitle right={<span className="font-mono text-[12px] text-faint">Realized P&L ⌄</span>}>
+      <SectionTitle
+        right={
+          <div className="relative">
+            <button
+              onClick={() => setModeMenuOpen((v) => !v)}
+              className="font-mono text-[12px] text-faint hover:text-text"
+            >
+              {mode === "unrealized" ? "Unrealized (Live NAV)" : "Realized (Ledger)"} ⌄
+            </button>
+            {modeMenuOpen && (
+              <div className="card absolute right-0 top-6 z-20 min-w-[210px] p-1.5">
+                <button
+                  onClick={() => { setMode("unrealized"); setModeMenuOpen(false); }}
+                  className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-left font-mono text-[12px] ${mode === "unrealized" ? "text-pos" : "text-dim hover:bg-surface2 hover:text-text"}`}
+                >
+                  <span>Unrealized (Live NAV)</span>
+                  <span className="text-faint" title="Balance + floating P&L of open trades">incl. open</span>
+                </button>
+                <button
+                  onClick={() => { setMode("realized"); setModeMenuOpen(false); }}
+                  className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-left font-mono text-[12px] ${mode === "realized" ? "text-pos" : "text-dim hover:bg-surface2 hover:text-text"}`}
+                >
+                  <span>Realized (Ledger)</span>
+                  <span className="text-faint" title="Account balance only — closed trades + financing">closed only</span>
+                </button>
+              </div>
+            )}
+            {modeMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setModeMenuOpen(false)} />}
+          </div>
+        }
+      >
         Equity Curve
       </SectionTitle>
 

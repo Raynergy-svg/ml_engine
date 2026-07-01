@@ -136,7 +136,11 @@ export function CandleChart({ instrument }: { instrument: string }) {
     <Card className="flex h-full flex-col overflow-hidden">
       <SectionTitle
         right={
-          <button className="hidden rounded border px-2 py-1 font-mono text-[11px] text-dim hairline md:inline-flex">
+          <button
+            disabled
+            title="Coming soon — indicator overlays are not wired yet"
+            className="hidden cursor-not-allowed rounded border px-2 py-1 font-mono text-[11px] text-faint/60 hairline md:inline-flex"
+          >
             Indicators
           </button>
         }
@@ -149,8 +153,9 @@ export function CandleChart({ instrument }: { instrument: string }) {
           {TOOL_LABELS.map((label, i) => (
             <button
               key={`${label}-${i}`}
-              className="grid h-8 w-8 place-items-center rounded-md font-mono text-[13px] text-dim hover:bg-surface2 hover:text-text"
-              title="Chart tool (drawing tools not yet wired)"
+              disabled
+              className="grid h-8 w-8 cursor-not-allowed place-items-center rounded-md font-mono text-[13px] text-faint/50"
+              title="Coming soon — drawing tools are not wired yet"
             >
               {label}
             </button>
@@ -201,8 +206,9 @@ export function CandleChart({ instrument }: { instrument: string }) {
               </button>
             ))}
             <button
-              className="ml-auto grid h-6 w-6 place-items-center rounded text-dim hover:bg-surface2 hover:text-text"
-              title="Chart settings (not yet wired)"
+              disabled
+              className="ml-auto grid h-6 w-6 cursor-not-allowed place-items-center rounded text-faint/50"
+              title="Coming soon — chart settings are not wired yet"
             >
               ⚙
             </button>

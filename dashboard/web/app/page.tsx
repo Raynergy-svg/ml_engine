@@ -47,8 +47,20 @@ function useStoredValue(key: string, fallback: string) {
   return [value, setValue] as const;
 }
 
+function useIsFullscreen(): boolean {
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFs(!!document.fullscreenElement);
+    onChange();
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  return isFs;
+}
+
 function DashboardBody() {
   const [selected, setSelected] = useState("EUR_USD");
+  const isFullscreen = useIsFullscreen();
   const [storedTab, setStoredTab] = useStoredValue("axiom:selectedTab", "Overview");
   const tab: Tab = TABS.includes(storedTab as Tab) ? (storedTab as Tab) : "Overview";
   const setTab = (next: Tab) => setStoredTab(next);
@@ -116,8 +128,23 @@ function DashboardBody() {
             ))}
           </div>
           <div className="ml-auto hidden shrink-0 items-center gap-1 md:flex">
-            {["⛶", "▥", "↗"].map((label) => (
-              <button key={label} className="rounded-md border px-3 py-1.5 font-mono text-[11px] text-faint hairline hover:text-text" title="View option (chrome, not yet wired)">
+            <button
+              onClick={() => {
+                if (document.fullscreenElement) document.exitFullscreen();
+                else document.documentElement.requestFullscreen();
+              }}
+              className={`rounded-md border px-3 py-1.5 font-mono text-[11px] hairline ${isFullscreen ? "text-pos" : "text-faint hover:text-text"}`}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              ⛶
+            </button>
+            {["▥", "↗"].map((label) => (
+              <button
+                key={label}
+                disabled
+                className="cursor-not-allowed rounded-md border px-3 py-1.5 font-mono text-[11px] text-faint/50 hairline"
+                title="Coming soon — not yet wired"
+              >
                 {label}
               </button>
             ))}
