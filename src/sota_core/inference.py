@@ -187,6 +187,42 @@ class SOTAInference:
         )
         return signal
 
+    def predict_regime_only(
+        self,
+        pair: str,
+        df_raw: Optional[pd.DataFrame] = None,
+        **kwargs: Any,
+    ) -> Tuple[str, np.ndarray]:
+        """Run inference and return ONLY the regime classification.
+
+        Returns (regime_name, regime_probs).  If model never loaded or
+        data insufficient, returns ("UNKNOWN", uniform).  No direction
+        computation, no adaptive threshold, no TradeSignal wrapping.
+        """
+        if not self._loaded or df_raw is None or df_raw.empty:
+            return ("UNKNOWN", np.full(4, 0.25, dtype=np.float32))
+
+        stats_path = kwargs.get("normalization_stats_path") or self._guess_stats_path(pair)
+        tensor = RawSequenceModel.df_to_tensor(
+            df_raw, self.cfg.seq_len, normalization_stats_path=stats_path
+        )
+        if tensor is None:
+            return ("UNKNOWN", np.full(4, 0.25, dtype=np.float32))
+
+        try:
+            _, regime_probs = self.model.model.predict(tensor, verbose=0)
+        except Exception as e:
+            logger.warning("SOTAInference predict_regime_only failed: %s", e)
+            return ("UNKNOWN", np.full(4, 0.25, dtype=np.float32))
+
+        regime_idx = int(np.argmax(regime_probs[0]))
+        regime_name = (
+            self.REGIME_NAMES[regime_idx]
+            if 0 <= regime_idx < 4
+            else "UNKNOWN"
+        )
+        return (regime_name, regime_probs[0])
+
     def _make_hold_signal(self, reason: str) -> TradeSignal:
         return TradeSignal(
             trade=False,

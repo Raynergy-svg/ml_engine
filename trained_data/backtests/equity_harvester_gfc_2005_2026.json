@@ -1,0 +1,99 @@
+{
+  "asof": "2026-05-29",
+  "backtest_summary": {
+    "avg_cost": 4.896638490880115e-06,
+    "avg_turnover": 0.024483192235555257,
+    "equity_curve_last": 6.321960148811024,
+    "execution_lag": 1,
+    "n_bars": 5384,
+    "span": "2005-01-04->2026-05-29",
+    "summary": {
+      "cagr": 0.0901,
+      "max_dd": 0.229,
+      "net_sharpe": 0.8,
+      "per_year": {
+        "2005": 0.0,
+        "2006": 0.1454,
+        "2007": 0.07,
+        "2008": -0.1579,
+        "2009": 0.0356,
+        "2010": 0.0933,
+        "2011": -0.1173,
+        "2012": 0.1744,
+        "2013": 0.2737,
+        "2014": 0.0794,
+        "2015": 0.0278,
+        "2016": 0.1544,
+        "2017": 0.2582,
+        "2018": -0.0192,
+        "2019": 0.2504,
+        "2020": 0.0361,
+        "2021": 0.259,
+        "2022": -0.2104,
+        "2023": 0.2566,
+        "2024": 0.1666,
+        "2025": 0.1494,
+        "2026": 0.1946
+      },
+      "pos_years": "17/22"
+    },
+    "total_turnover": 131.8175069962295
+  },
+  "cost_params": {
+    "adv_supplied": true,
+    "cost_bps": 2.0,
+    "execution_lag": 1,
+    "slippage_bps_per_pct_adv": 5.0,
+    "slippage_bps_per_pct_adv_requested": 5.0
+  },
+  "criteria": {
+    "history_length": {
+      "passed": true,
+      "threshold": 10,
+      "value": 22
+    },
+    "max_drawdown": {
+      "passed": true,
+      "threshold": 0.25,
+      "value": 0.229
+    },
+    "net_sharpe": {
+      "passed": true,
+      "threshold": 0.4,
+      "value": 0.8
+    },
+    "positive_years": {
+      "passed": true,
+      "threshold": 6,
+      "value": 17
+    },
+    "walk_forward": {
+      "passed": true,
+      "threshold": true,
+      "value": true
+    }
+  },
+  "criteria_source": "src.factor.ship_gate.evaluate_gate (US-007 canonical bar)",
+  "gate_pass": true,
+  "max_dd": 0.229,
+  "net_sharpe": 0.8,
+  "overlay_params": {
+    "dd_hard": 0.2,
+    "dd_soft": 0.1,
+    "max_lev": 1.0,
+    "target_vol": 0.12
+  },
+  "pipeline_version": "2026-06-18-eq1",
+  "positive_years": 17,
+  "recommendation": "PASS \u2014 single-stock harvester clears the pre-registered bar; downstream build stories (US-006+) may proceed.",
+  "span": "2005-01-04->2026-05-29",
+  "summary": "PASS \u2014 net Sharpe 0.80, 17/22 positive years, maxDD 22.9%. Eligible for US-008 practice deploy.",
+  "thresholds": {
+    "max_drawdown": 0.25,
+    "min_net_sharpe": 0.4,
+    "min_positive_years": 6.0,
+    "min_total_years": 10.0
+  },
+  "total_years": 22,
+  "universe_hash": "26c92e1d08e05819234333fe91a3eeee640c804f6232bc674ae9c5071f31b1ac"
+}

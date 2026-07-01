@@ -1,0 +1,138 @@
+{
+  "baselines": {
+    "ew_buy_hold_full": {
+      "gate_pass": false,
+      "max_dd": 0.678,
+      "net_sharpe": 0.761,
+      "positive_years": 26,
+      "total_years": 34
+    },
+    "ew_buy_hold_oos": {
+      "gate_pass": false,
+      "max_dd": 0.678,
+      "net_sharpe": 0.895,
+      "positive_years": 8,
+      "total_years": 10
+    },
+    "sixty_forty_full": {
+      "gate_pass": false,
+      "max_dd": 0.299,
+      "net_sharpe": 0.948,
+      "positive_years": 22,
+      "total_years": 25
+    }
+  },
+  "diversified_trend": {
+    "full_sample": {
+      "gate_pass": true,
+      "max_dd": 0.18,
+      "net_sharpe": 0.744,
+      "positive_years": 26,
+      "total_years": 34
+    },
+    "out_of_sample": {
+      "end": "2026-06-29",
+      "fraction": 0.35,
+      "gate_pass": true,
+      "max_dd": 0.165,
+      "net_sharpe": 0.829,
+      "positive_years": 8,
+      "start": "2017-02-24",
+      "total_years": 10
+    },
+    "sub_periods": [
+      {
+        "end": "1997-12-31",
+        "start": "1993-02-01",
+        "trend": 1.35
+      },
+      {
+        "end": "2002-12-31",
+        "start": "1998-01-02",
+        "trend": 0.214
+      },
+      {
+        "end": "2007-12-31",
+        "start": "2003-01-02",
+        "trend": 1.376
+      },
+      {
+        "end": "2012-12-31",
+        "start": "2008-01-02",
+        "trend": 0.528
+      },
+      {
+        "end": "2017-12-31",
+        "start": "2013-01-02",
+        "trend": 1.184
+      },
+      {
+        "end": "2022-12-31",
+        "start": "2018-01-01",
+        "trend": 0.286
+      },
+      {
+        "end": "2026-06-29",
+        "start": "2023-01-01",
+        "trend": 0.773
+      }
+    ]
+  },
+  "generated_at": "2026-06-29T18:52:45.628860+00:00",
+  "n_assets": 21,
+  "note": "PORTFOLIO-level judgment. Per-asset Sharpes are transparency, NOT the decision. ETF current-survivor selection at asset-class level (managed-futures proxy standard).",
+  "per_asset_trend_sharpe_TRANSPARENCY_ONLY": {
+    "BTC-USD": 0.92,
+    "DBA": 0.31,
+    "DBC": 0.28,
+    "EEM": 0.43,
+    "EFA": 0.54,
+    "ETH-USD": 0.58,
+    "FXE": 0.23,
+    "FXY": -0.01,
+    "GLD": 0.6,
+    "HYG": 0.66,
+    "IEF": 0.46,
+    "IWM": 0.24,
+    "LQD": 0.55,
+    "QQQ": 0.67,
+    "SLV": 0.37,
+    "SPY": 0.8,
+    "TLT": 0.21,
+    "UNG": 0.01,
+    "USO": 0.25,
+    "UUP": 0.26,
+    "VNQ": 0.32
+  },
+  "pre_registration": "docs/experiment-multi-asset-trend-2026-06-29.md",
+  "running": "NO (offline pre-registered test)",
+  "ship_gate_min_net_sharpe": 0.4,
+  "universe": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "TLT",
+    "IEF",
+    "LQD",
+    "HYG",
+    "DBC",
+    "USO",
+    "UNG",
+    "DBA",
+    "GLD",
+    "SLV",
+    "VNQ",
+    "UUP",
+    "FXE",
+    "FXY",
+    "BTC-USD",
+    "ETH-USD"
+  ],
+  "window": {
+    "end": "2026-06-29",
+    "n_days": 9751,
+    "start": "1993-02-01"
+  }
+}

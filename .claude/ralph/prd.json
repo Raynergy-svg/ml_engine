@@ -1,80 +1,395 @@
 {
-    "branchName": "ralph/sota-hardening-phase40",
-    "description": "Post-audit hardening: fix runtime bugs, wire Dukascopy harvester, unify training harness, add iTransformer encoder, and pre-train on historical tick data.",
-    "project": "ML_Engine",
-    "userStories": [
-        {
-            "id": "US-001",
-            "title": "Fix critical F821 undefined-name runtime bugs in engine.py and execution.py",
-            "description": "Static analysis found 37 F821 undefined names. The most dangerous are in engine.py (regime_name, agent_result, features) and execution.py (np, atr_pips). These will raise NameError at runtime when those code paths execute.",
-            "priority": 1,
-            "acceptanceCriteria": [
-                "flake8 --select=F821 src/scanner/engine.py returns zero errors",
-                "flake8 --select=F821 src/scanner/execution.py returns zero errors",
-                "All introduced symbols are either imported or defined locally in the fixed scopes",
-                "No regressions in existing test suite (pytest tests/scanner/ passes)"
-            ],
-            "passes": true,
-            "notes": "Completed by Ralph (Dex) on 2026-06-16."
-        },
-        {
-            "id": "US-002",
-            "title": "Wire Dukascopy harvester into HarvestScheduler as alternate data source",
-            "description": "The DukascopyHarvester downloads historical tick data but is not integrated with the existing HarvestScheduler pipeline. Add a --source dukascopy flag to src/data/harvest.py that routes through the DukascopyHarvester and converts output to canonical M15 parquet.",
-            "priority": 2,
-            "acceptanceCriteria": [
-                "python -m src.data.harvest --source dukascopy --pair EUR_USD --start 2023-01-01 --end 2023-01-31 runs without error",
-                "Output parquet matches schema of existing OANDA harvest files (open,high,low,close,volume index)",
-                "Existing OANDA harvest path remains unchanged (--source defaults to oanda)",
-                "Unit test added: tests/data/test_harvest_scheduler_dukascopy.py"
-            ],
-            "passes": true,
-            "notes": "Completed by Ralph (Dex) on 2026-06-16."
-        },
-        {
-            "id": "US-003",
-            "title": "Create unified training harness entry point and delete duplicated boilerplate scripts",
-            "description": "Fifteen standalone training scripts (~7,800 LOC) duplicate data loading, feature engineering, and serialization. Create a single config-driven harness that dispatches to registered trainers by model type.",
-            "priority": 3,
-            "acceptanceCriteria": [
-                "New module src/training/harness.py exposes a train() function accepting model_type and data_paths",
-                "Harness delegates to existing trainer classes (SOTATrainer, NeuralAgentTrainer, etc.)",
-                "scripts/train_sota.py reduced to a thin wrapper that calls harness with sota config",
-                "At least 5 redundant standalone scripts are deleted and their functionality is reachable via harness",
-                "CI passes: pytest tests/training/"
-            ],
-            "passes": true,
-            "notes": "Completed by Ralph (Dex) on 2026-06-16."
-        },
-        {
-            "id": "US-004",
-            "title": "Add iTransformer encoder variant to raw_sequence_model.py",
-            "description": "Current encoder is basic multi-head self-attention over time steps. iTransformer inverts attention to treat channels (OHLCV + features) as tokens, which beats PatchTST on long-horizon forecasting. Add an optional iTransformer encoder block selectable via ModelConfig.encoder_type.",
-            "priority": 4,
-            "acceptanceCriteria": [
-                "ModelConfig gains encoder_type field with choices ['transformer', 'itransformer'] (default 'transformer')",
-                "iTransformer block implemented in src/sota_core/encoders/itransformer.py",
-                "RawSequenceModel.build_model() routes to correct encoder based on config",
-                "Unit test: both encoder types produce output tensors of identical shape for same input",
-                "No TensorFlow warnings or shape mismatches during model compilation"
-            ],
-            "passes": true,
-            "notes": "Completed by Ralph (Dex) on 2026-06-16."
-        },
-        {
-            "id": "US-005",
-            "title": "Trigger SOTA pre-training on Dukascopy M15 data once backfill completes",
-            "description": "The backfill running in screen session 1601.dukascopy_backfill will produce trained_data/harvest/EUR_USD_M15_dukascopy.parquet. Once detected, run the unified harness in pretrain phase on that file.",
-            "priority": 5,
-            "acceptanceCriteria": [
-                "Detection script checks for merged parquet existence and starts harness automatically",
-                "Pretrain phase runs with masked candle reconstruction + next-return regression",
-                "Checkpoint saved to trained_data/models/sota_pretrain/ with timestamped version",
-                "Training metrics (loss, val_loss) are logged to logs/autonomous_trainer.jsonl",
-                "Dry-run flag gates actual GPU training (simulation mode for validation)"
-            ],
-            "passes": true,
-            "notes": "Completed by Ralph (Dex) on 2026-06-16."
-        }
-    ]
+  "project": "ML_Engine",
+  "branchName": "ralph/equity-harvester-bot",
+  "description": "Fully Hands-Off Equity-Beta Harvester Bot - re-point the autonomous engine from dead FX direction onto the validated equity-beta harvester (vol-managed beta + drawdown circuit-breaker). 22 dependency-ordered stories; US-005 is a HARD GATE (SHIP_GATE.json) guarding all downstream build stories. Single-stock universe, IBKR equities, gated live, FX path retired. Source: tasks/prd-equity-harvester-bot.md",
+  "last_updated": "2026-06-18",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Equity price data-loader (point-in-time, adjusted, fail-loud)",
+      "description": "As the bot, I want cached gap-validated daily equity prices so every downstream story has a real data source.",
+      "acceptanceCriteria": [
+        "Daily adjusted OHLCV loader mirroring src/factor/data_loader.py atomic/cache/fail-loud contract; caches under market_data/equity/",
+        "Names the live EOD source explicitly (IBKR fetch_candles 'D' preferred for live; yfinance backtest-only) and records which was used",
+        "Stale/NaN guard: latest row older than freshness window OR NaN closes -> raises (no silent forward-fill)",
+        "Unit test asserts cache round-trip + that a stale/NaN fixture raises",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-001). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-002",
+      "title": "Single-stock universe builder (point-in-time, no survivorship)",
+      "description": "As a developer, I want a reproducible look-ahead-safe universe so the bot trades a defensible list.",
+      "acceptanceCriteria": [
+        "Date-indexed membership of liquid US large caps (top-N by $volume/market cap), documented reconstitution rules",
+        "Point-in-time membership (a name appears only on dates it qualified); emits a universe_hash for the deployed set",
+        "Unit test asserts membership on date D includes only tickers qualified as of D and EXCLUDES a known later-IPO ticker (no future leak)",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-002). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-003",
+      "title": "Portfolio-weight backtest harness (weights -> curve/Sharpe/maxDD/turnover)",
+      "description": "As a developer, I want a portfolio backtester so the US-005 gate is real and reproducible.",
+      "acceptanceCriteria": [
+        "Takes date x ticker target weights + prices -> equity curve, net Sharpe, maxDD, CAGR, turnover; reuses stats()/overlay() from build_equity_harvester.py",
+        "Minimal per-name cost model here (flat bps + ADV-scaled slippage); depth-aware book (US-014) is execution-only and NOT required here",
+        "Execution lag >=1 bar (causal); unit test on a synthetic 2-name panel asserts known Sharpe/maxDD/turnover",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-003). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-004",
+      "title": "Strategy/engine interface contract",
+      "description": "As the control loop, I want a defined strategy protocol so US-006 and US-017 agree on the interface.",
+      "acceptanceCriteria": [
+        "Typed protocol compute_target_weights(asof)->dict[ticker,float] (causal; sums/bounds documented)",
+        "Explicitly REUSE src/factor/portfolio.py (vol-target + gross/per-name caps) rather than rebuilding; document how US-017 loop consumes it",
+        "A stub strategy implements the protocol; test asserts the loop can call it",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-004). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-005",
+      "title": "HARD GATE: re-validate harvester on single-stock universe -> SHIP_GATE.json",
+      "description": "As the operator, I want machine-readable proof the harvester clears the gate on the deployed universe before anything is built on it.",
+      "acceptanceCriteria": [
+        "Run harvester overlay on US-002 universe via US-003 harness full-cycle (>=2010-2026) with realistic per-name costs; write trained_data/backtests/equity_harvester_singlestock_*.json",
+        "REUSE src/factor/ship_gate.evaluate_gate (do not hand-roll); decide explicitly whether MIN_POSITIVE_YEARS=6/MIN_TOTAL_YEARS=10 apply and record it; resolve 2-vs-4-criterion inconsistency vs build_equity_harvester.py",
+        "Write trained_data/backtests/SHIP_GATE.json atomically: {gate_pass, net_sharpe, max_dd, positive_years, universe_hash, asof}",
+        "If gate_pass==false: document + recommend reverting to validated EW-sector universe; all downstream build stories (US-006+) are guarded by this artifact",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-005). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-006",
+      "title": "Harvester strategy module (runtime, deterministic)",
+      "description": "As the autonomous loop, I want the harvester as a strategy module implementing the US-004 protocol.",
+      "acceptanceCriteria": [
+        "HarvesterStrategy returns target weights (vol-managed exposure x drawdown/vol-spike scalar), causal, deterministic, NO LLM/NO network in compute path (same inputs->same weights, unit test)",
+        "Reuses src/factor/portfolio.py weight construction/caps; thresholds configurable via ScannerConfig (dataclass field -> profile dict -> consumer getattr, all three)",
+        "Long-only by default (FR-11)",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-006). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-007",
+      "title": "Rebalance scheduler with idempotent restart",
+      "description": "As the bot, I want to rebalance on schedule without churn or double-fills on restart.",
+      "acceptanceCriteria": [
+        "Triggers monthly (configurable) and/or on weight-drift beyond a no-trade band; emits order delta current->target; respects the band",
+        "Idempotent: orders carry stable client-order-IDs; restart mid-rebalance reconciles sent/filled vs target and sends only the remaining delta (test: kill after 2 of 5 orders -> restart sends exactly the missing 3, no double-fill)",
+        "State (last rebalance, current target, in-flight order IDs) persisted atomically; survives restart",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-007). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-008",
+      "title": "Lean deterministic portfolio-risk agent layer",
+      "description": "As the bot, I want risk gates suited to a harvester (not a direction bet).",
+      "acceptanceCriteria": [
+        "Lean agents returning the existing AgentVerdict shape (_team.py:159): drawdown guardian, vol-targeter, gross/per-name exposure caps, concentration/correlation check, per-name ADV/participation cap (<=X% of 20-day ADV per rebalance), rebalance gate",
+        "Drawdown guardian runs EVERY cycle; breach de-grosses/halts via the circuit-breaker",
+        "Unit tests drive each gate with real configs and assert block/allow on edge cases (zero/negative/None)",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-008). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-009",
+      "title": "Corporate-action handling (single-stock critical)",
+      "description": "As the bot, I must reconcile splits/dividends/delistings so price/position math does not silently corrupt.",
+      "acceptanceCriteria": [
+        "Detect+apply splits & dividends consistently between data source and live broker positions; a 4:1 split must NOT register as a -75% drawdown",
+        "Daily adjusted-vs-raw price sanity check: if back-adjusted series and broker-held shares/price diverge beyond tolerance, HALT + ALERT (do not trade on skew)",
+        "Delisting/M&A: universe builder drops the dead ticker and position manager liquidates/handles cash-out; test drives a synthetic split, dividend, and delisting and asserts correct adjustment + halt-on-divergence",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-009). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-010",
+      "title": "Equity market-calendar / session / halt gate",
+      "description": "As the bot, I must only trade when the equity market is actually open.",
+      "acceptanceCriteria": [
+        "Replace FX is_market_open (config.py:1420) on this path with a real NYSE/Nasdaq calendar (regular session 09:30-16:00 ET, holidays, half-days) via exchange_calendars/pandas_market_calendars",
+        "No rebalance/order outside the regular session; LULD/halt awareness (a rejected/halted order is detected and retried/deferred, not silently dropped)",
+        "Test asserts: open on a normal weekday 10:00 ET, closed on a holiday and at 03:00 ET; a simulated halt defers the order",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-010). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-011",
+      "title": "IBKR equity contracts + connect + place one order",
+      "description": "As the bot, I need IBKR to accept equity orders at all.",
+      "acceptanceCriteria": [
+        "Add 'EQUITY' to the AssetClass literal + validators (src/brokers/instrument.py:58, registry.py) and a Stock(symbol,'SMART','USD') path in ibkr.py _build_contract (currently Forex/Future only)",
+        "Connect to an IBKR paper account; place + confirm one whole-share equity order end-to-end (@pytest.mark.integration, skips cleanly without IBGateway)",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-011). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-012",
+      "title": "IBKR order lifecycle (types, TIF, fills, reconciliation, retries)",
+      "description": "As the bot, I need robust equity order execution.",
+      "acceptanceCriteria": [
+        "Documented policy: market vs limit for rebalance, DAY vs GTC TIF, whole-share rounding with a residual-cash rule (NOT the FX bracket SL/TP order)",
+        "Partial-fill handling + reconciliation; order state machine {SUBMITTED,PARTIAL,FILLED,FAILED}; a forced reconcile mismatch -> FAILED, logged at ERROR with reason_code",
+        "Simulated connection drop during place_order -> retries up to MAX_RETRIES with backoff and raises named BrokerTimeoutError; test asserts retry count + exception type; grep confirms zero bare except in ibkr.py",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-012). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-013",
+      "title": "IBKR-native kill switch (flatten_all)",
+      "description": "As the operator, I need a working hard kill switch on the equity path.",
+      "acceptanceCriteria": [
+        "Implement flatten_all via the broker abstraction for IBKR (cancel all open orders + market-close all equity positions); the current execution.py:6272 is hardcoded to OANDA REST and would no-op on equities",
+        "Integration-tested on paper: open positions/orders -> flatten_all -> assert flat",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-013). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-014",
+      "title": "Depth-aware execution pricing (hummingbot, Apache-2.0)",
+      "description": "As the bot, I need realistic fill-price-at-size for execution sizing.",
+      "acceptanceCriteria": [
+        "Reimplement get_price_for_volume/get_vwap_for_volume (from hummingbot order_book.pyx) for the equities path; Apache-2.0 attribution header + NOTICE entry retained; used for live execution sizing",
+        "Unit test vs a synthetic L2 book asserts correct VWAP-for-size / price-for-volume",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-014). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-015",
+      "title": "Order-lifecycle executor framework (hummingbot, Apache-2.0)",
+      "description": "As the bot, I need a clean decoupled execution layer.",
+      "acceptanceCriteria": [
+        "Adapt the strategy_v2/executors pattern (executor base + position/TWAP executors) for equity orders via the IBKR broker; Apache-2.0 attribution retained; routes through US-012 lifecycle",
+        "Integration test (paper IBKR) places + reconciles an order via the executor",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-015). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-016",
+      "title": "Shadow fill simulator",
+      "description": "As the bot, I need simulated fills so shadow mode and the loop smoke-test can run without real orders.",
+      "acceptanceCriteria": [
+        "A simulator takes an order + price/L2 input (US-014) and returns a fill with modeled slippage; used by both US-017 and US-021",
+        "Unit test asserts deterministic fills for a fixed input",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-016). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-017",
+      "title": "Autonomous control loop (fully hands-off)",
+      "description": "As the operator, I want the bot to run itself.",
+      "acceptanceCriteria": [
+        "Loop runs continuously: schedule -> weights -> risk gates -> rebalance/execute (US-016 in shadow) -> drawdown monitor -> state persist -> self-heal, no human in the loop",
+        "Port OANDA-only adapters to IBKR-equity: state_reconciler IBKR fetcher reconciling SHARES + CASH (not just NAV) with equity drift thresholds; IBKR transport FSM (CONNECTED->DEGRADED->RECONNECTING) + heartbeat; on disconnect the loop FAILS CLOSED (no blind rebalance)",
+        "Graceful shutdown persists state atomically; restart resumes (freshness-checked); corrupt state -> log STATE_CORRUPT, skip execute, stay halted (test: inject corrupt file -> no order emitted + halted true)",
+        "Standing Claude-free canary test: AST/grep test asserts no LLM import is reachable from the strategy/execution modules",
+        "Smoke test: loop runs >=10 cycles with a null/stub executor; test greps logs/buddy_debug.log for exact expected substrings",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-017). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-018",
+      "title": "Out-of-band alerting + harvester alert conditions",
+      "description": "As the operator of a hands-off bot, I need out-of-band notification when something breaks.",
+      "acceptanceCriteria": [
+        "Add a real notification channel (email/Slack/SMS) for HALT / broker-disconnect / DD-breach / rebalance-failed / stale-data / position-drift; alert_manager currently only writes files",
+        "Replace directional-trade alert conditions (consecutive_losses, win_rate_drop) with the harvester conditions above",
+        "Test asserts a simulated breach emits a notification payload",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-018). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-019",
+      "title": "Outcome-grounded reflection loop (Tier-7 planning only)",
+      "description": "As the planning layer, I want to learn from realized outcomes - never in the hot path.",
+      "acceptanceCriteria": [
+        "Reimplement (~100 lines, not imported) the TradingAgents (Apache-2.0) pattern: log decision pending -> on maturity fetch realized return vs benchmark (alpha) -> write compact alpha-cited lesson -> inject curated lessons into the next PLANNING prompt; anchored on trained_data/trade_journal_rl.json, atomic append-only, rotation-capped, idempotent",
+        "Runs only in the Tier-7 planning/post-mortem path; the US-017 canary test confirms it is not reachable from the hot path",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-019). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-020",
+      "title": "Deprecate & retire the FX directional path (non-destructive)",
+      "description": "As the operator, I want the dead FX path retired cleanly without losing history.",
+      "acceptanceCriteria": [
+        "FX directional engine path + the 15 directional agents disabled from the active runtime (config flags off; removed from the harvester engine path); code PRESERVED in git history - no hard-delete of artifacts/journals",
+        "Deprecation notes in code + docs pointing to this PRD and the research verdicts; no runtime path still depends on the retired agents; suite green after removal",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-020). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-021",
+      "title": "Shadow / paper mode end-to-end",
+      "description": "As the operator, I want to watch the whole bot run in simulation before any real money.",
+      "acceptanceCriteria": [
+        "Full pipeline runs in shadow (paper IBKR + US-016 simulated fills): real decisions, no real capital; bot stays halted/fail-closed by default",
+        "Divergence check (verifiable): if realized shadow maxDD exceeds backtest maxDD by >X pp OR turnover differs by >Y% (operator sets X,Y), emit a DIVERGENCE warning; test drives synthetic stats past/under the threshold",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-021). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    },
+    {
+      "id": "US-022",
+      "title": "Gated live path (typed confirmation + universe-keyed gate)",
+      "description": "As the operator, I want a safe explicit path to real money.",
+      "acceptanceCriteria": [
+        "Live blocked unless: (a) SHIP_GATE.json gate_pass==true AND its universe_hash matches the deployed universe, AND (b) explicit typed confirmation (reuse src/tui/screens/mode_modal.py ModeConfirmModal)",
+        "Position sizing capped to a configurable small initial NAV fraction; max portfolio risk <=15% NAV; drawdown guardian + US-013 kill switch active",
+        "Any failed precondition -> refuse + stay halted; every live enable/disable logged; test asserts live cannot fire with a missing/false/mismatched gate",
+        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
+        "pytest passes (python -m pytest tests/ -q --tb=short)",
+        "flake8 src/ --config=.flake8 passes",
+        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
+        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-022). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+    }
+  ]
 }

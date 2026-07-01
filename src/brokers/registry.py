@@ -118,9 +118,11 @@ class InstrumentRegistry:
         """Return string representation."""
         fx_count = len(self.get_by_asset_class("FX"))
         fut_count = len(self.get_by_asset_class("FUTURES"))
+        eq_count = len(self.get_by_asset_class("EQUITY"))
         return (
             f"InstrumentRegistry({fx_count} FX instruments, "
-            f"{fut_count} FUTURES instruments)"
+            f"{fut_count} FUTURES instruments, "
+            f"{eq_count} EQUITY instruments)"
         )
 
 

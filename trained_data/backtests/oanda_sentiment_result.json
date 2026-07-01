@@ -1,0 +1,107 @@
+{
+  "data_limitation": "2y window cannot satisfy ship-gate MIN_TOTAL_YEARS=10; positive => promising-not-shippable, negative => conclusive no-edge.",
+  "full_sample": {
+    "per_instrument_ic": {
+      "AUD_USD": 0.0359,
+      "EUR_USD": 0.0639,
+      "GBP_USD": 0.0669,
+      "NZD_USD": 0.0502,
+      "USD_CAD": 0.0002,
+      "USD_CHF": 0.0213,
+      "USD_JPY": 0.0266
+    },
+    "pooled_ic": {
+      "ic": 0.00046,
+      "n": 3640,
+      "t_stat": 0.028
+    },
+    "portfolio": {
+      "max_dd": 0.05,
+      "net_sharpe": -0.111,
+      "positive_years": 1,
+      "total_years": 3
+    }
+  },
+  "generated_at": "2026-06-29T17:36:27.099099+00:00",
+  "in_sample": {
+    "per_instrument_ic": {
+      "AUD_USD": 0.0798,
+      "EUR_USD": 0.05,
+      "GBP_USD": 0.0505,
+      "NZD_USD": 0.036,
+      "USD_CAD": 0.0075,
+      "USD_CHF": 0.0288,
+      "USD_JPY": 0.0516
+    },
+    "pooled_ic": {
+      "ic": 0.00999,
+      "n": 2366,
+      "t_stat": 0.486
+    },
+    "portfolio": {
+      "max_dd": 0.03,
+      "net_sharpe": 0.403,
+      "positive_years": 1,
+      "total_years": 2
+    }
+  },
+  "n_dates": 521,
+  "out_of_sample": {
+    "end": "2026-06-29",
+    "fraction": 0.35,
+    "per_instrument_ic": {
+      "AUD_USD": 0.1799,
+      "EUR_USD": 0.0693,
+      "GBP_USD": 0.164,
+      "NZD_USD": 0.1564,
+      "USD_CAD": -0.0968,
+      "USD_CHF": 0.1108,
+      "USD_JPY": 0.15
+    },
+    "pooled_ic": {
+      "ic": -0.01794,
+      "n": 1274,
+      "t_stat": -0.64
+    },
+    "portfolio": {
+      "max_dd": 0.026,
+      "net_sharpe": -1.593,
+      "positive_years": 0,
+      "total_years": 2
+    },
+    "start": "2025-10-16"
+  },
+  "pre_registration": "docs/experiment-oanda-sentiment-2026-06-29.md",
+  "running": "NO (offline pre-registered test)",
+  "ship_gate_min_net_sharpe": 0.4,
+  "sub_period_by_year": [
+    {
+      "ic": -0.02166,
+      "net_sharpe": 1.247,
+      "year": 2024
+    },
+    {
+      "ic": 0.02351,
+      "net_sharpe": -0.508,
+      "year": 2025
+    },
+    {
+      "ic": -0.0194,
+      "net_sharpe": -1.2,
+      "year": 2026
+    }
+  ],
+  "universe": [
+    "EUR_USD",
+    "USD_JPY",
+    "GBP_USD",
+    "USD_CHF",
+    "AUD_USD",
+    "USD_CAD",
+    "NZD_USD"
+  ],
+  "window": {
+    "end": "2026-06-29",
+    "start": "2024-06-29"
+  }
+}

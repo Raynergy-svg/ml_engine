@@ -1,0 +1,18 @@
+{
+  "asof": "2026-05-29",
+  "criteria_source": "src.factor.ship_gate.evaluate_gate (US-007 canonical bar)",
+  "gate_pass": true,
+  "max_dd": 0.229,
+  "net_sharpe": 0.8,
+  "pipeline_version": "2026-06-18-eq1",
+  "positive_years": 17,
+  "recommendation": "PASS \u2014 single-stock harvester clears the pre-registered bar; downstream build stories (US-006+) may proceed.",
+  "thresholds": {
+    "max_drawdown": 0.25,
+    "min_net_sharpe": 0.4,
+    "min_positive_years": 6.0,
+    "min_total_years": 10.0
+  },
+  "total_years": 22,
+  "universe_hash": "26c92e1d08e05819234333fe91a3eeee640c804f6232bc674ae9c5071f31b1ac"
+}

@@ -1,0 +1,115 @@
+{
+  "common_window": {
+    "end": "2026-05-29",
+    "start": "2006-02-07"
+  },
+  "full_sample": {
+    "avg_sleeve_corr": 0.4872,
+    "combined_beats_harvester": true,
+    "combined_book": {
+      "gate_pass": true,
+      "max_dd": 0.166,
+      "net_sharpe": 0.873,
+      "positive_years": 16,
+      "total_years": 21
+    },
+    "harvester_alone": {
+      "gate_pass": true,
+      "max_dd": 0.229,
+      "net_sharpe": 0.84,
+      "positive_years": 17,
+      "total_years": 21
+    },
+    "net_sharpe_margin": 0.033,
+    "trend_alone": {
+      "gate_pass": true,
+      "max_dd": 0.2,
+      "net_sharpe": 0.747,
+      "positive_years": 18,
+      "total_years": 21
+    }
+  },
+  "generated_at": "2026-06-25T00:45:12.338638+00:00",
+  "out_of_sample": {
+    "avg_sleeve_corr": 0.4696,
+    "combined_beats_harvester": true,
+    "combined_book": {
+      "gate_pass": false,
+      "max_dd": 0.166,
+      "net_sharpe": 1.153,
+      "positive_years": 7,
+      "total_years": 8
+    },
+    "end": "2026-05-29",
+    "fraction": 0.34,
+    "harvester_alone": {
+      "gate_pass": false,
+      "max_dd": 0.229,
+      "net_sharpe": 1.035,
+      "positive_years": 7,
+      "total_years": 8
+    },
+    "net_sharpe_margin": 0.118,
+    "start": "2019-07-01",
+    "trend_alone": {
+      "gate_pass": false,
+      "max_dd": 0.2,
+      "net_sharpe": 0.915,
+      "positive_years": 7,
+      "total_years": 8
+    }
+  },
+  "pre_registered": {
+    "combiner": "HRP-across-sleeve-returns (inverse-variance for 2), 252d/21d",
+    "test": "combined {harvester+trend} vs harvester-alone net Sharpe, full + OOS",
+    "trend_etfs": [
+      "SPY",
+      "EFA",
+      "TLT",
+      "IEF",
+      "GLD",
+      "DBC",
+      "VNQ"
+    ],
+    "trend_rule": "price > 200d SMA (shift1), EW among on-assets else cash, monthly"
+  },
+  "running": "NO (offline backtest evaluation)",
+  "sub_period_stability": [
+    {
+      "combined_beats": true,
+      "combined_maxdd": 0.124,
+      "combined_net_sharpe": 0.599,
+      "end": "2010-12-31",
+      "harvester_net_sharpe": 0.424,
+      "margin": 0.175,
+      "start": "2006-02-07"
+    },
+    {
+      "combined_beats": false,
+      "combined_maxdd": 0.114,
+      "combined_net_sharpe": 0.656,
+      "end": "2015-12-31",
+      "harvester_net_sharpe": 0.677,
+      "margin": -0.021,
+      "start": "2011-01-03"
+    },
+    {
+      "combined_beats": false,
+      "combined_maxdd": 0.127,
+      "combined_net_sharpe": 1.017,
+      "end": "2020-12-31",
+      "harvester_net_sharpe": 1.081,
+      "margin": -0.064,
+      "start": "2016-01-04"
+    },
+    {
+      "combined_beats": true,
+      "combined_maxdd": 0.166,
+      "combined_net_sharpe": 1.027,
+      "end": "2025-12-31",
+      "harvester_net_sharpe": 0.906,
+      "margin": 0.121,
+      "start": "2021-01-04"
+    }
+  ]
+}

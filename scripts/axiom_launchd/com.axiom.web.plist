@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.axiom.web</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/buddy/.nvm/versions/node/v22.22.1/bin/node</string>
+    <string>/Users/buddy/Documents/ml_engine/dashboard/web/node_modules/next/dist/bin/next</string>
+    <string>dev</string>
+    <string>-p</string>
+    <string>51999</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/buddy/Documents/ml_engine/dashboard/web</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/buddy/.nvm/versions/node/v22.22.1/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>NODE_ENV</key>
+    <string>development</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/launchd-web.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/launchd-web.log</string>
+</dict>
+</plist>

@@ -1,0 +1,70 @@
+{
+  "elapsed_s": 16.4,
+  "g3_any_pass": false,
+  "gate": {
+    "max_dd": 0.25,
+    "min_net_sharpe": 0.4
+  },
+  "scenarios": {
+    "Coinbase-close/10bps": {
+      "buy_hold": {
+        "cagr": -0.0274,
+        "max_dd": 0.912,
+        "n_days": 2716,
+        "net_sharpe": 0.404
+      },
+      "gate_pass": false,
+      "timed_long": {
+        "cagr": 0.0062,
+        "max_dd": 0.733,
+        "n_days": 2716,
+        "net_sharpe": 0.367
+      }
+    },
+    "Coinbase-close/30bps": {
+      "buy_hold": {
+        "cagr": -0.0274,
+        "max_dd": 0.912,
+        "n_days": 2716,
+        "net_sharpe": 0.404
+      },
+      "gate_pass": false,
+      "timed_long": {
+        "cagr": -0.2402,
+        "max_dd": 0.882,
+        "n_days": 2716,
+        "net_sharpe": -0.055
+      }
+    },
+    "FRED-close/10bps": {
+      "buy_hold": {
+        "cagr": -0.2517,
+        "max_dd": 0.978,
+        "n_days": 3088,
+        "net_sharpe": 0.115
+      },
+      "gate_pass": false,
+      "timed_long": {
+        "cagr": -0.0055,
+        "max_dd": 0.723,
+        "n_days": 3088,
+        "net_sharpe": 0.3
+      }
+    },
+    "FRED-close/30bps": {
+      "buy_hold": {
+        "cagr": -0.2517,
+        "max_dd": 0.978,
+        "n_days": 3088,
+        "net_sharpe": 0.115
+      },
+      "gate_pass": false,
+      "timed_long": {
+        "cagr": -0.2406,
+        "max_dd": 0.937,
+        "n_days": 3088,
+        "net_sharpe": -0.139
+      }
+    }
+  }
+}

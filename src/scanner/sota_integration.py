@@ -98,6 +98,31 @@ def resolve_agent_team(config: ScannerConfig) -> Any:
         return None
 
 
+def resolve_regime_detector(config: ScannerConfig) -> Optional[Any]:
+    """Return an SOTAInference instance configured for regime-only usage.
+
+    If config.use_sota_regime_only is True, loads SOTAInference with
+    a lighter config (direction head ignored).  On failure, logs a warning
+    and returns None (fail-open).
+    """
+    if not getattr(config, "use_sota_regime_only", False):
+        return None
+    try:
+        from src.sota_core import SOTAInference, SOTAInferenceConfig
+        sota_cfg = SOTAInferenceConfig(
+            model_path=getattr(
+                config, "sota_model_path", "trained_data/models/sota_finetuned/sota_model.keras"
+            ),
+            confidence_threshold=0.55,  # not used for regime-only, but required
+        )
+        detector = SOTAInference(sota_cfg)
+        logger.info("SOTA integration: regime detector loaded (%s)", detector._model_version)
+        return detector
+    except Exception as e:
+        logger.warning("SOTA regime detector init failed (%s) — disabling veto", e)
+        return None
+
+
 def is_sota_active(config: ScannerConfig) -> bool:
     """Return True if either SOTA inference or neural agents are enabled."""
     return bool(

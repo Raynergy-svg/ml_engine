@@ -87,19 +87,17 @@ CREATE TABLE IF NOT EXISTS meta (
 # ---------------------------------------------------------------------------
 
 def _outcome_label(entry: Dict[str, Any]) -> str:
-    """'win' / 'loss' / 'breakeven' / 'open' for a journal entry."""
+    """'win' / 'loss' / 'open' for a journal entry.
+
+    Unified 2026-06-24 with trade_search_index._outcome_label and the trades
+    modal row renderer: a sub-$1 non-win is a 'loss', not a 'breakeven'
+    (operator decision — one conservative/honest convention across all three
+    surfaces; a breakeven/sub-$1 outcome never counts as a win)."""
     outcome = entry.get("outcome")
     if not isinstance(outcome, dict) or "realized_pl" not in outcome:
         return "open"
-    pnl = outcome.get("realized_pl")
-    try:
-        pnl_f = float(pnl)
-    except (TypeError, ValueError):
-        pnl_f = 0.0
     if outcome.get("trade_won") is True:
         return "win"
-    if abs(pnl_f) < 1.0:
-        return "breakeven"
     return "loss"
 
 
@@ -339,7 +337,7 @@ class AgentVoteIndex:
 
         :param agent_name: exact agent name (e.g. ``"mean_reversion"``).
         :param passed: ``0`` (vote was NO / failed) or ``1`` (vote was YES / passed).
-        :param outcome: one of ``win``/``loss``/``breakeven``/``open``.
+        :param outcome: one of ``win``/``loss``/``open``.
         :param regime: exact volatility regime (``LOW``/``NORMAL``/``HIGH``/``EXTREME``).
         :param since: ISO timestamp lower bound on ``closed_ts_iso``.
         :param reason_fts: FTS5 MATCH expression against ``reason_text``. Falls

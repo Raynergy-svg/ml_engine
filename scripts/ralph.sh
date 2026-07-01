@@ -57,7 +57,7 @@ STORY_OUTPUT_DIR="$RALPH_DIR/story_outputs"
 LAST_BRANCH_FILE="$RALPH_DIR/.last-branch"
 
 # Trap to ensure temp files are cleaned up on exit
-trap 'rm -f /tmp/ralph_prompt_*.md 2>/dev/null' EXIT
+trap 'rm -f /tmp/ralph_prompt_* 2>/dev/null' EXIT
 
 # Helper: Get count of pending stories (passes=false)
 get_pending_count() {
@@ -256,7 +256,12 @@ for i in $(seq 1 $MAX_ITERATIONS); do
   log_progress "Processing story: $STORY_ID - $STORY_TITLE [model: $STORY_MODEL]"
 
   # Build prompt in temp file (avoids shell escaping nightmares)
-  PROMPT_FILE=$(mktemp /tmp/ralph_prompt_XXXXXX.md)
+  # NOTE: BSD/macOS mktemp only expands a TRAILING run of X's — a ".md" suffix
+  # after the X's is taken literally, producing a fixed filename that EEXISTs on
+  # the next run. Use trailing X's, then append the extension in the shell.
+  PROMPT_FILE=$(mktemp /tmp/ralph_prompt_XXXXXX)
+  mv "$PROMPT_FILE" "${PROMPT_FILE}.md"
+  PROMPT_FILE="${PROMPT_FILE}.md"
 
   cat > "$PROMPT_FILE" << 'PROMPT_END'
 You are implementing a user story for the ML Engine FX trading bot.
@@ -291,6 +296,22 @@ PROMPT_END
 
   # Clean up temp prompt file
   rm -f "$PROMPT_FILE"
+
+  # Fail-fast: abort on repeated auth / session-limit errors instead of
+  # silently burning every remaining iteration producing nothing (the loop
+  # used to run all 30 iterations against a locked session limit).
+  if echo "$OUTPUT" | grep -qiE "session limit|Invalid authentication|Failed to authenticate|API Error: 401"; then
+    AUTH_FAIL_STREAK=$(( ${AUTH_FAIL_STREAK:-0} + 1 ))
+    echo "WARNING: auth/session-limit error (consecutive streak=$AUTH_FAIL_STREAK)."
+    if [ "$AUTH_FAIL_STREAK" -ge 2 ]; then
+      echo "ABORTING after $AUTH_FAIL_STREAK consecutive auth/session-limit errors."
+      echo "Fix: wait for the session-limit reset, or re-run 'claude login', then relaunch."
+      log_progress "Ralph aborted: $AUTH_FAIL_STREAK consecutive auth/session-limit errors"
+      exit 2
+    fi
+  else
+    AUTH_FAIL_STREAK=0
+  fi
 
   # Check if story was marked complete by Claude
   if echo "$OUTPUT" | grep -q "<promise>COMPLETE_STORY_${STORY_ID}</promise>"; then

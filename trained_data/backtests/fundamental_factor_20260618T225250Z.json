@@ -1,0 +1,47 @@
+{
+  "books": [
+    {
+      "book": "VALUE L/S (alpha)",
+      "cagr": -0.0146,
+      "gate": false,
+      "max_dd": 0.319,
+      "net_sharpe": -0.346,
+      "pos_years": "7/16"
+    },
+    {
+      "book": "QUALITY L/S (alpha)",
+      "cagr": -0.0194,
+      "gate": false,
+      "max_dd": 0.295,
+      "net_sharpe": -0.321,
+      "pos_years": "7/16"
+    },
+    {
+      "book": "VALUE+QUALITY L/S (alpha)",
+      "cagr": -0.0288,
+      "gate": false,
+      "max_dd": 0.428,
+      "net_sharpe": -0.554,
+      "pos_years": "6/16"
+    },
+    {
+      "book": "VALUE+QUALITY long-only Q5",
+      "cagr": 0.151,
+      "gate": true,
+      "max_dd": 0.17,
+      "net_sharpe": 1.036,
+      "pos_years": "14/16"
+    },
+    {
+      "book": "SPY buy&hold",
+      "cagr": 0.1424,
+      "gate": null,
+      "max_dd": 0.239,
+      "net_sharpe": 1.013,
+      "pos_years": "-"
+    }
+  ],
+  "n_stocks": 79,
+  "source": "SEC-EDGAR-via-OpenBB(free,PIT)",
+  "span": "2011-2026"
+}

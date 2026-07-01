@@ -1,0 +1,28 @@
+<svg width="360" height="96" viewBox="0 0 360 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AXIOM">
+  <defs>
+    <linearGradient id="axiomGrad" x1="0" y1="96" x2="96" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#34E5A1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mark: geometric "A" — apex is an upward breakout chevron, crossbar is the chart axis baseline -->
+  <g transform="translate(8 8)">
+    <!-- left leg -->
+    <path d="M10 72 L40 12" stroke="url(#axiomGrad)" stroke-width="7" stroke-linecap="round"/>
+    <!-- right leg, extended past the apex as a breakout arrow -->
+    <path d="M40 12 L70 72" stroke="url(#axiomGrad)" stroke-width="7" stroke-linecap="round"/>
+    <!-- apex breakout tick -->
+    <path d="M40 12 L52 4" stroke="url(#axiomGrad)" stroke-width="7" stroke-linecap="round"/>
+    <!-- axis baseline / crossbar with ticks -->
+    <path d="M22 48 L58 48" stroke="#E6EDF3" stroke-width="5" stroke-linecap="round" opacity="0.92"/>
+    <circle cx="22" cy="48" r="3.4" fill="#22D3EE"/>
+    <circle cx="58" cy="48" r="3.4" fill="#34E5A1"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="104" y="60" font-family="'Geist','Inter',system-ui,sans-serif" font-size="40"
+        font-weight="650" letter-spacing="6" fill="#E6EDF3">AXIOM</text>
+  <!-- accent underline under the wordmark -->
+  <rect x="105" y="72" width="208" height="2.5" rx="1.25" fill="url(#axiomGrad)" opacity="0.85"/>
+</svg>

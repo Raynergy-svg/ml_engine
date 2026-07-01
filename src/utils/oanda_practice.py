@@ -145,6 +145,65 @@ def _format_price(instrument: str, price: float) -> str:
     return f"{float(price):.{decimals}f}"
 
 
+def _format_distance(instrument: str, distance: float) -> str:
+    """Format a price DISTANCE with instrument-aware precision (same scale as price).
+
+    Used for ``*OnFill.distance`` brackets: JPY pairs 3 decimals, others 5. A
+    distance is in the instrument's price units (e.g. 1.153 for a USD_JPY stop,
+    0.00992 for USD_CHF), so it uses the same precision as a price."""
+    decimals = 3 if str(instrument).endswith("_JPY") else 5
+    return f"{float(distance):.{decimals}f}"
+
+
+def build_market_order_body(
+    *,
+    instrument: str,
+    units: int,
+    client_order_id: str,
+    client_tag: str,
+    position_fill: str = "DEFAULT",
+    price_bound: Optional[float] = None,
+    stop_loss_price: Optional[float] = None,
+    take_profit_price: Optional[float] = None,
+    stop_loss_distance: Optional[float] = None,
+    take_profit_distance: Optional[float] = None,
+    trailing_stop_distance: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Pure builder for the OANDA v20 market-order request body (no network).
+
+    Brackets attach via ``*OnFill``: prefer ``distance`` (anchored to the actual
+    FILL) over absolute ``price`` when both are supplied for a leg — distance is
+    drift-immune and the trend lane uses it for correct, instrument-consistent R:R.
+    Extracted so the request body can be unit-tested with no mocks."""
+    pf = str(position_fill).upper() if position_fill else "DEFAULT"
+    if pf not in {"DEFAULT", "OPEN_ONLY", "REDUCE_FIRST", "REDUCE_ONLY"}:
+        pf = "DEFAULT"
+    order: Dict[str, Any] = {
+        "type": "MARKET",
+        "instrument": instrument,
+        "units": str(int(units)),
+        "timeInForce": "IOC",
+        "positionFill": pf,
+        "clientOrderID": client_order_id,
+        "clientExtensions": {"tag": client_tag},
+    }
+    if price_bound is not None:
+        order["priceBound"] = _format_price(instrument, float(price_bound))
+    # Stop-loss leg: distance (anchored to fill) takes precedence over absolute price.
+    if stop_loss_distance is not None:
+        order["stopLossOnFill"] = {"distance": _format_distance(instrument, float(stop_loss_distance))}
+    elif stop_loss_price is not None:
+        order["stopLossOnFill"] = {"price": _format_price(instrument, float(stop_loss_price))}
+    # Take-profit leg: same precedence.
+    if take_profit_distance is not None:
+        order["takeProfitOnFill"] = {"distance": _format_distance(instrument, float(take_profit_distance))}
+    elif take_profit_price is not None:
+        order["takeProfitOnFill"] = {"price": _format_price(instrument, float(take_profit_price))}
+    if trailing_stop_distance is not None:
+        order["trailingStopLossOnFill"] = {"distance": _format_distance(instrument, float(trailing_stop_distance))}
+    return {"order": order}
+
+
 @dataclass(frozen=True)
 class OandaPracticeConfig:
     api_token: str
@@ -311,6 +370,14 @@ class OandaPracticeClient:
 
     def get_account_summary(self) -> Any:
         return self._request("GET", f"/accounts/{self._config.account_id}/summary")
+
+    def get_instruments(self) -> Any:
+        """List the tradable instruments for this PRACTICE account (v20).
+
+        GET /v3/accounts/{accountID}/instruments — returns FX majors/minors and
+        whatever CFDs the account enables (XAU_USD, XAG_USD, indices, commodities).
+        """
+        return self._request("GET", f"/accounts/{self._config.account_id}/instruments")
 
     def get_open_positions(self) -> Any:
         """List currently open positions for the account."""
@@ -614,6 +681,8 @@ class OandaPracticeClient:
         units: int,
         stop_loss_price: Optional[float] = None,
         take_profit_price: Optional[float] = None,
+        stop_loss_distance: Optional[float] = None,
+        take_profit_distance: Optional[float] = None,
         trailing_stop_distance: Optional[float] = None,
         price_bound: Optional[float] = None,
         client_order_id: Optional[str] = None,
@@ -625,35 +694,27 @@ class OandaPracticeClient:
         if not client_order_id:
             client_order_id = f"mleng-{uuid.uuid4().hex[:16]}"
 
-        order: Dict[str, Any] = {
-            "type": "MARKET",
-            "instrument": instrument,
-            "units": str(int(units)),
-            "timeInForce": "IOC",
-            "positionFill": str(position_fill).upper() if position_fill else "DEFAULT",
-            "clientOrderID": client_order_id,
-            "clientExtensions": {"tag": client_tag},
-        }
-        if order["positionFill"] not in {"DEFAULT", "OPEN_ONLY", "REDUCE_FIRST", "REDUCE_ONLY"}:
-            order["positionFill"] = "DEFAULT"
-
-        # Optional price bound (single bound supported by v20) to limit worst-case execution.
-        if price_bound is not None:
-            order["priceBound"] = _format_price(instrument, float(price_bound))
-
-        if stop_loss_price is not None:
-            order["stopLossOnFill"] = {"price": _format_price(instrument, float(stop_loss_price))}
-        if take_profit_price is not None:
-            order["takeProfitOnFill"] = {"price": _format_price(instrument, float(take_profit_price))}
-        if trailing_stop_distance is not None:
-            # OANDA trailing stop uses distance in price units
-            decimals = 3 if str(instrument).endswith("_JPY") else 5
-            order["trailingStopLossOnFill"] = {"distance": f"{float(trailing_stop_distance):.{decimals}f}"}
+        # Build the request body via the pure (unit-tested) builder. Bracket legs
+        # passed as DISTANCE anchor to the actual fill (correct, drift-immune R:R);
+        # absolute price is still accepted for back-compat.
+        body = build_market_order_body(
+            instrument=instrument,
+            units=units,
+            client_order_id=client_order_id,
+            client_tag=client_tag,
+            position_fill=position_fill,
+            price_bound=price_bound,
+            stop_loss_price=stop_loss_price,
+            take_profit_price=take_profit_price,
+            stop_loss_distance=stop_loss_distance,
+            take_profit_distance=take_profit_distance,
+            trailing_stop_distance=trailing_stop_distance,
+        )
 
         result = self._request(
             "POST",
             f"/accounts/{self._config.account_id}/orders",
-            json={"order": order},
+            json=body,
         )
 
         # Try to capture created trade id(s) (if the order was filled) so callers
@@ -704,6 +765,46 @@ class OandaPracticeClient:
             f"/accounts/{self._config.account_id}/trades",
             params=params,
         )
+
+    def set_trade_dependent_orders(
+        self,
+        *,
+        trade_id: str,
+        instrument: str,
+        stop_loss_price: Optional[float] = None,
+        take_profit_price: Optional[float] = None,
+    ) -> Any:
+        """Create/replace dependent SL/TP orders for an existing open trade.
+
+        Omitted fields are left unchanged by OANDA; this method only sends the
+        bracket legs explicitly supplied by the caller.
+        """
+        body: Dict[str, Any] = {}
+        if take_profit_price is not None:
+            body["takeProfit"] = {
+                "timeInForce": "GTC",
+                "price": _format_price(instrument, float(take_profit_price)),
+            }
+        if stop_loss_price is not None:
+            body["stopLoss"] = {
+                "timeInForce": "GTC",
+                "price": _format_price(instrument, float(stop_loss_price)),
+            }
+        if not body:
+            raise ValueError("at least one dependent order price is required")
+        return self._request(
+            "PUT",
+            f"/accounts/{self._config.account_id}/trades/{trade_id}/orders",
+            json=body,
+        )
+
+    def get_transactions_since(self, transaction_id: str, *, type_filter: Optional[str] = None) -> Any:
+        """All transactions NEWER than ``transaction_id`` (the audit-ledger tail)."""
+        params: Dict[str, Any] = {"id": str(transaction_id)}
+        if type_filter:
+            params["type"] = type_filter
+        return self._request(
+            "GET", f"/accounts/{self._config.account_id}/transactions/sinceid", params=params)
 
     def get_transactions(
         self,

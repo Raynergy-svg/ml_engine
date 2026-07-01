@@ -43,6 +43,10 @@ class JobsScreen(Screen):
     def _refresh(self) -> None:
         if self._table is None:
             return
+        # Preserve the operator's row selection across the 5s auto-refresh:
+        # DataTable.clear() resets the cursor to row 0, which would yank a
+        # hovered job out from under a pending pause/resume/trigger keypress.
+        prev_key = self._selected_job_id()
         self._table.clear()
         for job in self._registry.jobs():
             s = self._registry.state(job.job_id)
@@ -57,6 +61,12 @@ class JobsScreen(Screen):
                 (s.last_error or "")[:80],
                 key=job.job_id,
             )
+        # Restore the cursor to the previously-selected job if it still exists.
+        if prev_key is not None:
+            for row_index, row_key in enumerate(self._table.rows):
+                if row_key.value == prev_key:
+                    self._table.move_cursor(row=row_index)
+                    break
 
     def _selected_job_id(self) -> Optional[str]:
         if self._table is None or self._table.row_count == 0:

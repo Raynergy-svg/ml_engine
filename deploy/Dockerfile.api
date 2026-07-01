@@ -1,0 +1,32 @@
+# AXIOM FastAPI data/control layer (read-only views + bounded, audited control).
+# Build context = repo root:  docker build -f deploy/Dockerfile.api -t axiom-api .
+FROM python:3.11-slim AS base
+
+# REQS lets you swap the slim deploy set for the full ML requirements.txt if ever needed.
+ARG REQS=deploy/requirements-deploy.txt
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    APP_DIR=/app \
+    STATE_DIR=/data \
+    AXIOM_BIND_HOST=0.0.0.0 \
+    OANDA_ENVIRONMENT=practice
+
+WORKDIR /app
+
+# Slim deps (pandas/numpy/fastapi/uvicorn/requests/dotenv — all manylinux wheels, no gcc).
+COPY ${REQS} /tmp/reqs.txt
+RUN pip install -r /tmp/reqs.txt
+
+# Application code only (mutable state arrives from the volume; see entrypoint).
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY dashboard/__init__.py ./dashboard/__init__.py
+COPY dashboard/server/ ./dashboard/server/
+COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 8888
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# Control enabled here, but it is reachable ONLY via the authed Next proxy — :8888 is
+# never published publicly (compose internal network / Fly private network or loopback).
+CMD ["sh", "-c", "uvicorn dashboard.server.app:app --host ${AXIOM_BIND_HOST} --port 8888 --no-access-log"]

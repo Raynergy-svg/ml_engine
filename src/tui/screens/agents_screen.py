@@ -514,6 +514,110 @@ class WeightInspector(Static):
 
 
 # ---------------------------------------------------------------------------
+# RiskGatesPanel -- equity harvester risk-gate verdicts (P1-3)
+# ---------------------------------------------------------------------------
+
+# Short labels for the 7 equity risk gates (src/equity/risk_agents.py).
+_RISK_GATE_SHORT_NAMES: dict[str, str] = {
+    "drawdown_guardian": "drawdown",
+    "vol_targeter": "vol_target",
+    "gross_exposure_cap": "gross_cap",
+    "per_name_exposure_cap": "per_name",
+    "concentration_check": "concentr.",
+    "adv_participation": "adv_part.",
+    "rebalance_gate": "rebal_gate",
+}
+
+
+class RiskGatesPanel(Static):
+    """Equity harvester risk-gate verdicts (P1-3).
+
+    Driven by ``DataProvider.get_risk_gates_status()`` which reads the
+    control loop's persisted ``last_risk_decision`` (the real RiskDecision
+    with per-gate verdicts). Shows each gate's PASS/BLOCK, the composite
+    degross factor, and the aggregate block/halt flags. Renders an honest
+    empty state when no decision exists yet (loop not running / never reached
+    the risk step).
+    """
+
+    DEFAULT_CSS = """
+    RiskGatesPanel {
+        height: auto;
+        min-height: 6;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._status: dict[str, Any] = {"available": False}
+
+    def update_status(self, status: dict[str, Any]) -> None:
+        self._status = status or {"available": False}
+        self.refresh()
+
+    def render(self) -> Text:
+        t = Text()
+        s = self._status
+        if not s.get("available"):
+            t.append("  No risk decision yet\n", style=_DIM)
+            t.append(
+                "  (equity loop not running / no risk step reached)\n",
+                style=_DIM,
+            )
+            return t
+
+        halt = bool(s.get("halt", False))
+        block = bool(s.get("block_trade", False))
+        degross = float(s.get("degross_factor", 1.0) or 0.0)
+
+        # Composite header line
+        if halt:
+            head_text, head_color = "HALTED", _NEGATIVE
+        elif block:
+            head_text, head_color = "BLOCKED", _NEGATIVE
+        else:
+            head_text, head_color = "CLEAR", _POSITIVE
+        t.append("  RISK ", style=_DIM)
+        t.append(head_text, style=f"bold {head_color}")
+        deg_color = _POSITIVE if degross >= 0.99 else _WARNING if degross > 0 else _NEGATIVE
+        t.append("   DEGROSS ", style=_DIM)
+        t.append(f"{degross:.2f}x", style=f"bold {deg_color}")
+        asof = s.get("last_cycle_asof")
+        if asof:
+            t.append(f"   @ {str(asof)[:19]}", style=_BORDER)
+        t.append("\n")
+
+        # Per-gate verdict rows
+        gates = s.get("gates") or []
+        if not gates:
+            t.append("  (decision present but carries no per-gate verdicts)\n", style=_DIM)
+        for g in gates:
+            name = str(g.get("name", "???"))
+            short = _RISK_GATE_SHORT_NAMES.get(name, name[:10])
+            passed = bool(g.get("passed", False))
+            blocked = bool(g.get("block_trade", False))
+            if blocked:
+                mark, mark_color = "✗ BLOCK", _NEGATIVE
+            elif passed:
+                mark, mark_color = "✓ PASS", _POSITIVE
+            else:
+                mark, mark_color = "• warn", _WARNING
+            t.append(f"  {short:<11}", style=_TEXT)
+            t.append(f"{mark:<8}", style=f"bold {mark_color}")
+            code = str(g.get("reason_code") or "")
+            if code:
+                t.append(f"  {code}", style=_DIM)
+            t.append("\n")
+
+        reasons = s.get("reasons") or []
+        if reasons:
+            t.append("  Reasons: ", style=_DIM)
+            t.append(", ".join(str(r) for r in reasons[:4]), style=_WARNING)
+        return t
+
+
+# ---------------------------------------------------------------------------
 # AgentsScreen -- Main Container
 # ---------------------------------------------------------------------------
 
@@ -542,6 +646,13 @@ class AgentsScreen(Container):
         self._disagreement_history: list[float] = []
 
     def compose(self) -> ComposeResult:
+        # Equity harvester risk gates (P1-3) — the live core. Sits at the top
+        # so the operator sees block/halt state first; the FX agent panels
+        # below remain for the retired stack until fully removed.
+        with Vertical(id="agents-risk-gates-panel", classes="panel"):
+            yield Label("  EQUITY RISK GATES", classes="panel-title")
+            yield RiskGatesPanel(id="agents-risk-gates")
+
         with Vertical(id="agents-weight-panel", classes="panel"):
             yield Label("  AGENT WEIGHT MATRIX", classes="panel-title")
             yield DataTable(id="agents-weight-table", cursor_type="row")
@@ -588,6 +699,19 @@ class AgentsScreen(Container):
         self._refresh_weight_table()
         self._load_journal_data()
         self._refresh_weight_inspector()
+
+    def update_risk_gates(self, status: dict[str, Any]) -> None:
+        """Feed equity risk-gate verdicts into the RiskGatesPanel (P1-3).
+
+        ``status`` is ``DataProvider.get_risk_gates_status()`` output. Safe to
+        call before mount / when the panel is missing — swallowed cleanly so a
+        missing equity loop never breaks the screen.
+        """
+        try:
+            panel = self.query_one("#agents-risk-gates", RiskGatesPanel)
+        except Exception:
+            return
+        panel.update_status(status or {"available": False})
 
     def _refresh_weight_inspector(self) -> None:
         """US-515: re-read weight_history.jsonl and update the inspector widget."""

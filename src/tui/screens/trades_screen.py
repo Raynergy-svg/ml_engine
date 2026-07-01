@@ -78,6 +78,119 @@ def _format_duration(minutes: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# RebalancePlanPanel -- equity harvester rebalance plan (P1-4)
+# ---------------------------------------------------------------------------
+
+_ORDER_STATUS_COLORS: dict[str, str] = {
+    "FILLED": _POSITIVE,
+    "SENT": _WARNING,
+    "PENDING": _DIM,
+    "FAILED": _NEGATIVE,
+}
+
+
+class RebalancePlanPanel(Static):
+    """Equity harvester rebalance plan (P1-4).
+
+    Driven by ``DataProvider.get_rebalance_status()`` which reads
+    ``rebalance_state.json``. Shows the last rebalance asof, the active plan's
+    target weights, and per-order status (PENDING/SENT/FILLED/FAILED). Renders
+    an honest empty state when no rebalance has run yet.
+    """
+
+    can_focus = True
+
+    DEFAULT_CSS = """
+    RebalancePlanPanel {
+        height: auto;
+        min-height: 5;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._status: dict[str, Any] = {"available": False}
+
+    def update_status(self, status: dict[str, Any]) -> None:
+        self._status = status or {"available": False}
+        self.refresh()
+
+    def render(self) -> Text:
+        t = Text()
+        s = self._status
+        if not s.get("available"):
+            t.append("  No rebalance has run yet\n", style=_DIM)
+            t.append("  (no equity rebalance_state.json on disk)\n", style=_DIM)
+            return t
+
+        last = s.get("last_rebalance_asof") or "—"
+        t.append("  LAST REBALANCE ", style=_DIM)
+        t.append(str(last)[:19], style=f"bold {_PRIMARY}")
+        t.append("\n")
+
+        plan = s.get("active_plan")
+        if not isinstance(plan, dict):
+            t.append("  No active plan in flight\n", style=_DIM)
+            current = s.get("current_weights") or {}
+            if current:
+                top = sorted(
+                    current.items(), key=lambda kv: -abs(kv[1])
+                )[:6]
+                t.append("  Current weights: ", style=_DIM)
+                t.append(
+                    "  ".join(f"{k} {v:.2%}" for k, v in top),
+                    style=_TEXT,
+                )
+                t.append("\n")
+            return t
+
+        rb_id = plan.get("rebalance_id") or ""
+        if rb_id:
+            t.append("  PLAN ", style=_DIM)
+            t.append(str(rb_id), style=f"bold {_DATA}")
+            asof = plan.get("asof")
+            if asof:
+                t.append(f"  @ {str(asof)[:19]}", style=_BORDER)
+            t.append("\n")
+
+        orders = plan.get("orders") or []
+        if not orders:
+            t.append("  (plan has no orders)\n", style=_DIM)
+        else:
+            # Status tally
+            tally: dict[str, int] = {}
+            for o in orders:
+                tally[str(o.get("status", "PENDING"))] = (
+                    tally.get(str(o.get("status", "PENDING")), 0) + 1
+                )
+            t.append("  ", style=_DIM)
+            for status_name in ("FILLED", "SENT", "PENDING", "FAILED"):
+                n = tally.get(status_name, 0)
+                if n:
+                    color = _ORDER_STATUS_COLORS.get(status_name, _TEXT)
+                    t.append(f"{n} {status_name}  ", style=f"bold {color}")
+            t.append("\n")
+
+            targets = plan.get("target_weights") or {}
+            for o in orders[:12]:
+                ticker = str(o.get("ticker", "???"))
+                side = str(o.get("side", ""))
+                status_name = str(o.get("status", "PENDING"))
+                color = _ORDER_STATUS_COLORS.get(status_name, _TEXT)
+                tgt = o.get("target_weight")
+                if tgt is None:
+                    tgt = targets.get(ticker, 0.0)
+                side_color = _POSITIVE if side == "BUY" else _NEGATIVE
+                t.append(f"  {ticker:<6}", style=_TEXT)
+                t.append(f" {side:<4}", style=f"bold {side_color}")
+                t.append(f" → {float(tgt):>6.2%}", style=_DIM)
+                t.append(f"   {status_name}", style=f"bold {color}")
+                t.append("\n")
+        return t
+
+
+# ---------------------------------------------------------------------------
 # Drill-Down Panel
 # ---------------------------------------------------------------------------
 
@@ -307,6 +420,15 @@ class TradeCloseModal(ModalScreen[bool]):
         padding: 0 0 1 0;
     }
 
+    #close-halt-warning {
+        text-align: center;
+        color: #ffffff;
+        background: #ff1744;
+        text-style: bold;
+        padding: 0 1;
+        margin: 0 0 1 0;
+    }
+
     #close-buttons {
         align: center middle;
         height: 3;
@@ -321,9 +443,14 @@ class TradeCloseModal(ModalScreen[bool]):
     }
     """
 
-    def __init__(self, trade: TradeRow) -> None:
+    def __init__(self, trade: TradeRow, halted: bool = False) -> None:
         super().__init__()
         self._trade = trade
+        # Front-end defense-in-depth: when the bot is halted, the close
+        # confirm carries an explicit halt-aware warning (the deterministic
+        # code-layer halt guard for close_trade lives in the backend). This
+        # modal does NOT call close_trade itself — it only gates the confirm.
+        self._halted = halted
 
     def compose(self) -> ComposeResult:
         tr = self._trade
@@ -343,12 +470,18 @@ class TradeCloseModal(ModalScreen[bool]):
                 f"  Trade ID:      {tr.trade_id}",
                 id="close-details",
             )
+            if self._halted:
+                yield Label(
+                    "⚠  System is HALTED — close position anyway?",
+                    id="close-halt-warning",
+                )
             yield Label(
                 "Market-close at current bid/ask — cannot be undone.",
                 id="close-warning",
             )
             with Horizontal(id="close-buttons"):
-                yield Button("✓ Confirm Close", id="close-confirm", variant="error")
+                confirm_label = "✓ Close anyway" if self._halted else "✓ Confirm Close"
+                yield Button(confirm_label, id="close-confirm", variant="error")
                 yield Button("✕ Cancel", id="close-cancel", variant="default")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -393,6 +526,7 @@ class TradesScreen(Container):
         self._agent_scores: list[dict[str, Any]] = []
         self._candles_h1: list[float] = []
         self._selected_index: int | None = None
+        self._halted: bool = False  # mirrored from DashboardSnapshot.halted
         self._project_root: Path = Path(__file__).resolve().parents[3]
 
         # Tier 2 T9: precomputed trade-summary index. Avoids re-parsing the
@@ -404,6 +538,13 @@ class TradesScreen(Container):
         )
 
     def compose(self) -> ComposeResult:
+        # Equity harvester rebalance plan (P1-4) — the live core. Target-vs-
+        # current weights + pending rebalance orders. The FX positions tables
+        # below remain for the retired stack until fully removed.
+        with Vertical(id="trades-rebalance-panel", classes="panel"):
+            yield Label("  HARVESTER REBALANCE PLAN", classes="panel-title")
+            yield RebalancePlanPanel(id="trades-rebalance")
+
         with Vertical(id="trades-open-panel", classes="panel"):
             yield Label("  OPEN POSITIONS", classes="panel-title")
             yield DataTable(id="trades-open-table", cursor_type="row")
@@ -466,8 +607,22 @@ class TradesScreen(Container):
     # Public: update from snapshot
     # ------------------------------------------------------------------
 
+    def update_rebalance(self, status: dict[str, Any]) -> None:
+        """Feed the equity rebalance plan into the RebalancePlanPanel (P1-4).
+
+        ``status`` is ``DataProvider.get_rebalance_status()`` output. Safe to
+        call before mount / when the panel is missing — swallowed cleanly so a
+        missing equity loop never breaks the screen.
+        """
+        try:
+            panel = self.query_one("#trades-rebalance", RebalancePlanPanel)
+        except Exception:
+            return
+        panel.update_status(status or {"available": False})
+
     def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
         """Refresh all sub-widgets from a new DashboardSnapshot."""
+        self._halted = bool(getattr(snap, "halted", False))
         self._trades = list(snap.trades) if snap.trades else []
 
         # Cache agent scores for drill-down
@@ -728,17 +883,31 @@ class TradesScreen(Container):
 
         def _on_modal_result(confirmed: bool) -> None:
             if confirmed:
-                self._do_close_trade(trade.trade_id)
+                # The override flag is set True ONLY here. The sole trigger is the
+                # operator clicking Confirm in the halt-aware TradeCloseModal — the
+                # EXPLICIT, human-confirmed close the backend close_trade guard lets
+                # through while halted. No autonomous/programmatic path reaches this
+                # callback, so no auto-close can ever carry the override.
+                self._do_close_trade(trade.trade_id, operator_override=True)
 
-        self.app.push_screen(TradeCloseModal(trade), _on_modal_result)
+        self.app.push_screen(TradeCloseModal(trade, halted=self._halted), _on_modal_result)
 
     @work
-    async def _do_close_trade(self, trade_id: str) -> None:
-        """Async worker: call ExecutionManager.close_trade and show result toast."""
+    async def _do_close_trade(self, trade_id: str, operator_override: bool = False) -> None:
+        """Async worker: call ExecutionManager.close_trade and show result toast.
+
+        operator_override defaults to False — it is True ONLY when this worker is
+        reached via the operator's explicit Confirm in TradeCloseModal (see
+        _on_modal_result). It is forwarded to close_trade so the backend halt
+        guard admits the genuine operator-confirmed close while halted; any other
+        or default invocation stays subject to the guard (fail-closed).
+        """
         from src.scanner.execution import ExecutionManager
 
         em = ExecutionManager()
-        result = await em.close_trade(trade_id, reason="operator")
+        result = await em.close_trade(
+            trade_id, reason="operator", operator_override=operator_override
+        )
 
         if result.get("success"):
             pl = result.get("realized_pl", 0.0)

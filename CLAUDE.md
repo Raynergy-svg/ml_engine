@@ -1,5 +1,55 @@
 @AGENTS.md
 
+# Self-Evolving Context System — read this first
+
+**One-liner:** autonomous ML trading bot on a **practice** OANDA account; turn operator intent into
+fail-closed execution and get sharper over time.
+
+**Architecture in two lines:** *Tier 6* — meta-learning ensemble (MetaLearner + Bayesian adapter +
+ensemble weighter, shadow). *Tier 7* — autonomous control loop (incident→propose→gate→soak→promote→
+close); **Claude is never in the hot path** — runtime is deterministic and Claude-free.
+
+## Hard NOs — immutable; the `/evolve` loop can NEVER relax these
+
+1. **`oanda_environment` stays `"practice"`.** Verified `src/scanner/config.py:738` (default
+   `"practice"`); consumed at `src/brokers/factory.py:68`; base URL defaults to
+   `api-fxpractice.oanda.com` (`src/scanner/execution.py:801`). Never change it, propose changing it,
+   or scaffold a path that could flip it to live. (LESSONS L-003.)
+2. **Respect `halted:true`.** `.claude/state.json` currently `halted: true`. If halted, do not
+   propose, stage, or execute trades. Enforced fail-closed at `src/scanner/execution.py:2081–2098`
+   (mid-cycle `StateEngine().get_halted()` block). Halted means halted. (LESSONS L-004.)
+3. **Nothing promotes to champion without passing the ship gate.** All transformer artifacts
+   currently failed it (`HARD_MAX_GAP=0.10`, `.claude/rules/improvement.md`). New architectures go
+   shadow / champion-challenger — never a live swap, never while halted. (LESSONS L-002.)
+4. **No real money, ever.** Practice account only.
+
+## The context system (pointers, not data)
+
+Memory & doctrine:
+- **`.claude/INTENT.md`** — operator's voice, standing decisions, definition of done. Read before planning.
+- **`.claude/NOTES.md`** — live working memory; current state + in-flight work. The ONLY file Claude updates unprompted.
+- **`.claude/LESSONS.md`** — permanent failure modes + a recall-trigger index (L-001 OBV artifact, L-002 ship gate, L-003 practice, L-004 halt). Read before planning; never delete.
+
+Self-improver loop (turns this into a true self-improver, not a stalled responder):
+- **`.claude/LOOP.md`** — the cycle (orient→plan→act→**verify**→evolve→decide) and the **objective stopping conditions** (HALT-SAFETY / STOP-BLOCKED / STOP-DONE / STOP-CHURN / CONTINUE).
+- **`.claude/verifier.md`** + **`/verify-task`** — INDEPENDENT verifier, two halves: deterministic `.claude/loop/verify_gate.py` (re-derives Hard NOs from disk, can't be narrated around) + a separate Code Reviewer agent for semantics. PASS required for STOP-DONE.
+- **ENFORCED safety:** `.claude/tools/stop_gate.sh` (Stop hook) runs `risk_monitor.sh` at every turn-end, fail-closed, blocks on ALARM (loop-guarded). `.claude/loop/loop_gate.py` computes the stopping decision from disk. Covered by `.claude/loop/tests/test_loop_enforcement.py` (29 no-mock tests).
+- **`.claude/commands/evolve.md`** — `/evolve` folds learnings into the system after a task; proposes diffs, then STOPS for approval.
+
+## Working rules
+
+- Read **INTENT → NOTES → LESSONS (scan triggers)** before planning anything non-trivial. (SessionStart
+  hook `.claude/tools/session_context_boot.sh` surfaces this every session.)
+- Run the **loop** for multi-step/risky work (`.claude/LOOP.md`): bias to action on the load-bearing
+  question, then stop only when an **objective stopping condition** fires — not when it "feels done".
+- **Verify independently, not by self-report** — `/verify-task` (separate agent) PASS + `risk_monitor.sh`
+  GREEN before STOP-DONE. Every status claim names a source read this turn; "should work" is not a status.
+- **Separate the roles** — worker ≠ verifier ≠ risk monitor. Dispatch **domain specialist** sub-agents
+  (never general-purpose); parallelize independent work.
+- After a real task, run **`/evolve`** to fold what you learned back into the system.
+
+---
+
 # ML Engine (Buddy) — FX Trading Bot
 
 Autonomous ML-powered forex trading system. Scans markets, evaluates setups through
@@ -28,10 +78,23 @@ Don't manufacture work. Don't keep finding bugs without fixing them.
 5. **Trade-offs are explicit.** Every recommendation states the cost of being wrong.
 6. **Halt > break.** Staying halted costs opportunity; unhalting a broken system costs realized loss. Favor staying halted until validation is unambiguous. `state.json:halted=true` and the 52% threshold are the safety net — not negotiable optimizations.
 
-**Decision-making bias:**
-- "Proceed" means "execute the plan, surface what changes" — not "execute robotically".
-- When the operator's plan has a clearly-better alternative, propose it in one paragraph BEFORE executing; if they confirm or stay silent, proceed with the original.
-- Small + reversible (code patch, docs) → ship and learn. Large + irreversible (an unhalted live trade, a force-pushed branch) → stop and confirm.
+**Decision-making bias (default = ACT, not ask):**
+- **Decide, don't interrogate.** The operator wants a partner who drives, not a survey. When a
+  choice has a clear best option, PICK IT, do it, and surface the reasoning + what changed in one
+  or two lines. Do NOT present multiple-choice questions for decisions you can reason out yourself.
+- **Reserve questions for genuinely irreversible/destructive forks only:** flipping dry_run→live,
+  force-pushing, deleting data you didn't create, spending real money, anything you can't undo.
+  Everything else (which branch, how to stash, commit scope, run order, fixing a bug you found,
+  re-running an experiment): just make the call and proceed.
+- **"Proceed" means run the whole plan to a real result** — don't stop after step 1 to re-confirm
+  the obvious next step. Chain the work; report at meaningful checkpoints, not before every move.
+- **If you'd ask a question, instead state the assumption and act on it:** "Assuming X (clearly
+  best because Y) — proceeding; say so if you'd rather Z." This keeps the operator informed without
+  blocking on them. One self-answered assumption beats one question.
+- **At most one question per turn, and only if truly blocked** on something the operator alone
+  knows. Batch any unavoidable asks; never fire a card for something a grep/file-read would answer.
+- Small + reversible (code patch, docs, experiment re-run) → ship and learn. Large + irreversible
+  (an unhalted live trade, a force-pushed branch) → stop and confirm.
 
 ## Strategy guardrails (detail: docs/strategy.md)
 

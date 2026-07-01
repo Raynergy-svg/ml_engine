@@ -298,7 +298,34 @@ class HeaderBar(Static):
     open_count = reactive(0)
     oanda_ok = reactive(False)
     scanner_ok = reactive(False)
+    halted = reactive(False)        # L2: header must reflect halt, like the footer
+    nav_known = reactive(False)     # L4: False until a real NAV is fetched
     mode_label = reactive("DEMO")
+    # Equity live-gate indicator: "SHADOW" (safe, dim) vs "LIVE" (bright red).
+    # Defaults SHADOW — the safe assumption when live_gate_state.json is absent.
+    # nav_fraction is the fraction of NAV the live gate is armed to expose
+    # (None until armed). Set via update_live_gate().
+    harvester_mode = reactive("SHADOW")
+    harvester_nav_fraction: reactive[float | None] = reactive(None)
+
+    def update_live_gate(self, status: dict) -> None:
+        """Update the SHADOW/LIVE harvester indicator from a live-gate dict.
+
+        Tolerant of None/empty (treated as SHADOW). Reads the derived
+        ``mode`` and ``nav_fraction`` from DataProvider.get_live_gate_status().
+        """
+        status = status or {}
+        self.harvester_mode = (
+            "LIVE" if str(status.get("mode", "SHADOW")).upper() == "LIVE"
+            else "SHADOW"
+        )
+        frac = status.get("nav_fraction")
+        try:
+            self.harvester_nav_fraction = (
+                float(frac) if frac is not None else None
+            )
+        except (TypeError, ValueError):
+            self.harvester_nav_fraction = None
 
     def render(self) -> Text:
         now = datetime.now(timezone.utc).strftime("%H:%M UTC")
@@ -306,8 +333,25 @@ class HeaderBar(Static):
         pnl_color = "#39ff14" if self.pnl >= 0 else "#ff3158"
         oanda_style = "bold #39ff14" if self.oanda_ok else "bold #ff3158"
         oanda_text = "● LIVE" if self.oanda_ok else "● OFF"
-        scanner_style = "bold #39ff14" if self.scanner_ok else "bold #7483b8"
-        scanner_text = "● ACTIVE" if self.scanner_ok else "● IDLE"
+        # L2: halt is the single source of truth — never show ACTIVE while
+        # halted (the footer already does this; keep the two in agreement).
+        if self.halted:
+            scanner_text, scanner_style = "● HALTED", "bold #ff3158"
+        elif self.scanner_ok:
+            scanner_text, scanner_style = "● ACTIVE", "bold #39ff14"
+        else:
+            scanner_text, scanner_style = "● IDLE", "bold #7483b8"
+        # L4: distinguish "no NAV fetched yet / fetch failing" from a real $0.
+        # Show last-known (amber when stale/disconnected) or "—" if never known
+        # — never a fabricated "$0".
+        if self.nav_known:
+            nav_str = f"${self.nav:,.0f}"
+            pl_str = f"{pnl_sign}${self.pnl:,.0f}"
+            nav_style = "bold #39ff14" if self.oanda_ok else "bold #ffb000"
+            pl_style = f"bold {pnl_color}" if self.oanda_ok else "bold #ffb000"
+        else:
+            nav_str = pl_str = "—"
+            nav_style = pl_style = "bold #7483b8"
 
         t = Text()
         t.append("  ▰ ", style="bold #ff2bd6")
@@ -318,10 +362,10 @@ class HeaderBar(Static):
         )
         t.append("  ║  ", style="#26304f")
         t.append("NAV ", style="#7483b8")
-        t.append(f"${self.nav:,.0f}", style="bold #39ff14")
+        t.append(nav_str, style=nav_style)
         t.append("  │  ", style="#26304f")
         t.append("P/L ", style="#7483b8")
-        t.append(f"{pnl_sign}${self.pnl:,.0f}", style=f"bold {pnl_color}")
+        t.append(pl_str, style=pl_style)
         t.append("  │  ", style="#26304f")
         t.append(f"Open: {self.open_count}", style="#7483b8")
         t.append("  │  ", style="#26304f")
@@ -331,25 +375,132 @@ class HeaderBar(Static):
         t.append("Scanner ", style="#7483b8")
         t.append(scanner_text, style=scanner_style)
         t.append("  ║  ", style="#26304f")
+        t.append("MODE ", style="#7483b8")
+        if self.harvester_mode == "LIVE":
+            mode_txt = "LIVE ⚠"
+            if self.harvester_nav_fraction is not None:
+                mode_txt += f" {self.harvester_nav_fraction * 100:.0f}% NAV"
+            t.append(mode_txt, style="bold #ff1744")
+        else:
+            t.append("SHADOW", style="bold #00ffcc")
+        t.append("  ║  ", style="#26304f")
         t.append(f"{now}", style="#7483b8")
         return t
 
 
-class AgentPanel(Static):
-    """15-agent panel with colored bar indicators (see ``ScannerAgentTeam._BASE_WEIGHTS``). Reads from snapshot or demo."""
+class HarvesterPanel(Static):
+    """Equity control-loop status panel for the Overview tab.
+
+    Reads the equity harvester's persisted state via
+    DataProvider.get_harvester_status() and renders NAV / peak NAV /
+    drawdown / loop phase / halted / cycle_count / last reconcile. Shows
+    an honest "Harvester not yet running" line when no state file exists
+    (the loop hasn't run live yet).
+    """
 
     can_focus = True  # Click-to-focus for the 'c' copy hotkey
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._agents: list[tuple[str, float, str]] = list(DEMO_AGENTS)
+        self._status: dict[str, Any] = {"available": False}
+
+    def update_status(self, status: dict) -> None:
+        self._status = status or {"available": False}
+        self.refresh()
+
+    def render(self) -> Text:
+        t = Text()
+        s = self._status
+        if not s.get("available"):
+            t.append("  Harvester not yet running", style="#7483b8")
+            t.append("\n  (no equity loop state on disk)", style="#26304f")
+            return t
+
+        halted = bool(s.get("halted", False))
+        halt_style = "bold #ff1744" if halted else "bold #39ff14"
+        t.append("  STATUS  ", style="#7483b8")
+        t.append("HALTED" if halted else "RUNNING", style=halt_style)
+        transport = s.get("transport_state") or "—"
+        t.append("   TRANSPORT ", style="#7483b8")
+        tr_style = "bold #39ff14" if transport == "CONNECTED" else "bold #ffb000"
+        t.append(str(transport), style=tr_style)
+        t.append(f"   CYCLE {s.get('cycle_count', 0)}", style="#7483b8")
+        t.append("\n")
+
+        nav = s.get("nav")
+        peak = s.get("peak_nav")
+        dd = s.get("drawdown_pct")
+        if nav is not None:
+            t.append("  NAV ", style="#7483b8")
+            t.append(f"${nav:,.0f}", style="bold #39ff14")
+            if peak:
+                t.append("   PEAK ", style="#7483b8")
+                t.append(f"${peak:,.0f}", style="#00f5ff")
+            if dd is not None:
+                dd_style = "#39ff14" if dd < 5 else "#ffb000" if dd < 10 else "#ff1744"
+                t.append("   DD ", style="#7483b8")
+                t.append(f"{dd:.1f}%", style=f"bold {dd_style}")
+            t.append("\n")
+
+        risk = s.get("risk")
+        if isinstance(risk, dict):
+            blocked = risk.get("block_trade") or risk.get("halt")
+            r_style = "bold #ff1744" if blocked else "bold #39ff14"
+            t.append("  RISK ", style="#7483b8")
+            t.append("BLOCKED" if blocked else "CLEAR", style=r_style)
+            reasons = risk.get("reasons") or []
+            if reasons:
+                t.append(f"  ({', '.join(reasons[:2])})", style="#ffb000")
+            t.append("\n")
+
+        reconcile = s.get("reconcile")
+        if isinstance(reconcile, dict):
+            n_breaches = reconcile.get("n_breaches", 0)
+            t.append("  RECONCILE ", style="#7483b8")
+            rc_style = "#39ff14" if not n_breaches else "#ff1744"
+            t.append(
+                f"{n_breaches} drift breach(es)", style=f"bold {rc_style}"
+            )
+            asof = reconcile.get("asof")
+            if asof:
+                t.append(f"  @ {asof[:19]}", style="#26304f")
+        return t
+
+
+class AgentPanel(Static):
+    """15-agent consensus panel (see ``ScannerAgentTeam._BASE_WEIGHTS``).
+
+    Starts EMPTY and shows an explicit "awaiting first scan" placeholder until
+    real agent data arrives via update_from_snapshot. It must NEVER render the
+    DEMO_AGENTS simulated signal in live mode — fabricated BULLISH/SAFE/STRONG
+    rows would read as real consensus. Demo mode opts in explicitly via
+    load_demo().
+    """
+
+    can_focus = True  # Click-to-focus for the 'c' copy hotkey
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._agents: list[tuple[str, float, str]] = []
+        self._has_data = False
+
+    def load_demo(self) -> None:
+        """Seed simulated agents — DEMO MODE ONLY (never call in live mode)."""
+        self._agents = list(DEMO_AGENTS)
+        self._has_data = True
 
     def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
         if snap.agents:
             self._agents = [(a.name, a.score, a.signal) for a in snap.agents]
+            self._has_data = True
 
     def render(self) -> Text:
         t = Text()
+        if not self._agents:
+            # Live mode pre-scan: explicit placeholder, never fabricated signal.
+            t.append("  ⏳ AWAITING FIRST SCAN\n", style="bold #7483b8")
+            t.append("  no live agent consensus yet", style="#26304f")
+            return t
         for name, score, signal in self._agents:
             s = max(0.0, min(1.0, score))
             filled = int(s * 10)
@@ -777,6 +928,17 @@ class MTFConfluencePanel(Static):
         blocks = "▁▂▃▄▅▆▇█"
         return "".join(blocks[min(7, int((p - mn) / rng * 7))] for p in prices[-16:])
 
+    @staticmethod
+    def _decor_widths(width: int) -> tuple[int, int]:
+        """Decorative divider length + confluence-bar block count for a given
+        panel content width, so neither hard-overflows a narrow column (e.g.
+        the 1fr Overview column at an 80-col terminal). Falls back to the
+        original full-width values when the size is unknown (width 0)."""
+        inner = max(10, (width or 56) - 4)
+        divider = min(54, inner)
+        bar_total = max(8, min(25, inner - 22))
+        return divider, bar_total
+
     def render(self) -> Text:
         t = Text()
         screens = [
@@ -801,10 +963,11 @@ class MTFConfluencePanel(Static):
         conf = self._confluence or sum(s * w for (_, s, _, _), w in zip(screens, weights))
         conf_color = "#39ff14" if conf >= 0.65 else "#ffb000" if conf >= 0.45 else "#ff3158"
         conf_signal = "PROCEED ✓" if conf >= 0.65 else "CAUTION ▲" if conf >= 0.45 else "REJECT ✗"
-        bar_filled = int(conf * 25)
-        bar_empty = 25 - bar_filled
+        divider_len, bar_total = self._decor_widths(self.size.width)
+        bar_filled = int(conf * bar_total)
+        bar_empty = bar_total - bar_filled
 
-        t.append("  ──────────────────────────────────────────────────────\n", style="#26304f")
+        t.append("  " + "─" * divider_len + "\n", style="#26304f")
         t.append("  CONFLUENCE ", style="#7483b8")
         t.append(f"{conf:.2f}", style=f"bold {conf_color}")
         t.append("  [", style="#26304f")
@@ -835,7 +998,19 @@ class SystemHealthBar(Static):
         cpu = s.cpu_pct if s else 0
         mem = s.mem_mb if s else 0
         oanda_ok = s.oanda_connected if s else False
-        oanda_style = "bold #39ff14" if oanda_ok else "bold #ff3158"
+        # L3: green only on a genuine successful round-trip. "connected" can be
+        # optimistically True with 0ms latency (no successful fetch) or stale
+        # during a 503/504 outage — a green "● 0ms" then misrepresents health.
+        oanda_healthy = oanda_ok and api_ms > 0
+        oanda_style = "bold #39ff14" if oanda_healthy else "bold #ff3158"
+        oanda_text = f"● {api_ms:.0f}ms" if oanda_healthy else "● OFF"
+        # L5: psutil may be unavailable (resources read returns 0/0). MEM can
+        # never be 0 for a live process, so treat 0 as "unavailable" and show
+        # "—" rather than a misleading 0%/0MB.
+        if mem > 0:
+            cpu_text, mem_text = f"CPU: {cpu:.0f}%", f"MEM: {mem:.0f}MB"
+        else:
+            cpu_text, mem_text = "CPU: —", "MEM: —"
         if not s or not s.scanner_ready:
             scanner_text = "● OFFLINE"
             scanner_style = "bold #ff3158"
@@ -857,7 +1032,7 @@ class SystemHealthBar(Static):
         t.append(scanner_text, style=scanner_style)
         t.append("  │  ", style="#26304f")
         t.append("OANDA: ", style="#7483b8")
-        t.append(f"● {api_ms:.0f}ms", style=oanda_style)
+        t.append(oanda_text, style=oanda_style)
         t.append("  │  ", style="#26304f")
         t.append("Models: ", style="#7483b8")
         t.append(f"● {models}", style="bold #39ff14")
@@ -865,9 +1040,9 @@ class SystemHealthBar(Static):
         t.append("RL Sync: ", style="#7483b8")
         t.append("● CURRENT", style="bold #39ff14")
         t.append("  │  ", style="#26304f")
-        t.append(f"CPU: {cpu:.0f}%", style="#7483b8")
+        t.append(cpu_text, style="#7483b8")
         t.append("  │  ", style="#26304f")
-        t.append(f"MEM: {mem:.0f}MB", style="#7483b8")
+        t.append(mem_text, style="#7483b8")
         return t
 
 
@@ -908,7 +1083,7 @@ class BuddyApp(App):
         Binding("f12", "safe_restart", "Restart(F12)", show=True),
         Binding("u", "unhalt", "Unhalt", show=True),
         Binding("c", "copy_snapshot", "Copy", show=True),
-        Binding("r", "action_refresh_rules", "Refresh Rules", show=True),
+        Binding("r", "refresh_rules", "Refresh Rules", show=True),
         Binding("q", "quit", "Quit", show=True),
         Binding("colon", "open_command_palette", "Commands", show=False),
         Binding("ctrl+l", "open_log_viewer", "Logs", show=False),
@@ -919,7 +1094,10 @@ class BuddyApp(App):
     ]
 
     # Asset class modes — F7 cycles through them
-    _ASSET_CLASSES = ["fx", "futures", "hybrid"]
+    # "equity" selects the equity-harvester surfaces (ship-gate badge,
+    # harvester panel, risk gates, rebalance plan, alerts) which read their
+    # own state files — it does NOT mutate the FX EmbeddedScanner config.
+    _ASSET_CLASSES = ["fx", "futures", "hybrid", "equity"]
 
     def __init__(self, live: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -931,8 +1109,11 @@ class BuddyApp(App):
         self._asset_class = "fx"  # current asset class mode
         self._kill_in_progress = False  # True while flatten_all is running (disables hotkeys)
         # Plan C (2026-04-29) — file position into .claude/meta/changes.jsonl;
-        # _tick_brain reads forward from here on each 0.8s tick.
-        self._brain_ledger_pos: int = 0
+        # _tick_brain reads forward from here on each 0.8s tick. Start at the
+        # ledger's END so demo-mode's first tick doesn't replay the entire
+        # change history into the brain log (mirrors _initial_meta_ledger_offset
+        # for the live path).
+        self._brain_ledger_pos: int = self._initial_brain_ledger_pos()
         # T3: shared cumulative work-unit counters. Pre-built at app construct
         # so the F1 StatsBar can take a stable reference at compose time; the
         # EmbeddedScanner receives the same instance and bumps it inline.
@@ -960,7 +1141,8 @@ class BuddyApp(App):
                 with Vertical(id="overview-container"):
                     with Horizontal(id="overview-top"):
                         with Vertical(classes="panel"):
-                            yield Label("⟨ LIVE TRADES ⟩", classes="panel-title")
+                            yield Label("⟨ EQUITY HARVESTER ⟩", classes="panel-title")
+                            yield HarvesterPanel(id="harvester-panel")
                             yield DataTable(id="trades-table")
                         with Vertical(classes="panel"):
                             yield Label("⟨ AGENT CONSENSUS ⟩", classes="panel-title")
@@ -1105,6 +1287,23 @@ class BuddyApp(App):
             self._reflection_stop.set()
         except Exception:
             pass
+
+    def _initial_brain_ledger_pos(self) -> int:
+        """Demo-mode brain tail starts at the END of the meta ledger so the
+        first 0.8s tick doesn't replay the whole change history into the brain
+        log. Mirrors _initial_meta_ledger_offset (live path) but uses the same
+        absolute ledger path _tick_brain reads, so the two agree regardless of
+        the process cwd."""
+        try:
+            ledger = (
+                Path(__file__).resolve().parent.parent.parent
+                / ".claude" / "meta" / "changes.jsonl"
+            )
+            if ledger.exists():
+                return ledger.stat().st_size
+        except OSError:
+            return 0
+        return 0
 
     def _initial_meta_ledger_offset(self) -> int:
         """Start tailing from the END of the existing ledger so we don't
@@ -1395,23 +1594,37 @@ class BuddyApp(App):
         spark = self.query_one("#nav-sparkline", Sparkline)
         spark.data = [100000 + random.randint(-500, 2000) for _ in range(30)]
 
-        # Try to load real agent weights even in demo mode
+        # Try to load real agent weights even in demo mode; if none exist, fall
+        # back to the explicit DEMO_AGENTS seed. This is the ONLY path that
+        # seeds demo agents — live mode shows the "awaiting first scan"
+        # placeholder instead (never fabricated signal).
         snap = self._provider.refresh()
+        panel = self.query_one("#agent-panel", AgentPanel)
         if snap.agents:
-            self.query_one("#agent-panel", AgentPanel).update_from_snapshot(snap)
-            self.query_one("#agent-panel", AgentPanel).refresh()
+            panel.update_from_snapshot(snap)
+        else:
+            panel.load_demo()
+        panel.refresh()
 
     def _apply_snapshot(self, snap: DashboardSnapshot) -> None:
         """Apply a DashboardSnapshot to all widgets (runs on main thread)."""
         header = self.query_one("#header-bar", HeaderBar)
-        fallback_nav = self._demo_nav if not self._live else 0.0
-        header.nav = snap.nav if snap.nav > 0 else fallback_nav
-        header.pnl = snap.unrealized_pnl if snap.nav > 0 else (
-            self._demo_nav - 100000 if not self._live else 0.0
-        )
+        # L4: only adopt a NAV we actually fetched; otherwise keep the last
+        # known value (rendered amber/stale) and never fall back to a fake $0.
+        if snap.nav > 0:
+            header.nav = snap.nav
+            header.pnl = snap.unrealized_pnl
+            header.nav_known = True
+        elif not self._live:
+            header.nav = self._demo_nav
+            header.pnl = self._demo_nav - 100000
+            header.nav_known = True
+        # else (live + no NAV yet): leave header.nav/pnl at last-known;
+        # nav_known stays False until the first successful fetch → renders "—".
         header.open_count = len(snap.trades)
         header.oanda_ok = snap.oanda_connected
         header.scanner_ok = snap.scanner_ready
+        header.halted = bool(getattr(snap, "halted", False))  # L2 single source
 
         # Update trades table
         table = self.query_one("#trades-table", DataTable)
@@ -1497,6 +1710,57 @@ class BuddyApp(App):
         try:
             state_strip = self.query_one("#state-strip", StateStrip)
             state_strip.update_from_snapshot(snap)
+        except Exception:
+            pass
+
+        # Equity-harvester surfacing (read-only state files; graceful when
+        # absent — the loop may not have run live yet). Each reader returns a
+        # small dict with available:bool; widgets render a pending state on
+        # available=False.
+        try:
+            ship_gate = self._provider.get_ship_gate_status()
+            self.query_one("#state-strip", StateStrip).update_ship_gate(ship_gate)
+        except Exception:
+            pass
+
+        try:
+            live_gate = self._provider.get_live_gate_status()
+            self.query_one("#header-bar", HeaderBar).update_live_gate(live_gate)
+        except Exception:
+            pass
+
+        try:
+            harvester = self._provider.get_harvester_status()
+            self.query_one("#harvester-panel", HarvesterPanel).update_status(
+                harvester
+            )
+        except Exception:
+            pass
+
+        # F4 Agents screen → equity risk-gate verdicts (P1-3)
+        try:
+            risk_gates = self._provider.get_risk_gates_status()
+            self.query_one("#agents-screen", AgentsScreen).update_risk_gates(
+                risk_gates
+            )
+        except Exception:
+            pass
+
+        # F3 Trades screen → harvester rebalance plan (P1-4)
+        try:
+            rebalance = self._provider.get_rebalance_status()
+            self.query_one("#trades-screen", TradesScreen).update_rebalance(
+                rebalance
+            )
+        except Exception:
+            pass
+
+        # F2 Inbox → equity alerts section (P1-7)
+        try:
+            alerts = self._provider.get_alerts_status()
+            self.query_one("#inbox-screen", InboxScreen).update_equity_alerts(
+                alerts
+            )
         except Exception:
             pass
 
@@ -1626,6 +1890,38 @@ class BuddyApp(App):
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.active = tab_id
 
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        """B1 fix: move focus into the newly-active tab's content so the tab's
+        screen-level BINDINGS resolve.
+
+        HeaderBar.can_focus=True retains focus after mount and Textual does not
+        move focus into a tab on switch, so without this the tab-container
+        hotkeys (Inbox a/r/e/s/v, Trades c, Config s/q/r, Rules r/g) are dead —
+        every keypress fell through to the App-level early-return loggers.
+        App-level bindings (u/k/m/space/…) are unaffected: they resolve at the
+        App regardless of which widget holds focus.
+        """
+        self._focus_active_tab_content()
+
+    def _focus_active_tab_content(self) -> None:
+        """Focus the first focusable descendant of the active tab pane so its
+        ancestor screen's BINDINGS participate in key resolution. No-op when the
+        pane has no focusable content (e.g. a transient mount state)."""
+        try:
+            tabs = self.query_one("#main-tabs", TabbedContent)
+            pane = self.query_one(f"#{tabs.active}", TabPane)
+        except Exception:
+            return
+        for widget in pane.query("*"):
+            try:
+                if widget.focusable:
+                    self.set_focus(widget)
+                    return
+            except Exception:
+                continue
+
     def _open_jobs_screen(self) -> None:
         """Lazily build a ScheduledJobsRegistry and push the Jobs screen.
 
@@ -1731,7 +2027,21 @@ class BuddyApp(App):
             "fx": "FX (OANDA) — 15 pairs",
             "futures": "FUTURES (IBKR) — ES NQ CL GC ZB 6E",
             "hybrid": "HYBRID — FX + Futures",
+            "equity": "EQUITY (harvester) — beta-harvest state surfaces",
         }[self._asset_class]
+
+        # "equity" selects the harvester's read-only state surfaces — it must
+        # NOT touch the FX EmbeddedScanner config (no asset_class/broker_type
+        # mutation, no scan-loop restart). Mutating the FX config for equity
+        # would break the live FX scanner, which has no equity instruments.
+        if self._asset_class == "equity":
+            try:
+                brain_log = self.query_one("#brain-log")
+                brain_log.write(f"[bold cyan]⟨ MODE ⟩[/] {mode_label}")
+            except Exception:
+                pass
+            self.notify(f"Asset class: {mode_label}", title="Mode Switch")
+            return
 
         # Update scanner config if scanner is running
         if self._scanner is not None:

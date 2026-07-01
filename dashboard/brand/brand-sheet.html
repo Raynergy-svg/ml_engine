@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AXIOM — Brand Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#07090D; --surface:#0E1219; --surface-2:#151B25; --border:#1E2733;
+    --text:#E6EDF3; --text-dim:#8B98A9; --text-faint:#5A6677;
+    --cyan:#22D3EE; --emerald:#34E5A1; --magenta:#E84FF0;
+    --pos:#2BD17E; --neg:#FF4D6D; --warn:#F5B14C;
+    --grad:linear-gradient(120deg,var(--cyan),var(--emerald));
+    --sans:'Inter',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(34,211,238,.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(52,229,161,.06), transparent 55%),
+      var(--bg);
+    color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased;padding:48px;font-feature-settings:"tnum"}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.01em}
+  .eyebrow{font:600 11px/1 var(--mono);letter-spacing:.22em;color:var(--text-faint);text-transform:uppercase}
+  .card{background:linear-gradient(180deg,var(--surface),#0b0e14);border:1px solid var(--border);border-radius:16px;padding:28px}
+  .grid{display:grid;gap:20px}
+  .head{display:flex;align-items:center;gap:22px;margin-bottom:8px}
+  .mark{width:120px;height:120px;border:1px solid var(--border);border-radius:20px;background:var(--surface-2);display:grid;place-items:center}
+  .tag{font:500 14px var(--mono);color:var(--text-dim)}
+  .section{margin-top:34px}
+  .swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+  .sw{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)}
+  .sw .chip{height:64px}
+  .sw .meta{padding:10px 12px}
+  .sw .name{font:600 12px var(--sans)}
+  .sw .hex{font:500 11px var(--mono);color:var(--text-dim);margin-top:2px}
+  .pnl-row{display:flex;gap:28px;align-items:baseline;margin-top:6px}
+  .num{font:700 30px var(--mono);font-feature-settings:"tnum"}
+  .pos{color:var(--pos)} .neg{color:var(--neg)}
+  .type-spec{display:flex;flex-direction:column;gap:14px}
+  .type-spec .row{display:flex;align-items:baseline;gap:18px;border-bottom:1px dashed var(--border);padding-bottom:12px}
+  .type-spec .lbl{width:170px;color:var(--text-faint);font:500 12px var(--mono)}
+  .badge{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;font:600 12px var(--mono);border:1px solid var(--border)}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .usage li{margin:7px 0;color:var(--text-dim);font-size:14px;line-height:1.5}
+  .usage b{color:var(--text)}
+  .grad-bar{height:8px;border-radius:999px;background:var(--grad)}
+  .two{grid-template-columns:1fr 1fr}
+  .logo-variants{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+  .lv{border:1px solid var(--border);border-radius:12px;padding:18px 22px}
+  .lv.light{background:#E6EDF3}
+  small.cap{display:block;color:var(--text-faint);font:500 10px var(--mono);letter-spacing:.12em;margin-top:8px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div class="mark">
+      <svg width="84" height="84" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="g" x1="0" y1="96" x2="96" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#34E5A1"/></linearGradient></defs>
+        <g transform="translate(8 8)">
+          <path d="M10 72 L40 12" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
+          <path d="M40 12 L70 72" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
+          <path d="M40 12 L52 4" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
+          <path d="M22 48 L58 48" stroke="#E6EDF3" stroke-width="5" stroke-linecap="round" opacity=".92"/>
+          <circle cx="22" cy="48" r="3.4" fill="#22D3EE"/><circle cx="58" cy="48" r="3.4" fill="#34E5A1"/>
+        </g>
+      </svg>
+    </div>
+    <div>
+      <div class="eyebrow">Brand System · v1</div>
+      <h1 style="font-size:46px;letter-spacing:.14em">AXIOM</h1>
+      <div class="tag">Systematic by design — the live terminal for the <b style="color:var(--text)">Buddy</b> trading engine.</div>
+    </div>
+  </div>
+  <div class="grad-bar" style="margin:18px 0 8px"></div>
+
+  <!-- LOGO -->
+  <div class="section">
+    <div class="eyebrow">Logo / Lockups</div>
+    <div class="card" style="margin-top:12px">
+      <div class="logo-variants">
+        <div class="lv">
+          <svg width="240" height="64" viewBox="0 0 360 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="g2" x1="0" y1="96" x2="96" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#34E5A1"/></linearGradient></defs>
+            <g transform="translate(8 8)">
+              <path d="M10 72 L40 12" stroke="url(#g2)" stroke-width="7" stroke-linecap="round"/>
+              <path d="M40 12 L70 72" stroke="url(#g2)" stroke-width="7" stroke-linecap="round"/>
+              <path d="M40 12 L52 4" stroke="url(#g2)" stroke-width="7" stroke-linecap="round"/>
+              <path d="M22 48 L58 48" stroke="#E6EDF3" stroke-width="5" stroke-linecap="round" opacity=".92"/>
+              <circle cx="22" cy="48" r="3.4" fill="#22D3EE"/><circle cx="58" cy="48" r="3.4" fill="#34E5A1"/>
+            </g>
+            <text x="104" y="60" font-family="Inter,sans-serif" font-size="40" font-weight="650" letter-spacing="6" fill="#E6EDF3">AXIOM</text>
+            <rect x="105" y="72" width="208" height="2.5" rx="1.25" fill="url(#g2)" opacity=".85"/>
+          </svg>
+          <small class="cap">Primary lockup · on dark</small>
+        </div>
+        <div class="lv light">
+          <svg width="240" height="64" viewBox="0 0 360 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="g3" x1="0" y1="96" x2="96" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#0891B2"/><stop offset="1" stop-color="#059669"/></linearGradient></defs>
+            <g transform="translate(8 8)">
+              <path d="M10 72 L40 12" stroke="url(#g3)" stroke-width="7" stroke-linecap="round"/>
+              <path d="M40 12 L70 72" stroke="url(#g3)" stroke-width="7" stroke-linecap="round"/>
+              <path d="M40 12 L52 4" stroke="url(#g3)" stroke-width="7" stroke-linecap="round"/>
+              <path d="M22 48 L58 48" stroke="#0E1219" stroke-width="5" stroke-linecap="round"/>
+              <circle cx="22" cy="48" r="3.4" fill="#0891B2"/><circle cx="58" cy="48" r="3.4" fill="#059669"/>
+            </g>
+            <text x="104" y="60" font-family="Inter,sans-serif" font-size="40" font-weight="650" letter-spacing="6" fill="#0E1219">AXIOM</text>
+          </svg>
+          <small class="cap" style="color:#5A6677">Mono lockup · on light</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLOR -->
+  <div class="section">
+    <div class="eyebrow">Color System</div>
+    <div class="card" style="margin-top:12px">
+      <div style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Deep near-black base · electric neon accents · semantic P&amp;L</div>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#07090D"></div><div class="meta"><div class="name">Base</div><div class="hex">#07090D</div></div></div>
+        <div class="sw"><div class="chip" style="background:#0E1219"></div><div class="meta"><div class="name">Surface</div><div class="hex">#0E1219</div></div></div>
+        <div class="sw"><div class="chip" style="background:#151B25"></div><div class="meta"><div class="name">Surface-2</div><div class="hex">#151B25</div></div></div>
+        <div class="sw"><div class="chip" style="background:#22D3EE"></div><div class="meta"><div class="name">Cyan</div><div class="hex">#22D3EE</div></div></div>
+        <div class="sw"><div class="chip" style="background:#34E5A1"></div><div class="meta"><div class="name">Emerald</div><div class="hex">#34E5A1</div></div></div>
+        <div class="sw"><div class="chip" style="background:#E84FF0"></div><div class="meta"><div class="name">Magenta</div><div class="hex">#E84FF0</div></div></div>
+        <div class="sw"><div class="chip" style="background:#2BD17E"></div><div class="meta"><div class="name">Profit</div><div class="hex">#2BD17E</div></div></div>
+        <div class="sw"><div class="chip" style="background:#FF4D6D"></div><div class="meta"><div class="name">Loss</div><div class="hex">#FF4D6D</div></div></div>
+        <div class="sw"><div class="chip" style="background:#F5B14C"></div><div class="meta"><div class="name">Warn</div><div class="hex">#F5B14C</div></div></div>
+        <div class="sw"><div class="chip" style="background:#E6EDF3"></div><div class="meta"><div class="name">Text</div><div class="hex">#E6EDF3</div></div></div>
+        <div class="sw"><div class="chip" style="background:#8B98A9"></div><div class="meta"><div class="name">Text-dim</div><div class="hex">#8B98A9</div></div></div>
+        <div class="sw"><div class="chip" style="background:var(--grad)"></div><div class="meta"><div class="name">Signature</div><div class="hex">cyan→emerald</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid two section" style="margin-top:20px">
+    <!-- TYPE -->
+    <div class="card">
+      <div class="eyebrow">Typography</div>
+      <div class="type-spec" style="margin-top:14px">
+        <div class="row"><div class="lbl">Display / Sans</div><div><div style="font:650 26px var(--sans)">Geist · Inter</div><small class="cap">UI, labels, headings</small></div></div>
+        <div class="row"><div class="lbl">Mono / Numerals</div><div><div style="font:500 24px var(--mono)">102,129.04 · +0.92</div><small class="cap">JetBrains/Geist Mono · tabular</small></div></div>
+        <div class="row" style="border:none"><div class="lbl">Eyebrow</div><div><div class="eyebrow" style="font-size:13px">NAV · DAILY P&amp;L · MARGIN</div><small class="cap">mono · 0.22em tracking · uppercase</small></div></div>
+      </div>
+    </div>
+    <!-- P&L + STATUS -->
+    <div class="card">
+      <div class="eyebrow">Semantics &amp; Status</div>
+      <div class="pnl-row"><span class="num pos">+1,284.40</span><span class="num neg">−312.18</span></div>
+      <small class="cap">profit emerald · loss red · always signed, tabular</small>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px">
+        <span class="badge" style="color:var(--pos)"><span class="dot" style="background:var(--pos);box-shadow:0 0 8px var(--pos)"></span>RUNNING</span>
+        <span class="badge" style="color:var(--neg)"><span class="dot" style="background:var(--neg)"></span>HALTED</span>
+        <span class="badge" style="color:var(--warn)"><span class="dot" style="background:var(--warn)"></span>STALE</span>
+        <span class="badge" style="color:var(--cyan)"><span class="dot" style="background:var(--cyan)"></span>PRACTICE</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- USAGE -->
+  <div class="section">
+    <div class="eyebrow">Usage &amp; Voice</div>
+    <div class="card" style="margin-top:12px">
+      <ul class="usage" style="margin:0;padding-left:18px">
+        <li><b>Numbers are the hero.</b> Every price, P&amp;L, and weight uses the mono face with tabular numerals so columns align. Prices never reflow.</li>
+        <li><b>Neon is punctuation, not paint.</b> The cyan→emerald gradient marks identity and the single most important value on screen — not every border.</li>
+        <li><b>Red/green mean money only.</b> Profit/loss colors are reserved for P&amp;L. Status uses its own palette (emerald-running, red-halt, amber-stale).</li>
+        <li><b>Always say PRACTICE.</b> The demo-account badge is permanent chrome. AXIOM never implies real money.</li>
+        <li><b>Honest empty states.</b> No data → an explicit "not connected / awaiting first cycle" state. Never a placeholder number that could read as real.</li>
+        <li><b>Buddy is the engine; AXIOM is the terminal.</b> Buddy acts, AXIOM observes — read-only, always.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="text-align:center;color:var(--text-faint);font:500 11px var(--mono);margin-top:34px">AXIOM · brand system v1 · read-only terminal · OANDA fxPractice</div>
+</div>
+</body>
+</html>

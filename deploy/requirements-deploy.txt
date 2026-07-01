@@ -1,0 +1,17 @@
+# AXIOM cloud deploy — SLIM runtime deps (trend bot + data/control layer).
+#
+# Verified 2026-06-30: importing dashboard.server.app, all read endpoints
+# (account/status/trades/equity/sentiment/tier7/health/prices/strategy), the control
+# layer (control_safety + StateEngine), the trend loop (src.equity.oanda_trend), AND the
+# Tier 7 loop pull NONE of tensorflow / torch / stable-baselines3 / xgboost / lightgbm /
+# sklearn. Those are the RETIRED ML training heads (L-016) — they never load at runtime,
+# so the cloud image excludes them (~4GB -> ~0.5GB, faster builds, less RAM).
+#
+# FALLBACK: if any path ever errors `ModuleNotFoundError`, install the full
+# ../requirements.txt instead (Dockerfiles accept REQS as a build arg).
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+pandas==2.3.3
+numpy>=1.26.4
+requests==2.32.5
+python-dotenv==1.2.1

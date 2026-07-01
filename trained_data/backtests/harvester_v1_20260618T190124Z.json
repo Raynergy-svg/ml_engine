@@ -1,0 +1,117 @@
+{
+  "base": {
+    "max_dd": 0.446,
+    "net_cagr": 0.0243,
+    "net_sharpe": 0.257,
+    "pos_years": "15/28",
+    "turnover": 31.8
+  },
+  "elapsed_s": 1.1,
+  "frontier": [
+    {
+      "gate_pass": false,
+      "max_dd": 0.446,
+      "net_cagr": 0.0243,
+      "net_sharpe": 0.257,
+      "pos_years": "15/28",
+      "setting": "BASE (no overlay)",
+      "target_vol": null,
+      "turnover": 31.8
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.256,
+      "net_cagr": 0.0112,
+      "net_sharpe": 0.293,
+      "pos_years": "12/28",
+      "setting": "vol6% dd10/20",
+      "target_vol": 0.06,
+      "turnover": 21.3
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.302,
+      "net_cagr": 0.0111,
+      "net_sharpe": 0.255,
+      "pos_years": "12/28",
+      "setting": "vol6% dd15/25",
+      "target_vol": 0.06,
+      "turnover": 27.8
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.244,
+      "net_cagr": 0.0153,
+      "net_sharpe": 0.312,
+      "pos_years": "13/28",
+      "setting": "vol6% dd20/35",
+      "target_vol": 0.06,
+      "turnover": 31.9
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.384,
+      "net_cagr": 0.0167,
+      "net_sharpe": 0.297,
+      "pos_years": "13/28",
+      "setting": "vol8% dd10/20",
+      "target_vol": 0.08,
+      "turnover": 25.0
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.456,
+      "net_cagr": 0.015,
+      "net_sharpe": 0.242,
+      "pos_years": "12/28",
+      "setting": "vol8% dd15/25",
+      "target_vol": 0.08,
+      "turnover": 31.9
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.39,
+      "net_cagr": 0.0208,
+      "net_sharpe": 0.297,
+      "pos_years": "14/28",
+      "setting": "vol8% dd20/35",
+      "target_vol": 0.08,
+      "turnover": 35.6
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.452,
+      "net_cagr": 0.0139,
+      "net_sharpe": 0.219,
+      "pos_years": "12/28",
+      "setting": "vol10% dd10/20",
+      "target_vol": 0.1,
+      "turnover": 26.5
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.527,
+      "net_cagr": 0.0112,
+      "net_sharpe": 0.17,
+      "pos_years": "12/28",
+      "setting": "vol10% dd15/25",
+      "target_vol": 0.1,
+      "turnover": 33.3
+    },
+    {
+      "gate_pass": false,
+      "max_dd": 0.445,
+      "net_cagr": 0.0184,
+      "net_sharpe": 0.236,
+      "pos_years": "14/28",
+      "setting": "vol10% dd20/35",
+      "target_vol": 0.1,
+      "turnover": 36.1
+    }
+  ],
+  "gate": {
+    "max_dd": 0.25,
+    "min_net_sharpe": 0.4
+  },
+  "span": "1999-01-04->2026-06-12"
+}
