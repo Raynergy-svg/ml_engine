@@ -2,10 +2,10 @@
 
 /* ---------------- AXIOM brand tokens ---------------- */
 @theme {
-  --color-base: #0e1115;
-  --color-surface: #12161b;
+  --color-base: #0f1215;
+  --color-surface: #131a1a;
   --color-surface2: #171c22;
-  --color-border: #22303b;
+  --color-border: #1c2328;
   --color-text: #eef5f8;
   --color-dim: #9aa7b5;
   --color-faint: #64717f;
@@ -14,9 +14,12 @@
   --color-emerald: #34e5a1;
   --color-magenta: #e84ff0;
 
-  --color-pos: #2bd17e;
-  --color-neg: #ff4d6d;
-  --color-warn: #f5b14c;
+  /* PIL-sampled from dashboard/design/target.png (brightest hue-filtered pixel per
+     region) — NOT eyeballed. green ~(55-84,225-255,135-163), red ~(254,100-112,94-97),
+     amber ~(255,194,62). */
+  --color-pos: #3ee287;
+  --color-neg: #ff6b5e;
+  --color-warn: #ffc23e;
 
   --font-sans: var(--font-geist-sans), "Inter", system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), "JetBrains Mono", ui-monospace, monospace;

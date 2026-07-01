@@ -8,6 +8,7 @@ import { usePoll } from "@/lib/api";
 import { useStream } from "@/lib/stream";
 import type { Equity } from "@/lib/types";
 import { Card, SectionTitle, NotConnected, Loading } from "./ui";
+import { ChevronDown } from "./icons";
 import { fmtMoney, fmtSigned, fmtPct, pnlClass } from "@/lib/format";
 
 const RANGES = [
@@ -39,8 +40,8 @@ export function EquityCurve() {
       autoSize: true,
     });
     const series = chart.addSeries(AreaSeries, {
-      lineColor: "#2bd17e", lineWidth: 2,
-      topColor: "rgba(43,209,126,0.30)", bottomColor: "rgba(43,209,126,0.02)",
+      lineColor: "#3ee287", lineWidth: 2,
+      topColor: "rgba(62,226,135,0.30)", bottomColor: "rgba(62,226,135,0.02)",
       priceLineVisible: false,
     });
     chartRef.current = chart;
@@ -118,9 +119,10 @@ export function EquityCurve() {
           <div className="relative">
             <button
               onClick={() => setModeMenuOpen((v) => !v)}
-              className="font-mono text-[12px] text-faint hover:text-text"
+              className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[12px] text-dim hairline hover:text-text"
             >
-              {mode === "unrealized" ? "Unrealized (Live NAV)" : "Realized (Ledger)"} ⌄
+              {mode === "unrealized" ? "Unrealized (Live NAV)" : "Realized (Ledger)"}
+              <ChevronDown />
             </button>
             {modeMenuOpen && (
               <div className="card absolute right-0 top-6 z-20 min-w-[210px] p-1.5">
@@ -147,8 +149,11 @@ export function EquityCurve() {
         Equity Curve
       </SectionTitle>
 
-      <div className="flex items-baseline gap-3 px-4 pt-2">
-        <span className="font-mono text-[22px] font-semibold tnum text-text">
+      <div
+        className="flex items-baseline gap-3 px-4 pt-2"
+        title={data ? `${fmtSigned(data.ledger_realized_pl)} this ledger window (not since-inception)` : undefined}
+      >
+        <span className={`font-mono text-[22px] font-semibold tnum ${pnlClass(dayPct)}`}>
           {currentEquity != null ? fmtMoney(currentEquity) : "—"}
         </span>
         {dayPct != null && (
@@ -156,18 +161,10 @@ export function EquityCurve() {
             {dayPct >= 0 ? "+" : ""}{fmtPct(dayPct, 2)} (Day)
           </span>
         )}
-        {data && (
-          <span
-            className={`ml-auto font-mono text-[11px] tnum ${pnlClass(data.ledger_realized_pl)}`}
-            title="P&L summed over this captured ledger window — not since-inception"
-          >
-            {fmtSigned(data.ledger_realized_pl)} this ledger
-          </span>
-        )}
       </div>
 
-      <div className="relative min-h-0 flex-1 px-2 pb-1 pt-1">
-        <div ref={elRef} className="h-full w-full" style={{ minHeight: 180 }} />
+      <div className="relative min-h-0 flex-1 overflow-hidden px-2 pb-1 pt-1">
+        <div ref={elRef} className="h-full w-full" style={{ minHeight: 100 }} />
         {empty && <div className="absolute inset-0 grid place-items-center"><NotConnected label="No balance history yet" /></div>}
         {loading && !data && <div className="absolute inset-0 grid place-items-center"><Loading /></div>}
       </div>

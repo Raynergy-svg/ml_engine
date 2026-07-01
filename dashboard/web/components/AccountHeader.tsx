@@ -3,30 +3,30 @@ import { useStream } from "@/lib/stream";
 import { usePoll } from "@/lib/api";
 import type { Trades, SystemHealth, ControlState } from "@/lib/types";
 import { Logo } from "./Logo";
-import { Badge, StatusDot } from "./ui";
+import { Badge } from "./ui";
+import { ShieldCheckIcon, ChevronDown } from "./icons";
 import { fmtMoney, fmtSigned, pnlClass, fmtNum, fmtPct } from "@/lib/format";
 
-function TopMetric({ label, children, sub, positive }: {
-  label: string; children: React.ReactNode; sub?: string; positive?: boolean;
+function TopMetric({ label, children, title, positive }: {
+  label: string; children: React.ReactNode; title?: string; positive?: boolean;
 }) {
   return (
-    <div className="min-w-[92px] px-3 py-2">
+    <div className="min-w-[92px] px-3 py-2" title={title}>
       <span className="block font-mono text-[10px] uppercase tracking-wide text-dim">{label}</span>
       <span className={`mt-1 block whitespace-nowrap font-mono text-[14px] font-semibold tnum ${positive === true ? "text-pos" : positive === false ? "text-neg" : "text-text"}`}>
         {children}
       </span>
-      {sub && <span className="block whitespace-nowrap font-mono text-[9.5px] text-faint">{sub}</span>}
     </div>
   );
 }
 
 function StatusBlock({ label, value, ok, unknown }: { label: string; value: string; ok: boolean; unknown?: boolean }) {
-  const color = unknown ? "#5a6677" : ok ? "#2bd17e" : "#ff4d6d";
+  const color = unknown ? "#5a6677" : ok ? "#3ee287" : "#ff6b5e";
   return (
     <div className="hidden min-w-[132px] border-l px-5 py-2 hairline md:block">
       <span className="block font-mono text-[10px] uppercase tracking-wide text-dim">{label}</span>
       <span className="mt-1 flex items-center gap-2 font-mono text-[13px] font-semibold" style={{ color }}>
-        <StatusDot color={color} pulse={ok && !unknown} />
+        <ShieldCheckIcon />
         {value}
       </span>
     </div>
@@ -99,14 +99,14 @@ export function AccountHeader() {
           {drawdownPct == null ? "—" : fmtPct(drawdownPct, 2)}
         </TopMetric>
         <TopMetric label="Leverage">{leverage == null ? "—" : `${fmtNum(leverage, 1)}x`}</TopMetric>
-        <TopMetric label="Margin" sub={marginUsedPct != null ? `${fmtNum(marginUsedPct, 1)}% used` : undefined}>
+        <TopMetric label="Margin" title={marginUsedPct != null ? `${fmtNum(marginUsedPct, 1)}% used` : undefined}>
           {acct ? fmtMoney(acct.margin_available) : "—"}
         </TopMetric>
       </div>
 
       <div className="order-2 ml-auto flex min-w-0 items-center gap-2 xl:order-none xl:ml-0">
         <div className="flex min-w-0 items-center gap-1.5 pl-1" title="SSE stream to data layer">
-          <StatusDot color={connected ? "#34e5a1" : "#5a6677"} pulse={connected} />
+          <span className={`h-1.5 w-1.5 rounded-full ${connected ? "live-dot" : ""}`} style={{ background: connected ? "#34e5a1" : "#5a6677" }} />
           <span className="min-w-0 font-mono text-[10px] text-faint">
             {connected ? "live" : "offline"}
           </span>
@@ -117,10 +117,11 @@ export function AccountHeader() {
             window.location.href = "/login";
           }}
           title="Lock / sign out"
-          className="grid h-10 w-10 place-items-center rounded-full border border-pos/45 bg-pos/10 font-mono text-[12px] font-semibold text-pos hover:bg-pos/20"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-pos/45 bg-pos/10 font-mono text-[12px] font-semibold text-pos hover:bg-pos/20"
         >
           AX
         </button>
+        <ChevronDown className="shrink-0 text-faint" />
       </div>
     </header>
   );

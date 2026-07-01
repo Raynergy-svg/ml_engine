@@ -90,7 +90,8 @@ export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => voi
         onClick={onOpenPalette}
         className="min-h-[58px] min-w-[260px] flex-1 rounded-md border bg-surface/70 px-3 py-2 text-left hairline hover:bg-surface2/60"
       >
-        <div className="flex items-center justify-between gap-3">
+        <span className="block font-mono text-[10px] uppercase tracking-wide text-faint">Command</span>
+        <div className="mt-1 flex items-center justify-between gap-3">
           <span className="truncate font-mono text-[13px] text-dim">Type a command or / for menu...</span>
           <span className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-faint hairline">⌘K</span>
         </div>

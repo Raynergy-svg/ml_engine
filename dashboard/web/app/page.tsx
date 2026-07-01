@@ -15,6 +15,15 @@ import { Tier7Panel } from "@/components/Tier7Panel";
 import { Tier7Cockpit } from "@/components/Tier7Cockpit";
 import { ControlPanel } from "@/components/ControlPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
+import { FullscreenIcon, ChartTypeIcon, PanelSplitIcon, FitArrowsIcon, ChevronDown, CheckCircleSolid } from "@/components/icons";
+import { usePoll } from "@/lib/api";
+import type { ControlState } from "@/lib/types";
+
+const GRANS = [
+  { label: "1m", code: "M1" }, { label: "5m", code: "M5" }, { label: "15m", code: "M15" },
+  { label: "1h", code: "H1" }, { label: "4h", code: "H4" }, { label: "1D", code: "D" },
+  { label: "1W", code: "W" }, { label: "1M", code: "M" },
+];
 
 const TABS = ["Overview", "Markets", "Positions", "Orders", "Executions", "Risk", "Automation", "Journal", "Analytics", "Settings"] as const;
 type Tab = (typeof TABS)[number];
@@ -61,6 +70,11 @@ function useIsFullscreen(): boolean {
 function DashboardBody() {
   const [selected, setSelected] = useState("EUR_USD");
   const isFullscreen = useIsFullscreen();
+  const [gran, setGran] = useState("H1");
+  const [granMenuOpen, setGranMenuOpen] = useState(false);
+  const [chartType, setChartType] = useState<"candle" | "line">("candle");
+  const [sidePanelHidden, setSidePanelHidden] = useState(false);
+  const [resetZoomTick, setResetZoomTick] = useState(0);
   const [storedTab, setStoredTab] = useStoredValue("axiom:selectedTab", "Overview");
   const tab: Tab = TABS.includes(storedTab as Tab) ? (storedTab as Tab) : "Overview";
   const setTab = (next: Tab) => setStoredTab(next);
@@ -128,41 +142,85 @@ function DashboardBody() {
             ))}
           </div>
           <div className="ml-auto hidden shrink-0 items-center gap-1 md:flex">
+            <div className="relative">
+              <button
+                onClick={() => setGranMenuOpen((v) => !v)}
+                className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-mono text-[11px] text-dim hairline hover:text-text"
+                title="Chart timeframe"
+              >
+                {gran}
+                <ChevronDown />
+              </button>
+              {granMenuOpen && (
+                <div className="card absolute right-0 top-8 z-20 min-w-[140px] p-1.5">
+                  {GRANS.map((g) => (
+                    <button
+                      key={g.code}
+                      onClick={() => { setGran(g.code); setGranMenuOpen(false); }}
+                      className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-left font-mono text-[12px] ${gran === g.code ? "text-pos" : "text-dim hover:bg-surface2 hover:text-text"}`}
+                    >
+                      <span>{g.label}</span>
+                      <span className="text-faint">{g.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {granMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setGranMenuOpen(false)} />}
+            </div>
             <button
               onClick={() => {
                 if (document.fullscreenElement) document.exitFullscreen();
                 else document.documentElement.requestFullscreen();
               }}
-              className={`rounded-md border px-3 py-1.5 font-mono text-[11px] hairline ${isFullscreen ? "text-pos" : "text-faint hover:text-text"}`}
+              className={`grid h-8 w-8 place-items-center rounded-md border hairline ${isFullscreen ? "text-pos" : "text-faint hover:text-text"}`}
               title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
             >
-              ⛶
+              <FullscreenIcon />
             </button>
-            {["▥", "↗"].map((label) => (
-              <button
-                key={label}
-                disabled
-                className="cursor-not-allowed rounded-md border px-3 py-1.5 font-mono text-[11px] text-faint/50 hairline"
-                title="Coming soon — not yet wired"
-              >
-                {label}
-              </button>
-            ))}
+            <button
+              onClick={() => setChartType((t) => (t === "candle" ? "line" : "candle"))}
+              className={`grid h-8 w-8 place-items-center rounded-md border hairline ${chartType === "line" ? "text-pos" : "text-faint hover:text-text"}`}
+              title="Toggle candlestick / line chart type"
+            >
+              <ChartTypeIcon />
+            </button>
+            <button
+              onClick={() => setSidePanelHidden((v) => !v)}
+              className={`grid h-8 w-8 place-items-center rounded-md border hairline ${sidePanelHidden ? "text-pos" : "text-faint hover:text-text"}`}
+              title={sidePanelHidden ? "Show side panel" : "Hide side panel (expand chart)"}
+            >
+              <PanelSplitIcon />
+            </button>
+            <button
+              onClick={() => setResetZoomTick((t) => t + 1)}
+              className="grid h-8 w-8 place-items-center rounded-md border text-faint hairline hover:text-text"
+              title="Fit chart to visible data"
+            >
+              <FitArrowsIcon />
+            </button>
           </div>
         </nav>
       </div>
 
-      <main className="mx-auto flex w-full min-w-0 max-w-[1680px] flex-col gap-4 px-3 py-4 sm:px-4 lg:py-5">
+      <main className="mx-auto flex w-full min-w-0 max-w-[1680px] flex-col gap-2 px-3 py-2 sm:px-4">
         {tab === "Overview" && (
           <>
             <PriceTiles selected={selected} onSelect={setSelected} />
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(360px,0.95fr)]">
-              <div className="h-[440px] min-w-0 lg:h-[500px]"><CandleChart instrument={selected} /></div>
-              <div className="h-[440px] min-w-0 lg:h-[500px]"><Tier7Panel onViewLog={() => setTab("Analytics")} /></div>
+            <div className={`grid gap-3 ${sidePanelHidden ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(360px,0.95fr)]"}`}>
+              <div className="h-[395px] min-w-0">
+                <CandleChart
+                  instrument={selected} gran={gran} onGranChange={setGran} chartType={chartType}
+                  resetZoomTick={resetZoomTick} sidePanelHidden={sidePanelHidden}
+                  onToggleSidePanel={() => setSidePanelHidden((v) => !v)}
+                />
+              </div>
+              {!sidePanelHidden && (
+                <div className="h-[395px] min-w-0"><Tier7Panel onViewLog={() => setTab("Analytics")} /></div>
+              )}
             </div>
             <div className="grid gap-3 xl:grid-cols-[minmax(520px,2fr)_minmax(360px,0.95fr)]">
-              <div className="h-[340px] min-w-0"><PositionsTable /></div>
-              <div className="h-[340px] min-w-0"><EquityCurve /></div>
+              <div className="h-[250px] min-w-0"><PositionsTable /></div>
+              <div className="h-[250px] min-w-0"><EquityCurve /></div>
             </div>
           </>
         )}
@@ -172,9 +230,17 @@ function DashboardBody() {
         {marketTabs.has(tab) && (
           <>
             <PriceTiles selected={selected} onSelect={setSelected} />
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(340px,0.9fr)]">
-              <div className="h-[480px] min-w-0"><CandleChart instrument={selected} /></div>
-              <div className="h-[480px] min-w-0"><StrategyPanel selected={selected} onSelect={setSelected} /></div>
+            <div className={`grid gap-4 ${sidePanelHidden ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(340px,0.9fr)]"}`}>
+              <div className="h-[480px] min-w-0">
+                <CandleChart
+                  instrument={selected} gran={gran} onGranChange={setGran} chartType={chartType}
+                  resetZoomTick={resetZoomTick} sidePanelHidden={sidePanelHidden}
+                  onToggleSidePanel={() => setSidePanelHidden((v) => !v)}
+                />
+              </div>
+              {!sidePanelHidden && (
+                <div className="h-[480px] min-w-0"><StrategyPanel selected={selected} onSelect={setSelected} /></div>
+              )}
             </div>
             <div className="h-[320px] min-w-0"><PositionsTable /></div>
           </>
@@ -215,17 +281,31 @@ function useClock(): string {
 
 function DashboardFooter() {
   const { payload, connected } = useStream();
+  const { data: control } = usePoll<ControlState>("/api/control/state", 5000);
   const acctId = payload?.account?.account_id;
   const clock = useClock();
+  const [brokerMenuOpen, setBrokerMenuOpen] = useState(false);
   return (
     <footer className="mx-auto flex max-w-[1680px] flex-wrap items-center gap-4 border-t px-4 py-3 font-mono text-[10.5px] text-faint hairline">
       <span className={connected ? "text-pos" : "text-neg"}>● {connected ? "CONNECTED" : "OFFLINE"}</span>
       <span>LIVE DATA</span>
-      <span>OANDA fxPractice ⌄</span>
-      {acctId && <span title="Practice account id">Acct …{acctId.slice(-4)}</span>}
+      <div className="relative">
+        <button onClick={() => setBrokerMenuOpen((v) => !v)} className="flex items-center gap-1 text-text hover:text-pos" title={acctId ? `Practice account …${acctId.slice(-4)}` : "Practice account"}>
+          OANDA fxPractice
+          <ChevronDown />
+        </button>
+        {brokerMenuOpen && (
+          <div className="card absolute bottom-7 left-0 z-20 min-w-[200px] p-2 text-[10.5px]">
+            <div className="rounded px-2 py-1.5 text-pos">● OANDA fxPractice (connected)</div>
+            {acctId && <div className="px-2 py-1 text-faint">Acct …{acctId.slice(-4)} — only connected broker</div>}
+          </div>
+        )}
+        {brokerMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setBrokerMenuOpen(false)} />}
+      </div>
       <span className="text-pos">PRACTICE TRADING</span>
+      {control?.gross_leverage != null && <span className="text-text">{control.gross_leverage}x</span>}
       <span className="ml-auto">{clock} (local)</span>
-      <span className="text-pos">◎ SYNC</span>
+      <span className="flex items-center gap-1 text-pos"><CheckCircleSolid size={12} /> SYNC</span>
       <span>v0.1.0</span>
     </footer>
   );

@@ -64,7 +64,10 @@ def _iter_jsonl(path: Path):
 
 
 def _pip_size(instrument: str) -> float:
-    # JPY-quoted pairs price to 0.01 per pip; all other FX majors to 0.0001.
+    # JPY-quoted pairs price to 0.01 per pip; metals (XAU/XAG) are quoted directly
+    # in USD so "spread" is the raw price difference, not a pip-scaled figure.
+    if instrument.startswith(("XAU", "XAG")):
+        return 1.0
     return 0.01 if instrument.endswith("_JPY") else 0.0001
 
 

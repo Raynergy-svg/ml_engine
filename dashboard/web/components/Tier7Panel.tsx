@@ -2,26 +2,27 @@
 import { usePoll } from "@/lib/api";
 import type { Tier7, Tier7Diagnostics } from "@/lib/types";
 import { Card, SectionTitle, Badge, NotConnected, Loading } from "./ui";
+import { CheckCircleSolid } from "./icons";
 import { shortTime } from "@/lib/format";
 
 function CheckIcon({ ok }: { ok: boolean | null }) {
-  const color = ok === null ? "#5a6677" : ok ? "#2bd17e" : "#ff4d6d";
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
-      <rect x="1" y="1" width="12" height="12" rx="3" stroke={color} strokeWidth="1.3" />
-      {ok !== false && <path d="M3.8 7.1 5.7 9 10.2 4.3" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />}
-    </svg>
-  );
+  const color = ok === null ? "#5a6677" : ok ? "var(--color-pos)" : "var(--color-neg)";
+  if (ok === false) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 20 20" className="shrink-0">
+        <circle cx="10" cy="10" r="9" fill={color} />
+        <path d="M7 7l6 6M13 7l-6 6" stroke="var(--color-base)" strokeWidth={1.8} strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return <CheckCircleSolid size={14} className="shrink-0" style={{ color }} />;
 }
 
 function OkPill({ ok }: { ok: boolean | null }) {
-  const color = ok === null ? "#8b98a9" : ok ? "#2bd17e" : "#ff4d6d";
+  const color = ok === null ? "#8b98a9" : ok ? "var(--color-pos)" : "var(--color-neg)";
   return (
-    <span className="flex items-center gap-1 font-mono text-[11.5px] font-semibold" style={{ color }}>
-      <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-        <circle cx="7" cy="7" r="6" stroke={color} strokeWidth="1.3" />
-        {ok !== false && <path d="M4 7.2 6 9.2 10 4.8" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />}
-      </svg>
+    <span className="flex items-center gap-1.5 font-mono text-[11.5px] font-semibold" style={{ color }}>
+      <CheckIcon ok={ok} />
       {ok === null ? "—" : ok ? "OK" : "FAIL"}
     </span>
   );
@@ -45,17 +46,25 @@ export function Tier7Panel({ onViewLog }: { onViewLog?: () => void }) {
 
   const ab = tier7.self_heal?.action_budget;
   const score = diag?.score ?? null;
-  const scoreColor = score == null ? "#8b98a9" : score >= 80 ? "#2bd17e" : score >= 50 ? "#f5b14c" : "#ff4d6d";
+  const scoreColor = score == null ? "#8b98a9" : score >= 80 ? "var(--color-pos)" : score >= 50 ? "var(--color-warn)" : "var(--color-neg)";
+
+  // Halted/offline state is still surfaced honestly (via the header StatusBlock
+  // globally), but target.png's Tier 7 header has no badge — the per-row OK/FAIL
+  // checklist below already conveys health without a redundant pill here.
+  if (tier7.halted || !tier7.running) {
+    return (
+      <Card className="flex h-full flex-col">
+        <SectionTitle right={<Badge color={tier7.halted ? "var(--color-neg)" : "var(--color-warn)"} dot>{tier7.halted ? "HALTED" : "OFFLINE"}</Badge>}>
+          TIER 7 SELF-HEALING
+        </SectionTitle>
+        <NotConnected label={tier7.halted ? "Halted" : "Loop offline"} />
+      </Card>
+    );
+  }
 
   return (
     <Card className="flex h-full flex-col">
-      <SectionTitle right={
-        tier7.halted ? <Badge color="#ff4d6d" dot>HALTED</Badge>
-        : tier7.running ? <Badge color="#2bd17e" dot pulse>RUNNING</Badge>
-        : <Badge color="#f5b14c" dot>OFFLINE</Badge>
-      }>
-        TIER 7 SELF-HEALING
-      </SectionTitle>
+      <SectionTitle>TIER 7 SELF-HEALING</SectionTitle>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         <div>
@@ -65,8 +74,12 @@ export function Tier7Panel({ onViewLog }: { onViewLog?: () => void }) {
               {score == null ? "—" : score.toFixed(1)} <span className="text-faint">/ 100</span>
             </span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-surface2">
+          <div className="relative h-1.5 overflow-visible rounded-full bg-surface2">
             <div className="h-full rounded-full" style={{ width: `${score ?? 0}%`, background: scoreColor }} />
+            <span
+              className="absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border-2 border-base"
+              style={{ left: `calc(${score ?? 0}% - 5px)`, background: scoreColor }}
+            />
           </div>
         </div>
 

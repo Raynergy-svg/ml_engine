@@ -29,10 +29,11 @@ export function fmtPct(n: number | null | undefined, dp = 2): string {
   return fmtNum(n, dp) + "%";
 }
 
-/** Price with pair-aware precision (JPY crosses show 3dp, others 5dp). */
+/** Price with pair-aware precision (JPY crosses 3dp, metals 2dp w/ thousands, others 5dp). */
 export function fmtPrice(n: number | null | undefined, instrument?: string): string {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  const dp = instrument && instrument.endsWith("_JPY") ? 3 : 5;
+  const dp = instrument?.startsWith("XAU") || instrument?.startsWith("XAG") ? 2
+    : instrument?.endsWith("_JPY") ? 3 : 5;
   return fmtNum(n, dp);
 }
 
