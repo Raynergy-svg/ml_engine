@@ -37,14 +37,16 @@ Hard rules (mirror ``rebalance.py``):
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Dict, List, Mapping, Optional
+from typing import Callable, Dict, Iterator, List, Mapping, Optional
 
 import pandas as pd
 
@@ -113,12 +115,31 @@ class EquityMarketCalendar:
 
     @staticmethod
     def _to_utc(now: object) -> pd.Timestamp:
+        """Coerce ``now`` to a UTC :class:`pandas.Timestamp`.
+
+        Tz-AWARE input is converted to UTC. NAIVE input is REFUSED with a
+        :class:`MarketCalendarError`: silently localizing a naive timestamp
+        as UTC was a real correctness bug — an exchange-local (ET) naive
+        wall-clock would be shifted 4-5 hours, so e.g. 09:30 ET (naive)
+        was treated as 09:30 UTC = 04:30/05:30 ET and the calendar could
+        report the regular session OPEN pre-market (or closed mid-session).
+
+        Callers across the equity path pass tz-aware UTC timestamps
+        (see ``rebalance.should_rebalance`` / ``control_loop``), so the
+        contract is: pass a tz-aware timestamp. Fail-closed rather than
+        guess the intended zone.
+        """
         ts = pd.Timestamp(now)
         if ts.tz is None:
-            ts = ts.tz_localize("UTC")
-        else:
-            ts = ts.tz_convert("UTC")
-        return ts
+            raise MarketCalendarError(
+                "naive timestamp rejected: "
+                f"{now!r} has no timezone. Pass a tz-aware timestamp "
+                "(UTC preferred; an exchange-local time must carry "
+                "tz='America/New_York'). Silently assuming UTC for a "
+                "naive exchange-local time shifts the session 4-5 hours "
+                "and can report the market open pre-market."
+            )
+        return ts.tz_convert("UTC")
 
     def is_session_open(self, now: object) -> bool:
         """``True`` iff ``now`` is inside the regular session.
@@ -271,10 +292,51 @@ class HaltRegistry:
     ``until`` (manual resume only) or ``now < until`` (TTL still active).
     Expired TTL entries are evicted by :meth:`is_halted` on read so the
     on-disk state stays small.
+
+    Concurrency: every read-modify-write of the state file
+    (:meth:`register_halt`, :meth:`clear_halt`, and the TTL eviction in
+    :meth:`is_halted`) runs under an exclusive :func:`fcntl.flock` held
+    across the whole load -> mutate -> save critical section via
+    :meth:`_locked`. Without this, two processes that each register a
+    distinct halt could both ``load()`` the same prior snapshot and the
+    second ``save()`` would clobber the first's freshly-registered halt —
+    a silently-lost halt, which is a safety failure. The lock is taken on
+    a sibling ``<state>.lock`` file so it does not interfere with the
+    atomic tmp+rename of the state file itself.
     """
 
     def __init__(self, state_path: Path) -> None:
         self.state_path = Path(state_path)
+
+    # ------------------------------------------------------------------
+    @property
+    def _lock_path(self) -> Path:
+        return self.state_path.with_name(self.state_path.name + ".lock")
+
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        """Hold an exclusive cross-process flock for a RMW section.
+
+        The lock file lives beside the state file and is fsync'd after
+        unlock-able work completes. A separate lock file (not the state
+        file) means the atomic ``os.replace`` of the state file never
+        swaps the inode we hold the lock on.
+        """
+        lock_path = self._lock_path
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        # Open (create) the lock file; keep the fd open for the section.
+        lock_fd = os.open(
+            str(lock_path), os.O_CREAT | os.O_RDWR, 0o644
+        )
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            try:
+                yield
+                os.fsync(lock_fd)
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
 
     # ------------------------------------------------------------------
     def load(self) -> HaltState:
@@ -316,7 +378,6 @@ class HaltRegistry:
         """Record a halt for ``ticker``; overwrites any prior record."""
         if not isinstance(ticker, str) or not ticker:
             raise MarketCalendarError("ticker must be a non-empty string")
-        state = self.load()
         halted_at = EquityMarketCalendar._to_utc(now).isoformat()
         until_iso: Optional[str]
         if until is None:
@@ -329,19 +390,24 @@ class HaltRegistry:
             halted_at=halted_at,
             until=until_iso,
         )
-        state.halts[ticker] = rec
-        self.save(state)
+        # Whole load -> modify -> save under an exclusive flock so a
+        # concurrent writer cannot clobber this freshly-registered halt.
+        with self._locked():
+            state = self.load()
+            state.halts[ticker] = rec
+            self.save(state)
         return rec
 
     def clear_halt(self, ticker: str) -> bool:
         """Remove ``ticker`` from the registry. Returns ``True`` if it was
         present.
         """
-        state = self.load()
-        if ticker not in state.halts:
-            return False
-        del state.halts[ticker]
-        self.save(state)
+        with self._locked():
+            state = self.load()
+            if ticker not in state.halts:
+                return False
+            del state.halts[ticker]
+            self.save(state)
         return True
 
     def is_halted(self, ticker: str, *, now: object) -> bool:
@@ -354,7 +420,7 @@ class HaltRegistry:
             return True
         try:
             until_ts = EquityMarketCalendar._to_utc(rec.until)
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, MarketCalendarError) as exc:
             logger.warning(
                 "halt record for %s has bad until %r: %s — treating halted",
                 ticker,
@@ -364,9 +430,34 @@ class HaltRegistry:
             return True
         now_ts = EquityMarketCalendar._to_utc(now)
         if now_ts >= until_ts:
-            # TTL elapsed: evict and clear.
-            del state.halts[ticker]
-            self.save(state)
+            # TTL elapsed: evict and clear under the lock. Re-load inside
+            # the critical section and re-check the record's TTL so a halt
+            # re-registered by a concurrent writer (possibly with a new
+            # until) is not clobbered by a stale eviction decision.
+            with self._locked():
+                fresh = self.load()
+                cur = fresh.halts.get(ticker)
+                if cur is None:
+                    return False
+                if cur.until is None:
+                    # Re-registered as a manual (no-TTL) halt — keep it.
+                    return True
+                try:
+                    cur_until = EquityMarketCalendar._to_utc(cur.until)
+                except (ValueError, TypeError, MarketCalendarError) as exc:
+                    logger.warning(
+                        "halt record for %s has bad until %r: %s — "
+                        "treating halted",
+                        ticker,
+                        cur.until,
+                        exc,
+                    )
+                    return True
+                if now_ts < cur_until:
+                    # Re-registered with a later TTL — still active.
+                    return True
+                del fresh.halts[ticker]
+                self.save(fresh)
             return False
         return True
 
