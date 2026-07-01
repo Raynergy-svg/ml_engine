@@ -35,7 +35,31 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 import pandas as pd
 
+from src.equity import fx_rates
 from src.equity.decision_gate import _global_halt
+from src.equity.trend_risk_gates import (
+    DEFAULT_BIAS_MIN_INSTRUMENTS,
+    DEFAULT_BIAS_SHARE_THRESHOLD,
+    DEFAULT_BREAKEVEN_TRIGGER_R,
+    DEFAULT_MAX_BUCKET_RISK_R,
+    DEFAULT_PYRAMID_CUM_RISK_R_CAP,
+    DEFAULT_PYRAMID_MAX_LAYERS,
+    DEFAULT_RISK_PCT,
+    DEFAULT_TRAIL_START_R,
+    accumulate_bucket_risk,
+    bias_detector,
+    bucket_cap_gate,
+    buckets_over_cap,
+    clamp_risk_pct,
+    compute_bucket_risk,
+    evaluate_winner_stop,
+    leverage_cap_scale,
+    load_risk_state,
+    one_position_gate,
+    quote_to_home_rate,
+    risk_normalized_units,
+    save_risk_state,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from src.scanner.config import ScannerConfig
@@ -133,35 +157,10 @@ def trend_targets(close_panel: pd.DataFrame, *, sma_window: int = DEFAULT_SMA) -
     return {inst: float(v) for inst, v in last.items()}
 
 
-def base_to_home_rate(
-    instrument: str,
-    last_prices: Dict[str, float],
-    *,
-    home_ccy: str = "USD",
-) -> Optional[float]:
-    """USD (home-ccy) value of 1 unit of the instrument's BASE currency.
-
-    OANDA units are denominated in the BASE currency (the left side of XXX_YYY),
-    so the home-currency exposure of ``units`` is ``units * base_to_home_rate`` —
-    NOT ``units * price`` (price is in the QUOTE currency). Examples (home=USD):
-      USD_JPY -> base USD            -> 1.0
-      EUR_USD -> base EUR            -> EUR_USD price (~1.10)
-      GBP_JPY -> base GBP            -> GBP_USD price (~1.27, via the cross leg)
-      USD_CAD -> base USD            -> 1.0
-    Resolves the base->home rate from a direct ``BASE_HOME`` price, else an inverse
-    ``HOME_BASE`` price. Returns ``None`` if it cannot be derived (caller refuses to
-    size rather than fabricate units).
-    """
-    base = str(instrument).split("_")[0]
-    if base == home_ccy:
-        return 1.0
-    direct = last_prices.get(f"{base}_{home_ccy}")        # e.g. EUR_USD
-    if direct and direct > 0:
-        return float(direct)
-    inverse = last_prices.get(f"{home_ccy}_{base}")       # e.g. USD_CAD for base CAD
-    if inverse and inverse > 0:
-        return 1.0 / float(inverse)
-    return None
+# Re-exported for backward compat (existing tests/callers import this from
+# oanda_trend) — actual implementation lives in fx_rates to avoid a circular
+# import with trend_risk_gates (which also needs it).
+base_to_home_rate = fx_rates.base_to_home_rate
 
 
 def target_units(
@@ -370,6 +369,7 @@ def repair_missing_trade_brackets(
     enable_tp: bool = DEFAULT_ENABLE_TP,
     atr_sl_mult: float = DEFAULT_ATR_SL_MULT,
     atr_tp_mult: float = DEFAULT_ATR_TP_MULT,
+    trades: Optional[List[dict]] = None,
 ) -> int:
     """Attach missing required brackets to existing open long trades.
 
@@ -378,8 +378,13 @@ def repair_missing_trade_brackets(
     clamped so ``SL < current < TP`` — a late repair can never post a leg on the
     wrong side of the market and fire immediately. If a required bracket is missing
     but cannot be computed safely, the caller should fail the cycle closed.
+
+    ``trades`` lets the caller pass an already-fetched OPEN-trades list (the risk
+    gate needs the same snapshot) to avoid a duplicate API round-trip; when
+    omitted this fetches it itself (unchanged behavior for existing callers).
     """
-    trades = (client.get_trades(state="OPEN") or {}).get("trades", []) or []
+    if trades is None:
+        trades = (client.get_trades(state="OPEN") or {}).get("trades", []) or []
     repaired = 0
     for trade in trades:
         inst = trade.get("instrument")
@@ -450,6 +455,14 @@ def run_oanda_trend_cycle(
     atr_period: int = DEFAULT_ATR_PERIOD,
     max_margin_util: float = DEFAULT_MAX_MARGIN_UTIL,
     margin_rate: float = DEFAULT_MARGIN_RATE,
+    risk_pct: float = DEFAULT_RISK_PCT,
+    max_bucket_risk_r: float = DEFAULT_MAX_BUCKET_RISK_R,
+    bias_share_threshold: float = DEFAULT_BIAS_SHARE_THRESHOLD,
+    bias_min_instruments: int = DEFAULT_BIAS_MIN_INSTRUMENTS,
+    breakeven_trigger_r: float = DEFAULT_BREAKEVEN_TRIGGER_R,
+    trail_start_r: float = DEFAULT_TRAIL_START_R,
+    pyramid_max_layers: int = DEFAULT_PYRAMID_MAX_LAYERS,
+    pyramid_cum_risk_r_cap: float = DEFAULT_PYRAMID_CUM_RISK_R_CAP,
     dry_run: bool = False,
     now: Optional[datetime] = None,
 ) -> OandaTrendResult:
@@ -457,8 +470,13 @@ def run_oanda_trend_cycle(
 
     Respects the global halt (REFUSE) and asserts practice-only. With ``dry_run``
     it computes + logs targets without placing orders. Otherwise it reads NAV +
-    open positions and sizes each held instrument to ``gross_leverage`` x NAV
-    (spread across the on-set) before placing the delta orders.
+    open positions and sizes each "on" instrument via RISK-NORMALIZED sizing
+    (``risk_pct`` of NAV / ATR-based stop distance — operator-directed rebuild,
+    2026-07-01, replacing the old leverage-based ``target_units``). ``gross_leverage``
+    is now a CEILING on total exposure only (``leverage_cap_scale``), not the sizing
+    basis. A RISK GATE (one-position-per-instrument, correlation-bucket caps,
+    pyramid rules) runs before every size-increase order; decreases/closes are
+    never blocked (risk-reducing orders always pass).
     """
     gross_leverage = clamp_leverage(gross_leverage)
     assert getattr(config, "oanda_environment", "practice") == "practice", \
@@ -509,23 +527,47 @@ def run_oanda_trend_cycle(
         return OandaTrendResult(False, "drawdown_halt", targets, 0)
     last_px = {inst: panel[inst].dropna().iloc[-1] for inst in panel.columns
                if not panel[inst].dropna().empty}
-    want = target_units(targets, nav, last_px, gross_leverage=gross_leverage)
-    # Visibility (verifier rec): an on-signal instrument sized 0 means its base->home
-    # rate was underivable (USD leg absent from the traded panel) — surface it so a
-    # silently-untraded cross can't hide as a no-op.
+    risk_pct = clamp_risk_pct(risk_pct)
+    risk_unit_home = nav * risk_pct
+
+    # RULE 3 — risk-normalized sizing: units = (nav*risk_pct) / (sl_mult*ATR *
+    # quote->home rate). Requires a real ATR-based stop distance to be
+    # meaningful; an instrument with SL disabled or no ATR is refused (0), not
+    # fabricated, since sizing "risk" with no attached stop is undefined.
+    want: Dict[str, int] = {}
+    for inst, w in targets.items():
+        if w <= 0 or not enable_sl:
+            want[inst] = 0
+            continue
+        sl_dist, _tp_dist_unused = bracket_distances(
+            atr.get(inst), sl_mult=atr_sl_mult, tp_mult=atr_tp_mult,
+            enable_sl=True, enable_tp=False)
+        want[inst] = risk_normalized_units(
+            instrument=inst, r_distance_quote=sl_dist, nav=nav, risk_pct=risk_pct,
+            last_prices=last_px)
+    # Visibility (verifier rec): an on-signal instrument sized 0 means its ATR or
+    # quote->home rate was underivable — surface it so a silently-untraded
+    # instrument can't hide as a no-op.
     silently_flat = [i for i, w in targets.items() if w > 0 and want.get(i, 0) == 0]
     if silently_flat:
-        logger.warning("on-signal but sized 0 (no base->home rate, add its USD leg): %s",
-                       silently_flat)
+        logger.warning("on-signal but sized 0 (no ATR or quote->home rate, refuse "
+                       "rather than fabricate): %s", silently_flat)
 
-    # MARGIN/LIQUIDATION RAIL: clamp the book so projected margin <= max_margin_util*NAV,
-    # regardless of the leverage dial. factor<1 => the guard refused the excess exposure.
+    # RULE 3 reconciliation — gross_leverage is now a CEILING on total exposure
+    # only (never the sizing basis): scale the whole risk-sized book down (never
+    # up) if it would exceed gross_leverage*NAV.
+    want, lev_factor = leverage_cap_scale(want, last_px, nav, gross_leverage=gross_leverage)
+    if lev_factor < 1.0:
+        logger.warning("LEVERAGE CAP fired — risk-sized book exceeded %.1fx NAV, "
+                       "scaled to fit (scale=%.3f)", gross_leverage, lev_factor)
+
+    # MARGIN/LIQUIDATION RAIL: innermost hard rail, clamp so projected margin <=
+    # max_margin_util*NAV regardless of the leverage dial or risk sizing.
     want, margin_factor = margin_scale(want, last_px, nav,
                                        max_margin_util=max_margin_util, margin_rate=margin_rate)
     if margin_factor < 1.0:
         logger.warning("MARGIN GUARD fired — clamped book to %.0f%% NAV margin cap "
-                       "(scale=%.3f; leverage dial would have over-exposed)",
-                       max_margin_util * 100, margin_factor)
+                       "(scale=%.3f)", max_margin_util * 100, margin_factor)
 
     pos_resp = client.get_open_positions() or {}
     current: Dict[str, int] = {}
@@ -536,6 +578,15 @@ def run_oanda_trend_cycle(
         if inst:
             current[inst] = net
 
+    # Single OPEN-trades snapshot shared by the bracket repair, the RISK GATE,
+    # and winner management — one API round-trip, one consistent view per cycle.
+    open_trades = (client.get_trades(state="OPEN") or {}).get("trades", []) or []
+    trades_by_instrument: Dict[str, List[dict]] = {}
+    for t in open_trades:
+        ti = t.get("instrument")
+        if ti:
+            trades_by_instrument.setdefault(ti, []).append(t)
+
     try:
         repair_missing_trade_brackets(
             client,
@@ -545,16 +596,119 @@ def run_oanda_trend_cycle(
             enable_tp=enable_tp,
             atr_sl_mult=atr_sl_mult,
             atr_tp_mult=atr_tp_mult,
+            trades=open_trades,
         )
     except Exception as exc:
         logger.error("OANDA trend cycle REFUSED — missing-bracket repair failed: %s", exc)
         return OandaTrendResult(False, "bracket_repair_failed", targets, 0)
+
+    # r_distance PER INSTRUMENT off current ATR — used (a) as the fallback for a
+    # trade not yet in persisted risk_state, and (b) for sizing a brand-new
+    # candidate order this cycle (which has no trade_id / entry ATR yet).
+    r_dist_by_instrument = {i: (bracket_distances(atr.get(i), sl_mult=atr_sl_mult,
+                                                  enable_sl=True, enable_tp=False)[0] or 0.0)
+                            for i in set(list(targets.keys()) + list(trades_by_instrument.keys()))}
+
+    # Load persisted per-trade risk state BEFORE computing bucket risk (rule 2
+    # fix, verifier 2026-07-01): bucket risk must be measured off each OPEN
+    # trade's ENTRY-anchored R (rule 5's risk_state), not current ATR — an ATR
+    # contraction since entry would otherwise make the gate think less risk is
+    # outstanding than was actually taken, silently under-counting bucket usage.
+    risk_state_path = root / "trained_data" / "oanda" / "risk_state.json"
+    risk_state = load_risk_state(risk_state_path)
+    risk_state_dirty = False
+    for trade in open_trades:
+        trade_id = str(trade.get("id") or "")
+        inst = trade.get("instrument")
+        if not trade_id or not inst or trade_id in risk_state:
+            continue
+        entry_px = _order_price(trade)
+        r_dist = r_dist_by_instrument.get(inst) or 0.0
+        if entry_px is None or r_dist <= 0:
+            continue  # can't establish R yet (first sight, no ATR) — try again next cycle
+        risk_state[trade_id] = {"instrument": inst, "entry_price": entry_px, "r_distance": r_dist}
+        risk_state_dirty = True
+    r_distance_by_trade_id = {tid: st["r_distance"] for tid, st in risk_state.items()
+                              if st.get("r_distance")}
+
+    # RULE 2 + RULE 4 — bucket risk snapshot (BEFORE this cycle's new orders,
+    # entry-anchored) and the (log-only) bias detector.
+    bucket_risk_home, bucket_insts = compute_bucket_risk(
+        open_trades, r_distance_by_trade_id, last_px,
+        r_distance_fallback_by_instrument=r_dist_by_instrument)
+    for warning in bias_detector(bucket_risk_home, bucket_insts,
+                                 share_threshold=bias_share_threshold,
+                                 min_instruments=bias_min_instruments):
+        logger.warning(warning)
+
+    # RULE 5 — winner management: move stop to breakeven after +1R, then trail,
+    # for every open long trade (uses the SAME risk_state loaded above).
+    for trade in open_trades:
+        trade_id = str(trade.get("id") or "")
+        inst = trade.get("instrument")
+        if not trade_id or not inst:
+            continue
+        st = risk_state.get(trade_id)
+        current_px = last_px.get(inst)
+        if st is None or current_px is None:
+            continue
+        current_sl = _order_price(trade.get("stopLossOrder"))
+        new_sl = evaluate_winner_stop(
+            entry_price=st["entry_price"], r_distance=st["r_distance"],
+            current_price=float(current_px), current_sl=current_sl,
+            breakeven_trigger_r=breakeven_trigger_r, trail_start_r=trail_start_r)
+        if new_sl is not None:
+            client.set_trade_dependent_orders(trade_id=trade_id, instrument=inst,
+                                              stop_loss_price=new_sl)
+            logger.info("WINNER MANAGEMENT: %s trade=%s stop -> %.5f (entry=%.5f r=%.5f)",
+                        inst, trade_id, new_sl, st["entry_price"], st["r_distance"])
+    if risk_state_dirty:
+        save_risk_state(risk_state_path, risk_state)
 
     placed = 0
     for inst in instruments:
         delta = rebalance_delta(want.get(inst, 0), current.get(inst, 0))
         if delta == 0:
             continue
+        existing_for_inst = trades_by_instrument.get(inst, [])
+        if delta > 0:
+            # RULES 1 + 6 — one-position-per-instrument, pyramid as the only
+            # authorized exception (green-only, smaller-than-last, <=1R cumulative).
+            sl_dist_gate = r_dist_by_instrument.get(inst) or 0.0
+            q2h = quote_to_home_rate(inst, last_px)
+            if q2h is None or q2h <= 0:
+                # Verifier finding (2026-07-01): an unresolvable rate must REFUSE the
+                # add, not fall back to 0.0 — passing quote_to_home=0.0 zeroes every
+                # risk_home computation inside pyramid_gate, silently disabling the
+                # cumulative-risk cap instead of blocking (same no-fabrication
+                # discipline as risk_normalized_units / bucket_cap_gate).
+                logger.warning("RISK GATE BLOCKED %s units=%+d — no quote->home rate "
+                               "(refuse, no fabrication)", inst, delta)
+                continue
+            allow, reason = one_position_gate(
+                existing_trades_for_instrument=existing_for_inst, candidate_units=delta,
+                r_distance_quote=sl_dist_gate, risk_unit_home=risk_unit_home,
+                quote_to_home=q2h, pyramid_max_layers=pyramid_max_layers,
+                pyramid_cum_risk_r_cap=pyramid_cum_risk_r_cap)
+            if not allow:
+                logger.warning("RISK GATE BLOCKED %s units=%+d — %s", inst, delta, reason)
+                continue
+            # RULE 2 — correlation-bucket cap, checked against a RUNNING total
+            # (fix, verifier 2026-07-01): bucket_risk_home is mutated in-loop via
+            # accumulate_bucket_risk() immediately below on approval, so the Nth
+            # correlated instrument approved THIS cycle is measured against the
+            # (N-1) prior approvals from this same cycle, not a stale pre-cycle
+            # snapshot — closes the same-cycle bypass where e.g. 3 yen-cross
+            # longs newly flipping on together could each individually clear a
+            # 2R cap while jointly landing at ~3R.
+            allow, reason = bucket_cap_gate(
+                instrument=inst, candidate_units=delta, r_distance_quote=sl_dist_gate,
+                last_prices=last_px, bucket_risk_home=bucket_risk_home,
+                risk_unit_home=risk_unit_home, max_bucket_risk_r=max_bucket_risk_r)
+            if not allow:
+                logger.warning("RISK GATE BLOCKED %s units=%+d — %s", inst, delta, reason)
+                continue
+            accumulate_bucket_risk(bucket_risk_home, inst, abs(delta) * sl_dist_gate * q2h)
         sl_dist = tp_dist = None
         if delta > 0:   # opening/increasing a long -> attach protective brackets
             # Size brackets as DISTANCES (sl_mult*ATR / tp_mult*ATR) and attach via
@@ -577,4 +731,12 @@ def run_oanda_trend_cycle(
         logger.info("OANDA PAPER order: %s units=%+d (target=%d current=%d) SLdist=%s TPdist=%s",
                     inst, delta, want.get(inst, 0), current.get(inst, 0),
                     f"{sl_dist:.{_dec}f}" if sl_dist else "-", f"{tp_dist:.{_dec}f}" if tp_dist else "-")
+
+    # Honest end-of-cycle check (fix, verifier 2026-07-01): there is NO automatic
+    # trim/reduce path for an over-cap bucket — a prior comment falsely claimed
+    # this "self-corrects next cycle". Log it loudly instead so it's visible and
+    # actionable, rather than silently persisting until trades close naturally.
+    for warning in buckets_over_cap(bucket_risk_home, risk_unit_home=risk_unit_home,
+                                    max_bucket_risk_r=max_bucket_risk_r):
+        logger.error(warning)
     return OandaTrendResult(True, "executed", targets, placed)

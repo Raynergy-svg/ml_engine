@@ -33,6 +33,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 logger = logging.getLogger("run_oanda_trend")
+_SINGLETON_LOCK_FH = None  # holds the singleton flock for this process's lifetime
 
 # Curated liquid trend universe — intersected with what the account actually
 # enables (FX majors + metals + common index/commodity CFDs). Trend runs on
@@ -92,6 +93,36 @@ def _override_mtime() -> float:
         return 0.0
 
 
+def _singleton_lock_path() -> Path:
+    return REPO_ROOT / "trained_data" / "axiom" / "trend_loop.singleton.lock"
+
+
+def _acquire_singleton_lock(lock_path: Path):
+    """Exclusive, non-blocking process lock (verifier finding, 2026-07-01): two
+    concurrent ``run_oanda_trend`` processes each read a position snapshot, each
+    independently pass the risk gate against that (now-stale) snapshot, and each
+    place an order — reintroducing duplicate tickets via a process-concurrency
+    route instead of the original sizing-bug route (matches this project's prior
+    "two-writer collision" incidents). Returns an open file object the caller
+    MUST keep referenced for the process lifetime (closing/GC'ing it releases
+    the lock) — a live process holding it makes this call return ``None``, and
+    the OS releases the flock automatically on process exit or crash, so there
+    is no stale-lock-file cleanup problem.
+    """
+    import fcntl
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(lock_path, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    import os as _os2
+    fh.write(str(_os2.getpid()))
+    fh.flush()
+    return fh
+
+
 def _sleep_until_next_cycle(seconds: float, *, poll_s: float = 5.0) -> None:
     """Sleep for the cadence, but wake early when AXIOM controls change."""
     import time
@@ -128,6 +159,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--max-margin-util", type=float, default=None,
                     help="margin rail: cap projected margin at this fraction of NAV "
                          "(env OANDA_MAX_MARGIN_UTIL; default 0.50)")
+    ap.add_argument("--risk-pct", type=float, default=None,
+                    help="RISK GATE rule 3: risk this fraction of NAV per new position, "
+                         "sized off the ATR stop distance (env OANDA_RISK_PCT; default 0.01, "
+                         "clamped to [0.005, 0.03]). gross_leverage is now a CEILING only.")
+    ap.add_argument("--max-bucket-risk-r", type=float, default=None,
+                    help="RISK GATE rule 2: cap total risk per shared-currency bucket "
+                         "(e.g. all yen-cross longs) at this many R-units "
+                         "(env OANDA_MAX_BUCKET_RISK_R; default 2.0)")
     ap.add_argument("--loop", type=float, default=0.0, help="seconds between cycles (>0 = persist)")
     ap.add_argument("--max-cycles", type=int, default=0)
     args = ap.parse_args(argv)
@@ -137,8 +176,21 @@ def main(argv: Optional[list[str]] = None) -> int:
         DEFAULT_ATR_SL_MULT, DEFAULT_GROSS_LEVERAGE, DEFAULT_MAX_MARGIN_UTIL,
         run_oanda_trend_cycle,
     )
+    from src.equity.trend_risk_gates import DEFAULT_MAX_BUCKET_RISK_R, DEFAULT_RISK_PCT
     config = ScannerConfig()
     assert config.oanda_environment == "practice", "HARD LINE: env must stay practice"
+
+    # SINGLETON GUARD (verifier finding, 2026-07-01): refuse to start a second
+    # concurrent order-placing process — kept referenced for main()'s whole
+    # lifetime (module-global so it survives this function's local scope).
+    global _SINGLETON_LOCK_FH
+    _SINGLETON_LOCK_FH = _acquire_singleton_lock(_singleton_lock_path())
+    if _SINGLETON_LOCK_FH is None:
+        logger.error("another run_oanda_trend process already holds the singleton "
+                     "lock (%s) — refusing to start", _singleton_lock_path())
+        print(f"OANDA_BLOCKER: singleton lock held — another run_oanda_trend "
+              f"process is already running ({_singleton_lock_path()})")
+        return 3
 
     # Dials: CLI > env > default. Leverage clamped in the cycle; SL/TP + margin guard too.
     import os as _os
@@ -155,6 +207,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     gross_leverage = _f(args.gross_leverage, "OANDA_GROSS_LEVERAGE", DEFAULT_GROSS_LEVERAGE)
     atr_sl_mult = _f(args.atr_sl_mult, "OANDA_ATR_SL_MULT", DEFAULT_ATR_SL_MULT)
     max_margin_util = _f(args.max_margin_util, "OANDA_MAX_MARGIN_UTIL", DEFAULT_MAX_MARGIN_UTIL)
+    risk_pct = _f(args.risk_pct, "OANDA_RISK_PCT", DEFAULT_RISK_PCT)
+    max_bucket_risk_r = _f(args.max_bucket_risk_r, "OANDA_MAX_BUCKET_RISK_R", DEFAULT_MAX_BUCKET_RISK_R)
     enable_sl = not args.no_sl
     enable_tp = not bool(args.no_tp or _os.getenv("OANDA_DISABLE_TP"))
     _effective_lev = _read_control_leverage(gross_leverage)
@@ -194,7 +248,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 project_root=REPO_ROOT, granularity=args.granularity,
                 sma_window=args.sma, gross_leverage=lev,
                 enable_sl=enable_sl, enable_tp=enable_tp, atr_sl_mult=atr_sl_mult,
-                max_margin_util=max_margin_util, dry_run=args.dry_run,
+                max_margin_util=max_margin_util, risk_pct=risk_pct,
+                max_bucket_risk_r=max_bucket_risk_r, dry_run=args.dry_run,
             )
         except Exception as exc:
             print(f"OANDA_BLOCKER: cycle failed ({type(exc).__name__}: {exc}) — "
