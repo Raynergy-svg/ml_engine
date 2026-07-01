@@ -47,7 +47,19 @@ export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => voi
     if (!res.ok) window.alert(`Halt request denied: ${String(res.data.detail ?? res.data.error ?? res.status)}`);
   }
 
+  // ARM lockdown (2026-07-01): the server REFUSES flatten/leverage-change/
+  // start_loop unless armed (see /api/control/arm in the Control tab) — this is
+  // a client-side UX shortcut so a disarmed click gets a clear message instead
+  // of a raw 403; the server enforces this regardless of what this check does.
+  const armed = controlState?.armed === true;
+  function requireArmed(action: string): boolean {
+    if (armed) return true;
+    window.alert(`${action} refused — controls are DISARMED. Arm them first in the Control tab.`);
+    return false;
+  }
+
   async function doFlatten() {
+    if (!requireArmed("Flatten")) return;
     // FLATTEN closes every open position — a real, hard-to-reverse action. A single
     // confirm() is not enough for this one: require the operator to type the word.
     const typed = window.prompt(
@@ -63,6 +75,7 @@ export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => voi
 
   async function setLeverage(x: number) {
     setOpenMenu(null);
+    if (!requireArmed("Leverage change")) return;
     if (!window.confirm(`Set gross leverage to ${x}x?`)) return;
     const res = await control("set_gross_leverage", { gross_leverage: x });
     if (!res.ok) window.alert(`Leverage change denied: ${String(res.data.detail ?? res.data.error ?? res.status)}`);
@@ -71,6 +84,7 @@ export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => voi
   async function toggleAutomation() {
     setOpenMenu(null);
     const turnOn = !automationOn;
+    if (turnOn && !requireArmed("Start loop")) return;
     if (!window.confirm(`${turnOn ? "Start" : "Stop"} both automation loops (trend + Tier 7)?`)) return;
     const action = turnOn ? "start_loop" : "stop_loop";
     await control(action, { loop: "trend" });

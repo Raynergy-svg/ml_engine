@@ -93,6 +93,7 @@ export function ControlPanel() {
   const leverageCap = controlState?.leverage_cap ?? 15;
   const persistedLeverage = typeof controlState?.gross_leverage === "number" ? controlState.gross_leverage : null;
   const lev = pendingLev ?? persistedLeverage ?? 3;
+  const armed = controlState?.armed === true;
 
   if (disabled) {
     return (
@@ -112,6 +113,28 @@ export function ControlPanel() {
         <SectionTitle right={<Badge color="#f5b14c" dot>WRITE PATH · practice · audited</Badge>}>
           Operator Control · bounded actions
         </SectionTitle>
+
+        {/* ARM lockdown (2026-07-01): the server REFUSES flatten / leverage-change /
+            start_loop / unhalt as a structural no-op unless armed — this banner
+            reflects that, it doesn't itself enforce anything. Default DISARMED. */}
+        <div className="mb-3 flex items-center justify-between rounded-md border p-2.5 hairline"
+             style={{ borderColor: armed ? "#ff4d6d55" : undefined }}>
+          <div className="flex items-center gap-2 font-mono text-[11px]">
+            <StatusDot color={armed ? "#ff4d6d" : "#5a6677"} pulse={armed} />
+            <span className={armed ? "text-warn font-semibold" : "text-dim"}>
+              {armed ? "ARMED — live-order actions enabled" : "DISARMED — flatten/leverage/start/unhalt are no-ops"}
+            </span>
+            {armed && controlState?.arm_expires_at && (
+              <span className="text-faint">· expires {shortTime(controlState.arm_expires_at)}</span>
+            )}
+          </div>
+          {armed ? (
+            <ConfirmButton label="DISARM" color="#5a6677" onRun={() => runControl("disarm")} />
+          ) : (
+            <ConfirmButton label="ARM" color="#ff4d6d" onRun={() => runControl("arm")} />
+          )}
+        </div>
+
         <div className="mb-3 flex flex-wrap items-center gap-4 px-1 font-mono text-[11px]">
           <span className="flex items-center gap-1.5">
             <StatusDot color={halted === true ? "#ff4d6d" : "#2bd17e"} />
@@ -138,13 +161,13 @@ export function ControlPanel() {
           <div className="flex items-center justify-between rounded-md border p-3 hairline">
             <div><div className="font-mono text-[12px] text-text">Unhalt trading</div>
               <div className="font-mono text-[10px] text-faint">gated: drawdown &lt; 20% · gates GREEN · practice</div></div>
-            <ConfirmButton label="UNHALT" color="#2bd17e" onRun={() => runControl("unhalt")} disabled={halted === false} />
+            <ConfirmButton label="UNHALT" color="#2bd17e" onRun={() => runControl("unhalt")} disabled={halted === false || !armed} />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3 hairline">
             <div><div className="font-mono text-[12px] text-text">Trend loop</div>
               <div className="font-mono text-[10px] text-faint">start / stop the OANDA trend lane</div></div>
             <span className="flex gap-1.5">
-              <ConfirmButton label="START" color="#2bd17e" onRun={() => runControl("start_loop", { loop: "trend" })} disabled={laneRunning} />
+              <ConfirmButton label="START" color="#2bd17e" onRun={() => runControl("start_loop", { loop: "trend" })} disabled={laneRunning || !armed} />
               <ConfirmButton label="STOP" color="#ff4d6d" onRun={() => runControl("stop_loop", { loop: "trend" })} disabled={!laneRunning} />
             </span>
           </div>
@@ -208,7 +231,7 @@ export function ControlPanel() {
               <input type="range" min={0} max={leverageCap} step={0.5} value={lev}
                 onChange={(e) => setPendingLev(parseFloat(e.target.value))} className="w-32" />
               <span className="w-10 font-mono text-[13px] font-semibold text-cyan tnum">{lev.toFixed(1)}×</span>
-              <ConfirmButton label="SET" color="#22d3ee" onRun={() => runControl("set_gross_leverage", { gross_leverage: lev })} />
+              <ConfirmButton label="SET" color="#22d3ee" onRun={() => runControl("set_gross_leverage", { gross_leverage: lev })} disabled={!armed} />
             </span>
           </div>
         </div>

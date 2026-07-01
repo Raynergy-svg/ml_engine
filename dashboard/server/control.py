@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from dashboard.server import control_safety as cs
@@ -64,6 +64,22 @@ class ActionBody(BaseModel):
 def _confirm(action: str, header_val: Optional[str]) -> None:
     if header_val != action:
         raise HTTPException(status_code=403, detail="missing/incorrect X-AXIOM-Confirm header")
+
+
+def _actor(request: Request, x_axiom_actor: Optional[str]) -> str:
+    """Attribution (investigation finding, 2026-07-01: previously NO actor field
+    at all). Prefers an explicit ``X-AXIOM-Actor`` header (the frontend can send
+    a stable per-browser-session id); falls back to the client IP the ASGI
+    server sees; "unknown" only if neither is available (never raises —
+    attribution is best-effort, must never itself block a control action)."""
+    if x_axiom_actor:
+        return str(x_axiom_actor)[:128]  # bounded length — this goes straight to disk
+    try:
+        if request.client and request.client.host:
+            return f"ip:{request.client.host}"
+    except Exception:  # noqa: BLE001 — attribution must never crash the request
+        pass
+    return "unknown"
 
 
 def _loop_pids(loop: str) -> list[int]:
@@ -172,6 +188,7 @@ def _state() -> Dict[str, Any]:
     for loop in sorted(LOOP_CMDS):
         pids = _loop_pids(loop)
         loops[loop] = {"running": bool(pids), "pids": pids}
+    arm_state = cs.read_arm_state()
     return {
         "ok": True,
         "environment": cs.assert_practice(),
@@ -180,17 +197,21 @@ def _state() -> Dict[str, Any]:
         "override_updated_at": overrides.get("_updated_at"),
         "leverage_cap": cs.LEVERAGE_CAP,
         "loops": loops,
+        "armed": cs.is_armed(arm_state),
+        "arm_expires_at": arm_state.get("expires_at"),
+        "armed_by": arm_state.get("actor"),
     }
 
 
-def _run(action: str, params: Dict[str, Any]):
+def _run(action: str, params: Dict[str, Any], *, actor: str):
     """Guard → audit → effect. Denials are audited and surfaced as 403."""
     try:
         normalized = cs.enforce(action, params)
         if action == "unhalt":
             normalized["eligibility"] = cs.assert_unhalt_eligible()  # extra gate; raises if ineligible
     except cs.ControlDenied as exc:
-        cs.audit({"action": action, "params": params, "allowed": False, "reason": str(exc), "result": "denied"})
+        cs.audit({"action": action, "params": params, "allowed": False, "reason": str(exc),
+                  "result": "denied"}, actor=actor)
         raise HTTPException(status_code=403, detail=str(exc))
 
     # --- effects (only reached after ALL immutables + eligibility passed) ---
@@ -227,18 +248,26 @@ def _run(action: str, params: Dict[str, Any]):
             result = _stop_loop(normalized["loop"])
         elif action == "flatten":
             result = _flatten_all()
+        elif action == "arm":
+            state = cs.set_arm_state(True, actor)
+            result = {"result": "armed", "expires_at": state.get("expires_at")}
+        elif action == "disarm":
+            cs.set_arm_state(False, actor)
+            result = {"result": "disarmed"}
         else:  # unreachable — enforce() allowlist guarantees one of the above
             raise HTTPException(status_code=500, detail="unhandled action")
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 — guards passed but the effect failed
         cs.audit({"action": action, "params": normalized, "allowed": True,
-                  "reason": "guards passed", "result": "effect_error", "error": repr(exc)})
+                  "reason": "guards passed", "result": "effect_error", "error": repr(exc)},
+                 actor=actor)
         logger.error("AXIOM CONTROL effect FAILED: %s -> %r", action, exc)
         raise HTTPException(status_code=500, detail=f"control effect failed: {type(exc).__name__}")
 
-    cs.audit({"action": action, "params": normalized, "allowed": True, "reason": "guards passed", **result})
-    logger.warning("AXIOM CONTROL executed: %s -> %s", action, result.get("result"))
+    cs.audit({"action": action, "params": normalized, "allowed": True, "reason": "guards passed",
+             **result}, actor=actor)
+    logger.warning("AXIOM CONTROL executed: %s -> %s (actor=%s)", action, result.get("result"), actor)
     return {"ok": True, "action": action, **result, "state": _state()}
 
 
@@ -266,36 +295,68 @@ def audit_log(limit: int = 50):
 
 
 @router.post("/halt")
-def halt(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
+def halt(request: Request, body: Optional[ActionBody] = None, *,
+         x_axiom_confirm: Optional[str] = Header(default=None),
+         x_axiom_actor: Optional[str] = Header(default=None)):
     _confirm("halt", x_axiom_confirm)
-    return _run("halt", body.params if body else {})
+    return _run("halt", body.params if body else {}, actor=_actor(request, x_axiom_actor))
 
 
 @router.post("/unhalt")
-def unhalt(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
+def unhalt(request: Request, body: Optional[ActionBody] = None, *,
+           x_axiom_confirm: Optional[str] = Header(default=None),
+           x_axiom_actor: Optional[str] = Header(default=None)):
     _confirm("unhalt", x_axiom_confirm)
-    return _run("unhalt", body.params if body else {})
+    return _run("unhalt", body.params if body else {}, actor=_actor(request, x_axiom_actor))
 
 
 @router.post("/set_gross_leverage")
-def set_gross_leverage(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
+def set_gross_leverage(request: Request, body: Optional[ActionBody] = None, *,
+                       x_axiom_confirm: Optional[str] = Header(default=None),
+                       x_axiom_actor: Optional[str] = Header(default=None)):
     _confirm("set_gross_leverage", x_axiom_confirm)
-    return _run("set_gross_leverage", body.params if body else {})
+    return _run("set_gross_leverage", body.params if body else {}, actor=_actor(request, x_axiom_actor))
 
 
 @router.post("/start_loop")
-def start_loop(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
+def start_loop(request: Request, body: Optional[ActionBody] = None, *,
+               x_axiom_confirm: Optional[str] = Header(default=None),
+               x_axiom_actor: Optional[str] = Header(default=None)):
     _confirm("start_loop", x_axiom_confirm)
-    return _run("start_loop", body.params if body else {})
+    return _run("start_loop", body.params if body else {}, actor=_actor(request, x_axiom_actor))
 
 
 @router.post("/stop_loop")
-def stop_loop(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
+def stop_loop(request: Request, body: Optional[ActionBody] = None, *,
+              x_axiom_confirm: Optional[str] = Header(default=None),
+              x_axiom_actor: Optional[str] = Header(default=None)):
     _confirm("stop_loop", x_axiom_confirm)
-    return _run("stop_loop", body.params if body else {})
+    return _run("stop_loop", body.params if body else {}, actor=_actor(request, x_axiom_actor))
 
 
 @router.post("/flatten")
-def flatten(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
+def flatten(request: Request, body: Optional[ActionBody] = None, *,
+            x_axiom_confirm: Optional[str] = Header(default=None),
+            x_axiom_actor: Optional[str] = Header(default=None)):
     _confirm("flatten", x_axiom_confirm)
-    return _run("flatten", body.params if body else {})
+    return _run("flatten", body.params if body else {}, actor=_actor(request, x_axiom_actor))
+
+
+@router.post("/arm")
+def arm(request: Request, body: Optional[ActionBody] = None, *,
+        x_axiom_confirm: Optional[str] = Header(default=None),
+        x_axiom_actor: Optional[str] = Header(default=None)):
+    """Deliberately ARM controls (investigation finding, 2026-07-01): flatten,
+    set_gross_leverage, start_loop, and unhalt are refused as structural no-ops
+    until this is called — arming is never automatic and always expires
+    (see control_safety.ARM_TTL_SECONDS)."""
+    _confirm("arm", x_axiom_confirm)
+    return _run("arm", body.params if body else {}, actor=_actor(request, x_axiom_actor))
+
+
+@router.post("/disarm")
+def disarm(request: Request, body: Optional[ActionBody] = None, *,
+           x_axiom_confirm: Optional[str] = Header(default=None),
+           x_axiom_actor: Optional[str] = Header(default=None)):
+    _confirm("disarm", x_axiom_confirm)
+    return _run("disarm", body.params if body else {}, actor=_actor(request, x_axiom_actor))

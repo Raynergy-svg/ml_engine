@@ -24,11 +24,29 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 AUDIT_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_audit.jsonl"
 # Control-override file the OANDA trend loop and scanner execution path read.
 OVERRIDES_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_overrides.json"
+# ARM state: default DISARMED (file absent -> disarmed). A build/QA/test pass
+# against a freshly-checked-out repo (no arm state on disk) is therefore a
+# structural no-op against any live-order action — see is_armed().
+ARM_STATE_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_arm_state.json"
 
 # The ONLY actions that exist. Anything else is unknown -> denied.
-ALLOWED_ACTIONS = frozenset({"halt", "unhalt", "set_gross_leverage", "start_loop", "stop_loop", "flatten"})
+ALLOWED_ACTIONS = frozenset({"halt", "unhalt", "set_gross_leverage", "start_loop", "stop_loop",
+                             "flatten", "arm", "disarm"})
 LEVERAGE_CAP = 15.0          # hard cap; requests above this are refused, never clamped-up
 LOOP_WHITELIST = frozenset({"trend", "tier7"})  # named loops only; no arbitrary exec
+
+# Investigation finding (2026-07-01): a flatten + repeated leverage swings fired
+# against the LIVE practice account during an AXIOM dashboard QA/test pass —
+# every action that can cause a real OANDA order (now or via the next loop
+# cycle) must require a DELIBERATE, recent, operator-initiated ARM. halt,
+# stop_loop, arm, and disarm are always allowed (risk-reducing / state-only —
+# never gated, so an operator can always de-escalate regardless of arm state).
+ARMED_REQUIRED_ACTIONS = frozenset({"flatten", "set_gross_leverage", "start_loop", "unhalt"})
+# Auto-expire an ARM after this many seconds so a forgotten "left armed" state
+# from one legitimate session can't silently authorize a stray click far later
+# (this is precisely the failure mode the investigation surfaced) — a NEW arm
+# action is required after the window lapses, not a permanent switch.
+ARM_TTL_SECONDS = 900.0  # 15 minutes
 
 
 class ControlDenied(RuntimeError):
@@ -159,6 +177,58 @@ def assert_unhalt_eligible() -> Dict[str, Any]:
     return checks
 
 
+def read_arm_state() -> Dict[str, Any]:
+    """Read persisted arm state. Missing/corrupt file -> {} (treated as DISARMED
+    by is_armed() below) — fail-closed, matching the JSON-safety convention used
+    everywhere else in this project (never crash on a corrupt/missing file)."""
+    data = _read_json_safe(ARM_STATE_PATH)
+    return data if isinstance(data, dict) else {}
+
+
+def is_armed(state: Any = None) -> bool:
+    """True only if the persisted state says armed AND the arm hasn't expired.
+
+    Fail-closed on every ambiguous case: missing file, ``armed`` not literally
+    ``True``, missing/invalid ``armed_at``, or a TTL that has lapsed all return
+    False. There is no "armed by default" path — a fresh checkout, a restarted
+    server, or a forgotten arm from hours ago are all DISARMED.
+    """
+    if state is None:
+        state = read_arm_state()
+    if state.get("armed") is not True:
+        return False
+    armed_at = state.get("armed_at")
+    if not isinstance(armed_at, (int, float)):
+        return False
+    import time as _time
+    return (_time.time() - float(armed_at)) < ARM_TTL_SECONDS
+
+
+def set_arm_state(armed: bool, actor: str) -> Dict[str, Any]:
+    """Atomically persist the arm/disarm transition (tmp+rename), recording the
+    actor and a numeric ``armed_at``/``disarmed_at`` epoch (numeric, not ISO, so
+    is_armed()'s TTL math never has to parse a string on the hot path)."""
+    import time as _time
+    now = _time.time()
+    state: Dict[str, Any] = {
+        "armed": bool(armed),
+        "actor": str(actor),
+        "ttl_seconds": ARM_TTL_SECONDS,
+    }
+    if armed:
+        state["armed_at"] = now
+        state["expires_at_epoch"] = now + ARM_TTL_SECONDS
+        state["expires_at"] = datetime.fromtimestamp(now + ARM_TTL_SECONDS, tz=timezone.utc).isoformat()
+    else:
+        state["disarmed_at"] = now
+    ARM_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(ARM_STATE_PATH.parent), suffix=".tmp")
+    with os.fdopen(fd, "w") as fh:
+        json.dump(state, fh, indent=2, sort_keys=True)
+    os.replace(tmp, ARM_STATE_PATH)
+    return state
+
+
 def enforce(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Run ALL pre-effect guards. Returns normalized params or raises ControlDenied.
 
@@ -175,12 +245,21 @@ def enforce(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
 
     assert_practice()  # I1/I2 — every action, no exceptions
 
+    # ARM GATE (investigation finding, 2026-07-01): every action that can cause
+    # a real OANDA order — now (flatten) or via the next loop cycle
+    # (set_gross_leverage, start_loop, unhalt) — requires a live, unexpired ARM.
+    # Checked BEFORE per-action param validation so a disarmed dashboard is
+    # refused even for a malformed/garbage request — the arm check can never be
+    # bypassed by also getting some other validation wrong.
+    if action in ARMED_REQUIRED_ACTIONS and not is_armed():
+        raise ControlDenied(f"controls are DISARMED — arm via POST /api/control/arm before {action}")
+
     out: Dict[str, Any] = {}
     if action == "set_gross_leverage":
         out["gross_leverage"] = validate_leverage((params or {}).get("gross_leverage"))
     elif action in ("start_loop", "stop_loop"):
         out["loop"] = validate_loop((params or {}).get("loop"))
-    elif action in ("halt", "unhalt", "flatten"):
+    elif action in ("halt", "unhalt", "flatten", "arm", "disarm"):
         # These take NO parameters. Default-deny (not default-allow): any extra key —
         # even one not on the forbidden-smuggle list above — is refused outright. Found
         # by the 2026-07-01 control-safety re-audit: flatten previously accepted+ignored
@@ -215,9 +294,16 @@ def read_overrides() -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def audit(entry: Dict[str, Any]) -> None:
-    """Append-only, atomic audit line. EVERY attempt (allowed or denied) is recorded."""
-    entry = {"ts": datetime.now(timezone.utc).isoformat(), **entry}
+def audit(entry: Dict[str, Any], *, actor: str) -> None:
+    """Append-only, atomic audit line. EVERY attempt (allowed or denied) is recorded.
+
+    ``actor`` is a REQUIRED keyword argument (investigation finding, 2026-07-01:
+    the audit log previously had no actor field at all — attribution was
+    permanently absent). Making it required here, not merely a dict key callers
+    might forget to include, means a missing actor is a TypeError at call time,
+    not a silent gap that ships unnoticed.
+    """
+    entry = {"ts": datetime.now(timezone.utc).isoformat(), "actor": str(actor), **entry}
     AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(entry, sort_keys=True) + "\n"
     # atomic-ish append: write tmp + concatenate is overkill for a log; append+fsync is fine.

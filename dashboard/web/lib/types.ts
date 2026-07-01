@@ -292,6 +292,11 @@ export interface ControlState {
   override_updated_at: string | null;
   leverage_cap: number;
   loops: Record<string, ControlLoopState>;
+  /** ARM lockdown (2026-07-01): flatten/set_gross_leverage/start_loop/unhalt are
+   * refused server-side unless armed — this mirrors that state, it doesn't enforce it. */
+  armed: boolean;
+  arm_expires_at: string | null;
+  armed_by: string | null;
 }
 
 export interface StreamPayload {

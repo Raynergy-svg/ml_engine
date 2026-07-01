@@ -14,9 +14,9 @@ def test_assert_practice_returns_practice():
     assert cs.assert_practice() == "practice"
 
 
-def test_halt_unhalt_allowed_no_params():
+def test_halt_allowed_no_params_regardless_of_arm_state():
+    # halt is risk-REDUCING and must never be gated by arm state.
     assert cs.enforce("halt", {}) == {}
-    assert cs.enforce("unhalt", {}) == {}
 
 
 def test_unknown_action_denied():
@@ -32,7 +32,11 @@ def test_smuggled_environment_override_denied():
             cs.enforce("halt", {bad: "live"})
 
 
-def test_leverage_clamped_to_cap():
+def test_leverage_clamped_to_cap(tmp_path, monkeypatch):
+    # set_gross_leverage now requires ARM (investigation finding, 2026-07-01) —
+    # this test is about the leverage-clamp validation itself, so arm first.
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
+    cs.set_arm_state(True, actor="test")
     assert cs.enforce("set_gross_leverage", {"gross_leverage": 5})["gross_leverage"] == 5.0
     assert cs.enforce("set_gross_leverage", {"gross_leverage": cs.LEVERAGE_CAP})["gross_leverage"] == cs.LEVERAGE_CAP
     for bad in (999, cs.LEVERAGE_CAP + 0.01, -1, float("inf"), float("nan"), "abc", None):
@@ -40,7 +44,10 @@ def test_leverage_clamped_to_cap():
             cs.enforce("set_gross_leverage", {"gross_leverage": bad})
 
 
-def test_loop_whitelist():
+def test_loop_whitelist(tmp_path, monkeypatch):
+    # start_loop now requires ARM; stop_loop never does (risk-reducing).
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
+    cs.set_arm_state(True, actor="test")
     assert cs.enforce("start_loop", {"loop": "trend"})["loop"] == "trend"
     assert cs.enforce("stop_loop", {"loop": "tier7"})["loop"] == "tier7"
     for bad in ("evil", "rm -rf", "", None):
@@ -79,11 +86,98 @@ def test_read_overrides_missing_or_corrupt_returns_empty(tmp_path):
 
 def test_audit_appends_real_line(tmp_path):
     cs.AUDIT_PATH = tmp_path / "control_audit.jsonl"   # real path, not a mock
-    cs.audit({"action": "halt", "allowed": True, "reason": "test", "result": "halted"})
+    cs.audit({"action": "halt", "allowed": True, "reason": "test", "result": "halted"},
+             actor="test-actor")
     lines = cs.AUDIT_PATH.read_text().strip().splitlines()
     assert len(lines) == 1
     rec = json.loads(lines[0])
     assert rec["action"] == "halt" and rec["allowed"] is True and "ts" in rec
+    assert rec["actor"] == "test-actor"
+
+
+def test_audit_requires_actor_structurally():
+    """actor is a required keyword arg — omitting it is a TypeError, not a silent
+    gap (investigation finding, 2026-07-01: attribution was permanently absent
+    because it was never a required field)."""
+    with pytest.raises(TypeError):
+        cs.audit({"action": "halt", "allowed": True})  # no actor= -> must fail
+
+
+# --------------------------------------------------------------------------- #
+# ARM lockdown (investigation finding, 2026-07-01): a real flatten + repeated
+# leverage swings fired against the LIVE practice account during an AXIOM
+# dashboard QA/test pass. Every armed-required action must be a structural
+# no-op while disarmed (the default), regardless of how the request got there.
+# --------------------------------------------------------------------------- #
+def test_default_disarmed_blocks_every_armed_required_action(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")  # no file -> disarmed
+    assert cs.is_armed() is False
+    for action, params in (("flatten", {}), ("set_gross_leverage", {"gross_leverage": 3.0}),
+                           ("start_loop", {"loop": "trend"}), ("unhalt", {})):
+        with pytest.raises(cs.ControlDenied, match="DISARMED"):
+            cs.enforce(action, params)
+
+
+def test_halt_stop_loop_arm_disarm_never_require_arm(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")  # disarmed
+    assert cs.enforce("halt", {}) == {}
+    assert cs.enforce("stop_loop", {"loop": "trend"})["loop"] == "trend"
+    assert cs.enforce("arm", {}) == {}
+    assert cs.enforce("disarm", {}) == {}
+
+
+def test_arm_then_armed_required_actions_pass(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
+    cs.set_arm_state(True, actor="operator")
+    assert cs.is_armed() is True
+    assert cs.enforce("set_gross_leverage", {"gross_leverage": 3.0})["gross_leverage"] == 3.0
+    assert cs.enforce("start_loop", {"loop": "trend"})["loop"] == "trend"
+    # flatten/unhalt still take no params, but no longer raise for arm reasons:
+    assert cs.enforce("flatten", {}) == {}
+
+
+def test_disarm_immediately_blocks_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
+    cs.set_arm_state(True, actor="operator")
+    assert cs.is_armed() is True
+    cs.set_arm_state(False, actor="operator")
+    assert cs.is_armed() is False
+    with pytest.raises(cs.ControlDenied, match="DISARMED"):
+        cs.enforce("flatten", {})
+
+
+def test_arm_expires_after_ttl(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
+    import time
+    state = {"armed": True, "armed_at": time.time() - (cs.ARM_TTL_SECONDS + 5), "actor": "operator"}
+    cs.ARM_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    cs.ARM_STATE_PATH.write_text(json.dumps(state), encoding="utf-8")
+    assert cs.is_armed() is False   # stale arm from a forgotten session must NOT authorize
+    with pytest.raises(cs.ControlDenied, match="DISARMED"):
+        cs.enforce("flatten", {})
+
+
+def test_is_armed_fails_closed_on_corrupt_state_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
+    cs.ARM_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    cs.ARM_STATE_PATH.write_text("{not valid json", encoding="utf-8")
+    assert cs.is_armed() is False  # corrupt -> disarmed, never crash
+
+
+def test_is_armed_fails_closed_on_missing_armed_at(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
+    cs.ARM_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    cs.ARM_STATE_PATH.write_text(json.dumps({"armed": True}), encoding="utf-8")  # no armed_at
+    assert cs.is_armed() is False
+
+
+def test_set_arm_state_writes_real_atomic_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
+    state = cs.set_arm_state(True, actor="operator-session-42")
+    assert state["armed"] is True and state["actor"] == "operator-session-42"
+    on_disk = json.loads(cs.ARM_STATE_PATH.read_text())
+    assert on_disk["armed"] is True
+    assert not any(p.suffix == ".tmp" for p in tmp_path.iterdir())  # atomic, no leftover tmp
 
 
 # --------------------------------------------------------------------------- #
