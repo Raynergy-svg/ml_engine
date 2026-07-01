@@ -31,8 +31,8 @@ export function Badge({
   return (
     <span
       title={title}
-      className="inline-flex items-center gap-1.5 rounded-md border bg-surface2/45 px-2 py-1 font-mono text-[10.5px] font-semibold tnum"
-      style={{ color, borderColor: "var(--color-border)" }}
+      className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[10.5px] font-semibold tnum"
+      style={{ color, borderColor: `${color}55`, background: `${color}1f` }}
     >
       {dot && <StatusDot color={color} pulse={pulse} />}
       {children}

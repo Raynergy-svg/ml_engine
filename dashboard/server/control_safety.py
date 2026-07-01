@@ -26,7 +26,7 @@ AUDIT_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_audit.jsonl"
 OVERRIDES_PATH = REPO_ROOT / "trained_data" / "axiom" / "control_overrides.json"
 
 # The ONLY actions that exist. Anything else is unknown -> denied.
-ALLOWED_ACTIONS = frozenset({"halt", "unhalt", "set_gross_leverage", "start_loop", "stop_loop"})
+ALLOWED_ACTIONS = frozenset({"halt", "unhalt", "set_gross_leverage", "start_loop", "stop_loop", "flatten"})
 LEVERAGE_CAP = 15.0          # hard cap; requests above this are refused, never clamped-up
 LOOP_WHITELIST = frozenset({"trend", "tier7"})  # named loops only; no arbitrary exec
 
@@ -180,7 +180,15 @@ def enforce(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         out["gross_leverage"] = validate_leverage((params or {}).get("gross_leverage"))
     elif action in ("start_loop", "stop_loop"):
         out["loop"] = validate_loop((params or {}).get("loop"))
-    # halt / unhalt take no params; unhalt's practice re-assert already happened above.
+    elif action in ("halt", "unhalt", "flatten"):
+        # These take NO parameters. Default-deny (not default-allow): any extra key —
+        # even one not on the forbidden-smuggle list above — is refused outright. Found
+        # by the 2026-07-01 control-safety re-audit: flatten previously accepted+ignored
+        # arbitrary non-forbidden keys instead of rejecting them, which is a default-allow
+        # param surface (inconsistent with set_gross_leverage/start_loop/stop_loop, which
+        # already validate+whitelist their one expected param).
+        if params:
+            raise ControlDenied(f"{action} takes no parameters; got {sorted(params)}")
     return out
 
 

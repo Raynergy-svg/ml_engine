@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StreamProvider, useStream } from "@/lib/stream";
+import { control } from "@/lib/control";
 import { AccountHeader } from "@/components/AccountHeader";
 import { GlobalStatusStrip } from "@/components/GlobalStatusStrip";
 import { PriceTiles } from "@/components/PriceTiles";
@@ -13,9 +14,11 @@ import { SentimentPlaceholder } from "@/components/SentimentPlaceholder";
 import { Tier7Panel } from "@/components/Tier7Panel";
 import { Tier7Cockpit } from "@/components/Tier7Cockpit";
 import { ControlPanel } from "@/components/ControlPanel";
+import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
 
 const TABS = ["Overview", "Markets", "Positions", "Orders", "Executions", "Risk", "Automation", "Journal", "Analytics", "Settings"] as const;
 type Tab = (typeof TABS)[number];
+const MAJORS = ["EUR_USD", "USD_JPY", "GBP_USD", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "EUR_JPY", "GBP_JPY", "EUR_GBP"];
 
 function useStoredValue(key: string, fallback: string) {
   const [value, setValueState] = useState(fallback);
@@ -52,26 +55,63 @@ function DashboardBody() {
   const marketTabs = new Set<Tab>(["Markets"]);
   const ledgerTabs = new Set<Tab>(["Orders", "Executions", "Journal"]);
   const controlTabs = new Set<Tab>(["Risk", "Automation", "Settings"]);
+  const { payload } = useStream();
+  const halted = payload?.status?.halted ?? null;
+
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const commands: CommandItem[] = useMemo(() => {
+    const nav: CommandItem[] = TABS.map((t) => ({
+      id: `nav-${t}`, group: "Navigate", label: t, run: () => setTab(t),
+    }));
+    const instruments: CommandItem[] = MAJORS.map((m) => ({
+      id: `inst-${m}`, group: "Instrument", label: m.replace("_", "/"),
+      run: () => { setSelected(m); setTab("Overview"); },
+    }));
+    const actions: CommandItem[] = [
+      {
+        id: "act-halt", group: "Action", label: "Halt trading", hint: halted ? "already halted" : "fail-safe",
+        run: async () => {
+          if (halted) return;
+          if (!window.confirm("Halt trading now?")) return;
+          await control("halt");
+        },
+      },
+      {
+        id: "act-control", group: "Action", label: "Open Control panel",
+        run: () => setTab("Automation"),
+      },
+    ];
+    return [...nav, ...actions, ...instruments];
+  }, [halted]);
 
   return (
     <div className="dashboard-shell">
       <div className="command-shell relative top-0 z-30 border-b hairline backdrop-blur-xl sm:sticky">
         <AccountHeader />
-        <GlobalStatusStrip onOpenControl={() => setTab("Automation")} />
+        <GlobalStatusStrip onOpenPalette={() => setPaletteOpen(true)} />
 
         <nav className="scroll-thin mx-auto flex w-full max-w-[1680px] gap-1 overflow-x-auto px-3 py-2 sm:px-4">
-          <div className="flex min-w-max gap-1">
+          <div className="flex min-w-max gap-4">
             {TABS.map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`shrink-0 rounded-md border px-3.5 py-1.5 font-mono text-[12px] transition-colors ${
-                  tab === t
-                    ? "border-pos/70 bg-pos/10 text-text shadow-[inset_0_-2px_0_var(--color-pos)]"
-                    : "border-transparent text-faint hover:border-[var(--color-border)] hover:bg-surface2/70 hover:text-dim"
+                className={`shrink-0 border-b-2 pb-1 font-mono text-[12px] tracking-wide transition-colors ${
+                  tab === t ? "border-pos font-semibold text-text" : "border-transparent text-faint hover:text-dim"
                 }`}
               >
-                {t}
+                {t.toUpperCase()}
               </button>
             ))}
           </div>
@@ -130,6 +170,7 @@ function DashboardBody() {
       </main>
 
       <DashboardFooter />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={commands} />
     </div>
   );
 }
@@ -152,7 +193,8 @@ function DashboardFooter() {
   return (
     <footer className="mx-auto flex max-w-[1680px] flex-wrap items-center gap-4 border-t px-4 py-3 font-mono text-[10.5px] text-faint hairline">
       <span className={connected ? "text-pos" : "text-neg"}>● {connected ? "CONNECTED" : "OFFLINE"}</span>
-      <span>OANDA fxPractice</span>
+      <span>LIVE DATA</span>
+      <span>OANDA fxPractice ⌄</span>
       {acctId && <span title="Practice account id">Acct …{acctId.slice(-4)}</span>}
       <span className="text-pos">PRACTICE TRADING</span>
       <span className="ml-auto">{clock} (local)</span>

@@ -1,54 +1,51 @@
 "use client";
 import { usePoll } from "@/lib/api";
-import { useStream } from "@/lib/stream";
-import type { Tier7, SystemHealth } from "@/lib/types";
-import { Card, SectionTitle, Badge, StatusDot, NotConnected, Loading } from "./ui";
-import { ago, shortTime } from "@/lib/format";
+import type { Tier7, Tier7Diagnostics } from "@/lib/types";
+import { Card, SectionTitle, Badge, NotConnected, Loading } from "./ui";
+import { shortTime } from "@/lib/format";
 
-interface CheckRow { label: string; ok: boolean | null; meta: string }
+function CheckIcon({ ok }: { ok: boolean | null }) {
+  const color = ok === null ? "#5a6677" : ok ? "#2bd17e" : "#ff4d6d";
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
+      <rect x="1" y="1" width="12" height="12" rx="3" stroke={color} strokeWidth="1.3" />
+      {ok !== false && <path d="M3.8 7.1 5.7 9 10.2 4.3" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />}
+    </svg>
+  );
+}
+
+function OkPill({ ok }: { ok: boolean | null }) {
+  const color = ok === null ? "#8b98a9" : ok ? "#2bd17e" : "#ff4d6d";
+  return (
+    <span className="flex items-center gap-1 font-mono text-[11.5px] font-semibold" style={{ color }}>
+      <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+        <circle cx="7" cy="7" r="6" stroke={color} strokeWidth="1.3" />
+        {ok !== false && <path d="M4 7.2 6 9.2 10 4.8" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />}
+      </svg>
+      {ok === null ? "—" : ok ? "OK" : "FAIL"}
+    </span>
+  );
+}
 
 export function Tier7Panel({ onViewLog }: { onViewLog?: () => void }) {
   const { data: tier7, loading } = usePoll<Tier7>("/api/tier7", 4000);
-  const { data: health } = usePoll<SystemHealth>("/api/system_health", 5000);
-  const { payload } = useStream();
-  const acct = payload?.account;
+  const { data: diag } = usePoll<Tier7Diagnostics>("/api/tier7_diagnostics", 5000);
 
   if (loading && !tier7) {
-    return <Card className="flex h-full flex-col"><SectionTitle>Tier 7 Self-Healing</SectionTitle><Loading /></Card>;
+    return <Card className="flex h-full flex-col"><SectionTitle>TIER 7 SELF-HEALING</SectionTitle><Loading /></Card>;
   }
   if (!tier7?.connected) {
     return (
       <Card className="flex h-full flex-col">
-        <SectionTitle right={<Badge color="#5a6677" dot>NOT CONNECTED</Badge>}>Tier 7 Self-Healing</SectionTitle>
+        <SectionTitle right={<Badge color="#5a6677" dot>NOT CONNECTED</Badge>}>TIER 7 SELF-HEALING</SectionTitle>
         <NotConnected label="Tier 7 snapshot not published" hint={`Waiting on ${tier7?.source ?? ".claude/tier7_state.json"}.`} />
       </Card>
     );
   }
 
-  const latestHeal = [...(tier7.self_heal?.recent_events ?? [])].reverse()[0];
-  const degraded = latestHeal?.degraded === true || latestHeal?.status === "degraded";
-
-  // Every row here is a REAL, independently-sourced signal — no fabricated latencies.
-  // Health score = the fraction of these checks currently passing.
-  const checks: CheckRow[] = [
-    { label: "Trend Lane", ok: health?.lanes?.available ? !!health.lanes.oanda_trend_proc : null,
-      meta: health?.lanes?.account_state_age_s != null ? ago(health.lanes.account_state_age_s) : "—" },
-    { label: "Tier 7 Loop", ok: tier7.running ?? null,
-      meta: tier7.last_cycle?.age_seconds != null ? ago(tier7.last_cycle.age_seconds) : "—" },
-    { label: "Gate Verdict", ok: health?.gates?.available ? health.gates.status === "GREEN" : null,
-      meta: health?.gates?.verdict_age_s != null ? ago(health.gates.verdict_age_s) : "—" },
-    { label: "Self-Heal", ok: latestHeal ? !degraded : null,
-      meta: latestHeal ? (degraded ? "degraded" : "nominal") : "no events" },
-    { label: "Account Snapshot", ok: acct ? !acct.stale : null,
-      meta: acct?.snapshot_age_s != null ? ago(acct.snapshot_age_s) : "—" },
-    { label: "Alerts", ok: health?.alerts?.available ? health.alerts.count === 0 : null,
-      meta: health?.alerts?.available ? `${health.alerts.count} active` : "—" },
-  ];
-  const known = checks.filter((c) => c.ok !== null);
-  const passing = known.filter((c) => c.ok).length;
-  const score = known.length ? (passing / known.length) * 100 : null;
-
   const ab = tier7.self_heal?.action_budget;
+  const score = diag?.score ?? null;
+  const scoreColor = score == null ? "#8b98a9" : score >= 80 ? "#2bd17e" : score >= 50 ? "#f5b14c" : "#ff4d6d";
 
   return (
     <Card className="flex h-full flex-col">
@@ -57,40 +54,34 @@ export function Tier7Panel({ onViewLog }: { onViewLog?: () => void }) {
         : tier7.running ? <Badge color="#2bd17e" dot pulse>RUNNING</Badge>
         : <Badge color="#f5b14c" dot>OFFLINE</Badge>
       }>
-        Tier 7 Self-Healing {tier7.autonomy_level != null && <span className="text-faint">· {tier7.autonomy_level}</span>}
+        TIER 7 SELF-HEALING
       </SectionTitle>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         <div>
           <div className="mb-2 flex items-end justify-between font-mono">
-            <span className="text-[11px] uppercase tracking-wide text-dim" title="Fraction of the checks below currently passing">
-              Health score
-            </span>
-            <span className="text-[13px] tnum" style={{ color: score == null ? "#8b98a9" : score >= 80 ? "#2bd17e" : score >= 50 ? "#f5b14c" : "#ff4d6d" }}>
+            <span className="text-[11px] uppercase tracking-wide text-dim">Health score</span>
+            <span className="text-[13px] tnum" style={{ color: scoreColor }}>
               {score == null ? "—" : score.toFixed(1)} <span className="text-faint">/ 100</span>
             </span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-surface2">
-            <div
-              className="h-full rounded-full"
-              style={{ width: `${score ?? 0}%`, background: score == null ? "#5a6677" : score >= 80 ? "#2bd17e" : score >= 50 ? "#f5b14c" : "#ff4d6d" }}
-            />
+            <div className="h-full rounded-full" style={{ width: `${score ?? 0}%`, background: scoreColor }} />
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
-          {checks.map((c) => (
+        <div className="flex min-h-0 flex-1 flex-col gap-2.5">
+          {(diag?.checks ?? []).map((c) => (
             <div key={c.label} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 font-mono text-[12px]">
               <span className="flex min-w-0 items-center gap-2 text-dim">
-                <StatusDot color={c.ok === null ? "#5a6677" : c.ok ? "#2bd17e" : "#ff4d6d"} />
+                <CheckIcon ok={c.ok} />
                 <span className="truncate">{c.label}</span>
               </span>
-              <span style={{ color: c.ok === null ? "#8b98a9" : c.ok ? "#2bd17e" : "#ff4d6d" }}>
-                {c.ok === null ? "—" : c.ok ? "OK" : "FAIL"}
-              </span>
-              <span className="min-w-[70px] text-right text-faint tnum">{c.meta}</span>
+              <OkPill ok={c.ok} />
+              <span className="min-w-[86px] text-right text-faint tnum">{c.metric ?? "—"}</span>
             </div>
           ))}
+          {!diag && <span className="font-mono text-[11px] text-faint">loading diagnostics…</span>}
         </div>
 
         <div className="mt-auto flex items-center gap-3 border-t pt-3 font-mono text-[11px] hairline">

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import {
-  createChart, CandlestickSeries, LineSeries, ColorType, CrosshairMode, LineStyle,
+  createChart, CandlestickSeries, LineSeries, ColorType, CrosshairMode, LineStyle, PriceScaleMode,
   type IChartApi, type ISeriesApi, type IPriceLine,
 } from "lightweight-charts";
 import { usePoll } from "@/lib/api";
@@ -35,6 +35,11 @@ export function CandleChart({ instrument }: { instrument: string }) {
     `/api/candles/${instrument}?granularity=${gran}&sma=100&count=300`, 30000,
   );
   const clock = useClock();
+  // Real, functional chart-scale toggles (lightweight-charts price-scale options) —
+  // not decorative text. "auto" defaults on (matches lightweight-charts default).
+  const [pctMode, setPctMode] = useState(false);
+  const [logMode, setLogMode] = useState(false);
+  const [autoScale, setAutoScale] = useState(true);
 
   // Bracket levels for THIS instrument's open position (if any) — from the live
   // stream. Present only once the bot writes TP/SL into account_state.json.
@@ -105,6 +110,14 @@ export function CandleChart({ instrument }: { instrument: string }) {
     if (tp != null) add(tp, "#2bd17e", "TP");
   }, [tp, sl, instrument, data]);
 
+  // Real price-scale mode + autoscale — applied via lightweight-charts' own API,
+  // not a fabricated toggle. Percentage mode takes precedence over log if both set
+  // (matches lightweight-charts' own PriceScaleMode enum, which is mutually exclusive).
+  useEffect(() => {
+    const mode = pctMode ? PriceScaleMode.Percentage : logMode ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal;
+    chartRef.current?.priceScale("right").applyOptions({ mode, autoScale });
+  }, [pctMode, logMode, autoScale]);
+
   const sig = data?.signal;
   const disconnected = (data && !data.connected) || !!error;
 
@@ -128,7 +141,7 @@ export function CandleChart({ instrument }: { instrument: string }) {
           </button>
         }
       >
-        {prettyPair(instrument)} · {gran} · AXIOM
+        {prettyPair(instrument)} · {GRAN_OPTIONS.find((g) => g.code === gran)?.label ?? gran} · AXIOM
       </SectionTitle>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[44px_minmax(0,1fr)]">
@@ -146,7 +159,6 @@ export function CandleChart({ instrument }: { instrument: string }) {
 
         <div className="relative min-h-0 overflow-hidden px-2 pb-2">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-2 py-2 font-mono text-[11px] text-dim tnum">
-            <span className="font-semibold text-text">{prettyPair(instrument)}</span>
             {last ? (
               <>
                 <span>O <span style={{ color: change != null && change >= 0 ? "#2bd17e" : "#ff4d6d" }}>{fmtPrice(last.open, instrument)}</span></span>
@@ -188,14 +200,24 @@ export function CandleChart({ instrument }: { instrument: string }) {
                 {label}
               </button>
             ))}
-            <span className="ml-auto whitespace-nowrap">auto</span>
+            <button
+              className="ml-auto grid h-6 w-6 place-items-center rounded text-dim hover:bg-surface2 hover:text-text"
+              title="Chart settings (not yet wired)"
+            >
+              ⚙
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="scroll-thin flex items-center gap-5 overflow-x-auto border-t px-4 py-2 font-mono text-[11px] hairline tnum text-dim">
+      <div className="scroll-thin flex items-center gap-4 overflow-x-auto border-t px-4 py-2 font-mono text-[11px] hairline tnum text-dim">
         <span>{clock} (local)</span>
-        {sig && <span className="ml-auto text-faint">{sig.state} · {fmtPct(sig.distance_pct, 2)} vs SMA</span>}
+        {sig && <span className="text-faint">{sig.state} · {fmtPct(sig.distance_pct, 2)} vs SMA</span>}
+        <span className="ml-auto flex items-center gap-3">
+          <button onClick={() => setPctMode((v) => !v)} className={pctMode ? "text-pos" : "hover:text-text"}>%</button>
+          <button onClick={() => setLogMode((v) => !v)} className={logMode ? "text-pos" : "hover:text-text"}>log</button>
+          <button onClick={() => setAutoScale((v) => !v)} className={autoScale ? "text-pos" : "hover:text-text"}>auto</button>
+        </span>
       </div>
     </Card>
   );

@@ -70,16 +70,15 @@ export function PositionsTable() {
                     <td className={`px-3 py-2 text-right ${pctReturn == null ? "text-faint" : pnlClass(pctReturn)}`}>
                       {pctReturn == null ? "—" : `${pctReturn >= 0 ? "+" : ""}${fmtPct(pctReturn, 2)}`}
                     </td>
-                    <td className="px-3 py-2 text-right" style={{ color: p.stop_loss != null ? "#ff4d6d" : undefined }}>
+                    <td className="px-3 py-2 text-right text-dim">
                       {p.stop_loss != null ? fmtPrice(p.stop_loss, p.instrument) : <span className="text-faint">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-right" style={{ color: p.take_profit != null ? "#2bd17e" : undefined }}>
+                    <td className="px-3 py-2 text-right text-dim">
                       {p.take_profit != null ? fmtPrice(p.take_profit, p.instrument) : <span className="text-faint">—</span>}
                     </td>
                     <td className="px-3 py-2 text-right text-faint">{age != null ? ago(age) : "—"}</td>
-                    <td className="px-3 py-2 text-right">
-                      <span className="text-dim" title="Long-or-flat SMA(100) trend rule">{p.strategy ?? "trend_sma100"}</span>
-                      <span className="ml-2" style={{ color: trendOn ? "#34e5a1" : "#8b98a9" }}>{trendOn ? "●" : "○"}</span>
+                    <td className="px-3 py-2 text-right text-dim" title={trendOn ? "trend: LONG" : "trend: FLAT"}>
+                      {p.strategy ?? "trend_sma100"}
                     </td>
                   </tr>
                 );

@@ -164,6 +164,13 @@ def tier7() -> Dict[str, Any]:
     return ds.read_tier7()
 
 
+@app.get("/api/tier7_diagnostics")
+def tier7_diagnostics() -> Dict[str, Any]:
+    # read_tier7_diagnostics self-caches its one live network ping (30s TTL);
+    # everything else is cheap local reads, so no outer response cache needed.
+    return ds.read_tier7_diagnostics(_client())
+
+
 @app.get("/api/system_health")
 def system_health() -> Dict[str, Any]:
     cached = _cache.get("system_health", ttl=5.0)

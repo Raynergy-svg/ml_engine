@@ -4,7 +4,6 @@ import { useStream } from "@/lib/stream";
 import { usePoll } from "@/lib/api";
 import type { Strategy } from "@/lib/types";
 import { fmtPrice, fmtNum, fmtPct, prettyPair } from "@/lib/format";
-import { StatusDot } from "./ui";
 
 // The trend lane's real FX-major universe (mirrors FX_MAJORS in data_sources.py —
 // what the strategy actually evaluates, not the mockup's arbitrary 5-pair sample).
@@ -62,7 +61,7 @@ export function PriceTiles({
               isSel ? "bg-cyan/10 ring-1 ring-cyan/70" : "hover:border-[var(--color-faint)] hover:bg-surface2/80"
             }`}
             style={isSel ? { borderColor: "var(--color-cyan)" } : undefined}
-            title={pct != null ? "Δ since AXIOM connected (not an official daily change)" : undefined}
+            title={`trend: ${on ? "LONG" : "FLAT"}${pct != null ? " · Δ since AXIOM connected" : ""}`}
           >
             <span
               className="absolute left-0 top-0 h-full w-[3px]"
@@ -97,10 +96,6 @@ export function PriceTiles({
                 <div className="font-mono text-[10px] uppercase text-faint">Spread</div>
                 <div className="mt-1 font-mono text-[16px] text-text tnum">{p ? fmtNum(p.spread_pips, 1) : "—"}</div>
               </div>
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 font-mono text-[10px] text-faint">
-              <StatusDot color={on ? "#34e5a1" : "#3a4150"} />
-              <span>{on ? "LONG" : "FLAT"}</span>
             </div>
           </button>
         );

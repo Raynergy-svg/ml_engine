@@ -263,6 +263,15 @@ export interface Alerts {
 }
 export interface SystemHealth { lanes: LaneOracle; gates: Gates; alerts: Alerts }
 
+export interface DiagnosticCheck { label: string; ok: boolean | null; metric: string | null }
+export interface Tier7Diagnostics {
+  checks: DiagnosticCheck[];
+  score: number | null;
+  trend_pid: number | null;
+  tier7_pid: number | null;
+  tier7_process_stat?: { cpu_pct: number; rss_mb: number } | null;
+}
+
 export interface ApiHealth {
   ok: boolean;
   oanda_connected: boolean;

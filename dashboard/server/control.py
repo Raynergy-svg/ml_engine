@@ -13,6 +13,13 @@ Functional actions (all practice-pinned + bounded by control_safety):
                        and OANDA scanner execution enforces it as a gross cap.
   start_loop/stop_loop — fixed-WHITELIST process control (no arbitrary exec): trend ->
                        run_oanda_trend.py --loop, tier7 -> run_tier7_loop.py; stop by pid.
+  flatten            — closes EVERY open position on the practice account. The ONLY
+                       action that calls a broker-mutating endpoint directly (all others
+                       either write local state/files or spawn a whitelisted process).
+                       Uses the same practice-pinned OandaPracticeClient the trend loop
+                       itself uses (no live URL constant exists in that client — there is
+                       no path to real money regardless of this action). Each position's
+                       close is audited individually so a partial failure is visible.
 """
 from __future__ import annotations
 
@@ -126,6 +133,36 @@ def _stop_loop(loop: str) -> Dict[str, Any]:
     return {"result": "stopped" if pids else "not_running", "pids": pids}
 
 
+def _flatten_all() -> Dict[str, Any]:
+    """Close every open position on the practice account.
+
+    The ONLY control action that calls a broker-mutating endpoint directly. Uses the
+    SAME practice-pinned client the trend loop itself uses for execution — no live URL
+    constant exists in OandaPracticeClient, so there is no path to real money regardless
+    of this action running. Each position's close is attempted + audited individually:
+    one failure must not hide (or block) the others, and the caller sees exactly which
+    instruments closed and which didn't.
+    """
+    from src.utils.oanda_practice import OandaPracticeClient
+
+    client = OandaPracticeClient.from_env()
+    positions_resp = client.get_open_positions() or {}
+    open_positions = positions_resp.get("positions") or []
+    results = []
+    for p in open_positions:
+        inst = p.get("instrument")
+        if not inst:
+            continue
+        try:
+            client.close_position(instrument=inst)
+            results.append({"instrument": inst, "ok": True})
+        except Exception as exc:  # noqa: BLE001 — one failed close must not hide the rest
+            results.append({"instrument": inst, "ok": False, "error": str(exc)})
+    all_ok = all(r["ok"] for r in results) if results else True
+    return {"result": "flattened" if all_ok else "flatten_partial",
+            "count": len(results), "positions": results}
+
+
 def _state() -> Dict[str, Any]:
     """Current persisted control state for dashboard hydration/readback."""
     from src.scanner.automation.state_engine import StateEngine
@@ -188,6 +225,8 @@ def _run(action: str, params: Dict[str, Any]):
             result = _start_loop(normalized["loop"])
         elif action == "stop_loop":
             result = _stop_loop(normalized["loop"])
+        elif action == "flatten":
+            result = _flatten_all()
         else:  # unreachable — enforce() allowlist guarantees one of the above
             raise HTTPException(status_code=500, detail="unhandled action")
     except HTTPException:
@@ -254,3 +293,9 @@ def start_loop(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[s
 def stop_loop(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
     _confirm("stop_loop", x_axiom_confirm)
     return _run("stop_loop", body.params if body else {})
+
+
+@router.post("/flatten")
+def flatten(body: Optional[ActionBody] = None, *, x_axiom_confirm: Optional[str] = Header(default=None)):
+    _confirm("flatten", x_axiom_confirm)
+    return _run("flatten", body.params if body else {})

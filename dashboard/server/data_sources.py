@@ -656,6 +656,118 @@ def _max_severity(active: List[Dict[str, Any]]) -> Optional[str]:
     return best
 
 
+_diag_cache: Dict[str, Any] = {"ts": 0.0, "network_latency_ms": None}
+
+
+def _ps_stat(pid: Optional[int]) -> Optional[Dict[str, float]]:
+    """Real per-process CPU%/RSS-MB for a pid via `ps` (no psutil dependency;
+    reuses the same subprocess+ps pattern already used by control.py's loop-pid
+    lookup). Returns None if the pid is absent/dead — never a fabricated number."""
+    if not pid:
+        return None
+    import subprocess
+    try:
+        out = subprocess.run(["ps", "-o", "%cpu=,rss=", "-p", str(pid)],
+                             capture_output=True, text=True, timeout=3)
+        line = out.stdout.strip()
+        if not line:
+            return None
+        cpu_s, rss_s = line.split()
+        return {"cpu_pct": float(cpu_s), "rss_mb": float(rss_s) / 1024.0}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def read_tier7_diagnostics(client=None) -> Dict[str, Any]:
+    """Real per-subsystem checklist for the Tier 7 panel — every row measured from
+    an actual signal, never a fabricated latency. Mirrors the operator's requested
+    checklist (Market Data / Execution Layer / Risk Engine / Strategy Runtime /
+    Position Reconciler / Memory-CPU / Disk-Network) but each metric is honestly
+    computed from what we can actually observe:
+      - Market Data: real OANDA pricing round-trip latency (measured here, cached
+        30s so this endpoint doesn't hammer the broker on every poll).
+      - Execution Layer / Strategy Runtime: the trend/tier7 loop pids from the
+        live-lane oracle + their real heartbeat/snapshot ages.
+      - Risk Engine: the recorded verify_gate verdict (GREEN/RED) + its real age.
+      - Position Reconciler: freshness of account_state.json (the snapshot the
+        trend loop rewrites each cycle after reconciling positions).
+      - Memory/CPU: real `ps` cpu%/rss for the trend + tier7 processes.
+      - Disk/Network: real free-disk% (shutil.disk_usage) + the measured broker
+        round-trip above.
+    """
+    import shutil
+    import time as _time
+
+    health = read_health()
+    lanes = health.get("lanes") or {}
+    gates = health.get("gates") or {}
+    tier7 = read_tier7()
+
+    # Market data latency — cached 30s; a live client call only on cache miss.
+    now = _time.time()
+    net_ms = _diag_cache.get("network_latency_ms")
+    if client is not None and (now - _diag_cache.get("ts", 0.0)) > 30.0:
+        t0 = _time.monotonic()
+        try:
+            client.get_pricing(instruments="EUR_USD")
+            net_ms = round((_time.monotonic() - t0) * 1000, 1)
+        except Exception:  # noqa: BLE001 — best-effort diagnostic, never blocks
+            net_ms = None
+        _diag_cache["ts"], _diag_cache["network_latency_ms"] = now, net_ms
+
+    trend_pid = None
+    tier7_pid = (tier7.get("last_cycle") or {}).get("pid") if tier7.get("connected") else None
+    try:
+        import subprocess
+        out = subprocess.run(["pgrep", "-f", "run_oanda_trend.py"], capture_output=True, text=True, timeout=3)
+        pids = [int(p) for p in out.stdout.split() if p.isdigit()]
+        trend_pid = pids[0] if pids else None
+    except (OSError, ValueError):
+        pass
+
+    trend_stat = _ps_stat(trend_pid)
+    tier7_stat = _ps_stat(tier7_pid)
+    disk_free_pct = None
+    try:
+        du = shutil.disk_usage(str(REPO_ROOT))
+        disk_free_pct = round(du.free / du.total * 100, 1)
+    except OSError:
+        pass
+
+    checks = [
+        {"label": "Market Data", "ok": net_ms is not None,
+         "metric": f"{net_ms}ms" if net_ms is not None else None},
+        {"label": "Execution Layer", "ok": lanes.get("oanda_trend_proc"),
+         "metric": f"{ago_seconds_str(lanes.get('account_state_age_s'))}" if lanes.get("account_state_age_s") is not None else None},
+        {"label": "Risk Engine", "ok": gates.get("status") == "GREEN" if gates.get("available") else None,
+         "metric": f"{ago_seconds_str(gates.get('verdict_age_s'))}" if gates.get("verdict_age_s") is not None else None},
+        {"label": "Strategy Runtime", "ok": tier7.get("running") if tier7.get("connected") else None,
+         "metric": f"{ago_seconds_str((tier7.get('last_cycle') or {}).get('age_seconds'))}"
+                   if (tier7.get("last_cycle") or {}).get("age_seconds") is not None else None},
+        {"label": "Position Reconciler", "ok": lanes.get("account_state_fresh"),
+         "metric": f"{ago_seconds_str(lanes.get('account_state_age_s'))}" if lanes.get("account_state_age_s") is not None else None},
+        {"label": "Memory / CPU", "ok": trend_stat is not None,
+         "metric": f"{trend_stat['cpu_pct']:.0f}% / {trend_stat['rss_mb']:.0f}MB" if trend_stat else None},
+        {"label": "Disk / Network", "ok": disk_free_pct is not None and disk_free_pct > 10,
+         "metric": f"{disk_free_pct}% free" + (f" / {net_ms}ms" if net_ms is not None else "") if disk_free_pct is not None else None},
+    ]
+    known = [c for c in checks if c["ok"] is not None]
+    score = round(sum(1 for c in known if c["ok"]) / len(known) * 100, 1) if known else None
+    return {"checks": checks, "score": score,
+            "trend_pid": trend_pid, "tier7_pid": tier7_pid,
+            "tier7_process_stat": tier7_stat}
+
+
+def ago_seconds_str(seconds: Optional[float]) -> str:
+    if seconds is None:
+        return "—"
+    if seconds < 90:
+        return f"{round(seconds)}s"
+    if seconds < 5400:
+        return f"{round(seconds / 60)}m"
+    return f"{seconds / 3600:.1f}h"
+
+
 # --------------------------------------------------------------------------- #
 # Live read-only OANDA views (degrade to connected:False, never fabricate)
 # --------------------------------------------------------------------------- #
