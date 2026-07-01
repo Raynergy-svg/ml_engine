@@ -46,7 +46,7 @@ export function TradeHistory() {
         <NotConnected label="No ledger rows yet" hint="Reads trained_data/oanda/transactions.jsonl - the bot's audit trail." />
       ) : (
         <div className="scroll-thin max-h-[340px] overflow-auto">
-          <table className="min-w-[980px] w-full font-mono text-[11.5px] tnum">
+          <table className="data-table min-w-[980px] w-full font-mono text-[11.5px] tnum">
             <thead className="sticky top-0 bg-surface">
               <tr className="eyebrow text-left">
                 <th className="px-3 py-2 font-normal">Time (UTC)</th>
@@ -66,7 +66,7 @@ export function TradeHistory() {
                 const note = txNote(t);
                 const hasUnits = Boolean(t.instrument) && t.units !== 0;
                 return (
-                  <tr key={t.id} className="border-t hairline hover:bg-surface2/40">
+                  <tr key={t.id} className="border-t hairline">
                     <td className="whitespace-nowrap px-3 py-1.5 text-dim">{shortTime(t.time)}</td>
                     <td className="px-3 py-1.5">
                       <div className="whitespace-nowrap font-semibold text-text">{txLabel(t.type)}</div>

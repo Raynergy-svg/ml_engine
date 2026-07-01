@@ -1,74 +1,92 @@
 "use client";
-import { usePoll } from "@/lib/api";
 import { useStream } from "@/lib/stream";
-import type { ApiHealth, SystemHealth } from "@/lib/types";
+import { control } from "@/lib/control";
 import { StatusDot } from "./ui";
-import { ago } from "@/lib/format";
 
-const SEV_COLOR: Record<string, string> = {
-  INFO: "#22d3ee", WARNING: "#f5b14c", CRITICAL: "#ff4d6d", ALARM: "#ff4d6d",
-};
-
-function Pill({ color, label, value, title }: { color: string; label: string; value: string; title?: string }) {
+function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="flex items-center gap-2 whitespace-nowrap" title={title}>
-      <StatusDot color={color} />
-      <span className="eyebrow">{label}</span>
-      <span className="font-mono text-[11px] font-semibold" style={{ color }}>{value}</span>
+    <div className={`min-h-[58px] rounded-md border bg-surface/70 px-3 py-2 hairline ${wide ? "min-w-[260px] flex-1" : "min-w-[170px]"}`}>
+      <span className="block font-mono text-[10px] uppercase tracking-wide text-faint">{label}</span>
+      <div className="mt-1 font-mono text-[13px] text-text">{children}</div>
     </div>
   );
 }
 
-export function GlobalStatusStrip() {
-  const { data } = usePoll<SystemHealth>("/api/system_health", 5000);
-  const { data: apiHealth } = usePoll<ApiHealth>("/api/health", 10000);
+export function GlobalStatusStrip({ onOpenControl }: { onOpenControl?: () => void }) {
   const { payload } = useStream();
   const halted = payload?.status?.halted ?? null;
+  const automation = payload?.status?.running === true;
 
-  const lane = data?.lanes;
-  const laneRunning = lane?.running === true;
-  const gates = data?.gates;
-  const gatesGreen = gates?.status === "GREEN";
-  const alerts = data?.alerts;
-  const sev = alerts?.max_severity;
+  async function doHalt() {
+    if (halted) return;
+    if (!window.confirm("Halt trading now?\n\nThis is fail-safe — it only stops new orders on the practice account.")) return;
+    const res = await control("halt");
+    if (!res.ok) window.alert(`Halt request denied: ${String(res.data.detail ?? res.data.error ?? res.status)}`);
+  }
 
   return (
-    <div className="card flex flex-wrap items-center gap-x-6 gap-y-2 rounded-none border-x-0 border-t-0 px-6 py-2">
-      <Pill
-        color={laneRunning ? "#2bd17e" : "#f5b14c"}
-        label="Live lane"
-        value={laneRunning ? "RUNNING" : "OFFLINE"}
-        title={lane?.available
-          ? `oanda_trend_proc=${lane.oanda_trend_proc} · account snapshot ${ago(lane.account_state_age_s)}`
-          : "oracle unavailable"}
-      />
-      <Pill
-        color={halted === false ? "#2bd17e" : halted === true ? "#ff4d6d" : "#5a6677"}
-        label="Halt"
-        value={halted === true ? "HALTED" : halted === false ? "CLEAR" : "—"}
-        title={halted === true ? "trading halted" : halted === false ? "not halted — trading allowed" : ""}
-      />
-      <Pill
-        color={gatesGreen ? "#2bd17e" : gates?.status === "RED" ? "#ff4d6d" : "#5a6677"}
-        label="Gates"
-        value={gates?.available ? gates.status : "—"}
-        title={gates?.available ? `${gates.hard_no_count} Hard-NO checks · verdict ${ago(gates.verdict_age_s ?? undefined)}` : ""}
-      />
-      <Pill
-        color={alerts?.count ? (SEV_COLOR[sev ?? "WARNING"] ?? "#f5b14c") : "#2bd17e"}
-        label="Alerts"
-        value={alerts?.count ? `${alerts.count} ${sev ?? ""}`.trim() : "none"}
-      />
-      <div
-        className="ml-auto flex items-center gap-2 whitespace-nowrap"
-        title={apiHealth?.control_enabled
-          ? "OANDA fxPractice (demo) — bounded control enabled"
-          : "OANDA fxPractice (demo) — read-only"}
+    <div className="mx-auto flex w-full max-w-[1680px] flex-wrap items-center gap-2 border-b px-3 py-2 hairline sm:px-4">
+      <button
+        className="grid h-[58px] w-[58px] shrink-0 place-items-center rounded-md border bg-surface/75 text-dim hairline hover:text-text"
+        title="Menu"
       >
-        <StatusDot color={apiHealth?.control_enabled ? "#f5b14c" : "#22d3ee"} />
-        <span className="font-mono text-[10px] text-faint">
-          PRACTICE · {apiHealth?.control_enabled ? "control enabled" : "read-only"}
-        </span>
+        <span className="text-[28px] leading-none">≡</span>
+      </button>
+
+      <Field label="Command" wide>
+        <div className="flex items-center justify-between gap-3">
+          <span className="truncate text-dim">Type a command or / for menu...</span>
+          <span className="rounded border px-1.5 py-0.5 text-[10px] text-faint hairline">⌘K</span>
+        </div>
+      </Field>
+
+      <Field label="Strategy">
+        <div className="flex items-center justify-between gap-4">
+          <span className="font-semibold" title="Long-or-flat SMA(100) trend rule (src/equity/oanda_trend.py)">trend_sma100</span>
+        </div>
+      </Field>
+
+      <Field label="Environment">
+        <div className="flex items-center justify-between gap-4">
+          <span className="flex items-center gap-2 text-pos">
+            <StatusDot color="#2bd17e" />
+            Practice
+          </span>
+        </div>
+      </Field>
+
+      <Field label="Automation">
+        <div className="flex items-center justify-between gap-4">
+          <span className="flex items-center gap-2">
+            <StatusDot color={automation ? "#2bd17e" : "#5a6677"} />
+            {automation ? "Enabled" : "Paused"}
+          </span>
+        </div>
+      </Field>
+
+      <div className="ml-auto flex min-h-[58px] flex-wrap items-center gap-2 rounded-md border bg-surface/65 px-3 py-2 hairline">
+        <button
+          onClick={doHalt}
+          disabled={halted === true}
+          className="rounded-md border border-warn/65 px-5 py-2 font-mono text-[12px] font-semibold text-warn hover:bg-warn/10 disabled:opacity-40"
+          title="Halt trading (audited, fail-safe)"
+        >
+          HALT
+        </button>
+        <button
+          onClick={onOpenControl}
+          className="rounded-md border px-5 py-2 font-mono text-[12px] font-semibold text-text hairline hover:bg-surface2"
+          title="Flattening positions is not yet a reviewed control action — opens the audited Control panel"
+        >
+          FLATTEN
+        </button>
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded-md bg-pos px-5 py-2 font-mono text-[12px] font-semibold text-base hover:brightness-110"
+          title="Reload the dashboard view (UI-only, no bot action)"
+        >
+          NEW SESSION
+        </button>
       </div>
     </div>
   );

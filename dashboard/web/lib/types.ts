@@ -8,6 +8,12 @@ export interface Position {
   // (additive, contract-safe). Absent today → rendered as "—" / no chart line.
   take_profit?: number | null;
   stop_loss?: number | null;
+  // Derived server-side from replaying the real fill ledger (never fabricated) —
+  // absent/null when the lot can't be reconstructed -> render an honest "—".
+  entry_price?: number | null;
+  opened_at?: string | null;
+  side?: "LONG" | "SHORT" | "FLAT";
+  strategy?: string;
 }
 
 export interface Account {
@@ -112,7 +118,10 @@ export interface Signal {
   sma_window: number;
   distance_pct: number;
 }
-export interface Candle { time: number; open: number; high: number; low: number; close: number; }
+export interface Candle {
+  time: number; open: number; high: number; low: number; close: number;
+  volume?: number | null; // real OANDA tick-count volume when reported; null if absent
+}
 export interface CandleResponse {
   connected: boolean;
   instrument: string;

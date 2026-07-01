@@ -140,11 +140,75 @@ def _transaction_status(t: Dict[str, Any], fills_by_order: Dict[str, Dict[str, A
 # --------------------------------------------------------------------------- #
 # File-backed readers (no network) — what the bot itself wrote
 # --------------------------------------------------------------------------- #
+def _position_entry_contexts() -> Dict[str, Dict[str, Any]]:
+    """Weighted-average entry price + open time for each instrument's CURRENT lot.
+
+    Replays ORDER_FILL rows chronologically per instrument. Only fills that ADD to
+    the position in its current direction contribute to the cost basis (a reduction
+    doesn't move the average entry price); a lot resets whenever net units cross
+    through / start from flat. Pure derivation from the real ledger — never fabricated;
+    an instrument with no fill history (or a lot we can't reconstruct) yields None/None
+    and the frontend must render an honest "—", not a guess.
+    """
+    net: Dict[str, float] = {}
+    lot_units: Dict[str, float] = {}
+    lot_notional: Dict[str, float] = {}
+    lot_opened_at: Dict[str, Optional[str]] = {}
+    for t in _iter_jsonl(OANDA_DIR / "transactions.jsonl"):
+        if t.get("type") != "ORDER_FILL":
+            continue
+        inst = t.get("instrument")
+        if not inst:
+            continue
+        try:
+            units = float(t.get("units") or 0)
+            price = float(t.get("price") or 0)
+        except (ValueError, TypeError):
+            continue
+        if units == 0 or price <= 0:
+            continue
+        prev = net.get(inst, 0.0)
+        new_net = prev + units
+        crossed_flat = prev == 0.0 or (prev > 0) != (new_net > 0)
+        if crossed_flat:
+            lot_units[inst], lot_notional[inst], lot_opened_at[inst] = 0.0, 0.0, None
+        # a fill "adds" to the lot when it moves net in the SAME direction as the
+        # resulting position (i.e. |new_net| > |prev| in that direction)
+        adding = new_net != 0 and ((units > 0) == (new_net > 0)) and abs(new_net) >= abs(prev)
+        if adding:
+            lot_units[inst] = lot_units.get(inst, 0.0) + units
+            lot_notional[inst] = lot_notional.get(inst, 0.0) + units * price
+            if lot_opened_at.get(inst) is None:
+                lot_opened_at[inst] = t.get("time")
+        net[inst] = new_net
+    out: Dict[str, Dict[str, Any]] = {}
+    for inst, lu in lot_units.items():
+        if lu == 0:
+            continue
+        out[inst] = {
+            "entry_price": round(lot_notional[inst] / lu, 6),
+            "opened_at": lot_opened_at.get(inst),
+        }
+    return out
+
+
 def read_account() -> Dict[str, Any]:
     """Account summary + positions the live loop last snapshotted to disk."""
     data = _read_json(OANDA_DIR / "account_state.json", {})
     peak = _read_json(OANDA_DIR / "peak_nav.json", {}).get("peak_nav")
     nav = float(data.get("nav") or 0.0)
+    positions = list(data.get("positions") or [])
+    if positions:
+        entries = _position_entry_contexts()
+        for p in positions:
+            ctx = entries.get(p.get("instrument")) or {}
+            p["entry_price"] = ctx.get("entry_price")
+            p["opened_at"] = ctx.get("opened_at")
+            units = p.get("net_units") or 0
+            p["side"] = "LONG" if units > 0 else ("SHORT" if units < 0 else "FLAT")
+            # Real strategy identifier — the validated long-or-flat SMA(100) trend
+            # rule (src/equity/oanda_trend.py), never the repo dirname or a fake label.
+            p["strategy"] = "trend_sma100"
     out: Dict[str, Any] = {
         "connected": bool(data),
         "source": "account_state.json",
@@ -156,7 +220,7 @@ def read_account() -> Dict[str, Any]:
         "margin_used": float(data.get("margin_used") or 0.0),
         "margin_available": float(data.get("margin_available") or 0.0),
         "open_trade_count": int(data.get("open_trade_count") or 0),
-        "positions": data.get("positions") or [],
+        "positions": positions,
         "peak_nav": float(peak) if peak is not None else None,
     }
     if out["peak_nav"] and out["peak_nav"] > 0 and nav > 0:
@@ -665,7 +729,9 @@ def live_candles(client, instrument: str, granularity: str = "D",
                      .replace(tzinfo=timezone.utc).timestamp())
         except (KeyError, ValueError, TypeError):
             continue
-        candles.append({"time": ts, "open": o, "high": h, "low": l, "close": cl})
+        vol = c.get("volume")  # real OANDA tick-count volume when the broker reports it
+        candles.append({"time": ts, "open": o, "high": h, "low": l, "close": cl,
+                        "volume": int(vol) if isinstance(vol, (int, float)) else None})
         closes.append(cl)
         times.append(ts)
 

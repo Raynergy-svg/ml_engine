@@ -1,103 +1,114 @@
 "use client";
 import { useStream } from "@/lib/stream";
 import { usePoll } from "@/lib/api";
-import type { ApiHealth, Trades } from "@/lib/types";
+import type { Trades, SystemHealth, ControlState } from "@/lib/types";
 import { Logo } from "./Logo";
 import { Badge, StatusDot } from "./ui";
-import { fmtMoney, fmtSigned, pnlClass, fmtNum, ago } from "@/lib/format";
+import { fmtMoney, fmtSigned, pnlClass, fmtNum, fmtPct } from "@/lib/format";
 
-function Stat({ label, children, sub }: { label: string; children: React.ReactNode; sub?: React.ReactNode }) {
+function TopMetric({ label, children, sub, positive }: {
+  label: string; children: React.ReactNode; sub?: string; positive?: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-0.5 px-5">
-      <span className="eyebrow">{label}</span>
-      <span className="font-mono text-[22px] font-semibold leading-tight tnum">{children}</span>
-      {sub && <span className="font-mono text-[11px] text-dim tnum">{sub}</span>}
+    <div className="min-w-[92px] px-3 py-2">
+      <span className="block font-mono text-[10px] uppercase tracking-wide text-dim">{label}</span>
+      <span className={`mt-1 block whitespace-nowrap font-mono text-[14px] font-semibold tnum ${positive === true ? "text-pos" : positive === false ? "text-neg" : "text-text"}`}>
+        {children}
+      </span>
+      {sub && <span className="block whitespace-nowrap font-mono text-[9.5px] text-faint">{sub}</span>}
+    </div>
+  );
+}
+
+function StatusBlock({ label, value, ok, unknown }: { label: string; value: string; ok: boolean; unknown?: boolean }) {
+  const color = unknown ? "#5a6677" : ok ? "#2bd17e" : "#ff4d6d";
+  return (
+    <div className="hidden min-w-[132px] border-l px-5 py-2 hairline md:block">
+      <span className="block font-mono text-[10px] uppercase tracking-wide text-dim">{label}</span>
+      <span className="mt-1 flex items-center gap-2 font-mono text-[13px] font-semibold" style={{ color }}>
+        <StatusDot color={color} pulse={ok && !unknown} />
+        {value}
+      </span>
     </div>
   );
 }
 
 export function AccountHeader() {
   const { payload, connected } = useStream();
-  const { data: trades } = usePoll<Trades>("/api/trades?limit=500", 15000);
-  const { data: apiHealth } = usePoll<ApiHealth>("/api/health", 10000);
   const acct = payload?.account;
   const status = payload?.status;
+  const { data: trades } = usePoll<Trades>("/api/trades?limit=500", 15000);
+  const { data: health } = usePoll<SystemHealth>("/api/system_health", 5000);
+  const { data: control, error: controlErr } = usePoll<ControlState>("/api/control/state", 5000);
 
-  // Day P&L = P&L realized since today's UTC midnight + current unrealized.
-  // Gated on BOTH sources loaded — otherwise we'd transiently show unrealized-only
-  // as if it were the settled day figure (an understated number that looks real).
+  // Day P&L: realized pl of today's UTC fills + current unrealized (gated on both
+  // sources so it never transiently shows unrealized-only as the settled figure).
   let realizedToday = 0;
   if (trades?.trades) {
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     for (const t of trades.trades) {
-      // Only ORDER_FILL rows carry realized P&L; bracket/financing/cancel rows also
-      // have a `pl` field (usually 0) but summing them diverges from the canonical
-      // realized figure (mirror backend read_equity, which sums FILL pl only). (F-H5)
-      if (t.type === "ORDER_FILL" && new Date(t.time).getTime() >= startOfDay.getTime()) {
-        realizedToday += t.pl;
-      }
+      if (t.type === "ORDER_FILL" && new Date(t.time).getTime() >= startOfDay.getTime()) realizedToday += t.pl;
     }
   }
   const unrealized = acct?.unrealized_pl ?? 0;
   const dayPnl = acct && trades?.trades ? realizedToday + unrealized : null;
 
-  const halted = status?.halted ?? true;
-  const running = status?.running ?? false;
+  // Win rate: real fraction of CLOSING fills (pl != 0) that were profitable.
+  let winRate: number | null = null;
+  if (trades?.trades) {
+    let wins = 0, closes = 0;
+    for (const t of trades.trades) {
+      if (t.type !== "ORDER_FILL" || t.pl === 0) continue;
+      closes += 1;
+      if (t.pl > 0) wins += 1;
+    }
+    winRate = closes > 0 ? (wins / closes) * 100 : null;
+  }
+
+  const drawdownPct = acct?.drawdown_pct != null ? acct.drawdown_pct * 100 : null;
+  const marginUsedPct = acct && acct.nav > 0 ? (acct.margin_used / acct.nav) * 100 : null;
+  const leverage = !controlErr ? control?.gross_leverage ?? null : null;
+
+  const laneRunning = health?.lanes?.running ?? status?.running ?? null;
+  const halted = status?.halted ?? null;
+  const systemLabel = halted === true ? "HALTED" : laneRunning === true ? "RUNNING" : laneRunning === false ? "OFFLINE" : "—";
+  const gatesStatus = health?.gates?.available ? health.gates.status : null;
+  const gateLabel = gatesStatus === "GREEN" ? "ALL CLEAR" : gatesStatus === "RED" ? "ISSUES" : "—";
 
   return (
-    <header className="card sticky top-0 z-20 flex flex-wrap items-center gap-y-4 rounded-none border-x-0 border-t-0 px-6 py-3.5 backdrop-blur">
-      <div className="flex items-center gap-4 pr-6">
-        <Logo height={34} />
-        <div className="hidden flex-col border-l pl-4 hairline sm:flex">
-          <span className="font-mono text-[11px] tracking-wide text-dim">Buddy engine</span>
-          <span className="font-mono text-[10px] text-faint">{acct?.account_id ?? "—"}</span>
-        </div>
+    <header className="mx-auto flex min-h-[70px] w-full max-w-[1680px] flex-wrap items-center gap-3 border-b px-3 py-2 hairline sm:px-4 xl:flex-nowrap">
+      <div className="flex min-w-[220px] items-center gap-4 pr-2">
+        <Logo height={38} />
+        <Badge color="#2bd17e">PRACTICE</Badge>
+        <span className="hidden whitespace-nowrap font-mono text-[11px] uppercase tracking-wide text-dim lg:inline">
+          Forex engine
+        </span>
       </div>
 
-      <div className="flex flex-1 flex-wrap items-center gap-y-3 divide-x divide-[var(--color-border)]">
-        <Stat label="NAV" sub={acct?.currency ? `${acct.currency}` : undefined}>
-          {acct ? fmtMoney(acct.nav) : "—"}
-        </Stat>
-        <Stat label="Day P&L" sub="realized today (UTC) + unrealized">
-          <span className={pnlClass(dayPnl)}>{dayPnl === null ? "—" : fmtSigned(dayPnl)}</span>
-        </Stat>
-        <Stat label="Unrealized" sub={`${acct?.open_trade_count ?? 0} open trades`}>
-          <span className={pnlClass(unrealized)}>{acct ? fmtSigned(unrealized) : "—"}</span>
-        </Stat>
-        <Stat label="Total Realized" sub="since inception">
-          <span className={pnlClass(acct?.realized_pl)}>{acct ? fmtSigned(acct.realized_pl) : "—"}</span>
-        </Stat>
-        <Stat
-          label="Margin"
-          sub={acct ? `${fmtNum((acct.margin_used / (acct.nav || 1)) * 100, 1)}% used` : undefined}
-        >
+      <StatusBlock label="System status" value={systemLabel} ok={halted !== true && laneRunning === true} unknown={laneRunning === null} />
+      <StatusBlock label="Gate status" value={gateLabel} ok={gatesStatus === "GREEN"} unknown={gatesStatus == null} />
+
+      <div className="order-3 grid w-full min-w-0 grid-cols-2 rounded-md border bg-surface/55 hairline sm:grid-cols-3 lg:order-none lg:ml-auto lg:w-auto xl:flex">
+        <TopMetric label="Equity">{acct ? fmtMoney(acct.nav) : "—"}</TopMetric>
+        <TopMetric label="P&L (Day)" positive={dayPnl == null ? undefined : dayPnl >= 0}>
+          {dayPnl == null ? "—" : fmtSigned(dayPnl)}
+        </TopMetric>
+        <TopMetric label="Win Rate">{winRate == null ? "—" : fmtPct(winRate, 1)}</TopMetric>
+        <TopMetric label="Drawdown" positive={drawdownPct == null ? undefined : drawdownPct < 5}>
+          {drawdownPct == null ? "—" : fmtPct(drawdownPct, 2)}
+        </TopMetric>
+        <TopMetric label="Leverage">{leverage == null ? "—" : `${fmtNum(leverage, 1)}x`}</TopMetric>
+        <TopMetric label="Margin" sub={marginUsedPct != null ? `${fmtNum(marginUsedPct, 1)}% used` : undefined}>
           {acct ? fmtMoney(acct.margin_available) : "—"}
-        </Stat>
+        </TopMetric>
       </div>
 
-      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 pl-0 sm:pl-4">
-        <Badge color="#22d3ee" dot>PRACTICE</Badge>
-        <Badge color={apiHealth?.control_enabled ? "#f5b14c" : "#5a6677"} dot>
-          {apiHealth?.control_enabled ? "CONTROL" : "READ-ONLY"}
-        </Badge>
-        {halted ? (
-          <Badge color="#ff4d6d" dot>HALTED</Badge>
-        ) : running ? (
-          <Badge color="#2bd17e" dot pulse>RUNNING</Badge>
-        ) : (
-          <Badge color="#f5b14c" dot>IDLE</Badge>
-        )}
-        {acct?.stale && (
-          <Badge color="#f5b14c" dot title="Account snapshot is stale — the trend lane may be stopped. Figures are last-known, not live.">
-            STALE{acct.snapshot_age_s != null ? ` ${ago(acct.snapshot_age_s)}` : ""}
-          </Badge>
-        )}
+      <div className="order-2 ml-auto flex min-w-0 items-center gap-2 xl:order-none xl:ml-0">
         <div className="flex min-w-0 items-center gap-1.5 pl-1" title="SSE stream to data layer">
           <StatusDot color={connected ? "#34e5a1" : "#5a6677"} pulse={connected} />
           <span className="min-w-0 font-mono text-[10px] text-faint">
             {connected ? "live" : "offline"}
-            {status?.account_snapshot_age_s != null && ` · cycle ${ago(status.account_snapshot_age_s)}`}
           </span>
         </div>
         <button
@@ -106,9 +117,9 @@ export function AccountHeader() {
             window.location.href = "/login";
           }}
           title="Lock / sign out"
-          className="ml-1 rounded-md border px-2 py-1 font-mono text-[10px] text-faint hairline hover:text-dim"
+          className="grid h-10 w-10 place-items-center rounded-full border border-pos/45 bg-pos/10 font-mono text-[12px] font-semibold text-pos hover:bg-pos/20"
         >
-          lock
+          AX
         </button>
       </div>
     </header>

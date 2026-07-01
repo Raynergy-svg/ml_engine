@@ -7,16 +7,34 @@ import {
 import { usePoll } from "@/lib/api";
 import { useStream } from "@/lib/stream";
 import type { CandleResponse } from "@/lib/types";
-import { Card, SectionTitle, NotConnected, Loading, Badge } from "./ui";
-import { fmtPrice, fmtPct, prettyPair } from "@/lib/format";
+import { Card, SectionTitle, NotConnected, Loading } from "./ui";
+import { fmtPrice, fmtPct, fmtNum, prettyPair } from "@/lib/format";
 
-const GRANS = ["D", "H4", "H1"] as const;
+// Granularity buttons shown -> the real OANDA code the backend candle endpoint takes.
+const GRAN_OPTIONS: { label: string; code: string }[] = [
+  { label: "1m", code: "M1" }, { label: "5m", code: "M5" }, { label: "15m", code: "M15" },
+  { label: "1h", code: "H1" }, { label: "4h", code: "H4" }, { label: "1D", code: "D" },
+  { label: "1W", code: "W" }, { label: "1M", code: "M" },
+];
+const TOOL_LABELS = ["↖", "/", "□", "~", "T", "⌁", "≡", "✦", "⌁"];
+
+function useClock(): string {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!now) return "";
+  return now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
 
 export function CandleChart({ instrument }: { instrument: string }) {
-  const [gran, setGran] = useState<(typeof GRANS)[number]>("D");
+  const [gran, setGran] = useState("H1");
   const { data, error, loading } = usePoll<CandleResponse>(
     `/api/candles/${instrument}?granularity=${gran}&sma=100&count=300`, 30000,
   );
+  const clock = useClock();
 
   // Bracket levels for THIS instrument's open position (if any) — from the live
   // stream. Present only once the bot writes TP/SL into account_state.json.
@@ -90,37 +108,65 @@ export function CandleChart({ instrument }: { instrument: string }) {
   const sig = data?.signal;
   const disconnected = (data && !data.connected) || !!error;
 
+  // Real OHLC readout from the latest closed bar + real volume sum, when reported.
+  const candles = data?.candles ?? [];
+  const last = candles.length ? candles[candles.length - 1] : null;
+  const prevClose = candles.length > 1 ? candles[candles.length - 2].close : null;
+  const change = last && prevClose != null ? last.close - prevClose : null;
+  const changePct = change != null && prevClose ? (change / prevClose) * 100 : null;
+  const volWindow = candles.slice(-9);
+  const volSum = volWindow.length && volWindow.every((c) => c.volume != null)
+    ? volWindow.reduce((a, c) => a + (c.volume ?? 0), 0)
+    : null;
+
   return (
-    <Card className="flex h-full flex-col">
+    <Card className="flex h-full flex-col overflow-hidden">
       <SectionTitle
         right={
-          <div className="flex items-center gap-2">
-            {sig && (
-              <Badge color={sig.on ? "#34e5a1" : "#8b98a9"} dot pulse={sig.on}>
-                {sig.state} · {fmtPct(sig.distance_pct, 2)} vs SMA
-              </Badge>
-            )}
-            <div className="flex overflow-hidden rounded-md border hairline">
-              {GRANS.map((g) => (
-                <button
-                  key={g}
-                  onClick={() => setGran(g)}
-                  className={`px-2.5 py-1 font-mono text-[11px] ${
-                    gran === g ? "bg-surface2 text-cyan" : "text-faint hover:text-dim"
-                  }`}
-                >
-                  {g}
-                </button>
-              ))}
-            </div>
-          </div>
+          <button className="hidden rounded border px-2 py-1 font-mono text-[11px] text-dim hairline md:inline-flex">
+            Indicators
+          </button>
         }
       >
-        {prettyPair(instrument)} · trend SMA(100)
+        {prettyPair(instrument)} · {gran} · AXIOM
       </SectionTitle>
 
-      <div className="relative min-h-0 flex-1 px-2 pb-2">
-        <div ref={elRef} className="h-full w-full" style={{ minHeight: 320 }} />
+      <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[44px_minmax(0,1fr)]">
+        <div className="hidden border-r bg-base/35 py-2 hairline sm:flex sm:flex-col sm:items-center sm:gap-1.5">
+          {TOOL_LABELS.map((label, i) => (
+            <button
+              key={`${label}-${i}`}
+              className="grid h-8 w-8 place-items-center rounded-md font-mono text-[13px] text-dim hover:bg-surface2 hover:text-text"
+              title="Chart tool (drawing tools not yet wired)"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative min-h-0 overflow-hidden px-2 pb-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-2 py-2 font-mono text-[11px] text-dim tnum">
+            <span className="font-semibold text-text">{prettyPair(instrument)}</span>
+            {last ? (
+              <>
+                <span>O <span style={{ color: change != null && change >= 0 ? "#2bd17e" : "#ff4d6d" }}>{fmtPrice(last.open, instrument)}</span></span>
+                <span>H <span style={{ color: change != null && change >= 0 ? "#2bd17e" : "#ff4d6d" }}>{fmtPrice(last.high, instrument)}</span></span>
+                <span>L <span style={{ color: change != null && change >= 0 ? "#2bd17e" : "#ff4d6d" }}>{fmtPrice(last.low, instrument)}</span></span>
+                <span>C <span style={{ color: change != null && change >= 0 ? "#2bd17e" : "#ff4d6d" }}>{fmtPrice(last.close, instrument)}</span></span>
+                {change != null && (
+                  <span style={{ color: change >= 0 ? "#2bd17e" : "#ff4d6d" }}>
+                    {change >= 0 ? "+" : ""}{fmtPrice(change, instrument)} ({changePct != null ? fmtPct(changePct, 2) : "—"})
+                  </span>
+                )}
+                {volSum != null && (
+                  <span className="w-full text-dim">Volume Σ9 <span className="text-pos">{fmtNum(volSum, 0)}</span></span>
+                )}
+              </>
+            ) : (
+              <span className="text-faint">awaiting candles…</span>
+            )}
+          </div>
+          <div ref={elRef} className="h-[calc(100%-74px)] w-full" style={{ minHeight: 280 }} />
         {disconnected && (
           <div className="absolute inset-0 grid place-items-center bg-surface/60 backdrop-blur-sm">
             <NotConnected
@@ -132,19 +178,25 @@ export function CandleChart({ instrument }: { instrument: string }) {
         {loading && !data && (
           <div className="absolute inset-0 grid place-items-center"><Loading label="Loading candles…" /></div>
         )}
+          <div className="scroll-thin flex items-center gap-4 overflow-x-auto border-t px-2 py-2 font-mono text-[11px] text-dim hairline">
+            {GRAN_OPTIONS.map(({ label, code }) => (
+              <button
+                key={code}
+                onClick={() => setGran(code)}
+                className={`rounded px-1.5 py-0.5 ${gran === code ? "bg-pos/10 text-pos" : "hover:bg-surface2 hover:text-text"}`}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="ml-auto whitespace-nowrap">auto</span>
+          </div>
+        </div>
       </div>
 
-      {sig && (
-        <div className="flex items-center gap-5 border-t px-4 py-2 font-mono text-[11px] hairline tnum text-dim">
-          <span>last <span className="text-text">{fmtPrice(sig.price, instrument)}</span></span>
-          <span>SMA <span className="text-cyan">{fmtPrice(sig.sma, instrument)}</span></span>
-          {sl != null && <span>SL <span style={{ color: "#ff4d6d" }}>{fmtPrice(sl, instrument)}</span></span>}
-          {tp != null && <span>TP <span style={{ color: "#2bd17e" }}>{fmtPrice(tp, instrument)}</span></span>}
-          {tp == null && sl == null && (
-            <span className="text-faint">price &gt; SMA ⇒ long · else flat (shift-1 causal)</span>
-          )}
-        </div>
-      )}
+      <div className="scroll-thin flex items-center gap-5 overflow-x-auto border-t px-4 py-2 font-mono text-[11px] hairline tnum text-dim">
+        <span>{clock} (local)</span>
+        {sig && <span className="ml-auto text-faint">{sig.state} · {fmtPct(sig.distance_pct, 2)} vs SMA</span>}
+      </div>
     </Card>
   );
 }

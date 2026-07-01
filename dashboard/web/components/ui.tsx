@@ -2,16 +2,16 @@
 import React from "react";
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`card ${className}`}>{children}</div>;
+  return <div className={`card min-w-0 ${className}`}>{children}</div>;
 }
 
 export function SectionTitle({
   children, right,
 }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5">
-      <span className="eyebrow">{children}</span>
-      {right}
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-b px-4 pb-2.5 pt-3.5 hairline">
+      <span className="eyebrow min-w-[140px] flex-1 truncate">{children}</span>
+      {right && <div className="scroll-thin max-w-full overflow-x-auto">{right}</div>}
     </div>
   );
 }
@@ -31,7 +31,7 @@ export function Badge({
   return (
     <span
       title={title}
-      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[11px] font-semibold tnum"
+      className="inline-flex items-center gap-1.5 rounded-md border bg-surface2/45 px-2 py-1 font-mono text-[10.5px] font-semibold tnum"
       style={{ color, borderColor: "var(--color-border)" }}
     >
       {dot && <StatusDot color={color} pulse={pulse} />}

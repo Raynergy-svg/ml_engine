@@ -26,8 +26,8 @@ export function EquityCurve() {
       autoSize: true,
     });
     const series = chart.addSeries(AreaSeries, {
-      lineColor: "#22d3ee", lineWidth: 2,
-      topColor: "rgba(34,211,238,0.28)", bottomColor: "rgba(34,211,238,0.01)",
+      lineColor: "#2bd17e", lineWidth: 2,
+      topColor: "rgba(43,209,126,0.30)", bottomColor: "rgba(43,209,126,0.02)",
       priceLineVisible: false,
     });
     chartRef.current = chart;
@@ -65,7 +65,7 @@ export function EquityCurve() {
           ) : undefined
         }
       >
-        Equity Curve · account balance (ledger window)
+        Equity Curve
       </SectionTitle>
       <div className="relative min-h-0 flex-1 px-2 pb-2">
         <div ref={elRef} className="h-full w-full" style={{ minHeight: 220 }} />
