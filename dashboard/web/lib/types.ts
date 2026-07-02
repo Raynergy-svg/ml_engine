@@ -288,6 +288,10 @@ export interface ControlState {
   ok: boolean;
   environment: string;
   halted: boolean;
+  /** Per-lane halted status (oanda_fx / equity / brain), fed by StateEngine.get_lane_status().
+   * The legacy global `halted` flag above still ORs over every lane — a lane can never
+   * show running while `halted` is true. */
+  lanes?: Record<string, boolean>;
   gross_leverage: number | null;
   override_updated_at: string | null;
   leverage_cap: number;
@@ -297,6 +301,164 @@ export interface ControlState {
   armed: boolean;
   arm_expires_at: string | null;
   armed_by: string | null;
+}
+
+// GET /api/lanes — always-on per-lane halt read (visible even with AXIOM_CONTROL_ENABLED off).
+export interface LaneStatus {
+  readable: boolean;
+  global_halted: boolean;
+  lanes: Record<string, boolean>;
+  known_lanes: string[];
+}
+
+// GET /api/equity_sleeve — equity-harvester lane status.
+export interface EquityShipGate {
+  available: boolean;
+  gate_pass?: boolean;
+  net_sharpe?: number | null;
+  max_dd?: number | null;
+  asof?: string | null;
+  recommendation?: string | null;
+  universe_hash?: string | null;
+}
+export interface EquityLiveGate {
+  available: boolean;
+  armed: boolean;
+  universe_hash?: string | null;
+  initial_nav_fraction?: number | null;
+  max_portfolio_risk_fraction?: number | null;
+  armed_at_ts?: number | null;
+  disarmed_at_ts?: number | null;
+  last_event?: string | null;
+  last_event_reason?: string | null;
+  last_event_ts?: number | null;
+}
+export interface EquityCycleRecord {
+  seq: number;
+  asof: string;
+  decision: string;
+  actionable: boolean;
+  gross: number;
+  n_orders: number;
+  reasons: string[];
+}
+export interface EquityGateDecision {
+  available: boolean;
+  decision?: "refuse" | "halt" | "no_act" | "abstain" | "continue";
+  reasons?: string[];
+  actionable?: boolean;
+  error?: string;
+}
+export interface EquitySleeve {
+  connected: boolean;
+  dormant: boolean;
+  mode: "live" | "shadow";
+  asof: string | null;
+  rebalance_id: string | null;
+  target_weights: Record<string, number>;
+  actual_weights: Record<string, number>;
+  source: string;
+  live_gate: EquityLiveGate;
+  ship_gate: EquityShipGate;
+  last_cycles: EquityCycleRecord[];
+  gate_decision: EquityGateDecision;
+}
+
+// GET /api/brain_loop — Sonnet brain-loop status (has not run in production yet; every
+// field below is an honest empty until it does).
+export interface BrainLoopPromotionRequest {
+  hypothesis_id: string;
+  target: "shadow" | "live";
+  status: string; // "APPROVED_SHADOW" | "PENDING_OPERATOR"
+  requires_operator_arm: boolean;
+  decision: Record<string, unknown>;
+  created_at: string;
+}
+export interface BrainLoopLedgerEvent {
+  seq?: number;
+  ts?: string;
+  kind?: string; // "register" | "result" | "gate_verdict"
+  hypothesis_id?: string;
+  name?: string;
+  status?: string;
+  decision?: string;
+  reasons?: string[];
+}
+export interface BrainLoopAuditEvent {
+  ts: string;
+  actor: string;
+  action: string; // "halt" | "tighten_risk_config"
+  reason?: string;
+  risk_pct?: number;
+  prior_risk_pct?: number;
+}
+export interface BrainLoop {
+  has_run: boolean;
+  last_event: BrainLoopLedgerEvent | null;
+  recent_ledger: BrainLoopLedgerEvent[];
+  promotion_requests: BrainLoopPromotionRequest[];
+  pending_operator_count: number;
+  derisk_audit: BrainLoopAuditEvent[];
+  source: Record<string, string>;
+}
+
+// GET /api/crypto_momentum — crypto XS-momentum SHADOW lane (no live path exists;
+// this signal FAILED the ship gate on significance — see docs/experiment-crypto-
+// edge-hunt-round2-2026-06-29.md — the panel exists to show the accumulating
+// live-forward-OOS record, not a verified edge).
+export interface CryptoMomentumBook {
+  longs: Record<string, number>;
+  shorts: Record<string, number>;
+}
+export interface CryptoMomentumCycle {
+  cycle_ts: string;
+  asof_date: string;
+  n_longs: number;
+  n_shorts: number;
+  gross_leverage: number;
+  today_net_return: number;
+  today_price_return: number;
+  today_carry_return: number;
+  today_cost: number;
+  today_turnover: number;
+  cumulative_shadow_return: number;
+  forward_cycle_seq: number;
+  orders_placed: number;
+}
+export interface CryptoMomentumConstruction {
+  signal: string;
+  direction: number;
+  quintile: number;
+  vol_target_ann: number;
+  vol_window_d: number;
+  max_leverage: number;
+  rebalance_days: number;
+  cost_bps: number;
+  source_doc: string;
+  pre_registered_oos_sharpe: number;
+  gate_verdict: string;
+}
+export interface CryptoMomentumLiveGate {
+  available: boolean;
+  armed: boolean;
+  last_event?: string | null;
+  last_event_reason?: string | null;
+}
+export interface CryptoMomentum {
+  has_run: boolean;
+  n_forward_cycles: number;
+  current_book: CryptoMomentumBook | null;
+  current_asof: string | null;
+  current_gross_leverage: number | null;
+  cumulative_shadow_return: number;
+  forward_sharpe_annualized: number | null;
+  first_asof_date: string | null;
+  last_asof_date: string | null;
+  recent_cycles: CryptoMomentumCycle[];
+  construction: CryptoMomentumConstruction | null;
+  live_gate: CryptoMomentumLiveGate;
+  mode: "live" | "shadow";
+  source: Record<string, string>;
 }
 
 export interface StreamPayload {

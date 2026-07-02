@@ -14,6 +14,10 @@ import { SentimentPlaceholder } from "@/components/SentimentPlaceholder";
 import { Tier7Panel } from "@/components/Tier7Panel";
 import { Tier7Cockpit } from "@/components/Tier7Cockpit";
 import { ControlPanel } from "@/components/ControlPanel";
+import { HealthPanel } from "@/components/HealthPanel";
+import { EquityHarvesterPanel } from "@/components/EquityHarvesterPanel";
+import { CryptoMomentumPanel } from "@/components/CryptoMomentumPanel";
+import { BrainLoopPanel } from "@/components/BrainLoopPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
 import { FullscreenIcon, ChartTypeIcon, PanelSplitIcon, FitArrowsIcon, ChevronDown, CheckCircleSolid } from "@/components/icons";
 import { usePoll } from "@/lib/api";
@@ -80,7 +84,6 @@ function DashboardBody() {
   const setTab = (next: Tab) => setStoredTab(next);
   const marketTabs = new Set<Tab>(["Markets"]);
   const ledgerTabs = new Set<Tab>(["Orders", "Executions", "Journal"]);
-  const controlTabs = new Set<Tab>(["Risk", "Automation", "Settings"]);
   const { payload } = useStream();
   const halted = payload?.status?.halted ?? null;
 
@@ -248,7 +251,20 @@ function DashboardBody() {
 
         {tab === "Positions" && <div className="h-[520px] min-w-0"><PositionsTable /></div>}
 
-        {controlTabs.has(tab) && <ControlPanel />}
+        {tab === "Risk" && (
+          <>
+            <HealthPanel />
+            <EquityHarvesterPanel />
+            <CryptoMomentumPanel />
+          </>
+        )}
+        {tab === "Automation" && (
+          <>
+            <ControlPanel />
+            <BrainLoopPanel />
+          </>
+        )}
+        {tab === "Settings" && <ControlPanel />}
 
         {ledgerTabs.has(tab) && (
           <>

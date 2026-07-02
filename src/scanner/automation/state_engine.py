@@ -28,7 +28,7 @@ SCHEMA_VERSION = "2"
 # False). Any lane name outside this set is rejected — typo'd/orphan lane
 # keys must fail loud, not silently create a dead ``halted_lanes`` entry
 # nothing reads (mirrors the ScannerConfig key-validation convention).
-KNOWN_LANES = ("oanda_fx", "equity", "brain")
+KNOWN_LANES = ("oanda_fx", "equity", "brain", "crypto_momentum")
 
 _DEFAULT_STATE: Dict[str, Any] = {
     "goal": "",
@@ -265,6 +265,67 @@ class StateEngine:
         if not isinstance(val, bool):
             return True  # fail-closed: halted_lanes exists but this lane's entry is missing/corrupt
         return val
+
+    def get_halted_strict(self, lane: Optional[str] = None) -> bool:
+        """Fail-CLOSED halt check for last-line-of-defense guards immediately
+        before an order reaches the broker (execution.py execute_trade /
+        close_trade mid-cycle re-checks, embedded_scanner's pre-cycle check).
+
+        Unlike ``get_halted()`` — which treats a missing/corrupt state.json as
+        "not halted" so early orchestration checks don't false-positive-block
+        on a fresh install — this method treats ANY unreadable state as
+        halted: missing file, corrupt JSON, a non-dict payload, a missing
+        ``halted_lanes`` dict, or a missing/non-bool entry for this lane. A
+        lane must be explicitly told "not halted" to run; it is never assumed
+        safe by omission or by read failure.
+
+        Reads the file directly (not via ``load_state()``, which swallows
+        JSON errors and returns defaults) so a corrupt file cannot silently
+        resolve to "not halted". Mirrors ``src.equity.decision_gate.
+        _lane_halted``'s fail-closed contract (kept deliberately in sync —
+        see that function's docstring for the original design rationale).
+
+        Promoted to StateEngine 2026-07-02 (operator decision, not a silent
+        widening) so the FX mid-cycle guards get the same fail-closed
+        guarantee the equity harvester's decision gate has always had.
+
+        Raises ``ValueError`` if no lane is bound (constructor or arg) or the
+        lane is unknown — there is no "global-only" strict variant, since a
+        real global ``halted=True`` already fails closed via ``get_halted()``.
+        """
+        lane = lane if lane is not None else self._lane
+        if lane is None:
+            raise ValueError(
+                "get_halted_strict requires a lane (bind via StateEngine(lane=...) or pass lane=)"
+            )
+        if lane not in KNOWN_LANES:
+            raise ValueError(f"Unknown lane {lane!r}: must be one of {KNOWN_LANES}")
+        if not self.state_path.exists():
+            logger.warning(
+                "StateEngine.get_halted_strict: %s missing — fail-closed (halted), lane=%s",
+                self.state_path, lane,
+            )
+            return True
+        try:
+            payload = json.loads(self.state_path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(
+                "StateEngine.get_halted_strict: %s unreadable (%s) — fail-closed (halted), lane=%s",
+                self.state_path, e, lane,
+            )
+            return True
+        if not isinstance(payload, dict):
+            logger.warning(
+                "StateEngine.get_halted_strict: %s malformed (not a dict) — fail-closed (halted), lane=%s",
+                self.state_path, lane,
+            )
+            return True
+        if bool(payload.get("halted", False)):
+            return True
+        lanes = payload.get("halted_lanes")
+        if not isinstance(lanes, dict) or not isinstance(lanes.get(lane), bool):
+            return True
+        return bool(lanes[lane])
 
     def get_lane_status(self) -> Dict[str, bool]:
         """Return the effective halted state of every known lane (for

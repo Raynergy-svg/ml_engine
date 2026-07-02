@@ -20,6 +20,7 @@ logger = logging.getLogger("axiom.data")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OANDA_DIR = REPO_ROOT / "trained_data" / "oanda"
 EQUITY_DIR = REPO_ROOT / "trained_data" / "equity"
+CRYPTO_DIR = REPO_ROOT / "trained_data" / "crypto"
 CLAUDE_DIR = REPO_ROOT / ".claude"
 
 # The validated trend lane's FX-major universe (mirrors run_oanda_trend candidates).
@@ -337,6 +338,36 @@ def read_status(now_iso: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+def read_lane_status() -> Dict[str, Any]:
+    """Per-lane halted status (oanda_fx / equity / brain), read-only.
+
+    Wraps ``StateEngine.get_lane_status()`` — the same source the (gated)
+    ``/api/control/state`` endpoint uses for its ``lanes`` field — but exposes it
+    unconditionally so lane status is visible even when ``AXIOM_CONTROL_ENABLED``
+    is off. Never calls ``set_halted``. On any read error this reports every known
+    lane as halted=True: for a passive display, defaulting to the scarier state on
+    an unreadable file is more honest than defaulting to "all clear".
+    """
+    from src.scanner.automation.state_engine import KNOWN_LANES, StateEngine
+
+    try:
+        eng = StateEngine()
+        lanes = {lane: bool(v) for lane, v in eng.get_lane_status().items()}
+        global_halted = bool(eng.get_halted())
+        readable = True
+    except Exception as exc:  # noqa: BLE001 — display data; fail closed, never crash
+        logger.warning("read_lane_status: StateEngine unreadable (%s) — reporting fail-closed", exc)
+        lanes = {lane: True for lane in KNOWN_LANES}
+        global_halted = True
+        readable = False
+    return {
+        "readable": readable,
+        "global_halted": global_halted,
+        "lanes": lanes,
+        "known_lanes": list(KNOWN_LANES),
+    }
+
+
 def read_trades(limit: int = 100) -> Dict[str, Any]:
     """Parse the local OANDA transaction ledger, not just fills.
 
@@ -491,18 +522,219 @@ def read_sentiment() -> Dict[str, Any]:
     }
 
 
+_LIVE_GATE_STATE_PATH = REPO_ROOT / "trained_data" / "equity" / "live_gate_state.json"
+_SHIP_GATE_PATH = REPO_ROOT / "trained_data" / "backtests" / "SHIP_GATE.json"
+_CYCLE_LEDGER_PATH = EQUITY_DIR / "cycle_ledger.jsonl"
+
+
+def _equity_ship_gate() -> Dict[str, Any]:
+    data = _read_json(_SHIP_GATE_PATH, {})
+    if not data:
+        return {"available": False}
+    return {
+        "available": True,
+        "gate_pass": bool(data.get("gate_pass")),
+        "net_sharpe": data.get("net_sharpe"),
+        "max_dd": data.get("max_dd"),
+        "asof": data.get("asof"),
+        "recommendation": data.get("recommendation"),
+        "universe_hash": data.get("universe_hash"),
+    }
+
+
+def _equity_last_cycles(limit: int = 5) -> List[Dict[str, Any]]:
+    """Tail of the hash-chained cycle ledger — most recent first. Best-effort:
+    a 64KB tail read is plenty for `limit` small JSON lines; a truncated first
+    partial line is simply skipped (still fail-soft, never crashes)."""
+    try:
+        size = _CYCLE_LEDGER_PATH.stat().st_size
+        with open(_CYCLE_LEDGER_PATH, "rb") as fh:
+            fh.seek(max(0, size - 8192))
+            tail = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    rows = []
+    for line in tail.splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    rows.reverse()
+    return rows[:limit]
+
+
+def _equity_gate_decision() -> Dict[str, Any]:
+    """Fresh, live per-cycle gate verdict (REFUSE/HALT/NO_ACT/ABSTAIN/CONTINUE),
+    re-derived straight from disk via the harvester's own objective decision gate
+    (`src.equity.decision_gate.decide_cycle`, lane="equity"). Read-only / side-effect
+    free — same function the real harvester loop calls, so this can never drift
+    from what the harvester itself would decide right now. Any construction/import
+    failure degrades to an honest 'unavailable' rather than a fabricated verdict."""
+    try:
+        from src.equity.decision_gate import decide_cycle
+        from src.scanner.config import ScannerConfig
+
+        decision = decide_cycle(config=ScannerConfig(), project_root=REPO_ROOT, lane="equity")
+        return {"available": True, **decision.to_dict()}
+    except Exception as exc:  # noqa: BLE001 — display data; never blocks/crashes on failure
+        logger.warning("equity decide_cycle() unavailable: %s", exc)
+        return {"available": False, "error": type(exc).__name__}
+
+
 def read_equity_sleeve() -> Dict[str, Any]:
-    """The (currently dormant) equity-harvester sleeve target weights, if present."""
+    """Equity-harvester lane status: rebalance plan, LiveGate armed/live-vs-shadow
+    state, ship-gate verdict, recent cycle-ledger decisions, and the live gate
+    verdict this cycle would get. The harvester's runner (`src.equity.runner`) is
+    ALWAYS shadow-execution (it never contacts a broker) — "live" here means the
+    separate LiveGate is armed, which is what `scripts/run_equity_harvester.py`
+    checks before routing to the real (still practice/paper) IBKR broker.
+    """
     data = _read_json(EQUITY_DIR / "rebalance_state.json", {})
     plan = data.get("active_plan") or {}
+    live_gate = _read_json(_LIVE_GATE_STATE_PATH, {})
+    armed = bool(live_gate.get("armed", False))
     return {
         "connected": bool(plan),
-        "dormant": True,
+        "dormant": not armed,
+        "mode": "live" if armed else "shadow",
         "asof": plan.get("asof"),
         "rebalance_id": plan.get("rebalance_id"),
         "target_weights": plan.get("target_weights", {}),
         "actual_weights": data.get("current_actual_weights", {}),
         "source": "trained_data/equity/rebalance_state.json",
+        "live_gate": {
+            "available": bool(live_gate),
+            "armed": armed,
+            "universe_hash": live_gate.get("universe_hash"),
+            "initial_nav_fraction": live_gate.get("initial_nav_fraction"),
+            "max_portfolio_risk_fraction": live_gate.get("max_portfolio_risk_fraction"),
+            "armed_at_ts": live_gate.get("armed_at_ts"),
+            "disarmed_at_ts": live_gate.get("disarmed_at_ts"),
+            "last_event": live_gate.get("last_event"),
+            "last_event_reason": live_gate.get("last_event_reason"),
+            "last_event_ts": live_gate.get("last_event_ts"),
+        },
+        "ship_gate": _equity_ship_gate(),
+        "last_cycles": _equity_last_cycles(),
+        "gate_decision": _equity_gate_decision(),
+    }
+
+
+_BRAIN_LOOP_DIR = REPO_ROOT / "trained_data" / "brain_loop"
+_BRAIN_LOOP_LEDGER_PATH = _BRAIN_LOOP_DIR / "hypotheses.jsonl"
+_BRAIN_LOOP_REQUESTS_DIR = _BRAIN_LOOP_DIR / "promotion_requests"
+_BRAIN_LOOP_AUDIT_PATH = CLAUDE_DIR / "brain_loop_audit.jsonl"
+
+
+def _brain_loop_ledger_tail(limit: int = 10) -> List[Dict[str, Any]]:
+    rows = list(_iter_jsonl(_BRAIN_LOOP_LEDGER_PATH))
+    return list(reversed(rows[-limit:]))
+
+
+def _brain_loop_promotion_requests() -> List[Dict[str, Any]]:
+    try:
+        from src.brain_loop.promotion import list_requests
+        return list_requests(_BRAIN_LOOP_REQUESTS_DIR)
+    except Exception as exc:  # noqa: BLE001 — display data; never crash on failure
+        logger.warning("brain_loop promotion requests unreadable: %s", exc)
+        return []
+
+
+def _brain_loop_audit_tail(limit: int = 10) -> List[Dict[str, Any]]:
+    rows = list(_iter_jsonl(_BRAIN_LOOP_AUDIT_PATH))
+    return list(reversed(rows[-limit:]))
+
+
+def read_brain_loop() -> Dict[str, Any]:
+    """Sonnet brain-loop status: recent hypothesis-ledger events, promotion
+    requests (including any ``PENDING_OPERATOR`` live promotion awaiting the
+    operator's own ARM + start_loop flow — this reader never arms or promotes
+    anything, it only lists what's on disk), and de-risk/halt audit events.
+
+    The brain loop (``src/brain_loop/``) has not been run in production as of
+    this writing — every source here degrades to an honest empty list, never a
+    fabricated cycle.
+    """
+    ledger = _brain_loop_ledger_tail()
+    requests = _brain_loop_promotion_requests()
+    audit = _brain_loop_audit_tail()
+    pending_operator = [r for r in requests if r.get("status") == "PENDING_OPERATOR"]
+    return {
+        "has_run": bool(ledger) or bool(requests) or bool(audit),
+        "last_event": ledger[0] if ledger else None,
+        "recent_ledger": ledger,
+        "promotion_requests": requests,
+        "pending_operator_count": len(pending_operator),
+        "derisk_audit": audit,
+        "source": {
+            "ledger": "trained_data/brain_loop/hypotheses.jsonl",
+            "promotion_requests": "trained_data/brain_loop/promotion_requests/",
+            "derisk_audit": ".claude/brain_loop_audit.jsonl",
+        },
+    }
+
+
+_CRYPTO_LEDGER_PATH = CRYPTO_DIR / "shadow_momentum_ledger.jsonl"
+_CRYPTO_LIVE_GATE_STATE_PATH = CRYPTO_DIR / "live_gate_state.json"
+
+
+def read_crypto_momentum() -> Dict[str, Any]:
+    """Crypto XS-momentum SHADOW lane: current would-be book, running shadow
+    P&L, and the accumulating live-forward-OOS track record for the campaign's
+    H2/H4 lead (docs/experiment-crypto-edge-hunt-round2-2026-06-29.md). This
+    signal FAILED the ship gate on significance — it is NOT a verified edge;
+    this panel exists to show whether the forward record eventually confirms
+    or refutes the pre-registered +0.75 OOS Sharpe.
+
+    Read-only, real data, no fabrication: an empty ledger (the lane has not
+    run yet, or every cycle so far has been a halted no-op) renders as an
+    honest zero-cycle state, never a fabricated book or P&L number. The
+    live gate is read the same way the equity harvester's is — `armed` can
+    only ever be True via an explicit operator `LiveGate.arm()` call, which
+    nothing in this codebase currently makes (see
+    `src/crypto/crypto_live_gate.py`).
+    """
+    rows = list(_iter_jsonl(_CRYPTO_LEDGER_PATH))
+    last = rows[-1] if rows else None
+    live_gate = _read_json(_CRYPTO_LIVE_GATE_STATE_PATH, {})
+    armed = bool(live_gate.get("armed", False))
+
+    # Reuse the module's own summary (single source of truth for the Sharpe
+    # math) instead of reimplementing it here — a duplicated calculation is
+    # exactly how the dashboard and the ledger writer could silently disagree.
+    try:
+        from src.crypto.momentum_shadow import forward_oos_summary
+        summary = forward_oos_summary(ledger_path=_CRYPTO_LEDGER_PATH)
+    except Exception as exc:  # noqa: BLE001 — display data; never crash on import/compute failure
+        logger.warning("read_crypto_momentum: forward_oos_summary unavailable (%s)", exc)
+        summary = {"n_cycles": len(rows), "forward_sharpe_annualized": None}
+    n = summary["n_cycles"]
+    forward_sharpe = summary["forward_sharpe_annualized"]
+
+    return {
+        "has_run": bool(rows),
+        "n_forward_cycles": n,
+        "current_book": last.get("book") if last else None,
+        "current_asof": last.get("asof_date") if last else None,
+        "current_gross_leverage": last.get("gross_leverage") if last else None,
+        "cumulative_shadow_return": last.get("cumulative_shadow_return", 0.0) if last else 0.0,
+        "forward_sharpe_annualized": forward_sharpe,
+        "first_asof_date": rows[0].get("asof_date") if rows else None,
+        "last_asof_date": last.get("asof_date") if last else None,
+        "recent_cycles": list(reversed(rows[-20:])),
+        "construction": last.get("construction") if last else None,
+        "live_gate": {
+            "available": bool(live_gate),
+            "armed": armed,
+            "last_event": live_gate.get("last_event"),
+            "last_event_reason": live_gate.get("last_event_reason"),
+        },
+        "mode": "live" if armed else "shadow",
+        "source": {
+            "ledger": "trained_data/crypto/shadow_momentum_ledger.jsonl",
+            "live_gate": "trained_data/crypto/live_gate_state.json",
+            "pre_registration": "docs/experiment-crypto-edge-hunt-round2-2026-06-29.md",
+        },
     }
 
 

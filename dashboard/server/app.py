@@ -106,7 +106,8 @@ def root() -> Dict[str, Any]:
     return {"service": "AXIOM data layer", "read_only": True, "environment": "practice",
             "endpoints": ["/api/account", "/api/status", "/api/trades", "/api/equity",
                           "/api/strategy", "/api/sentiment", "/api/tier7", "/api/system_health",
-                          "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream"]}
+                          "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream",
+                          "/api/equity_sleeve", "/api/lanes", "/api/brain_loop"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -157,6 +158,21 @@ def sentiment() -> Dict[str, Any]:
 @app.get("/api/equity_sleeve")
 def equity_sleeve() -> Dict[str, Any]:
     return ds.read_equity_sleeve()
+
+
+@app.get("/api/lanes")
+def lanes() -> Dict[str, Any]:
+    return ds.read_lane_status()
+
+
+@app.get("/api/brain_loop")
+def brain_loop() -> Dict[str, Any]:
+    return ds.read_brain_loop()
+
+
+@app.get("/api/crypto_momentum")
+def crypto_momentum() -> Dict[str, Any]:
+    return ds.read_crypto_momentum()
 
 
 @app.get("/api/tier7")
