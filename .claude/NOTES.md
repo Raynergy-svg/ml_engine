@@ -4,12 +4,158 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-06-29 by Claude (read-only health audit + flagged-item cleanup). Disk truth:
-`state.json halted=false` — OPERATOR-DIRECTED ENABLE (last_actor=`operator-directed-enable`,
-2026-06-29T10:29:54Z); the bot is intentionally live on the PRACTICE account, matching the body
-§ below. (Corrected a stale header that wrongly read `halted=true`; no halt event ever occurred —
-state.json was unchanged for ~12h, three disk beacons agree. See audit.) Report rule: every status
-claim states running:yes/no, verified from disk (L-017).
+Last touched: 2026-07-02T13:25Z by Claude (SEC EDGAR value + accruals PIT factor test — research
+only, no state.json touch). Disk truth AS OF THIS TOUCH: unchanged from the 01:02Z entry below
+(`halted=false`, `halted_lanes={oanda_fx:true, equity:false, brain:false}`) — this session did not
+read or write state.json; verify freshly before relying on it.
+
+## SEC EDGAR value + accruals PIT factors — BOTH FAIL THE GATE (2026-07-02T08:23-13:25Z)
+
+Operator-directed structural-unlock task: extend the true-PIT SEC EDGAR fundamentals pipeline
+(quality/profitability already tested negative 2026-06-25) with value + accruals, the two
+untested classic factors. Pre-reg `docs/experiment-sec-edgar-value-accruals-2026-07-02.md`
+(committed `2f50d25` BEFORE any result existed). Result `trained_data/backtests/
+edgar_value_accruals_bakeoff.json`, commit `83a2004`.
+- **New ingestion**: `src/equity/edgar_fundamentals.py` extended with `CashFlowFromOps`/
+  `Assets`/`SharesOutstanding` (the last via the `dei` cover-page tag — empirically verified
+  against live EDGAR on AAPL/MSFT/JPM that its `end` date is NOT fiscal year-end; fixed by
+  keying on the fact's own `filed` date, never an `end`-join). New module `src/equity/
+  value_data.py` (PIT fundamentals x PIT price join — a new mechanism vs the pure-ratio
+  quality panel). Accruals (Sloan 1996) reuses `build_quality_panel` unmodified.
+- **RESULT: both FAIL the canonical ship gate AND fail DSR/Bonferroni significance** (N_TRIALS=3
+  counting the prior quality trial, alpha=0.0167). Accruals: clean decisive negative (full
+  margin -0.52, OOS margin -0.441, maxDD 66%, DSR 0.15). Value: OOS Sharpe margin nominally
+  +0.21 vs EW but NOT significant (DSR 0.66 < 0.95 bar, bootstrap p=0.10 > 0.0167), and fails
+  the gate on both maxDD (36.6% full-window-corrected, was falsely 17.9% before the bugfix
+  below) and OOS history-length.
+- **Two real bugs caught by independent verification, fixed before finalizing (L-018 process
+  working as designed, not a lie — a genuine catch-and-fix):** (1) `quality_data.
+  _raw_quality_frame` hardcoded `QUALITY_COMPONENTS` regardless of the `components=` override
+  — harmless to the already-committed quality result (every existing caller only ever passed
+  QUALITY_COMPONENTS subsets) but would have silently all-NaN'd the new accruals field; fixed +
+  regression-tested. (2) `value_data._pit_raw_panel` forward-filled `shares_outstanding` with
+  no staleness bound — >=12 large-caps (incl. Berkshire Hathaway, `dei` tag dormant since 2011)
+  carried a years-stale share count against a live price, inflating `book_to_market` ~1500x for
+  those names. Fixed with a 730-day forward-fill staleness cap (NaN beyond it, never
+  fabricated); re-ran from cached data (no EDGAR re-fetch) — headline verdict unchanged
+  (still gate-FAIL) but the OOS drawdown number corrected from an artificially tame 17.9% to a
+  real 36.6%.
+- **Survivorship caveat surfaced by the verifier, now labelled in the result JSON**: SEC's
+  `company_tickers.json` CIK map is CURRENT-tickers-only — a delisted/acquired name (confirmed:
+  TWX) loses CIK resolvability and drops from the fundamentals-covered universe even though it
+  stays correctly present in the price panel (`since_removed_included=110` counts INDEX-
+  membership removals, not fundamentals-covered delistings — a joint-panel gap, separate from
+  the pre-existing price-side yfinance gap).
+- **Independent verifier (separate Model QA Specialist, no shared context): CONCERNS →
+  addressed.** Confirmed PIT correctness (re-derived the dei finding independently on a THIRD
+  company, JPM), multiple-testing math (byte-identical `deflated_sr`/`block_bootstrap_p` reuse
+  from `experiment_crypto_xs_signals.py`), cost assumptions (unchanged from the quality
+  baseline), hot-path isolation (zero hits on execute_trade/StateEngine/oanda_environment/
+  halted). Bug #2 above is exactly what the verifier caught and recommended; applied verbatim.
+  Bug #2's fix itself was NOT independently re-verified by a fresh agent (self-verified: tests
+  pass, flake8 clean, the diagnosed symptom — value composite == earnings-yield-only OOS —
+  resolved as predicted). Confidence: HIGH on the fix's correctness, MEDIUM-HIGH on full
+  freshness (no second independent pass).
+- **Verdict**: extends L-022 (no free-data return-alpha) to true-PIT fundamentals specifically
+  — 3-for-3 SEC-EDGAR-PIT-factor trials (quality, value, accruals) now fail on this universe/
+  window. The structural unlock (genuine filing-date PIT + survivorship-aware universe) is real
+  infrastructure and now exists for future hypothesis-testing (e.g. brain-loop factor-blend or
+  regime-conditioning tests), but classic single-factor tilts on it do not clear the gate.
+  Nothing live/halt/env touched — pure research code under `src/equity/` + `scripts/`.
+
+## Equity + brain shadow unhalt (2026-07-02T00:49-01:02Z)
+
+Operator-directed: unhalt ONLY `equity` + `brain` lanes, keep `oanda_fx` halted, no LiveGate arm.
+Full writeup incl. the stale-process-code timeline analysis: this session's transcript (not yet a
+doc — worth a `docs/` writeup if this pattern recurs).
+
+- **Preconditions verified from disk** (all three, before touching state): FX H1 direction models
+  (USD_JPY/USD_CAD/AUD_USD) have no pair-root `transformer_direction.keras` — only under
+  `_quarantine/`; `gates.py:468` `pair_dir = self.base_model_dir / instrument` confirms the loader
+  scope excludes it. `trained_data/equity/live_gate_state.json` ABSENT → `LiveGateState` default
+  `armed=False` (`live_gate.py:293`). `oanda_environment="practice"` (`config.py`), `.env.local`
+  `OANDA_ENVIRONMENT=practice`, no live endpoint reachable under current env config.
+- **State write — single atomic write, NOT the two-call `set_halted(False)` → `set_halted(True,
+  lane="oanda_fx")` sequence**, because `run_oanda_trend.py --loop 3600` (PID 62414, launchd
+  `com.buddy.trend`) was ALREADY LIVE polling `.claude/state.json` when this started. A two-call
+  sequence would have passed through a real (if brief) intermediate state where oanda_fx read
+  unhalted. Wrote `halted=false` + `halted_lanes={oanda_fx:true, equity:false, brain:false}` in one
+  `tmp`+`os.replace`, matching `StateEngine._atomic_write`'s exact mechanism. Verified via two
+  independent readers (`StateEngine.get_halted(lane=...)` and `decision_gate._lane_halted(...)`) —
+  both agree on all three lanes.
+- **Stale-code risk explicitly checked (operator asked directly) — closed, not just asserted.**
+  `run_oanda_trend.py` does NOT use `execution.py`'s halt guard; it imports `src.equity.oanda_trend`,
+  which already called `_lane_halted(root, "oanda_fx")` (line 487) — file mtime 00:37:10, PID 62414
+  started 00:41:48, i.e. the process imported the ALREADY-lane-aware file. `trained_data/axiom/
+  trend_loop.out` (the launchd daemon's log) confirms every cycle through 00:41:50 logged
+  `REFUSED — halt=True readable=True`; no cycle has run since (next ~01:41:48). No stale-bytecode
+  path existed. If this pattern (live daemon + a state-schema migration) recurs, check the DAEMON'S
+  actual import path first — it is not always the same file `execution.py`'s guard is in.
+- **Equity harvester**: `scripts/run_equity_harvester.py --broker shadow --loop 3600` running
+  (PID 78084, `nohup`, `logs/equity_harvester_shadow.log`). First cycles: `ran=False reason=abstain
+  orders=0` (universe snapshot 8d stale vs 7d freshness window — honest abstain, not a bug).
+  **Report as the 0.740 full-sample / 0.355 OOS BETA sleeve number** (the wide PIT universe,
+  2026-07-01 independent audit), NOT the 0.908/0.92 curated-universe headline in `SHIP_GATE.json`.
+- **Brain loop**: `scripts/run_brain_loop.py --loop --max-cycles 8760 --interval 3600` running
+  (PID 79486, `python3 -u` for unbuffered logs, `logs/brain_loop.log`). First cycle: `halted=false`,
+  `breach_derisked=false`, `decision=abstain (no_data)`, no hypothesis/promotion/arm.
+- **Independent verifier (separate Security Engineer agent, no shared context): SAFE, 8/8 PASS.**
+  Independently rediscovered the same `oanda_trend.py:487-490` gate. One non-blocking gap flagged +
+  spun off as a follow-up task: `risk_monitor.sh` checks only the global `halted` flag, not
+  `halted_lanes` — a monitoring blind spot (the actual trade-blocking code paths are unaffected and
+  already correct); worth closing so the tripwire has per-lane coverage too.
+- **Remaining operator step (not done, not proposed to be done automatically):** `pip install
+  ib_insync`, start IB Gateway/TWS on `127.0.0.1:7497` (paper), IBKR paper login, then explicit
+  `LiveGate.arm()` with a typed `"LIVE"` token (TUI `ModeConfirmModal` or an operator arm script) to
+  go from shadow to live paper fills. `oanda_fx` stays halted; global blanket unhalt not touched.
+
+## AXIOM dashboard real-data population (2026-07-02)
+
+Added, all read-only / additive (did NOT touch the concurrent per-lane-halt session's owned files:
+`state_engine.py`, `dashboard/server/control.py`'s halt/unhalt logic, or `.claude/state.json`
+schema):
+- `dashboard/server/data_sources.py`: `read_lane_status()` (new `/api/lanes`, always-on per-lane
+  halt display), enriched `read_equity_sleeve()` (LiveGate armed/live-vs-shadow, SHIP_GATE, cycle
+  ledger tail, live `decide_cycle()` verdict), `read_brain_loop()` (new `/api/brain_loop` — honest
+  empty since `src/brain_loop/` hasn't run in prod yet).
+- Frontend: `EquityHarvesterPanel.tsx`, `BrainLoopPanel.tsx` (new), `HealthPanel.tsx` wired into the
+  Risk tab (was built 2026-06-29 but never rendered anywhere — found orphaned), per-lane
+  halt/unhalt buttons added to `ControlPanel.tsx` (backend already supported `params.lane`, wasn't
+  surfaced), audit log now shows actor. `dashboard/README.md` corrected: TP/SL bracket fields were
+  actually already wired (`src/brokers/oanda_v20.py:_position_brackets`) — README said "pending",
+  was stale.
+- Verified via curl (real data, no fabrication) + `tsc --noEmit` + `flake8` clean; could NOT get
+  browser screenshots — `com.axiom.web`/`com.axiom.api` launchd daemons were mid-use by a live
+  operator session (`trained_data/axiom/launchd-web.log` showed continuous real polling); permission
+  layer correctly blocked `launchctl bootout` to commandeer them, so visual verification is
+  API/log-level only, not pixel-level. Nothing armed/halted/traded; practice pin untouched.
+- Found + flagged (not fixed, out of scope): `.claude/tools/risk_monitor.sh` L-004 check greps
+  literal `get_halted()` (empty parens) — stale against the just-landed per-lane
+  `get_halted(lane=...)` signature, causing a permanent false ALARM on Stop-hook. Spun off as
+  background task `task_89450a16`.
+
+---
+
+
+## Track A equity-beta harvester — independent audit (2026-07-01)
+
+Full writeup: `docs/equity-harvester-verdict-2026-07-01-independent-audit.md`. Three independent
+subagents (Model QA / Data Engineer / Software Architect), no shared context, all disk-verified.
+- **Verdict: MIXED, not a clean PASS.** The cited 0.908 Sharpe (`trained_data/backtests/
+  SHIP_GATE.json`) is mechanically real (reproduced live twice, 0.907/0.921, lookahead-clean, costs
+  genuinely deducted) — but it's on a curated 20-name mega-cap-tilted universe. The SAME
+  construction on the repo's own survivorship-corrected wide universe (`pit_quality_bakeoff.json`,
+  Wikipedia PIT S&P reconstruction) scores **0.740 full-sample / 0.355 OOS, gate FAIL** with
+  *cheaper* costs. Not leakage/fabrication — an economically legible concentration effect — but the
+  headline number is universe-dependent and the more defensible one fails.
+- Secondary: shipped overlay params (vol12%/dd10-20) don't trace to the one grid-search artifact on
+  disk and actually fail the gate on the book that grid tested.
+- Staging: correctly halt-respecting (reads same `.claude/state.json` flag, fail-closed), ship-gate
+  hash-keyed kill switch + LiveGate exist, but nothing is currently running/armed, no daemon exists,
+  and the H1 `--broker ibkr-paper` path bypasses `LiveGate.arm()` entirely (wiring gap, not just an
+  "arm it" step). IBKR-only execution, zero OANDA coupling.
+- **Before any further US-006+ build-out leans on 0.908**: surface the 0.740/0.355 numbers
+  alongside it; re-run the vol/dd grid on the actual single-stock universe.
 
 ## Crypto edge-hunt (2026-06-29, operator-approved new direction) — research/backtest ONLY
 
@@ -537,3 +683,127 @@ risk_monitor.sh's own unqualified git/grep (not a current bypass; documented in 
 - Tier 6 = meta-learning ensemble (MetaLearner + Bayesian adapter + ensemble weighter, shadow);
   Tier 7 = autonomous control loop (incident→propose→gate→soak→promote→close), Claude never in the
   hot path. Source: CLAUDE.md + `docs/tier7-architecture.md`.
+
+## 2026-07-01 — PR #51 "agentic data-extraction" edge claim: AUDITED, INFRASTRUCTURE ONLY (no result)
+
+Operator believed PR #51 (AXIOM Phase 2, merged origin/main 1a58f65) found a real gate-clearing
+edge via "agentic orchestration of data extraction." Re-audited from scratch. Verdict: **the belief
+is not supported by any artifact on disk.**
+
+- The pipeline in question is Track B ("agentic research portfolio", branch
+  `claude/agentic-research-portfolio-qetsfr`, `src/equity/research/{contracts,pit_text_loader,
+  entity_blinder,scorer,harness}.py`, pre-reg `docs/experiment-equity-research-alpha-prereg-2026-06-30.md`)
+  — an LLM-research-reads-filing-text alpha test, distinct from the ALREADY-VALIDATED equity-beta
+  harvester (Track A, Sharpe 0.92 net, real risk-premium result, `trained_data/backtests/SHIP_GATE*.json`).
+  Likely source of the conflation: PR body lists both under one summary.
+- Track B was PRE-REGISTERED and built (58 no-mock tests, 3-reviewer audit) but **never executed**:
+  `scorer.py:1-11` states no LLM/Anthropic call is wired ("ANTHROPIC_API_KEY is absent... driven by
+  SEPARATE subagents"); `.env.local` confirms no ANTHROPIC_API_KEY present. Pre-reg doc §7 ("Results")
+  is still an unfilled template. `harness.py:552-556` — `dsr_oos_n22: None` (TODO, gate criterion §4.5
+  unenforced). `harness.py` §4.7 `overall_verdict` logic (~L740-780): `"REAL"` is **unreachable from
+  the code as merged** (human blinding audit uncomputed, fail-closed by design). `git log --all --
+  src/equity/research/` — last commit is `5d650c2` (scorer plumbing), nothing after. No
+  `research_scores`/`research-alpha` artifact anywhere in repo (tracked or untracked).
+- Design-level killer audit (would-be-run assessment): entity-blinder self-documents as leaky-by-design
+  (`entity_blinder.py:22`, "NOT a guarantee") — correctly treated as noise-reducer, not load-bearing
+  control, per its own §8; costs ARE wired (`harness.py:483,575`, cost_bps turnover model); survivorship
+  uses PIT S&P membership but filing-availability requirement admits a coverage-gap caveat
+  (pre-reg §8.4, "loader paging gap," honestly flagged not hidden).
+- Two independent-verifier subagent dispatches both hit the session token limit and returned nothing
+  (0/51 tokens) — substituted direct re-verification (fresh independent tool calls: env-key check, PR
+  review-comment search, repo-wide artifact search) in this same session instead of re-delegating.
+- **Action for operator:** no change needed to halted state; this is a correction of belief, not a
+  bug fix. If Track B is to be pursued, the actual blocker is wiring a real LLM scorer call + DSR-OOS/
+  Bonferroni + the human blinding audit — none of which exist yet.
+
+## 2026-07-01 — Track B actually RUN (worktree `ml_engine_trackb`, branch `trackb/run-2026-07-01`,
+commit `8aa9417`, off `origin/main`). **Verdict: NO EDGE** (bounded pilot). Closed the two blockers
+above: implemented DSR-OOS(N=22)+Bonferroni in `harness.py` (was hardcoded `None`), and this session
+acted as the LLM scorer directly (no `ANTHROPIC_API_KEY`), hand-scoring 36 blinded 10-Ks across 12
+mega-cap names (AAPL/MSFT/GOOGL/AMZN/NVDA/META/JPM/JNJ/XOM/PG/HD/UNH × FY23-25) — a disclosed
+scale-down from the frozen full-S&P500 design, not the full run.
+- Found + fixed a load-bearing pipeline bug en route: SEC iXBRL filings wrap ~98K chars of
+  non-visible `<ix:header>` metadata before the visible cover page; `pit_text_loader.py`'s old
+  `_SKIP_TAGS` didn't skip it, so a 12K-char head-truncation was 100% XBRL tag-soup, 0% prose.
+  Fixed + regression test; independently re-verified against a live EDGAR fetch by the verifier.
+- Result: full-sample Sharpe 0.489 (looks promising) but BOTH pre-registered controls kill it —
+  post-cutoff arm flips to **-0.861** (textbook lookahead signature: strong pre-cutoff, dies/inverts
+  post-cutoff) and placebo (0.358) is nearly as large as the real full-arm number (not clean per the
+  frozen 0.15 threshold). `overall_verdict=INSUFFICIENT`. Own blinding audit: 36/36 filings
+  re-identifiable despite redaction (ticker-adjacency leaks, unredacted founders'-letter names,
+  unredacted product names) — confirms the pre-reg's own §8 finding that blinding isn't load-bearing.
+- Independent verifier (Model QA Specialist, cold from disk): re-derived the DSR math, confirmed the
+  iXBRL fix against a live Apple 10-K fetch, spot-checked 4 PIT dates against EDGAR + 3 blinding
+  leaks verbatim in the blinded files, confirmed zero frozen knobs (weights/quintile/cadence/
+  vol-target) were touched, ran the full test suite (111/111). Sign-off: verdict holds, no
+  discrepancies found. Caveat carried forward: N=12/Q5=2 is genuinely underpowered — this run
+  answers the lookahead-contamination question decisively but does not by itself close the door on
+  the hypothesis at the frozen ~500-name/~14yr scale.
+- Not pushed anywhere; commit lives only on the local worktree branch pending operator decision.
+  Full write-up: `docs/experiment-equity-research-alpha-prereg-2026-06-30.md` §7 (in that worktree/
+  branch — not yet on `main`).
+  Bonferroni + the human blinding audit — none of which exist yet.
+
+## 2026-07-02 — Equity harvester UNHALTED on practice/paper (operator-authorized). 5 guardrail
+steps completed before flipping, independent verifier dispatched to confirm:
+1. Honest sizing: broad-universe PIT gate re-derived (net Sharpe 0.739 full / 0.354 OOS, NOT the
+   0.908 curated-pool number) — `docs/equity-harvester-sizing-2026-07-01.md`.
+2. ARM checkpoint wired: `scripts/run_equity_harvester.py::_connect_ibkr_paper` now checks
+   `LiveGate.is_armed()` before returning a real fill callback (previously bypassed it entirely,
+   per `docs/equity-harvester-verdict-2026-07-01-independent-audit.md` §3 item 5). Never auto-arms.
+3. FX H1 quarantine: USD_JPY/USD_CAD/AUD_USD have no H1 artifacts in this repo (already quarantined
+   from earlier M15/D events) — nothing to move here.
+4. Unhalt scope traced: unhalting releases the equity harvester AND the already-running
+   `com.buddy.trend` OANDA book (pid changes across launchd restarts; structurally non-directional
+   per `src/equity/oanda_trend.py` docstring) — operator explicitly confirmed this scope via
+   AskUserQuestion before flip. No directional FX model or LLM path reachable (no FX scanner
+   process running).
+5. `ib_async` installed; IBKR paper port hardcoded 7497 (7496/4001 never referenced); OANDA
+   practice-pin confirmed (`config.py:742`, `.env.local`).
+- Flipped via `StateEngine.set_halted(False)` (atomic tmp+rename) — `.claude/state.json` now
+  `halted: false`, `halted_lanes: {oanda_fx:false, equity:false, brain:false}`.
+- Started `scripts/run_equity_harvester.py --broker ibkr-paper --loop 3600` in background
+  (PID 48095). No IB Gateway listening on 127.0.0.1:7497 → clean fallback to shadow lane this
+  cycle (`CYCLE_RESULT: ran=True reason=executed lane=shadow orders=0`). ARM checkpoint will bind
+  once IB Gateway is actually running.
+- Two adjacent findings surfaced but NOT acted on (blocked by permission classifier as out of
+  named scope; spawned as follow-up task chips instead): GBP_CHF has a live (non-quarantined)
+  FX direction model failing the 10% gap rule (train=0.6074/val=0.5/gap=0.1074); a dormant sibling
+  worktree `ml_engine_trackb` has a stale `halted:false` local state + unquarantined H1 models for
+  the same 3 pairs (confirmed no process running, nothing scheduled — latent, not active).
+
+## 2026-07-02 (same session, ~1hr later) — CORRECTION + RE-HALT. Operator sent a stand-down after
+the unhalt above: decision changed to build PROPER PER-LANE halt control (not the global flag)
+before letting only the equity harvester go live. Verified live state before acting (operator's
+premise that "STEP6 was blocked" did not match disk reality — it had already succeeded and been
+operator-confirmed via AskUserQuestion); found `com.buddy.trend` (OANDA risk-premium trend book,
+`src/equity/oanda_trend.py` — structurally non-directional, confirmed no import of
+transformer_direction/keras anywhere in that file) was ~3 min from its next hourly tick at the
+time the stand-down arrived. **Re-halted immediately** (`StateEngine.set_halted(True)`) before that
+tick — confirmed via fresh log read that NO tick/order occurred during the ~8-minute unhalted
+window (08:30:24–08:38:36 EDT); zero trade/order artifacts written anywhere in that window.
+Killed the `run_equity_harvester.py --broker ibkr-paper` background loop I'd started (PID 48095).
+`.claude/state.json` now `halted: true`, `halted_lanes: {oanda_fx:true, equity:true, brain:true}`
+— maximally safe, both global and per-lane.
+- **Discovered a large concurrent process already active in this exact working directory** —
+  almost certainly the Ralph autonomous loop on this branch (PID 22421 `run_tier7_loop.py` running
+  since Tuesday). It has independently: (1) built + committed proper per-lane halt control
+  (`193d847 feat(halt): per-lane halt control (oanda_fx / equity / brain)`) — confirmed wired,
+  `execution.py:2099` now calls `StateEngine(lane="oanda_fx").get_halted_strict()` and
+  `decision_gate.py` is similarly lane-aware. This is the exact mechanism needed to unhalt only
+  the equity lane while keeping oanda_fx halted — `StateEngine(lane="equity").set_halted(False)`
+  now exists and does NOT cascade to other lanes (confirmed at `state_engine.py:336-371`).
+  (2) Started its own `run_equity_harvester.py --broker shadow` loop (PID 96555, running since
+  01:08 — not started by this session). (3) Started a new `run_brain_loop.py` subsystem (PID
+  79486, `src/brain_loop/`, extensive new tests — unrelated to this task). (4) Quarantined GBP_CHF
+  + 3 more over-gap/joint-fallback FX pairs (AUD_JPY, EUR_AUD, NZD_USD) at `_quarantine/*-
+  20260702T123815Z/` — timestamped the same minute as this session's re-halt, apparently picking
+  up the follow-up task chip this session had spawned.
+- **Did not touch the per-lane mechanism or the concurrent session's work** — two-writer collision
+  risk on shared state files is a known hazard here (see AXIOM incident memory). Left `.claude/
+  state.json` at global+all-lanes halted (safest state) for the per-lane session to build from.
+- Artifacts this session leaves on disk, uncommitted, ready to reuse: `scripts/
+  run_equity_harvester.py`'s ARM-checkpoint fix (`LiveGate.is_armed()` gate on the ibkr-paper fill
+  path — independently verified PASS), `docs/equity-harvester-sizing-2026-07-01.md` (honest 0.739
+  full / 0.354 OOS sizing numbers). USD_JPY/USD_CAD/AUD_USD H1 direction models confirmed still
+  unloadable (no artifacts in this repo) by two independent checks.
