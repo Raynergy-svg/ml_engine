@@ -91,10 +91,26 @@ def record_avail(record: Mapping, *, lag_days: int = DEFAULT_LAG_DAYS) -> pd.Tim
     return availability_date(record["report_period"], lag_days=lag_days)
 
 
-def _raw_quality_frame(records: Sequence[Mapping], *, lag_days: int = DEFAULT_LAG_DAYS) -> pd.DataFrame:
+def _raw_quality_frame(
+    records: Sequence[Mapping],
+    *,
+    lag_days: int = DEFAULT_LAG_DAYS,
+    fields: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
     """Per-ticker frame indexed by availability date with one column per component
     plus the source report_period (kept for independent PIT re-derivation). Uses the
-    real ``filed`` date when present (true PIT), else report_period + lag_days."""
+    real ``filed`` date when present (true PIT), else report_period + lag_days.
+
+    ``fields`` overrides the columns extracted from each record (defaults to the
+    pre-registered QUALITY_COMPONENTS names). BUGFIX 2026-07-02: this previously
+    hardcoded QUALITY_COMPONENTS regardless of the caller's ``fields``/``components``,
+    so ``build_quality_panel(components=[("accruals", -1.0)])`` silently produced an
+    all-NaN panel (the accruals value was never copied out of the raw record) — a
+    latent bug that never surfaced because every existing caller only ever passed
+    subsets of QUALITY_COMPONENTS itself. Caught by
+    test_build_quality_panel_reused_unmodified_for_accruals.
+    """
+    field_names = list(fields) if fields is not None else [c for c, _ in QUALITY_COMPONENTS]
     rows = []
     for r in records:
         rp = r.get("report_period")
@@ -105,12 +121,12 @@ def _raw_quality_frame(records: Sequence[Mapping], *, lag_days: int = DEFAULT_LA
         except (ValueError, TypeError, KeyError):
             continue
         row = {"report_period": pd.Timestamp(rp, tz="UTC").normalize(), "_avail": avail}
-        for col, _sign in QUALITY_COMPONENTS:
+        for col in field_names:
             v = r.get(col)
             row[col] = float(v) if isinstance(v, (int, float)) else np.nan
         rows.append(row)
     if not rows:
-        return pd.DataFrame(columns=["report_period", "_avail", *[c for c, _ in QUALITY_COMPONENTS]])
+        return pd.DataFrame(columns=["report_period", "_avail", *field_names])
     df = pd.DataFrame(rows).sort_values("_avail")
     # If two filings share an availability date, the later-reported one wins.
     df = df.drop_duplicates(subset="_avail", keep="last").set_index("_avail")
@@ -146,9 +162,10 @@ def build_quality_panel(
     comp_panels: Dict[str, pd.DataFrame] = {
         col: pd.DataFrame(np.nan, index=idx, columns=members) for col, _ in comps
     }
+    comp_fields = [c for c, _ in comps]
     for tkr in members:
         recs = dump.get(tkr) or []
-        rf = _raw_quality_frame(recs, lag_days=lag_days)
+        rf = _raw_quality_frame(recs, lag_days=lag_days, fields=comp_fields)
         if rf.empty:
             continue
         for col, _sign in comps:
@@ -189,6 +206,7 @@ def validate_panel_pit(
     dump: Mapping[str, Sequence[Mapping]],
     *,
     lag_days: int = DEFAULT_LAG_DAYS,
+    components: Optional[Sequence[Tuple[str, float]]] = None,
 ) -> None:
     """Independently re-derive the no-lookahead guarantee; raise on any violation.
 
@@ -197,7 +215,14 @@ def validate_panel_pit(
     classic bug of indexing fundamentals by ``report_period`` (period end) instead
     of the filing-availability date — which would surface a score before it could
     have been known.
+
+    ``components`` overrides QUALITY_COMPONENTS for the source-filing check (must
+    match whatever ``components`` was passed to ``build_quality_panel`` when
+    building ``panel`` — same bug class as ``_raw_quality_frame``: hardcoding
+    QUALITY_COMPONENTS here would find zero source filings for a non-quality
+    field like ``accruals`` and always raise, even on a genuinely clean panel).
     """
+    comps = list(components) if components is not None else list(QUALITY_COMPONENTS)
     for tkr in panel.columns:
         col = panel[tkr].dropna()
         if col.empty:
@@ -206,7 +231,7 @@ def validate_panel_pit(
         avails = []
         for r in recs:
             rp = r.get("report_period")
-            if rp and any(isinstance(r.get(c), (int, float)) for c, _ in QUALITY_COMPONENTS):
+            if rp and any(isinstance(r.get(c), (int, float)) for c, _ in comps):
                 avails.append(record_avail(r, lag_days=lag_days))
         if not avails:
             raise ValueError(f"PIT violation: {tkr} has scores but no source filing in dump")

@@ -73,8 +73,17 @@ def evaluate_book_wide(
     max_lev: float = DEFAULT_MAX_LEV,
     cost_bps: float = DEFAULT_COST_BPS,
     execution_lag: int = DEFAULT_EXECUTION_LAG,
+    return_full: bool = False,
 ) -> Dict[str, object]:
-    """Gate a long-only book on a staggered universe (NaN-safe; baseline untouched)."""
+    """Gate a long-only book on a staggered universe (NaN-safe; baseline untouched).
+
+    ``return_full=True`` (default False, backward-compatible additive param)
+    also attaches the raw net-of-cost daily return Series under the
+    ``"_returns"`` key — needed by callers that compute significance stats
+    (DSR / block-bootstrap p) on the underlying return series rather than the
+    summary dict alone. Existing callers (``run_pit_quality_bakeoff`` and its
+    tests) never pass this flag, so their output shape is unchanged.
+    """
     px = prices.reindex(index=base_weights.index, columns=base_weights.columns)
     # Drop names with NO real price in THIS window (e.g. delisted before / IPO after a
     # sub-period slice). They carry 0 weight anyway; keeping them would leave a column
@@ -107,11 +116,14 @@ def evaluate_book_wide(
         "net_sharpe": net_sharpe, "positive_years": pos, "total_years": tot,
         "max_drawdown": max_dd, "walk_forward": True,
     })
-    return {
+    out = {
         "net_sharpe": round(net_sharpe, 4), "max_dd": round(max_dd, 4),
         "positive_years": int(pos), "total_years": int(tot),
         "gate_pass": bool(verdict.passed),
     }
+    if return_full:
+        out["_returns"] = result.returns
+    return out
 
 
 def _daily_membership_snapshot(snapshot, price_index: pd.DatetimeIndex):
