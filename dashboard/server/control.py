@@ -35,6 +35,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -121,6 +122,30 @@ def _loop_pids(loop: str) -> list[int]:
     return pids
 
 
+_pid_cache: Dict[str, Any] = {}
+_PID_CACHE_TTL_S = 2.0
+
+
+def _loop_pids_cached(loop: str) -> list[int]:
+    """Read-only-path variant of ``_loop_pids`` with a short TTL cache.
+
+    GET /api/control/state is polled every ~3s per dashboard client and calls
+    ``_loop_pids`` once per whitelisted loop; each call shells out to `ps -axo`.
+    Under many concurrent clients that becomes frequent blocking subprocess calls
+    contending with the SSE stream's own subprocess use (see app.py's
+    ``_event_stream`` / data_sources._cached_live_lane_running). A 2s cache keeps
+    the read path fast without touching the mutating start/stop paths, which
+    MUST see the true, uncached pid list to make correct start/stop decisions.
+    """
+    now = time.time()
+    hit = _pid_cache.get(loop)
+    if hit and (now - hit[0]) < _PID_CACHE_TTL_S:
+        return hit[1]
+    pids = _loop_pids(loop)
+    _pid_cache[loop] = (now, pids)
+    return pids
+
+
 def _start_loop(loop: str) -> Dict[str, Any]:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     # C-B3: serialize check-and-spawn under a per-loop file lock. Without it, two
@@ -191,7 +216,7 @@ def _state() -> Dict[str, Any]:
     overrides = cs.read_overrides()
     loops = {}
     for loop in sorted(LOOP_CMDS):
-        pids = _loop_pids(loop)
+        pids = _loop_pids_cached(loop)
         loops[loop] = {"running": bool(pids), "pids": pids}
     arm_state = cs.read_arm_state()
     eng = StateEngine()

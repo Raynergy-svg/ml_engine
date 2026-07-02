@@ -310,7 +310,7 @@ def read_status(now_iso: Optional[str] = None) -> Dict[str, Any]:
     mod = _load_running_status()
     if mod is not None and hasattr(mod, "live_lane_running"):
         try:
-            lane_running = bool(mod.live_lane_running().get("running"))
+            lane_running = bool(_cached_live_lane_running(mod).get("running"))
         except Exception as exc:  # noqa: BLE001 — oracle optional; degrade to snapshot age
             logger.warning("read_status oracle failed, falling back to snapshot age: %s", exc)
             lane_running = acct_age is not None and acct_age <= LANE_FRESH_S
@@ -577,6 +577,27 @@ def read_tier7() -> Dict[str, Any]:
 
 LOOP_DIR = CLAUDE_DIR / "loop"
 _running_status_mod = None
+_lane_cache: Dict[str, Any] = {"ts": 0.0, "data": None}
+_LANE_CACHE_TTL_S = 2.0
+
+
+def _cached_live_lane_running(mod) -> Dict[str, Any]:
+    """TTL-cache the ps-based live-lane oracle call.
+
+    ``live_lane_running()`` shells out to `ps axo command` (running_status.py).
+    read_status()/read_health() are called on EVERY SSE tick for EVERY connected
+    client (app.py's ``_event_stream``, every ~2s, no per-connection dedup) — with
+    ~86 concurrent connections that's dozens of blocking subprocess spawns/sec,
+    which stalled /api/control/state under load (shared event-loop/threadpool
+    contention). A short TTL collapses concurrent callers onto one real subprocess
+    call per window regardless of connection count.
+    """
+    now = time.time()
+    if _lane_cache["data"] is not None and (now - _lane_cache["ts"]) < _LANE_CACHE_TTL_S:
+        return _lane_cache["data"]
+    data = mod.live_lane_running()
+    _lane_cache["ts"], _lane_cache["data"] = now, data
+    return data
 
 
 def _load_running_status():
@@ -612,7 +633,7 @@ def read_health() -> Dict[str, Any]:
     mod = _load_running_status()
     if mod is not None and hasattr(mod, "live_lane_running"):
         try:
-            lanes = {"available": True, **mod.live_lane_running()}
+            lanes = {"available": True, **_cached_live_lane_running(mod)}
         except Exception as exc:  # noqa: BLE001
             logger.warning("live_lane_running failed: %s", exc)
             lanes = {"available": False, "error": type(exc).__name__}
@@ -725,7 +746,11 @@ def read_tier7_diagnostics(client=None) -> Dict[str, Any]:
         out = subprocess.run(["pgrep", "-f", "run_oanda_trend.py"], capture_output=True, text=True, timeout=3)
         pids = [int(p) for p in out.stdout.split() if p.isdigit()]
         trend_pid = pids[0] if pids else None
-    except (OSError, ValueError):
+    except (OSError, subprocess.SubprocessError, ValueError):
+        # A hung/slow pgrep (subprocess.TimeoutExpired, a SubprocessError subclass)
+        # must degrade this row to unknown, not crash the worker — it did exactly
+        # that at 00:44 on 2026-07-02 (uncaught TimeoutExpired killed the process;
+        # launchd's KeepAlive restarted it). Mirrors _ps_stat()'s except clause above.
         pass
 
     trend_stat = _ps_stat(trend_pid)

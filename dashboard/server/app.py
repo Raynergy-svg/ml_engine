@@ -238,19 +238,57 @@ def strategy(sma: int = Query(100, ge=2, le=400), granularity: str = "D") -> Dic
 # --------------------------------------------------------------------------- #
 # SSE — push file-backed snapshot frequently + live prices periodically
 # --------------------------------------------------------------------------- #
+_prices_fetch_lock = asyncio.Lock()
+
+
+async def _shared_live_prices() -> Dict[str, Any]:
+    """Single-flight cached price fetch shared by every SSE connection.
+
+    The TTL cache alone still lets a "cache stampede" through: when it expires,
+    every currently-ticking SSE connection sees a miss in the same instant and
+    each independently fires a real OANDA call — reproduced under load-test with
+    ~86 concurrent streams (urllib3 "Connection pool is full, discarding
+    connection" warnings, pool size 10). The lock ensures only the first miss
+    performs the fetch; everyone else re-checks the (now-fresh) cache instead of
+    also calling the broker.
+    """
+    price_key = "prices:" + ",".join(ds.FX_MAJORS)
+    cached = _cache.get(price_key, ttl=2.0)
+    if cached is not None:
+        return cached
+    async with _prices_fetch_lock:
+        cached = _cache.get(price_key, ttl=2.0)  # re-check: another task may have just filled it
+        if cached is not None:
+            return cached
+        fresh = await asyncio.to_thread(ds.live_prices, _client(), ds.FX_MAJORS)
+        return _cache_if_live(price_key, fresh)
+
+
 async def _event_stream():
     tick = 0
     last_prices: Dict[str, Any] = {"connected": False, "prices": {}}
     try:
         while True:
+            # Offload to a thread: read_status() calls the live-lane oracle, which
+            # can shell out to `ps` (see _cached_live_lane_running) — with ~86
+            # concurrent SSE connections doing this every tick, running it inline
+            # would block the single event loop for every connection in turn and
+            # stall other requests (e.g. /api/control/state). Same reasoning that
+            # already applied to live_prices below.
+            account, status = await asyncio.gather(
+                asyncio.to_thread(ds.read_account),
+                asyncio.to_thread(ds.read_status),
+            )
             payload: Dict[str, Any] = {
                 "ts": time.time(),
-                "account": ds.read_account(),     # cheap file reads
-                "status": ds.read_status(),
+                "account": account,
+                "status": status,
             }
-            # Refresh prices every ~4s (network) without blocking the event loop.
+            # Refresh prices every ~4s via the shared single-flight cache — see
+            # _shared_live_prices for why a plain TTL cache wasn't enough under
+            # ~86 concurrent SSE connections.
             if tick % 2 == 0:
-                last_prices = await asyncio.to_thread(ds.live_prices, _client(), ds.FX_MAJORS)
+                last_prices = await _shared_live_prices()
             payload["prices"] = last_prices
             yield f"data: {json.dumps(payload)}\n\n"
             tick += 1
