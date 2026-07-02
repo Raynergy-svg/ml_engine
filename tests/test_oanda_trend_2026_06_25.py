@@ -18,6 +18,7 @@ from src.equity.oanda_trend import (
     target_units,
     trend_targets,
 )
+from src.scanner.automation.state_engine import StateEngine
 
 
 def test_compute_atr_from_ohlc_candles():
@@ -184,6 +185,7 @@ def test_repair_missing_trade_brackets_fails_closed_without_atr():
 
 
 def test_trend_cycle_sends_sl_and_tp_on_new_long(tmp_path):
+    StateEngine(tmp_path / ".claude" / "state.json").set_halted(False)
     closes = list(np.linspace(1.05, 1.20, 160))
     client = _FakeClient({"EUR_USD": _ohlc_candles(closes)})
 
@@ -214,6 +216,7 @@ def test_trend_cycle_sends_sl_and_tp_on_new_long(tmp_path):
 
 
 def test_trend_cycle_refuses_new_long_when_required_brackets_missing(tmp_path):
+    StateEngine(tmp_path / ".claude" / "state.json").set_halted(False)
     closes = list(np.linspace(1.05, 1.20, 80))
     client = _FakeClient({"EUR_USD": _candles(closes)})
 

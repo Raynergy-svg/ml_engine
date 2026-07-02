@@ -2090,7 +2090,7 @@ class ExecutionManager:
         # while halted=True). Read-only check; never raises out of this guard.
         try:
             from src.scanner.automation.state_engine import StateEngine
-            if StateEngine().get_halted():
+            if StateEngine(lane="oanda_fx").get_halted():
                 logger.warning(
                     "execute_trade BLOCKED — state.halted=True (mid-cycle re-check); pair=%s",
                     pair,
@@ -6493,7 +6493,7 @@ class ExecutionManager:
         if not operator_override:
             try:
                 from src.scanner.automation.state_engine import StateEngine
-                if StateEngine().get_halted():
+                if StateEngine(lane="oanda_fx").get_halted():
                     logger.warning(
                         "close_trade BLOCKED — state.halted=True (autonomous close); trade_id=%s "
                         "(operator may pass operator_override=True after explicit confirm, or "

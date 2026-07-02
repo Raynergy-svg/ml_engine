@@ -23,6 +23,13 @@ STATE_PATH = Path(".claude/state.json")
 
 SCHEMA_VERSION = "2"
 
+# US-per-lane-halt: the known trading/research lanes that can be halted
+# independently of one another (once the legacy global ``halted`` flag is
+# False). Any lane name outside this set is rejected — typo'd/orphan lane
+# keys must fail loud, not silently create a dead ``halted_lanes`` entry
+# nothing reads (mirrors the ScannerConfig key-validation convention).
+KNOWN_LANES = ("oanda_fx", "equity", "brain")
+
 _DEFAULT_STATE: Dict[str, Any] = {
     "goal": "",
     "status": "ready",
@@ -61,9 +68,12 @@ _V2_FIELDS: Dict[str, Any] = {
 class StateEngine:
     """Manages .claude/state.json for cross-session continuity."""
 
-    def __init__(self, state_path: Optional[Path] = None):
+    def __init__(self, state_path: Optional[Path] = None, lane: Optional[str] = None):
         self.state_path = state_path or STATE_PATH
         self._lock = threading.Lock()
+        if lane is not None and lane not in KNOWN_LANES:
+            raise ValueError(f"Unknown lane {lane!r}: must be one of {KNOWN_LANES}")
+        self._lane = lane  # optional default lane for get_halted()/set_halted() no-arg calls
 
     # ── read / write ────────────────────────────────────────────────
 
@@ -203,14 +213,104 @@ class StateEngine:
             state["last_updated"] = datetime.now(timezone.utc).isoformat()
             self._atomic_write(state)
 
-    def get_halted(self) -> bool:
-        """Return whether the scanner is halted."""
-        return bool(self.load_state().get("halted", False))
+    def get_halted(self, lane: Optional[str] = None) -> bool:
+        """Return whether the scanner (or a specific lane) is halted.
 
-    def set_halted(self, value: bool) -> None:
-        """Set the halted flag and persist atomically."""
-        self._update_flag("halted", value)
-        logger.info("StateEngine: halted=%s", value)
+        ``lane`` defaults to the lane this instance was constructed with
+        (``StateEngine(lane="oanda_fx")``), if any — so a lane-scoped
+        instance can be read with the exact same ``get_halted()`` call every
+        pre-existing caller already uses. An explicit ``lane=`` argument here
+        always overrides the instance's bound lane.
+
+        ``lane=None`` (default, unchanged from before per-lane support):
+        legacy global check — fail-OPEN on a missing/corrupt state file
+        (matches long-standing behavior; ``src.equity.decision_gate``
+        deliberately reads the file directly instead of via StateEngine to
+        be fail-CLOSED, and keeps doing so).
+
+        ``lane=<name>``: per-lane check, layered on top of the same
+        ``load_state()`` read. The legacy global ``halted=True`` flag still
+        halts every lane (fail-safe OR — a lane can never be "more unhalted"
+        than the global switch). Two distinct "unknown" cases are handled
+        differently, deliberately:
+
+          * ``halted_lanes`` is entirely ABSENT (a legacy state.json that
+            predates per-lane support, or a brand-new/corrupt file that
+            ``load_state()`` silently falls back to defaults for) -> defers
+            to the (already-checked, already-False-here) global flag. This
+            preserves every pre-existing StateEngine consumer's fail-OPEN
+            contract on a missing/corrupt file — the equity harvester's
+            ``src.equity.decision_gate`` is the module that reads the file
+            directly for a genuinely fail-CLOSED guarantee; StateEngine
+            itself has never made that promise (see its class docstring
+            precedent) and this method does not newly invent one for it.
+          * ``halted_lanes`` IS present but has no valid boolean entry for
+            THIS lane -> fail-closed (halted). Once the per-lane concept is
+            in use at all, an unlisted/malformed lane is never assumed safe.
+        """
+        lane = lane if lane is not None else self._lane
+        state = self.load_state()
+        if bool(state.get("halted", False)):
+            return True
+        if lane is None:
+            return False
+        if lane not in KNOWN_LANES:
+            raise ValueError(f"Unknown lane {lane!r}: must be one of {KNOWN_LANES}")
+        lanes = state.get("halted_lanes")
+        if lanes is None:
+            return False  # per-lane concept not configured at all -> defer to global (False here)
+        if not isinstance(lanes, dict):
+            return True  # corrupt type where a dict was expected -> fail-closed
+        val = lanes.get(lane)
+        if not isinstance(val, bool):
+            return True  # fail-closed: halted_lanes exists but this lane's entry is missing/corrupt
+        return val
+
+    def get_lane_status(self) -> Dict[str, bool]:
+        """Return the effective halted state of every known lane (for
+        dashboard/TUI readback) — each computed via the same fail-closed
+        ``get_halted(lane=...)`` path used to gate execution."""
+        return {lane: self.get_halted(lane) for lane in KNOWN_LANES}
+
+    def set_halted(self, value: bool, lane: Optional[str] = None) -> None:
+        """Set the halted flag and persist atomically.
+
+        ``lane=None`` (default): sets the legacy global ``halted`` flag AND
+        cascades the same value to every known lane's ``halted_lanes``
+        entry. This is the "master switch" a plain ``set_halted(value)``
+        call has always been — every existing autonomous halt path
+        (execution.py flatten_all, engine.py auto-halt, brain_loop derisk)
+        and every existing operator unhalt path keeps working unmodified,
+        and now also keeps the per-lane view consistent for callers that
+        have not opted into per-lane control.
+
+        ``lane=<name>``: overrides ONLY that lane's entry in
+        ``halted_lanes``, without touching the global flag or any other
+        lane. This is how a lane is halted/unhalted independently — note
+        the global flag must ALSO be False for a lane-level unhalt to have
+        any effect (``halted=True`` always wins; see ``get_halted``).
+
+        ``lane`` defaults to the lane this instance was constructed with
+        (see ``get_halted`` for the same convention), so a lane-scoped
+        instance can be written with the exact same ``set_halted(value)``
+        call every pre-existing caller already uses.
+        """
+        lane = lane if lane is not None else self._lane
+        with self._lock:
+            state = self.load_state()
+            if lane is None:
+                state["halted"] = bool(value)
+                state["halted_lanes"] = {ln: bool(value) for ln in KNOWN_LANES}
+            else:
+                if lane not in KNOWN_LANES:
+                    raise ValueError(f"Unknown lane {lane!r}: must be one of {KNOWN_LANES}")
+                lanes = state.get("halted_lanes")
+                lanes = dict(lanes) if isinstance(lanes, dict) else {}
+                lanes[lane] = bool(value)
+                state["halted_lanes"] = lanes
+            state["last_updated"] = datetime.now(timezone.utc).isoformat()
+            self._atomic_write(state)
+        logger.info("StateEngine: halted=%s lane=%s", value, lane or "ALL (global)")
 
     def set_last_actor(self, actor: str) -> None:
         """Record the last supervisor/control actor in state."""

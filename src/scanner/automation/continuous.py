@@ -1914,7 +1914,7 @@ class ContinuousScanner:
             from src.scanner.automation.state_engine import StateEngine
             from src.scanner.automation.event_bus import get_event_bus
             _se = StateEngine()
-            if _se.get_halted():
+            if _se.get_halted(lane="oanda_fx"):
                 logger.warning("SCANNER HALTED — skipping scan cycle")
                 get_event_bus().publish("control.kill", {"source": "_run_smart_loop", "reason": "halted"})
                 return

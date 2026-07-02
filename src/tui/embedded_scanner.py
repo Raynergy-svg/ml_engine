@@ -669,7 +669,7 @@ class EmbeddedScanner:
         # tick keep updating so the TUI stays alive for operator un-halt.
         try:
             from src.scanner.automation.state_engine import StateEngine
-            if StateEngine().get_halted():
+            if StateEngine().get_halted(lane="oanda_fx"):
                 if not getattr(self, "_halt_message_emitted", False):
                     self._brain(
                         "[bold red]◈ SCANNER HALTED — auto-halt active. "

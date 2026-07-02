@@ -122,6 +122,34 @@ def test_halt_stop_loop_arm_disarm_never_require_arm(tmp_path, monkeypatch):
     monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")  # disarmed
     assert cs.enforce("halt", {}) == {}
     assert cs.enforce("stop_loop", {"loop": "trend"})["loop"] == "trend"
+
+
+# --------------------------------------------------------------------------- #
+# Per-lane halt/unhalt (2026-07-02): an optional, validated ``lane`` param on
+# halt/unhalt only — ARM gating and the eligibility gate are untouched.
+# --------------------------------------------------------------------------- #
+def test_halt_accepts_optional_valid_lane(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")  # disarmed; halt never needs arm
+    assert cs.enforce("halt", {"lane": "oanda_fx"}) == {"lane": "oanda_fx"}
+    assert cs.enforce("halt", {}) == {}  # lane remains fully optional
+
+
+def test_halt_rejects_unknown_lane():
+    with pytest.raises(cs.ControlDenied):
+        cs.enforce("halt", {"lane": "crypto"})
+
+
+def test_halt_rejects_extra_params_alongside_lane():
+    with pytest.raises(cs.ControlDenied):
+        cs.enforce("halt", {"lane": "oanda_fx", "extra": "nope"})
+
+
+def test_unhalt_with_lane_still_requires_arm(tmp_path, monkeypatch):
+    monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")  # disarmed
+    with pytest.raises(cs.ControlDenied, match="DISARMED"):
+        cs.enforce("unhalt", {"lane": "equity"})
+    cs.set_arm_state(True, actor="test")
+    assert cs.enforce("unhalt", {"lane": "equity"}) == {"lane": "equity"}
     assert cs.enforce("arm", {}) == {}
     assert cs.enforce("disarm", {}) == {}
 

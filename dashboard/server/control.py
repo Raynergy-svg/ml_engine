@@ -6,9 +6,14 @@ structural guards in ``control_safety.enforce`` BEFORE any effect, and audit-log
 attempt (allowed AND denied). See dashboard/CONTROL_DESIGN.md.
 
 Functional actions (all practice-pinned + bounded by control_safety):
-  halt               — StateEngine.set_halted(True) (fail-safe; always allowed).
+  halt               — StateEngine.set_halted(True) (fail-safe; always allowed). An
+                       optional ``lane`` param (oanda_fx | equity | brain) halts only
+                       that lane; omitted -> legacy global halt (halts every lane).
   unhalt             — StateEngine.set_halted(False) ONLY after assert_unhalt_eligible
                        passes (practice + drawdown<20% + gates GREEN + models fresh).
+                       Same optional ``lane`` param as halt; the legacy global
+                       ``halted`` flag still wins over any per-lane unhalt (a lane
+                       unhalt only takes effect once the global flag is also False).
   set_gross_leverage — writes a clamped [0,15] override; the trend loop sizes to it
                        and OANDA scanner execution enforces it as a gross cap.
   start_loop/stop_loop — fixed-WHITELIST process control (no arbitrary exec): trend ->
@@ -189,10 +194,12 @@ def _state() -> Dict[str, Any]:
         pids = _loop_pids(loop)
         loops[loop] = {"running": bool(pids), "pids": pids}
     arm_state = cs.read_arm_state()
+    eng = StateEngine()
     return {
         "ok": True,
         "environment": cs.assert_practice(),
-        "halted": StateEngine().get_halted(),
+        "halted": eng.get_halted(),
+        "lanes": eng.get_lane_status(),
         "gross_leverage": overrides.get("gross_leverage"),
         "override_updated_at": overrides.get("_updated_at"),
         "leverage_cap": cs.LEVERAGE_CAP,
@@ -225,19 +232,23 @@ def _run(action: str, params: Dict[str, Any], *, actor: str):
             # C-B2: idempotent check-and-set — report already_halted instead of blindly
             # re-flipping on a double-submit (UI disable lags the 3s poll).
             eng = StateEngine()
-            if eng.get_halted():
-                result: Dict[str, Any] = {"result": "already_halted", "changed": False}
+            lane = normalized.get("lane")
+            if eng.get_halted(lane=lane):
+                result: Dict[str, Any] = {
+                    "result": "already_halted", "changed": False, "lane": lane or "global",
+                }
             else:
-                eng.set_halted(True)
-                result = {"result": "halted", "changed": True}
+                eng.set_halted(True, lane=lane)
+                result = {"result": "halted", "changed": True, "lane": lane or "global"}
         elif action == "unhalt":
             eng = StateEngine()  # eligibility already enforced above
-            if not eng.get_halted():
-                result = {"result": "already_unhalted", "changed": False,
+            lane = normalized.get("lane")
+            if not eng.get_halted(lane=lane):
+                result = {"result": "already_unhalted", "changed": False, "lane": lane or "global",
                           "eligibility": normalized.get("eligibility")}
             else:
-                eng.set_halted(False)
-                result = {"result": "unhalted", "changed": True,
+                eng.set_halted(False, lane=lane)
+                result = {"result": "unhalted", "changed": True, "lane": lane or "global",
                           "eligibility": normalized.get("eligibility")}
         elif action == "set_gross_leverage":
             ov = cs.set_override("gross_leverage", normalized["gross_leverage"])

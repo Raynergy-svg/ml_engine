@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 import pandas as pd
 
 from src.equity import fx_rates
-from src.equity.decision_gate import _global_halt
+from src.equity.decision_gate import _lane_halted
 from src.equity.trend_risk_gates import (
     DEFAULT_BIAS_MIN_INSTRUMENTS,
     DEFAULT_BIAS_SHARE_THRESHOLD,
@@ -468,7 +468,8 @@ def run_oanda_trend_cycle(
 ) -> OandaTrendResult:
     """One PRACTICE trend cycle: candles -> signal -> (demo) orders. Fail-closed.
 
-    Respects the global halt (REFUSE) and asserts practice-only. With ``dry_run``
+    Respects the oanda_fx lane halt (REFUSE; the legacy global halt still wins
+    over any lane) and asserts practice-only. With ``dry_run``
     it computes + logs targets without placing orders. Otherwise it reads NAV +
     open positions and sizes each "on" instrument via RISK-NORMALIZED sizing
     (``risk_pct`` of NAV / ATR-based stop distance — operator-directed rebuild,
@@ -483,7 +484,7 @@ def run_oanda_trend_cycle(
         "HARD LINE: oanda_environment must be 'practice'"
     root = Path(project_root)
 
-    halted, readable = _global_halt(root)
+    halted, readable, _reason = _lane_halted(root, "oanda_fx")
     if not readable or halted:
         logger.warning("OANDA trend cycle REFUSED — halt=%s readable=%s", halted, readable)
         return OandaTrendResult(False, "halted", {}, 0)
