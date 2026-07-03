@@ -202,6 +202,19 @@ class ConfigAdjuster:
                 self._applied_ids.add(entry_id)
                 continue
 
+            # Hard NO (L-003, 2026-07-03): protected fields never setattr, even
+            # from a hand-edited history file — last-line defense mirroring
+            # adjustment_validator.PROTECTED_FIELDS (validated at proposal AND
+            # approval; this guards the direct-file-tamper path).
+            from src.scanner.automation.adjustment_validator import PROTECTED_FIELDS
+            if key in PROTECTED_FIELDS:
+                logger.error(
+                    "ConfigAdjuster: PROTECTED key %r REFUSED at apply (Hard NO, "
+                    "L-003) — history entry bypassed validation; investigate. "
+                    "source=%s", key, entry.get("source", "unknown"))
+                self._applied_ids.add(entry_id)
+                continue
+
             # Rate limit
             last_cycle = self._last_applied.get(key, -RATE_LIMIT_CYCLES - 1)
             if current_cycle - last_cycle < RATE_LIMIT_CYCLES:

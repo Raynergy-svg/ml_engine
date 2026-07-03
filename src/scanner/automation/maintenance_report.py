@@ -205,6 +205,15 @@ def _self_heal_section(root: Path) -> Dict[str, Any]:
         return {"error": str(exc)}
 
 
+def _overlay_section(root: Path) -> Optional[Dict[str, Any]]:
+    """Durable config-overlay summary (P1). None until an overlay exists."""
+    try:
+        from src.scanner.automation.config_overlay import overlay_status
+        return overlay_status(root)
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc)}
+
+
 def build_maintenance_report(
     root: Path,
     *,
@@ -229,6 +238,7 @@ def build_maintenance_report(
         "lanes": _lanes_section(root, now_epoch),
         "self_heal": _self_heal_section(root),
         "recommendations": [str(r) for r in (recommendations or []) if r][:10],
+        "config_overlay": _overlay_section(root),
     }
     if code:
         report["code"] = code

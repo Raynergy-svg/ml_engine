@@ -164,6 +164,14 @@ def _check_bounds(field_name: str, value: Any) -> tuple[bool, str]:
     return True, ""
 
 
+# Hard NOs (L-003/L-004): fields the adjustment pipeline may NEVER carry,
+# regardless of approval. oanda_environment is the practice pin — no proposal,
+# approval, overlay, or self-heal action may scaffold a path that flips it
+# (2026-07-03: added when the durable config overlay made "an approved
+# adjustment reaches every process" a real propagation channel).
+PROTECTED_FIELDS = frozenset({"oanda_environment"})
+
+
 def validate_adjustment(key: str, value: Any, reason: str) -> ValidationResult:
     """Validate a proposed config adjustment against ScannerConfig schema.
 
@@ -178,6 +186,18 @@ def validate_adjustment(key: str, value: Any, reason: str) -> ValidationResult:
     Returns:
         ValidationResult with per-dimension diagnostics.
     """
+    if key in PROTECTED_FIELDS:
+        return ValidationResult(
+            valid=False,
+            field_exists=True,
+            type_matches=False,
+            within_bounds=False,
+            error_message=(
+                f"'{key}' is a PROTECTED field (Hard NO, L-003) — the adjustment "
+                "pipeline may never carry it. Refused unconditionally."
+            ),
+        )
+
     fields = _get_scanner_config_fields()
 
     if key not in fields:

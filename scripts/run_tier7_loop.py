@@ -129,6 +129,19 @@ def _tick(root: Path, cycle: int, max_autonomy_level: int) -> None:
                         scanner_alive=False, pid=os.getpid(),
                         extra={"writer": "tier7_supervisor", "supervisor_alive": True})
     sh = _self_heal_tick(root, max_autonomy_level)
+    # P1 headless adjustment consumption — OPT-IN (TIER7_CONSUME_ADJUSTMENTS=1).
+    # Default OFF: until the engine startup path calls config_overlay.apply_overlay,
+    # consuming here would hide adjustments from a future TUI session (it skips
+    # consumed ids and doesn't read the overlay yet). Operator flips both together.
+    if os.getenv("TIER7_CONSUME_ADJUSTMENTS", "0") == "1":
+        try:
+            from src.scanner.automation.config_overlay import consume_approved_adjustments
+            consumed = consume_approved_adjustments(root)
+            if consumed.get("consumed") or consumed.get("orphans_skipped"):
+                sh = {**sh, "overlay_consumed": consumed["consumed"],
+                      "overlay_orphans": consumed["orphans_skipped"]}
+        except Exception as exc:  # noqa: BLE001 — never kill the tick
+            logger.warning("overlay consume error (non-fatal): %s", exc)
     _append_event(root, {
         "ts": datetime.now(timezone.utc).isoformat(), "cycle": cycle,
         "halted": halted, **sh,
