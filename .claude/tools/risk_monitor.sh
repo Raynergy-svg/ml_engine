@@ -58,7 +58,7 @@ fi
 
 # --- Runtime state must be readable; live mode is incoherent on this practice/halted system ---
 halted="?"; mode="?"
-oanda_fx_halted="?"; equity_halted="?"; brain_halted="?"; crypto_momentum_halted="?"
+oanda_fx_halted="?"; equity_halted="?"; brain_halted="?"; crypto_momentum_halted="?"; track_b_halted="?"
 if [ ! -r "$STATE" ]; then
   alarms+=("cannot read ${STATE} — runtime state UNKNOWN == unsafe (fail-closed)")
 else
@@ -85,7 +85,7 @@ else
     # but a PRESENT `halted_lanes` dict missing/mistyping a known lane is state corruption and DOES.
     lane_report="$(python3 - "$STATE" <<'PYEOF' 2>/dev/null || echo ERR
 import json, sys
-KNOWN_LANES = ("oanda_fx", "equity", "brain", "crypto_momentum")
+KNOWN_LANES = ("oanda_fx", "equity", "brain", "crypto_momentum", "track_b")
 try:
     payload = json.load(open(sys.argv[1]))
 except (OSError, json.JSONDecodeError):
@@ -122,6 +122,7 @@ PYEOF
       equity_halted="$(printf '%s\n' "$lane_fields" | grep -oE 'equity=[^ ]+' | cut -d= -f2)"
       brain_halted="$(printf '%s\n' "$lane_fields" | grep -oE 'brain=[^ ]+' | cut -d= -f2)"
       crypto_momentum_halted="$(printf '%s\n' "$lane_fields" | grep -oE 'crypto_momentum=[^ ]+' | cut -d= -f2)"
+      track_b_halted="$(printf '%s\n' "$lane_fields" | grep -oE 'track_b=[^ ]+' | cut -d= -f2)"
       if [ -n "$lane_anomalies" ]; then
         alarms+=("halted_lanes present but missing/invalid entry for known lane(s): ${lane_anomalies} — per-lane state UNKNOWN == unsafe (fail-closed)")
       fi
@@ -129,7 +130,7 @@ PYEOF
   fi
 fi
 
-lane_status="oanda_fx_halted=${oanda_fx_halted} equity_halted=${equity_halted} brain_halted=${brain_halted} crypto_momentum_halted=${crypto_momentum_halted}"
+lane_status="oanda_fx_halted=${oanda_fx_halted} equity_halted=${equity_halted} brain_halted=${brain_halted} crypto_momentum_halted=${crypto_momentum_halted} track_b_halted=${track_b_halted}"
 if [ ${#alarms[@]} -eq 0 ]; then
   echo "RISK MONITOR: GREEN — practice default ok · ship-gate<=0.10 · halt-guard present · state readable (halted=${halted} mode=${mode} ${lane_status})"
   exit 0

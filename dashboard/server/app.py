@@ -107,7 +107,8 @@ def root() -> Dict[str, Any]:
             "endpoints": ["/api/account", "/api/status", "/api/trades", "/api/equity",
                           "/api/strategy", "/api/sentiment", "/api/tier7", "/api/system_health",
                           "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream",
-                          "/api/equity_sleeve", "/api/lanes", "/api/brain_loop"]}
+                          "/api/equity_sleeve", "/api/lanes", "/api/brain_loop",
+                          "/api/crypto_momentum", "/api/track_b"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -173,6 +174,11 @@ def brain_loop() -> Dict[str, Any]:
 @app.get("/api/crypto_momentum")
 def crypto_momentum() -> Dict[str, Any]:
     return ds.read_crypto_momentum()
+
+
+@app.get("/api/track_b")
+def track_b() -> Dict[str, Any]:
+    return ds.read_track_b()
 
 
 @app.get("/api/tier7")

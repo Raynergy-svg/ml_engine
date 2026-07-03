@@ -17,6 +17,7 @@ import { ControlPanel } from "@/components/ControlPanel";
 import { HealthPanel } from "@/components/HealthPanel";
 import { EquityHarvesterPanel } from "@/components/EquityHarvesterPanel";
 import { CryptoMomentumPanel } from "@/components/CryptoMomentumPanel";
+import { TrackBPanel } from "@/components/TrackBPanel";
 import { BrainLoopPanel } from "@/components/BrainLoopPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
 import { FullscreenIcon, ChartTypeIcon, PanelSplitIcon, FitArrowsIcon, ChevronDown, CheckCircleSolid } from "@/components/icons";
@@ -256,6 +257,7 @@ function DashboardBody() {
             <HealthPanel />
             <EquityHarvesterPanel />
             <CryptoMomentumPanel />
+            <TrackBPanel />
           </>
         )}
         {tab === "Automation" && (

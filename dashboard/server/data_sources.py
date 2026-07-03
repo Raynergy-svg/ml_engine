@@ -738,6 +738,92 @@ def read_crypto_momentum() -> Dict[str, Any]:
     }
 
 
+_TRACK_B_LEDGER_PATH = REPO_ROOT / "trained_data" / "research" / "track_b_shadow_ledger.jsonl"
+_TRACK_B_LIVE_GATE_STATE_PATH = REPO_ROOT / "trained_data" / "equity" / "track_b" / "live_gate_state.json"
+
+
+def read_track_b() -> Dict[str, Any]:
+    """Track B (SEC filing-text research-alpha) SHADOW lane: current would-be
+    Q5 book, running shadow P&L, and the accumulating live-forward-OOS track
+    record for the campaign's agentic filing-text factor (docs/experiment-
+    equity-research-alpha-prereg-2026-06-30.md). This signal is
+    self-labeled `overall_verdict=INSUFFICIENT` — UNDERPOWERED, not a
+    measured NO EDGE (N scored filings vs ~405 needed for 80% power on the
+    +0.16 rank-IC point estimate; see docs/adversarial-review-no-edge-
+    verdicts-2026-07-02.md). This panel exists to show whether the forward
+    record eventually clears the gate, not because the signal is verified.
+
+    Read-only, real data, no fabrication: an empty ledger (the lane has not
+    run yet, or every cycle so far has been a halted no-op) renders as an
+    honest zero-cycle state, never a fabricated book or P&L number. The live
+    gate is read the same way the crypto momentum lane's is — `armed` can
+    only ever be True via an explicit operator `LiveGate.arm()` call, which
+    nothing in this codebase currently makes (see
+    `src/equity/track_b_live_gate.py`).
+    """
+    rows = list(_iter_jsonl(_TRACK_B_LEDGER_PATH))
+    last = rows[-1] if rows else None
+    live_gate = _read_json(_TRACK_B_LIVE_GATE_STATE_PATH, {})
+    armed = bool(live_gate.get("armed", False))
+
+    # Reuse the module's own summary (single source of truth for the Sharpe
+    # math) instead of reimplementing it here — a duplicated calculation is
+    # exactly how the dashboard and the ledger writer could silently disagree.
+    try:
+        from src.equity.track_b_shadow import forward_oos_summary, construction_manifest
+        summary = forward_oos_summary(ledger_path=_TRACK_B_LEDGER_PATH)
+        # Honest coverage even before the first cycle has run — the scored-
+        # filing count doesn't depend on a ledger row existing.
+        try:
+            from src.equity.track_b_shadow import load_frozen_scores
+            n_scored_now = len(load_frozen_scores())
+        except Exception:  # noqa: BLE001 — display data; fall back to last ledger row's count
+            n_scored_now = last.get("n_scored_filings") if last else None
+    except Exception as exc:  # noqa: BLE001 — display data; never crash on import/compute failure
+        logger.warning("read_track_b: track_b_shadow module unavailable (%s)", exc)
+        summary = {"n_cycles": len(rows), "forward_sharpe_annualized": None}
+        n_scored_now = last.get("n_scored_filings") if last else None
+        construction_manifest = None
+    n = summary["n_cycles"]
+    # forward_oos_summary's zero-cycle state omits this key entirely (never a
+    # fabricated Sharpe on n<2) — .get() so the empty-ledger case (lane built
+    # but never run) doesn't KeyError the whole endpoint.
+    forward_sharpe = summary.get("forward_sharpe_annualized")
+    construction = (
+        last.get("construction") if last
+        else (construction_manifest(n_scored_now) if construction_manifest and n_scored_now else None)
+    )
+
+    return {
+        "has_run": bool(rows),
+        "n_forward_cycles": n,
+        "n_scored_filings": n_scored_now,
+        "current_book": last.get("book") if last else None,
+        "current_asof": last.get("asof_date") if last else None,
+        "current_gross_leverage": last.get("gross_leverage") if last else None,
+        "cumulative_shadow_return": last.get("cumulative_shadow_return", 0.0) if last else 0.0,
+        "forward_sharpe_annualized": forward_sharpe,
+        "first_asof_date": rows[0].get("asof_date") if rows else None,
+        "last_asof_date": last.get("asof_date") if last else None,
+        "recent_cycles": list(reversed(rows[-20:])),
+        "construction": construction,
+        "live_gate": {
+            "available": bool(live_gate),
+            "armed": armed,
+            "last_event": live_gate.get("last_event"),
+            "last_event_reason": live_gate.get("last_event_reason"),
+        },
+        "mode": "live" if armed else "shadow",
+        "source": {
+            "ledger": "trained_data/research/track_b_shadow_ledger.jsonl",
+            "live_gate": "trained_data/equity/track_b/live_gate_state.json",
+            "pre_registration": "docs/experiment-equity-research-alpha-prereg-2026-06-30.md",
+            "scaleup_run": "docs/track-b-postcutoff-scaleup-2026-07-02.md",
+            "adversarial_review": "docs/adversarial-review-no-edge-verdicts-2026-07-02.md",
+        },
+    }
+
+
 def read_tier7() -> Dict[str, Any]:
     """Tier 7 autonomous-loop status — fail-soft passthrough of the bot's snapshot.
 

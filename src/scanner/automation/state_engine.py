@@ -28,7 +28,7 @@ SCHEMA_VERSION = "2"
 # False). Any lane name outside this set is rejected — typo'd/orphan lane
 # keys must fail loud, not silently create a dead ``halted_lanes`` entry
 # nothing reads (mirrors the ScannerConfig key-validation convention).
-KNOWN_LANES = ("oanda_fx", "equity", "brain", "crypto_momentum")
+KNOWN_LANES = ("oanda_fx", "equity", "brain", "crypto_momentum", "track_b")
 
 _DEFAULT_STATE: Dict[str, Any] = {
     "goal": "",

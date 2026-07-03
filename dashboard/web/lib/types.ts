@@ -461,6 +461,75 @@ export interface CryptoMomentum {
   source: Record<string, string>;
 }
 
+// GET /api/track_b — SEC filing-text research-alpha SHADOW lane (no live path
+// exists; this signal is self-labeled overall_verdict=INSUFFICIENT — UNDERPOWERED,
+// not a measured NO EDGE, see docs/adversarial-review-no-edge-verdicts-2026-07-02.md
+// — the panel exists to show the accumulating live-forward-OOS record against the
+// frozen construction, not a verified edge).
+export interface TrackBBook {
+  longs: Record<string, number>;
+  shorts: Record<string, number>;
+}
+export interface TrackBCycle {
+  cycle_ts: string;
+  asof_date: string;
+  n_scored_filings: number;
+  n_longs: number;
+  n_shorts: number;
+  gross_leverage: number;
+  today_net_return: number;
+  today_gross_return: number;
+  today_cost: number;
+  today_turnover: number;
+  cumulative_shadow_return: number;
+  forward_cycle_seq: number;
+  orders_placed: number;
+}
+export interface TrackBConstruction {
+  signal: string;
+  composite_weights: Record<string, number>;
+  book: string;
+  quintile_divisor: number;
+  min_names_for_quintile: number;
+  rebalance_step_days: number;
+  vol_target_ann: number;
+  dd_soft: number;
+  dd_hard: number;
+  max_leverage: number;
+  cost_bps: number;
+  model_cutoff: string;
+  n_scored_filings: number;
+  power_required_n_filings: number;
+  source_prereg_doc: string;
+  source_scaleup_doc: string;
+  source_adversarial_review_doc: string;
+  gate_verdict: string;
+  coverage_note: string;
+}
+export interface TrackBLiveGate {
+  available: boolean;
+  armed: boolean;
+  last_event?: string | null;
+  last_event_reason?: string | null;
+}
+export interface TrackB {
+  has_run: boolean;
+  n_forward_cycles: number;
+  n_scored_filings: number | null;
+  current_book: TrackBBook | null;
+  current_asof: string | null;
+  current_gross_leverage: number | null;
+  cumulative_shadow_return: number;
+  forward_sharpe_annualized: number | null;
+  first_asof_date: string | null;
+  last_asof_date: string | null;
+  recent_cycles: TrackBCycle[];
+  construction: TrackBConstruction | null;
+  live_gate: TrackBLiveGate;
+  mode: "live" | "shadow";
+  source: Record<string, string>;
+}
+
 export interface StreamPayload {
   ts: number;
   account: Account;
