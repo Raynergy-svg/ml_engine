@@ -74,9 +74,12 @@ def _self_heal_tick(root: Path, max_autonomy_level: int) -> dict:
         diag = PostTradeDiagnostics().run()
         result = SelfHeal(config=cfg).apply(diag)
         actions = result.get("actions_taken", []) or []
+        applied = [a for a in actions if a.get("success")]
         return {"status": result.get("status", "no_action"),
                 "n_actions": len(actions),
+                "n_applied": len(applied),
                 "actions": [a.get("action") for a in actions],
+                "recommendations": result.get("recommendations", []) or [],
                 "degraded": bool(result.get("degraded_mode", False))}
     except Exception as exc:  # noqa: BLE001 - self-heal must never crash the supervisor
         logger.warning("self-heal tick error (non-fatal): %s", exc)
@@ -131,7 +134,8 @@ def _tick(root: Path, cycle: int, max_autonomy_level: int) -> None:
         "halted": halted, **sh,
     })
     try:
-        report = build_maintenance_report(root, supervisor_pid=os.getpid())
+        report = build_maintenance_report(root, supervisor_pid=os.getpid(),
+                                          recommendations=sh.get("recommendations"))
         write_maintenance_report(root, report)
         needs = report.get("needs_attention", [])
         if needs:

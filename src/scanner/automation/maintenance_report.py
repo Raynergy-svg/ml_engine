@@ -193,8 +193,14 @@ def build_maintenance_report(
     *,
     supervisor_pid: Optional[int] = None,
     code: Optional[Dict[str, Any]] = None,
+    recommendations: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Assemble the full snapshot. Never raises; sections degrade independently."""
+    """Assemble the full snapshot. Never raises; sections degrade independently.
+
+    ``recommendations``: diagnostics' human-readable advice for the operator
+    (informational — deliberately NOT added to needs_attention, to keep that
+    list scoped to actionable backlog and avoid alarm fatigue).
+    """
     now = datetime.now(timezone.utc)
     now_epoch = now.timestamp()
     report: Dict[str, Any] = {
@@ -205,6 +211,7 @@ def build_maintenance_report(
         "alerts": _alerts_section(root),
         "lanes": _lanes_section(root, now_epoch),
         "self_heal": _self_heal_section(root),
+        "recommendations": [str(r) for r in (recommendations or []) if r][:10],
     }
     if code:
         report["code"] = code

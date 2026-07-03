@@ -207,6 +207,7 @@ class SelfHeal:
                     "actions_taken": [],
                     "files_modified": [],
                     "degraded_mode": False,
+                    "recommendations": [],
                     "error": None,
                 }
 
@@ -221,6 +222,7 @@ class SelfHeal:
                     "actions_taken": [],
                     "files_modified": [],
                     "degraded_mode": False,
+                    "recommendations": _echo_recommendations(diag_result),
                     "error": None,
                 }
 
@@ -247,14 +249,20 @@ class SelfHeal:
                 ordered.append(key)
 
             # Debounce: drop action strings that fired within DEBOUNCE_WINDOW_S
-            # ago. Records the suppression in actions_taken so the operator
-            # still sees the condition was diagnosed — just not re-acted on.
-            ordered, suppressed = self._filter_debounced(ordered)
-            for sup in suppressed:
+            # ago, OR whose diagnostic EVIDENCE is unchanged since the last fire
+            # (2026-07-03: a frozen journal tail while halted re-fired the same
+            # prescription after every window and burned the daily budget on
+            # idempotent re-stages). Records the suppression in actions_taken so
+            # the operator still sees the condition was diagnosed.
+            evidence = diag_result.get("evidence") or {}
+            if not isinstance(evidence, dict):
+                evidence = {}
+            ordered, suppressed = self._filter_debounced(ordered, evidence)
+            for sup, sup_reason in suppressed:
                 actions_taken.append({
                     "action": sup,
                     "success": False,
-                    "detail": "debounced (fired within {0:.0f}s window)".format(self.DEBOUNCE_WINDOW_S),
+                    "detail": sup_reason,
                 })
 
             # AGENT 2 — tiered autonomy level check (runs first, before
@@ -360,6 +368,13 @@ class SelfHeal:
             # Overall status rollup.
             any_success = any(a["success"] for a in actions_taken)
             degraded_mode = has_critical or any_raised
+            # 2026-07-03 status honesty: a tick whose only entries are debounce /
+            # unchanged-evidence suppressions did not FAIL anything — reporting it
+            # as "degraded" made a healthy idle supervisor look broken every 30s.
+            only_suppressed = bool(actions_taken) and all(
+                str(a.get("detail", "")).startswith(("debounced", "evidence_unchanged"))
+                for a in actions_taken
+            )
 
             if degraded_mode:
                 self._enter_degraded_mode(
@@ -375,6 +390,9 @@ class SelfHeal:
                 final_status = "applied"
             elif any_success and degraded_mode:
                 final_status = "applied"
+            elif only_suppressed:
+                # Nothing attempted, nothing failed — suppression is not failure.
+                final_status = "suppressed"
             else:
                 # No handler succeeded — still return normally, no exception.
                 final_status = "degraded"
@@ -390,6 +408,7 @@ class SelfHeal:
                 "actions_taken": actions_taken,
                 "files_modified": files_modified,
                 "degraded_mode": degraded_mode,
+                "recommendations": _echo_recommendations(diag_result),
                 "error": None,
             }
 
@@ -450,40 +469,64 @@ class SelfHeal:
             )
         return (True, "", level)
 
-    def _filter_debounced(self, ordered: List[str]) -> Tuple[List[str], List[str]]:
+    def _filter_debounced(
+        self,
+        ordered: List[str],
+        evidence: Optional[Dict[str, str]] = None,
+    ) -> Tuple[List[str], List[Tuple[str, str]]]:
         """Split an action list into (still_active, suppressed) by debounce state.
 
-        Reads `.claude/self_heal_debounce.json` — `{action_str: iso_ts}`. An
-        action is "suppressed" if its last-fire timestamp is within
-        DEBOUNCE_WINDOW_S of now. After the split, updates the state file
-        with NEW timestamps for the still_active actions (so the next call
-        sees the fresh fire-time).
+        Reads `.claude/self_heal_debounce.json`. Two schemas coexist (backward
+        compatible): legacy ``{action_str: iso_ts}`` and v2
+        ``{action_str: {"ts": iso_ts, "evidence": fingerprint}}``.
 
-        Failures (corrupt JSON, write errors) fail-open: log + return the
-        original list unchanged. We never want debounce-state issues to
-        break self-heal recovery.
+        An action is suppressed when EITHER:
+        - its last-fire timestamp is within DEBOUNCE_WINDOW_S of now, or
+        - the diagnostics-supplied evidence fingerprint for it is UNCHANGED
+          since the last fire (2026-07-03: frozen evidence — e.g. the journal
+          tail while halted — must fire once, not once per window forever).
+          New evidence re-arms the action (window permitting).
+
+        ``suppressed`` returns ``(action_str, reason)`` pairs. Failures (corrupt
+        JSON, write errors) fail-open: log + return the original list unchanged.
+        We never want debounce-state issues to break self-heal recovery.
         """
         from datetime import datetime, timezone
         if not ordered:
             return [], []
+        evidence = evidence or {}
 
         try:
-            state: Dict[str, str] = {}
+            state: Dict[str, Any] = {}
             if self.DEBOUNCE_STATE_PATH.exists():
                 import json as _json
                 try:
                     blob = _json.loads(self.DEBOUNCE_STATE_PATH.read_text(encoding="utf-8"))
                     if isinstance(blob, dict):
-                        state = {str(k): str(v) for k, v in blob.items()}
+                        state = dict(blob)
                 except (ValueError, OSError) as e:
                     logger.warning("self_heal: debounce state read failed err=%r — failing open", e)
                     return list(ordered), []
 
+            def _entry_parts(raw: Any) -> Tuple[Optional[str], Optional[str]]:
+                """(iso_ts, evidence) from either schema."""
+                if isinstance(raw, dict):
+                    return raw.get("ts"), raw.get("evidence")
+                if raw:
+                    return str(raw), None
+                return None, None
+
             now = datetime.now(timezone.utc)
             still_active: List[str] = []
-            suppressed: List[str] = []
+            suppressed: List[Tuple[str, str]] = []
             for action_str in ordered:
-                last_iso = state.get(action_str)
+                last_iso, last_evidence = _entry_parts(state.get(action_str))
+                current_evidence = evidence.get(action_str)
+                if (current_evidence is not None and last_evidence is not None
+                        and current_evidence == last_evidence):
+                    suppressed.append((action_str,
+                                       "evidence_unchanged ({0})".format(current_evidence)))
+                    continue
                 if last_iso:
                     try:
                         last_dt = datetime.fromisoformat(str(last_iso).replace("Z", "+00:00"))
@@ -491,7 +534,9 @@ class SelfHeal:
                             last_dt = last_dt.replace(tzinfo=timezone.utc)
                         age_s = (now - last_dt).total_seconds()
                         if age_s < self.DEBOUNCE_WINDOW_S:
-                            suppressed.append(action_str)
+                            suppressed.append((action_str,
+                                               "debounced (fired within {0:.0f}s window)".format(
+                                                   self.DEBOUNCE_WINDOW_S)))
                             continue
                     except (ValueError, TypeError):
                         # corrupt timestamp → treat as not-recently-fired
@@ -501,7 +546,7 @@ class SelfHeal:
             # Update the state for the still_active actions only — suppressed
             # entries keep their existing fire-time so the window keeps closing.
             for a in still_active:
-                state[a] = now.isoformat()
+                state[a] = {"ts": now.isoformat(), "evidence": evidence.get(a)}
 
             try:
                 self.DEBOUNCE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1364,6 +1409,19 @@ class SelfHeal:
                 "path=%s error=%r original=%r",
                 self.ERROR_LOG_PATH, err, exc,
             )
+
+
+def _echo_recommendations(diag_result: Dict[str, Any]) -> List[str]:
+    """Pass diagnostics' human-readable recommendations through unmodified.
+
+    2026-07-03: recommendations are ADVICE for the operator (surfaced via the
+    maintenance report / tier7_state) — they never enter the action dispatch
+    loop. Capped defensively; non-list shapes degrade to empty.
+    """
+    recs = diag_result.get("recommendations")
+    if not isinstance(recs, list):
+        return []
+    return [str(r) for r in recs if r][:10]
 
 
 __all__ = ["SelfHeal"]

@@ -33,7 +33,6 @@ Bug surfaced by Mythos audit 2026-04-28 (post-restart at 7:19PM):
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -87,6 +86,12 @@ def isolated_self_heal(tmp_path, monkeypatch):
     monkeypatch.setattr(SelfHeal, "DECISION_LOG_PATH", decision_log)
     monkeypatch.setattr(SelfHeal, "ERROR_LOG_PATH", error_log)
     monkeypatch.setattr(SelfHeal, "JOURNAL_PATH", journal)
+    # 2026-07-03: budget path was the ONE un-isolated state file — the suite's
+    # own successes accumulated in the real/committed budget ledger, so any
+    # second run within 24h failed every handler with budget_exhausted (test
+    # self-poisoning, discovered while chasing a phantom regression).
+    monkeypatch.setattr(SelfHeal, "ACTION_BUDGET_PATH",
+                        tmp_path / "self_heal_action_budget.json")
     return cfg_adj
 
 

@@ -104,6 +104,12 @@ class PostTradeDiagnostics:
     def __init__(self, config_path: Optional[Path] = None) -> None:
         self._config_path = Path(config_path) if config_path else self.CONFIG_PATH
         self._thresholds: Dict[str, Any] = dict(self.DEFAULTS)
+        # Instance attrs (NOT class-level — mutable class defaults are shared
+        # state, the exact bug class found in continuous.py's _error_frequency).
+        # run() resets both per invocation; init here so a directly-invoked
+        # check (tests) never hits AttributeError.
+        self._recommendations: List[str] = []
+        self._evidence: Dict[str, str] = {}
         self._load_config()
 
     def _load_config(self) -> None:
@@ -172,6 +178,16 @@ class PostTradeDiagnostics:
         issues: List[Dict[str, Any]] = []
         actions: List[str] = []
         trades_analyzed = 0
+        # 2026-07-03 degraded-loop fix: prose advice is NOT an executable action.
+        # Human-readable guidance goes to `recommendations` (surfaced via the
+        # maintenance report); `recommended_actions` carries ONLY dispatchable
+        # verb[:arg] strings. Feeding prose into SelfHeal's executor made every
+        # tick fail with unknown_action_string and report status=degraded forever.
+        # `evidence` fingerprints let SelfHeal suppress re-firing an action whose
+        # underlying evidence has not changed (a frozen journal tail while halted
+        # re-prescribed the same fix every tick and burned the daily budget).
+        self._recommendations: List[str] = []
+        self._evidence: Dict[str, str] = {}
 
         try:
             journal = self._load_journal()
@@ -220,6 +236,8 @@ class PostTradeDiagnostics:
                 "status": status,
                 "issues": issues,
                 "recommended_actions": actions,
+                "recommendations": list(self._recommendations),
+                "evidence": dict(self._evidence),
                 "metadata": {
                     "trades_analyzed": trades_analyzed,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -235,6 +253,8 @@ class PostTradeDiagnostics:
                 "status": "DEGRADED",
                 "issues": issues,
                 "recommended_actions": actions,
+                "recommendations": list(getattr(self, "_recommendations", [])),
+                "evidence": dict(getattr(self, "_evidence", {})),
                 "metadata": {
                     "trades_analyzed": trades_analyzed,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -516,6 +536,19 @@ class PostTradeDiagnostics:
             else:
                 break
 
+        # Evidence fingerprint (2026-07-03): the newest closed trade + streak
+        # length. While halted the journal tail is FROZEN, so without this the
+        # same diagnosis re-prescribed reduce_risk every tick after each debounce
+        # window and burned the daily action budget on idempotent re-stages.
+        # SelfHeal suppresses a re-fire whose evidence is unchanged; a NEW closed
+        # trade (extending or breaking the streak) changes the fingerprint.
+        newest = tail[-1] if tail else {}
+        fingerprint = "streak={0}@{1}".format(
+            streak,
+            newest.get("close_time") or newest.get("timestamp")
+            or newest.get("trade_id") or "unknown",
+        )
+
         if streak >= crit:
             issues.append({
                 "check": "drawdown_streak",
@@ -525,6 +558,7 @@ class PostTradeDiagnostics:
                 "threshold": crit,
             })
             actions.append("reduce_risk_per_trade_pct")
+            self._evidence["reduce_risk_per_trade_pct"] = fingerprint
             return True
         if streak >= warn:
             issues.append({
@@ -535,6 +569,7 @@ class PostTradeDiagnostics:
                 "threshold": warn,
             })
             actions.append("reduce_risk_per_trade_pct")
+            self._evidence["reduce_risk_per_trade_pct"] = fingerprint
             return True
         return False
 
@@ -593,9 +628,19 @@ class PostTradeDiagnostics:
                 "value": oldest,
                 "threshold": CRITICAL_DAYS,
             })
-            actions.append(
-                "Retrain core models: python main.py train-joint "
-                "--instruments EUR_USD,GBP_USD,USD_JPY"
+            # 2026-07-03: recommendation, NOT an executable action. The old string
+            # ("python main.py train-joint ...") was doubly wrong: prose fed to the
+            # action executor failed every tick as unknown_action_string, and
+            # train-joint is the DEPRECATED joint pipeline (improvement.md joint
+            # deprecation ledger) for the RETIRED FX direction lane (L-016 — stale
+            # FX champions are expected/abandoned-by-design, never a retrain cue).
+            self._recommendations.append(
+                "Model freshness CRITICAL ({0}). NOTE: FX direction staleness is "
+                "by-design (L-016 retired; ship-gate quarantined) — do NOT retrain "
+                "FX direction and never via deprecated train-joint. If a stale "
+                "NON-retired head matters, escalate to the operator for "
+                "scripts/run_full_training.sh (per-pair path).".format(
+                    ", ".join(stale_models) or "unknown")
             )
             return True
         if status == "STALE":
@@ -609,8 +654,12 @@ class PostTradeDiagnostics:
                 "value": oldest,
                 "threshold": STALE_DAYS,
             })
-            actions.append(
-                "Schedule retraining of stale models within the next 7 days"
+            # 2026-07-03: recommendation, not an executable action (see CRITICAL
+            # branch above for why; same L-016 caveat applies).
+            self._recommendations.append(
+                "Models STALE ({0}) — informational; FX direction staleness is "
+                "by-design (L-016). Operator decision if any non-retired head "
+                "needs a retrain.".format(", ".join(stale_models) or "unknown")
             )
             return True
         # FRESH or AGING — no issue raised, but record for transparency
@@ -733,6 +782,7 @@ class PostTradeDiagnostics:
         from datetime import datetime, timezone
         # Strip extra-precise fractional seconds (Python's fromisoformat caps at 6
         # digits; OANDA returns 9). Also tolerate trailing 'Z' as +00:00.
+
         def _parse_ts(raw: Any) -> Optional[datetime]:
             if not raw:
                 return None
