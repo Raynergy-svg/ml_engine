@@ -101,6 +101,54 @@ def test_read_equity_uses_balance_rows_and_fill_realized_pl(tmp_path, monkeypatc
     assert out["ledger_realized_pl"] == 7.5
 
 
+def test_read_crypto_momentum_empty_ledger_does_not_raise(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "shadow_momentum_ledger.jsonl"
+    ledger_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(ds, "_CRYPTO_LEDGER_PATH", ledger_path)
+    monkeypatch.setattr(ds, "_CRYPTO_LIVE_GATE_STATE_PATH", tmp_path / "live_gate_state.json")
+
+    out = ds.read_crypto_momentum()
+
+    assert out["has_run"] is False
+    assert out["n_forward_cycles"] == 0
+    assert out["forward_sharpe_annualized"] is None
+    assert out["current_book"] is None
+    assert out["cumulative_shadow_return"] == 0.0
+
+
+def test_read_crypto_momentum_populated_ledger_surfaces_last_cycle(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "shadow_momentum_ledger.jsonl"
+    _write_jsonl(ledger_path, [
+        {
+            "asof_date": "2026-06-29",
+            "book": {"BTC": 0.5, "ETH": -0.5},
+            "gross_leverage": 1.0,
+            "cumulative_shadow_return": 0.012,
+            "today_net_return": 0.012,
+            "construction": {"quintile": 5},
+        },
+        {
+            "asof_date": "2026-06-30",
+            "book": {"BTC": 0.4, "ETH": -0.6},
+            "gross_leverage": 1.0,
+            "cumulative_shadow_return": 0.018,
+            "today_net_return": 0.006,
+            "construction": {"quintile": 5},
+        },
+    ])
+    monkeypatch.setattr(ds, "_CRYPTO_LEDGER_PATH", ledger_path)
+    monkeypatch.setattr(ds, "_CRYPTO_LIVE_GATE_STATE_PATH", tmp_path / "live_gate_state.json")
+
+    out = ds.read_crypto_momentum()
+
+    assert out["has_run"] is True
+    assert out["n_forward_cycles"] == 2
+    assert out["current_asof"] == "2026-06-30"
+    assert out["current_book"] == {"BTC": 0.4, "ETH": -0.6}
+    assert out["cumulative_shadow_return"] == 0.018
+    assert out["forward_sharpe_annualized"] is not None
+
+
 def test_read_tier7_stale_snapshot_cannot_report_running(tmp_path, monkeypatch):
     state_path = tmp_path / ".claude" / "tier7_state.json"
     state_path.parent.mkdir(parents=True)

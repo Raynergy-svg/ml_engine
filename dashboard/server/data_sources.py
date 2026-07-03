@@ -709,7 +709,10 @@ def read_crypto_momentum() -> Dict[str, Any]:
         logger.warning("read_crypto_momentum: forward_oos_summary unavailable (%s)", exc)
         summary = {"n_cycles": len(rows), "forward_sharpe_annualized": None}
     n = summary["n_cycles"]
-    forward_sharpe = summary["forward_sharpe_annualized"]
+    # forward_oos_summary's zero-cycle state omits this key entirely (never a
+    # fabricated Sharpe on n<2) — .get() so the empty-ledger case (lane built
+    # but never run) doesn't KeyError the whole endpoint.
+    forward_sharpe = summary.get("forward_sharpe_annualized")
 
     return {
         "has_run": bool(rows),
