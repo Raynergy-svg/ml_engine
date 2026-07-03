@@ -143,6 +143,10 @@ def build_tier7_state(project_root: Path = Path("."), *, now: Optional[datetime]
         "meta_last_event": {
             k: meta.get(k) for k in ("change_id", "stage", "event", "kind", "deploy_target", "updated_at")
         } if meta else None,
+        # 2026-07-03 additive: the supervisor's per-tick maintenance/diagnostics
+        # snapshot (alerts, adjustment backlog, lane liveness, needs_attention).
+        # None when the supervisor hasn't written one yet — display-optional.
+        "maintenance": _read_json(root / ".claude" / "maintenance_report.json"),
         "note": "READ-ONLY display snapshot for AXIOM. No control path; nothing here mutates state.",
     }
 

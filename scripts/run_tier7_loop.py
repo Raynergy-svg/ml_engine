@@ -83,7 +83,30 @@ def _self_heal_tick(root: Path, max_autonomy_level: int) -> dict:
         return {"status": "error", "n_actions": 0, "actions": [], "error": str(exc)}
 
 
+def _foreign_writer_owns_heartbeat(root: Path, *, fresh_s: float = 25.0) -> bool:
+    """True when ANOTHER live process (the TUI, cadence ~10s) wrote a fresh heartbeat.
+
+    Two-writer collision fix (2026-07-03 autonomy audit): when the TUI runs it writes
+    the REAL scanner_alive every ~10s; the supervisor must not clobber that beacon
+    with its own. Fresh + foreign pid + pid alive => the other writer owns the file.
+    """
+    try:
+        hb = json.loads((root / ".claude" / "heartbeat.json").read_text())
+        pid = int(hb.get("pid", 0))
+        ts = datetime.fromisoformat(str(hb.get("ts_iso", "")).replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - ts).total_seconds()
+        if pid and pid != os.getpid() and age <= fresh_s:
+            os.kill(pid, 0)  # raises if dead
+            return True
+    except (OSError, ValueError, OverflowError):
+        pass
+    return False
+
+
 def _tick(root: Path, cycle: int, max_autonomy_level: int) -> None:
+    from src.scanner.automation.maintenance_report import (
+        build_maintenance_report, write_maintenance_report,
+    )
     from src.scanner.automation.tier7_state import write_tier7_state
     from src.tui.heartbeat import write_heartbeat
 
@@ -93,13 +116,28 @@ def _tick(root: Path, cycle: int, max_autonomy_level: int) -> None:
     except (OSError, ValueError):
         pass
 
-    write_heartbeat(root, cycle_count=cycle, mode=_read_mode(root),
-                    scanner_alive=True, pid=os.getpid())
+    # Honest beacon (L-017, fixed 2026-07-03): this supervisor is NOT the scanner and
+    # cannot prove one is running, so it writes scanner_alive=False (fail-closed
+    # honesty) plus additive writer/supervisor keys. If a fresh FOREIGN heartbeat
+    # exists (the TUI writing its real value every ~10s), skip the write entirely —
+    # the interactive process owns the beacon while it lives.
+    if not _foreign_writer_owns_heartbeat(root):
+        write_heartbeat(root, cycle_count=cycle, mode=_read_mode(root),
+                        scanner_alive=False, pid=os.getpid(),
+                        extra={"writer": "tier7_supervisor", "supervisor_alive": True})
     sh = _self_heal_tick(root, max_autonomy_level)
     _append_event(root, {
         "ts": datetime.now(timezone.utc).isoformat(), "cycle": cycle,
         "halted": halted, **sh,
     })
+    try:
+        report = build_maintenance_report(root, supervisor_pid=os.getpid())
+        write_maintenance_report(root, report)
+        needs = report.get("needs_attention", [])
+        if needs:
+            logger.info("maintenance: NEEDS ATTENTION — %s", "; ".join(needs))
+    except Exception as exc:  # noqa: BLE001 — reporting must never kill the tick
+        logger.warning("maintenance report error (non-fatal): %s", exc)
     write_tier7_state(root)
     logger.info("tier7 tick %d — self_heal=%s actions=%d halted=%s",
                 cycle, sh["status"], sh["n_actions"], halted)
@@ -131,12 +169,31 @@ def main(argv: Optional[list[str]] = None) -> int:
         max_autonomy = 5   # default after the 2026-06-29 operator raise
     logger.info("Tier 7 self-heal supervisor START (pid %d, bounded: no trade/unhalt/env path; "
                 "self_heal max_autonomy_level=%d)", os.getpid(), max_autonomy)
+
+    # Code-freshness self-restart (2026-07-03 autonomy fix): this daemon may run
+    # OUTSIDE launchd (nohup), so a committed fix would otherwise never go live.
+    # On a debounced change (git HEAD moved, or this script edited) it re-execs
+    # itself with the same argv — the fresh process re-reads halt/env/config from
+    # disk, so this can only make state HONEST, never bypass a gate.
+    from src.scanner.automation.code_freshness import CodeFreshness
+    freshness = CodeFreshness(REPO_ROOT, watch_files=[Path(__file__).resolve()])
+
     cycle = 0
     while True:
         cycle += 1
         _tick(REPO_ROOT, cycle, max_autonomy)
         if args.once or (args.max_cycles and cycle >= args.max_cycles):
             return 0
+        reason = freshness.changed()
+        if reason:
+            logger.info("code changed on disk (%s) — re-exec for fresh code (pid %d)",
+                        reason, os.getpid())
+            _append_event(REPO_ROOT, {
+                "ts": datetime.now(timezone.utc).isoformat(), "cycle": cycle,
+                "status": "self_restart", "reason": reason, "n_actions": 0, "actions": [],
+            })
+            os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve())]
+                     + sys.argv[1:])
         time.sleep(float(args.interval))
 
 

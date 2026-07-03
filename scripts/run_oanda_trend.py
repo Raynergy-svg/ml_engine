@@ -123,8 +123,15 @@ def _acquire_singleton_lock(lock_path: Path):
     return fh
 
 
-def _sleep_until_next_cycle(seconds: float, *, poll_s: float = 5.0) -> None:
-    """Sleep for the cadence, but wake early when AXIOM controls change."""
+def _sleep_until_next_cycle(seconds: float, *, poll_s: float = 5.0,
+                            stop_check=None) -> None:
+    """Sleep for the cadence, but wake early when AXIOM controls change.
+
+    ``stop_check`` (optional, () -> bool): polled at the same cadence; a truthy
+    result ends the sleep immediately. Used for code-freshness pickup (2026-07-03
+    verifier finding: checking only between hourly cycles meant up to ~2h latency
+    before a stale trend daemon exited for its launchd respawn).
+    """
     import time
     deadline = time.monotonic() + float(seconds)
     seen = _override_mtime()
@@ -133,6 +140,8 @@ def _sleep_until_next_cycle(seconds: float, *, poll_s: float = 5.0) -> None:
         if remaining <= 0:
             return
         time.sleep(min(float(poll_s), remaining))
+        if stop_check is not None and stop_check():
+            return
         current = _override_mtime()
         if current > seen:
             logger.info("AXIOM control override changed — waking trend cycle early")
@@ -265,21 +274,58 @@ def main(argv: Optional[list[str]] = None) -> int:
             write_tier7_state(REPO_ROOT)   # read-only Tier 7 snapshot for AXIOM
         except Exception as exc:  # never let monitoring break a cycle
             logger.warning("monitor snapshot failed (non-blocking): %s", exc)
+        # RL-journal visibility (2026-07-02 fix): this lane places real orders
+        # directly via OandaPracticeClient and never calls
+        # ExecutionManager.execute_trade(), so trade_journal_rl.json would
+        # otherwise never see these trades (and OutcomeBackfill can only PATCH
+        # entries that already exist — it can't create them). TrendJournalSync
+        # creates/patches lane="trend" rl_eligible=False entries only; it never
+        # calls update_weights_from_outcome (no agent verdicts exist here).
+        try:
+            from src.scanner.automation.trend_journal_sync import TrendJournalSync
+            _tjs_result = TrendJournalSync(project_root=REPO_ROOT).run_once()
+            if _tjs_result.opened or _tjs_result.closed:
+                logger.info("trend journal sync: opened=%d closed=%d",
+                            _tjs_result.opened, _tjs_result.closed)
+        except Exception as exc:  # never let journal sync break a cycle
+            logger.warning("trend journal sync failed (non-blocking): %s", exc)
         on = sum(1 for v in r.targets.values() if v > 0)
         print(f"CYCLE_RESULT: ran={r.ran} reason={r.reason} on={on}/{len(r.targets)} "
               f"orders_placed={r.orders_placed}", flush=True)
         return 0 if r.ran else 1
 
     if args.loop and args.loop > 0:
-        import time
         logger.info("LOOP mode: cycle every %.0fs (max=%s)", args.loop, args.max_cycles or "inf")
+        # Code-freshness clean exit (2026-07-03 autonomy fix): this lane runs under
+        # launchd com.buddy.trend with KeepAlive=true, so a stale process would keep
+        # running on old code forever (the exact stale-code risk hand-audited on
+        # 2026-07-02). On a debounced change (git HEAD moved / this script edited)
+        # it exits CLEANLY between cycles — never mid-cycle, never mid-order — and
+        # launchd respawns it on fresh code, which re-reads halt/env from disk.
+        from src.scanner.automation.code_freshness import CodeFreshness
+        _freshness = CodeFreshness(REPO_ROOT, watch_files=[Path(__file__).resolve()])
+        _restart_reason: List[str] = []
+
+        def _code_changed() -> bool:
+            _r = _freshness.changed()
+            if _r:
+                _restart_reason.append(_r)
+                return True
+            return False
+
         n = 0
         while True:
             _cycle()
             n += 1
             if args.max_cycles and n >= args.max_cycles:
                 return 0
-            _sleep_until_next_cycle(float(args.loop))
+            # Polled every ~5s inside the sleep (not just per hourly cycle) so a
+            # code change reaches this lane in seconds, never mid-cycle/mid-order.
+            _sleep_until_next_cycle(float(args.loop), stop_check=_code_changed)
+            if _restart_reason:
+                logger.info("code changed on disk (%s) — clean exit; launchd KeepAlive "
+                            "respawns on fresh code", _restart_reason[-1])
+                return 0
     return _cycle()
 
 

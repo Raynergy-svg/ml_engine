@@ -60,8 +60,15 @@ def write_heartbeat(
     scanner_alive: bool,
     last_error_ts: Optional[str] = None,
     pid: Optional[int] = None,
+    extra: Optional[dict] = None,
 ) -> Path:
-    """Atomically write heartbeat.json via safe_json_write to avoid torn reads."""
+    """Atomically write heartbeat.json via safe_json_write to avoid torn reads.
+
+    ``extra`` merges ADDITIVE keys into the payload (e.g. ``writer``,
+    ``supervisor_alive`` from the tier7 supervisor). It can never override the
+    core schema keys — a heartbeat-schema mismatch once silently blocked every
+    unhalt attempt (2026-05-12 incident), so the core contract is protected.
+    """
     target = heartbeat_path(repo_root)
     target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -73,9 +80,14 @@ def write_heartbeat(
         scanner_alive=bool(scanner_alive),
         last_error_ts=last_error_ts,
     )
+    body = payload.to_dict()
+    if extra:
+        for key, value in extra.items():
+            if key not in body:  # additive only — never clobber the core schema
+                body[key] = value
 
     # High-frequency write (every 10s) — disable .bak to avoid extra fsync per beat.
-    if not safe_json_write(target, payload.to_dict(), sort_keys=True, create_backup=False):
+    if not safe_json_write(target, body, sort_keys=True, create_backup=False):
         raise IOError(f"heartbeat: safe_json_write failed for {target}")
     return target
 
