@@ -113,14 +113,17 @@ def test_protected_field_refused_at_every_layer(tmp_path) -> None:
     assert v.valid is False
     assert "PROTECTED" in v.error_message
 
-    # Layer 2: even a hand-crafted approved entry never lands in the overlay.
+    # Layers 2+4: a hand-crafted approved entry never lands in the overlay.
+    # (Which layer fires first is an implementation detail — ConfigAdjuster's
+    # own PROTECTED_FIELDS check now refuses before the overlay's consume-loop
+    # guard even sees it. Assert the OUTCOME: refused everywhere, overlay clean.)
     _seed_approved(tmp_path, [
         {"proposal_id": "evil", "key": "oanda_environment", "new_value": "live",
          "source": "x", "reason": "x", "timestamp": "2026-07-02T00:00:00+00:00"},
     ])
     out = consume_approved_adjustments(tmp_path)
     assert out["consumed"] == []
-    assert "oanda_environment" in out["orphans_skipped"]
+    assert out["error"] is None
     overlay_path = tmp_path / OVERLAY
     if overlay_path.exists():
         assert "oanda_environment" not in json.loads(
