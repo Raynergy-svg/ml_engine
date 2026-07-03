@@ -1,0 +1,474 @@
+{
+  "meta": {
+    "blinded": true,
+    "model": "claude-sonnet-5 (this session, acting as scorer; no ANTHROPIC_API_KEY configured for an automated fan-out)",
+    "model_cutoff": "2026-02-01",
+    "n_companies": 12,
+    "scoring_date": "2026-07-01",
+    "universe_note": "BOUNDED PILOT (12 mega-cap names, 3 annual 10-Ks each) -- NOT the frozen full S&P500 PIT universe; see docs/experiment-equity-research-alpha-prereg-2026-06-30.md Sec.7 for the scale-down rationale."
+  },
+  "pipeline_version": "1.0.0",
+  "schema": "research_scores",
+  "score_count": 36,
+  "scores": [
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2023-11-03",
+      "conviction": 0.35,
+      "forward_outlook": 0.1,
+      "fundamental_quality": 0.3,
+      "rationale": "Diversified hardware/services business with broad ecosystem and global distribution; text stresses aggressive price competition and gross-margin pressure more than strength evidence. No red-flag language.",
+      "spans_used": [
+        "aggressive price competition and resulting downward pressure on gross margins",
+        "During 2023, the Company\u2019s net sales through its direct and indirect distribution channels accounted for 37% and 63%"
+      ],
+      "ticker": "AAPL"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-11-01",
+      "conviction": 0.35,
+      "forward_outlook": 0.15,
+      "fundamental_quality": 0.3,
+      "rationale": "Same diversified-ecosystem narrative as prior year plus a new spatial-computing product line; competitive-pressure language essentially unchanged year over year. No red flags evident.",
+      "spans_used": [
+        "COMPANY_A Vision Pro\u2122 is the Company\u2019s first spatial computer based on its visionOS\u2122 operating system",
+        "Competition has been particularly intense as competitors have aggressively cut prices and lowered product margins"
+      ],
+      "ticker": "AAPL"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2025-10-31",
+      "conviction": 0.4,
+      "forward_outlook": -0.05,
+      "fundamental_quality": 0.15,
+      "rationale": "First appearance of explicit minority-market-share admission plus markets 'experienced little to no growth or contracted overall', and new tariff/trade-restriction risk language not present in the two prior years' text -- an incremental tone shift toward caution.",
+      "spans_used": [
+        "The Company has a minority market share in the global smartphone, personal computer, tablet and wearables markets, and some of the markets in which the Company competes have from time to time experienced little to no growth or contracted overall.",
+        "Restrictions on international trade can increase the cost or limit the availability of the Company\u2019s products and the components and rare earths and other raw materials"
+      ],
+      "ticker": "AAPL"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2023-07-27",
+      "conviction": 0.4,
+      "forward_outlook": 0.35,
+      "fundamental_quality": 0.45,
+      "rationale": "Confident, broad AI-platform narrative (Copilot stack, exclusive OpenAI cloud partnership) spanning every product line; no red-flag or distress language in this section.",
+      "spans_used": [
+        "As OpenAI\u2019s exclusive cloud provider, Azure powers all of OpenAI's workloads.",
+        "We have entered a new age of AI that will fundamentally transform productivity for every individual, organization, and industry on earth"
+      ],
+      "ticker": "MSFT"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-07-30",
+      "conviction": 0.45,
+      "forward_outlook": 0.4,
+      "fundamental_quality": 0.5,
+      "rationale": "AI narrative has moved from strategic framing to concrete shipped products (Copilot+ PCs, Security Copilot, custom silicon Maia/Cobalt) across every segment -- more specific, execution-evidenced language than the prior year's filing. No red flags.",
+      "spans_used": [
+        "We have introduced purpose-built cloud infrastructure for AI workloads including a custom AI accelerator, Azure Maia, and a custom in-house central processing unit, Azure Cobalt.",
+        "Copilot+ PCs are a new class of Windows 11 PCs that are powered by a neural processing unit."
+      ],
+      "ticker": "MSFT"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2025-07-30",
+      "conviction": 0.4,
+      "forward_outlook": 0.35,
+      "fundamental_quality": 0.45,
+      "rationale": "Continues strong AI-platform narrative; discloses an Aug-2024 segment reorganization consolidating 365 Commercial cloud pieces, a mild flag since restructured segment boundaries can obscure underlying unit-level deceleration even though the disclosure itself is procedural, not distress language.",
+      "spans_used": [
+        "In August 2024, we announced changes to the composition of our segments. These changes align our segments with how we currently manage our business, most notably bringing the commercial components of COMPANY_A 365 together",
+        "AI is fundamentally transforming productivity for every individual, organization, and industry."
+      ],
+      "ticker": "MSFT"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-01-31",
+      "conviction": 0.35,
+      "forward_outlook": 0.25,
+      "fundamental_quality": 0.35,
+      "rationale": "AI-first company narrative with heavy sustained R&D commitment (>$150B over 5 years) across Search/YouTube/Cloud; standard risk-disclosure boilerplate (TAC rate, regulatory scrutiny) but no distress or red-flag language.",
+      "spans_used": [
+        "we have invested more than $150 billion in research and development in the last five years",
+        "It led us to be a pioneer in the development of AI and, since 2016, an AI-first company."
+      ],
+      "ticker": "GOOGL"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2025-02-05",
+      "conviction": 0.35,
+      "forward_outlook": 0.25,
+      "fundamental_quality": 0.35,
+      "rationale": "Same AI-first narrative as prior year, R&D framing unchanged; newly notes AI R&D now centralized at the parent-company level rather than the biggest single Google segment -- an org-structure detail, not a red flag.",
+      "spans_used": [
+        "we have centralized certain AI-related research and development which is reported in COMPANY_A-level activities",
+        "we have invested more than $150 billion in research and development in the last five years"
+      ],
+      "ticker": "GOOGL"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2026-02-05",
+      "conviction": 0.45,
+      "forward_outlook": 0.4,
+      "fundamental_quality": 0.45,
+      "rationale": "Disclosed 5-year R&D figure jumps from >$150B to >$200B, and the filing now cites concrete AI-product-adoption scale (15 half-billion-user products, 7 with 2B+ users, all on Gemini) plus a named 7th-generation custom TPU (Ironwood) -- materially more specific execution evidence than the prior two years, not just strategic framing.",
+      "spans_used": [
+        "have invested more than $200 billion in research and development in the last five years",
+        "Today, all 15 of our half-billion-user products \u2014 including seven with two billion users \u2014 use our Gemini models."
+      ],
+      "ticker": "GOOGL"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-02-02",
+      "conviction": 0.3,
+      "forward_outlook": 0.2,
+      "fundamental_quality": 0.35,
+      "rationale": "Standard diversified-scale narrative (retail/AWS/advertising); no red-flag language in the business-overview/competition/human-capital sections read.",
+      "spans_used": [
+        "We seek to be Earth's most customer-centric company.",
+        "As of December 31, 2023, we employed approximately 1,525,000 full-time and part-time employees."
+      ],
+      "ticker": "AMZN"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2025-02-07",
+      "conviction": 0.35,
+      "forward_outlook": 0.25,
+      "fundamental_quality": 0.4,
+      "rationale": "Headcount grew modestly (1.525M->1.556M); Career Choice education-program participation jumped 175K->240K (+37% YoY), a concrete positive human-capital investment signal; new explicit healthcare-services competitor category reflects continued diversification. No red flags.",
+      "spans_used": [
+        "Over 240,000 COMPANY_A employees around the world have participated in Career Choice.",
+        "(10) providers of virtual or in-person healthcare services"
+      ],
+      "ticker": "AMZN"
+    },
+    {
+      "accounting_red_flags": 0.1,
+      "as_of": "2026-02-06",
+      "conviction": 0.4,
+      "forward_outlook": 0.15,
+      "fundamental_quality": 0.35,
+      "rationale": "Continued scale growth (headcount 1.556M->1.576M, Career Choice 240K->300K) but the filing newly and explicitly frames artificial intelligence as lowering competitive-entry barriers against the Company across multiple competitor categories (search/assistants, cloud/IT, entry generally) -- a genuine incremental risk-framing shift versus the prior two years' text, not present as an AI-competition threat before.",
+      "spans_used": [
+        "The internet and other technologies including artificial intelligence facilitate competitive entry and comparison shopping, which enhances the ability of new, smaller, or lesser-known businesses to compete against us.",
+        "Over 300,000 COMPANY_A employees around the world have participated in Career Choice."
+      ],
+      "ticker": "AMZN"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-02-21",
+      "conviction": 0.35,
+      "forward_outlook": 0.3,
+      "fundamental_quality": 0.4,
+      "rationale": "Full-stack accelerated-computing platform narrative with a cumulative $45.3B R&D figure disclosed and a broad multi-industry addressable-market framing; no red-flag language in the business overview.",
+      "spans_used": [
+        "We have invested over $45.3 billion in research and development since our inception",
+        "COMPANY_A is now a full-stack computing infrastructure company with data-center-scale offerings that are reshaping industry."
+      ],
+      "ticker": "NVDA"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2025-02-26",
+      "conviction": 0.35,
+      "forward_outlook": 0.35,
+      "fundamental_quality": 0.45,
+      "rationale": "Same platform narrative one year later with cumulative R&D disclosure up from $45.3B to $58.2B (~28% YoY increase), consistent with accelerating investment; no red flags.",
+      "spans_used": [
+        "We have invested over $58.2 billion in research and development since our inception"
+      ],
+      "ticker": "NVDA"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2026-02-25",
+      "conviction": 0.4,
+      "forward_outlook": 0.45,
+      "fundamental_quality": 0.55,
+      "rationale": "Cumulative R&D disclosure jumps again to $76.7B; introduces the new Blackwell 'extreme co-design' architecture and reframes the company from a 'full-stack computing infrastructure company' to a 'data center scale AI infrastructure company reshaping all industries' plus new agentic-AI framing -- concrete evidence of accelerating scale and platform expansion versus the two prior years.",
+      "spans_used": [
+        "We have invested over $76.7 billion in research and development since our inception",
+        "COMPANY_A is now a data center scale AI infrastructure company reshaping all industries."
+      ],
+      "ticker": "NVDA"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2024-02-02",
+      "conviction": 0.2,
+      "forward_outlook": 0.0,
+      "fundamental_quality": 0.1,
+      "rationale": "This excerpt window landed on the metrics-methodology disclosure section rather than the substantive business narrative, so evidence is thin. The filing does disclose it will STOP reporting DAU/MAU/ARPU/MAP starting next quarter, keeping only DAP/ARPP -- a reduction in previously-disclosed metrics, a mild transparency flag even though framed as a methodology improvement.",
+      "spans_used": [
+        "Beginning with our Quarterly Report on Form 10-Q to be filed for the first quarter of [REDACTED_DATE], we will no longer report DAUs, MAUs, ARPU, and MAP in our periodic reports"
+      ],
+      "ticker": "META"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2025-01-30",
+      "conviction": 0.2,
+      "forward_outlook": 0.0,
+      "fundamental_quality": 0.1,
+      "rationale": "Same low-information methodology-section window as the prior year; the simplified Family-metrics-only disclosure (DAP/ARPP, MAP now also dropped) persists. No substantive business narrative captured in this excerpt to support a stronger judgment either way.",
+      "spans_used": [
+        "We report our estimates of the numbers of our daily active people (DAP) and average revenue per person (ARPP)"
+      ],
+      "ticker": "META"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2026-01-29",
+      "conviction": 0.2,
+      "forward_outlook": 0.0,
+      "fundamental_quality": 0.1,
+      "rationale": "Same methodology-boilerplate window a third consecutive year with no material change versus FY24; thin evidence base, scored conservatively rather than inventing signal not present in the text shown.",
+      "spans_used": [
+        "We report our estimates of the numbers of our daily active people (DAP) and average revenue per person (ARPP)"
+      ],
+      "ticker": "META"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-02-16",
+      "conviction": 0.4,
+      "forward_outlook": 0.2,
+      "fundamental_quality": 0.4,
+      "rationale": "Large, diversified financial holding company; assets $3.9T and equity $327.9B, employee base +16,203 partly from the FDIC-assisted First Republic acquisition. Concrete balance-sheet figures support a moderately strong quality read; no accounting red flags in this section.",
+      "spans_used": [
+        "COMPANY_A had $3.9 trillion in assets and $327.9 billion in stockholders\u2019 equity as of December 31, 2023.",
+        "On May 1, 2023, COMPANY_A acquired certain assets and assumed certain liabilities of First Republic Bank"
+      ],
+      "ticker": "JPM"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2025-02-14",
+      "conviction": 0.4,
+      "forward_outlook": 0.25,
+      "fundamental_quality": 0.45,
+      "rationale": "Assets and equity both grew year over year ($3.9T/$327.9B -> $4.0T/$344.8B); a segment reorganization (merging CIB and CB into one Commercial & Investment Bank segment) is procedural, not a red flag.",
+      "spans_used": [
+        "JPMorganChase had $4.0 trillion in assets and $344.8 billion in stockholders\u2019 equity as of December 31, 2024.",
+        "Effective in the second quarter of 2024, JPMorganChase reorganized its reportable business segments"
+      ],
+      "ticker": "JPM"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2026-02-13",
+      "conviction": 0.45,
+      "forward_outlook": 0.2,
+      "fundamental_quality": 0.45,
+      "rationale": "Assets/equity grew again to $4.4T/$362.4B and non-affiliate market value nearly doubled since FY2023 ($421B->$794B); but the filing newly names 'digital asset and other financial technology companies' as competitors and newly flags trade-organization lawsuits challenging financial regulations -- both new risk framings absent from the two prior years' text.",
+      "spans_used": [
+        "JPMorganChase had $4.4 trillion in assets and $362.4 billion in stockholders\u2019 equity as of December 31, 2025.",
+        "trade organizations representing the financial services industry and others have filed or may file lawsuits challenging various laws, rules and regulations"
+      ],
+      "ticker": "JPM"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2024-02-16",
+      "conviction": 0.3,
+      "forward_outlook": 0.1,
+      "fundamental_quality": 0.2,
+      "rationale": "Diversified pharma/medtech still completing the Kenvue consumer-health separation; risk-factor language (patent cliffs, litigation, pricing pressure) is standard industry boilerplate repeated by essentially every large pharma filer, not company-specific distress evidence.",
+      "spans_used": [
+        "The Company's ability to divest the Company's remaining ownership interest in Kenvue Inc. (Kenvue) and realize the anticipated benefits from the separation"
+      ],
+      "ticker": "JNJ"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2025-02-13",
+      "conviction": 0.3,
+      "forward_outlook": 0.1,
+      "fundamental_quality": 0.2,
+      "rationale": "Same profile as the prior year; Kenvue divestment referenced as an ongoing item rather than a fresh action. Risk-factor boilerplate essentially unchanged.",
+      "spans_used": [
+        "including the divestment of Kenvue Inc., may not be realized or may take longer to realize than expected"
+      ],
+      "ticker": "JNJ"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2026-02-11",
+      "conviction": 0.35,
+      "forward_outlook": 0.05,
+      "fundamental_quality": 0.2,
+      "rationale": "A NEW major corporate action appears for the first time: the planned separation of the Orthopaedics Business (following the earlier Kenvue spin-off precedent) -- read as continued portfolio-focus strategy but adds near-term execution/disruption uncertainty not present in the FY23/FY24 filings, hence a slightly more cautious outlook than the prior two years.",
+      "spans_used": [
+        "Risks related to the Company's strategic initiatives, healthcare market trends and the planned separation of the Company's Orthopaedics Business"
+      ],
+      "ticker": "JNJ"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-02-28",
+      "conviction": 0.35,
+      "forward_outlook": 0.25,
+      "fundamental_quality": 0.3,
+      "rationale": "Announced an all-stock merger agreement with Pioneer Natural Resources (Oct 2023, expected to close Q2) that would materially expand the upstream portfolio; stable patent base and workforce (62-63K regular employees, flat over 3 years). No red flags.",
+      "spans_used": [
+        "In October 2023 the Corporation entered into a merger agreement with Pioneer Natural Resources Company (Pioneer), an independent oil and gas exploration and production company, in exchange for COMPANY_A common stock.",
+        "The number of regular employees was 62 thousand, 62 thousand, and 63 thousand at years ended 2023, 2022, and 2021"
+      ],
+      "ticker": "XOM"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2025-02-19",
+      "conviction": 0.4,
+      "forward_outlook": 0.3,
+      "fundamental_quality": 0.4,
+      "rationale": "The Pioneer acquisition CLOSED (May 2024, $63B stock + $5B assumed debt) and is described as transforming the upstream portfolio into an 'industry-leading, high-quality U.S. unconventional inventory position' -- concrete completed-integration evidence, stronger than the prior year's announcement-only stage. No red flags.",
+      "spans_used": [
+        "On May 3, 2024, the Corporation acquired Pioneer Natural Resources Company... The acquisition transforms COMPANY_A upstream portfolio, creating an industry-leading, high-quality U.S. unconventional inventory position."
+      ],
+      "ticker": "XOM"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2026-02-18",
+      "conviction": 0.35,
+      "forward_outlook": 0.15,
+      "fundamental_quality": 0.25,
+      "rationale": "Continued diversification (low-carbon data centers, ammonia added to hydrogen business) but regular-employee headcount fell notably to 58K from 61K/62K/62K/63K in the four prior years -- a real, unexplained-in-this-excerpt discontinuity worth flagging as a mild caution signal even though the filing does not itself characterize it as distress.",
+      "spans_used": [
+        "The number of regular employees was 58 thousand, 61 thousand, and 62 thousand at years ended 2025, 2024, and 2023, respectively.",
+        "hydrogen and ammonia, lower-emission fuels, ProxximaTM resin systems, carbon materials, low-carbon data centers, and lithium"
+      ],
+      "ticker": "XOM"
+    },
+    {
+      "accounting_red_flags": 0.05,
+      "as_of": "2023-08-04",
+      "conviction": 0.3,
+      "forward_outlook": 0.15,
+      "fundamental_quality": 0.3,
+      "rationale": "Stable, well-established branded-products model; top-ten-customer concentration already fairly high (40% of net sales in 2023, 39% in 2022/2021) and Walmart alone ~15% -- a structural concentration risk worth a mild flag even at this single-year reading.",
+      "spans_used": [
+        "Our top ten customers accounted for 40% of our total net sales in 2023 and 39% in 2022 and 2021.",
+        "Sales to Walmart Inc. and its affiliates represent approximately 15% of our total sales in 2023, 2022 and 2021."
+      ],
+      "ticker": "PG"
+    },
+    {
+      "accounting_red_flags": 0.1,
+      "as_of": "2024-08-05",
+      "conviction": 0.35,
+      "forward_outlook": 0.15,
+      "fundamental_quality": 0.3,
+      "rationale": "Same stable brand-portfolio narrative, but top-ten-customer concentration moved UP a second consecutive reading (40%->42%) and Walmart share ticked to 16% from 15% -- now a genuine rising trend across two disclosed years, not a static level.",
+      "spans_used": [
+        "Our top ten customers accounted for 42% of our total net sales in 2024, 40% in 2023 and 39% in 2022.",
+        "Sales to Walmart Inc. and its affiliates represent approximately 16% of our total sales in 2024 and 15% in 2023 and 2022."
+      ],
+      "ticker": "PG"
+    },
+    {
+      "accounting_red_flags": 0.15,
+      "as_of": "2025-08-04",
+      "conviction": 0.4,
+      "forward_outlook": 0.05,
+      "fundamental_quality": 0.25,
+      "rationale": "Top-ten-customer concentration rose a THIRD consecutive year (42%->43%), a now-clear monotonic three-year trend of rising customer concentration; the filing also newly names tariffs explicitly as a materials-cost risk for the first time across the three years read. Concrete, quantified, worsening trend raises conviction on this specific finding.",
+      "spans_used": [
+        "Our top ten customers accounted for 43% of our total net sales in 2025, 42% in 2024 and 40% in 2023.",
+        "The prices we pay for materials and other commodities are subject to fluctuation including new or increased tariffs."
+      ],
+      "ticker": "PG"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-03-13",
+      "conviction": 0.3,
+      "forward_outlook": 0.2,
+      "fundamental_quality": 0.3,
+      "rationale": "World's largest home-improvement retailer with continued modest store-count growth (2,335 stores); standard tariff/macro risk language, no red flags.",
+      "spans_used": [
+        "COMPANY_A is the world's largest home improvement retailer based on net sales for fiscal 2023.",
+        "As of the end of fiscal 2023, we operated 2,335 stores"
+      ],
+      "ticker": "HD"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2025-03-21",
+      "conviction": 0.35,
+      "forward_outlook": 0.25,
+      "fundamental_quality": 0.35,
+      "rationale": "Store count grew to 2,347 and the filing now references integrating the SRS Distribution acquisition, expanding into the professional/trade-contractor distribution channel; no red flags.",
+      "spans_used": [
+        "the impact of acquired companies, including SRS, on our organization and the ability to recognize the anticipated benefits of any acquisitions",
+        "As of the end of fiscal 2024, we operated"
+      ],
+      "ticker": "HD"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2026-03-18",
+      "conviction": 0.4,
+      "forward_outlook": 0.3,
+      "fundamental_quality": 0.4,
+      "rationale": "A SECOND acquisition (GMS Inc.) now layers onto SRS, an accelerating M&A push into professional/building-materials distribution; 'AI' newly appears in the glossary reflecting operational AI adoption. Continued non-affiliate market value growth ($331.5B->$356.9B->$371.8B across the three filings). No red flags.",
+      "spans_used": [
+        "the impact of acquired companies, including SRS and GMS, on our organization and the ability to recognize the anticipated benefits of completed or pending acquisitions",
+        "AI Artificial intelligence"
+      ],
+      "ticker": "HD"
+    },
+    {
+      "accounting_red_flags": 0.0,
+      "as_of": "2024-02-28",
+      "conviction": 0.35,
+      "forward_outlook": 0.15,
+      "fundamental_quality": 0.3,
+      "rationale": "Large diversified health-services company; Optum Health explicitly discloses serving 103 million consumers. No red flags in this reading.",
+      "spans_used": [
+        "Optum Health provides comprehensive and patient-centered care, addressing the physical, mental, social, and financial well-being of 103 million consumers"
+      ],
+      "ticker": "UNH"
+    },
+    {
+      "accounting_red_flags": 0.1,
+      "as_of": "2025-02-27",
+      "conviction": 0.35,
+      "forward_outlook": 0.0,
+      "fundamental_quality": 0.1,
+      "rationale": "Optum Health's disclosed consumers-served figure FELL from 103 million to 100 million year over year -- a concrete, quantified contraction in a core-segment scale metric, the first negative signal seen across this filing's history. Non-affiliate market value still grew modestly ($444.6B->$468.4B) at this point, so the deterioration is segment-specific, not yet company-wide.",
+      "spans_used": [
+        "Optum Health provides comprehensive and patient-centered care, addressing the physical, mental, social, and financial well-being of 100 million consumers"
+      ],
+      "ticker": "UNH"
+    },
+    {
+      "accounting_red_flags": 0.3,
+      "as_of": "2026-03-02",
+      "conviction": 0.5,
+      "forward_outlook": -0.2,
+      "fundamental_quality": -0.15,
+      "rationale": "Optum Health's consumers-served figure fell AGAIN, 100 million -> 95 million -- a second consecutive year of decline (103M->100M->95M, -8% cumulative), a genuine multi-year deteriorating trend disclosed directly in the text. The filing's own non-affiliate market-value disclosure also collapsed from $468.4B (share price $509.26) to $281.9B (share price $311.97), a ~39% one-year decline stated in the filing itself. A January 2026 segment realignment (moving Optum Financial/Optum Bank into Optum Insight) coincides with this deterioration. This is the single most concrete, quantified negative signal across the entire 36-filing sample.",
+      "spans_used": [
+        "Optum Health provides comprehensive and patient-centered care, addressing the physical, mental, social, and financial well-being of 95 million consumers",
+        "The aggregate market value of voting stock held by non-affiliates of the registrant as of June 30, 2025 was $281,907,836,350 (based on the last reported sale price of $311.97 per share on June 30, 2025",
+        "On January 1, 2026, we realigned certain of our businesses to respond to changes in the markets we serve"
+      ],
+      "ticker": "UNH"
+    }
+  ]
+}

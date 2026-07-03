@@ -1,0 +1,42 @@
+{
+  "audit_method": "The scorer (this session) read all 36 blinded task files during scoring and, for each, noted whether the issuer was identifiable from residual leaks despite blinding. This is a full-sample audit (36/36), not the pre-reg's proposed 30-random-sample -- broader than specified, same method.",
+  "result": "NOT CLEAN -- re-identifiable in essentially all 12 companies (36/36 filings) via a mix of leak types",
+  "blinding_audit_clean": false,
+  "leak_examples": [
+    {
+      "company_slot": "AAPL (task_000-002)",
+      "leak": "Ticker 'AAPL' survives concatenated with an adjacent word ('AAPLThe Nasdaq Stock Market LLC') -- the blinder's letter-boundary ticker redaction does not fire when the ticker directly abuts another capitalized word with no space. Also 'One COMPANY_A Park Way' (Apple Park) is a well-known address pattern even with the company name blinded."
+    },
+    {
+      "company_slot": "MSFT (task_003-005)",
+      "leak": "'ONE COMPANY_A WAY' (One Microsoft Way, Redmond) is a distinctive, famous corporate-address pattern; combined with 'Azure', 'Xbox', 'GitHub', 'LinkedIn', 'Windows' -- none of which were in the product-name denylist -- identity is unambiguous."
+    },
+    {
+      "company_slot": "GOOGL (task_006-008)",
+      "leak": "The founders'-letter quote 'As our founders Larry and Sergey wrote...' uses first names only, which were never added to the person-name denylist (only the current CEO was). This alone identifies the company to anyone familiar with its history."
+    },
+    {
+      "company_slot": "AMZN (task_009-011)",
+      "leak": "The Executive Officers table prints 'Jeffrey P. Bezos' in full (middle initial included) -- the denylist entry 'Jeff Bezos' does not substring-match 'Jeffrey P. Bezos', so the redaction misses it. The tagline 'Earth's most customer-centric company' is also independently distinctive."
+    },
+    {
+      "company_slot": "NVDA (task_012-014)",
+      "leak": "No proper-noun leak needed: the CUDA/GPU-invention narrative ('invention of the GPU in 1999', 'AlexNet... won the ImageNet competition' in 2012) is a distinctive historical-fact fingerprint even with every name blinded -- a conceptual leak the deny-list mechanism cannot address by design."
+    },
+    {
+      "company_slot": "META (task_015-017)",
+      "leak": "Product names were never added to the denylist (product_names field left empty for every issuer in this pilot); the text names 'Facebook, Instagram, Messenger, and WhatsApp' outright as the 'Family' of products."
+    },
+    {
+      "company_slot": "JPM (task_018-020)",
+      "leak": "'Chase' (the retail brand) was not in the company-name denylist, only 'JPMorgan Chase' variants; 'Under the COMPANY_A and Chase brands' leaks the identity via the un-redacted second brand name."
+    },
+    {
+      "company_slot": "PG (task_027-029)",
+      "leak": "Founders' names 'William Procter and James Gamble' were never added to the denylist (only the current CEO was); the sentence 'founded in PLACE_1 in 1837 by William Procter and James Gamble' identifies the company outright even with the HQ city blinded."
+    }
+  ],
+  "interpretation": "Confirms prereg §8's own finding: the entity-blinder is a noise-reducer, NOT the load-bearing control. Every leak found here is consistent with the pre-registered failure mode (proper-noun/product-name gaps, ticker-letter-adjacency, and pretrained domain knowledge that no deny-list can redact). Per the frozen §4.7 decision rule, blinding_audit_clean=False means controls_satisfied is False regardless of placebo/post-cutoff results, so overall_verdict can never read REAL from this run -- exactly the fail-closed behavior the harness was designed to enforce. The verdict must therefore rest on the post-cutoff arm and placebo control, read as directional evidence, not a clean pass.",
+  "n_filings_audited": 36,
+  "n_filings_reidentifiable": 36
+}

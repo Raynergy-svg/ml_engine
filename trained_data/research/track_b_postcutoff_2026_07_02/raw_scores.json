@@ -1,0 +1,499 @@
+{
+  "task_0000": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.75,
+    "forward_outlook": 0.3,
+    "fundamental_quality": 0.55,
+    "rationale": "Revenue, operating income, and net income all grew YoY with expanding margins; balance sheet shows growing equity, no impairments or triggering events identified, and a pending $950M cash acquisition suggests financial flexibility.",
+    "spans_used": [
+      "Total net revenue1,835 1,668 3,633 3,349",
+      "Net income$339 $215 $644 $533",
+      "we did not identify any triggering events or circumstances which would indicate an impairment of goodwill or indefinite-lived intangible assets",
+      "Total stockholders' equity7,122 6,741"
+    ]
+  },
+  "task_0002": {
+    "accounting_red_flags": 0.3,
+    "conviction": 0.65,
+    "forward_outlook": 0.0,
+    "fundamental_quality": -0.35,
+    "rationale": "Revenue grew but net earnings fell sharply YoY on large acquired IPR&D charges and a $2.4B non-cash change in contingent consideration fair value; total equity is negative (stockholders' deficit) with $27B contingent consideration liabilities, indicating a highly leveraged, acquisition-funded structure.",
+    "spans_used": [
+      "Net earnings697 1,289",
+      "Total stockholders' deficit(6,656)(3,270)",
+      "Change in fair value of contingent consideration liabilities2,387 1,518",
+      "Contingent consideration27,039 \u2014 \u2014 27,039 25,374"
+    ]
+  },
+  "task_0003": {
+    "accounting_red_flags": 0.15,
+    "conviction": 0.6,
+    "forward_outlook": 0.2,
+    "fundamental_quality": 0.35,
+    "rationale": "Revenue and net income grew YoY with strong operating cash flow and a large, growing cash position; modest red flags are recurring small non-cash impairment charges on illiquid equity investments and a persistent accumulated deficit on the balance sheet.",
+    "spans_used": [
+      "Revenue$2,272 $2,678",
+      "Net income $154 $160",
+      "Net cash provided by operating activities1,789 1,708",
+      "the Company recorded non-cash impairment charges of $30 million and $8 million, respectively",
+      "Accumulated deficit(5,502)(6,403)"
+    ]
+  },
+  "task_0005": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.65,
+    "forward_outlook": 0.35,
+    "fundamental_quality": 0.5,
+    "rationale": "Net income nearly doubled YoY with an improved combined ratio (81.7% vs 90.1%) and favorable prior-year reserve development; balance sheet shows growing retained earnings and no going-concern or control issues evident in the text shown.",
+    "spans_used": [
+      "Net income (loss) available to Arch1,047 574",
+      "Combined ratio96.5 %75.9 %22.3 %81.7 %",
+      "Prior years(220)(197)",
+      "Total shareholders' equity available to Arch24,188 24,206"
+    ]
+  },
+  "task_0007": {
+    "accounting_red_flags": 0.1,
+    "conviction": 0.7,
+    "forward_outlook": 0.35,
+    "fundamental_quality": 0.6,
+    "rationale": "Subscription revenue and gross profit grew strongly YoY with net income up slightly despite heavy buybacks reducing equity; a modest $70M goodwill impairment in the cash flow statement is a minor red flag against an otherwise strong margin and cash-generation profile.",
+    "spans_used": [
+      "Total revenue6,618 5,873 13,016 11,587",
+      "Net income$1,712 $1,691 $3,601 $3,502",
+      "Impairment of goodwill70 \u2014",
+      "Net cash provided by operating activities5,123 4,673"
+    ]
+  },
+  "task_0008": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.75,
+    "forward_outlook": 0.5,
+    "fundamental_quality": 0.7,
+    "rationale": "Revenue grew ~37% YoY and net income more than doubled with expanding operating margin; balance sheet remains solid with declining long-term debt and no impairments, restatements, or control issues evident in the text.",
+    "spans_used": [
+      "Revenue$3,623,465 $2,640,068 $6,783,728 $5,063,242",
+      "Net income$1,176,350 $569,770 $2,007,176 $961,086",
+      "Operating income:1,379,680 677,944 2,376,705 1,169,257"
+    ]
+  },
+  "task_0010": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.7,
+    "forward_outlook": 0.35,
+    "fundamental_quality": 0.55,
+    "rationale": "Revenue and net earnings grew steadily YoY across segments with solid operating cash flow and no impairments or control weaknesses evident; balance sheet growth is largely driven by client funds held (pass-through, not owned capital).",
+    "spans_used": [
+      "TOTAL REVENUES5,939.2 5,553.0 16,473.6 15,434.1",
+      "NET EARNINGS$1,359.8 $1,249.5 $3,434.9 $3,169.0",
+      "Net cash flows provided by operating activities4,013.2 3,500.5"
+    ]
+  },
+  "task_0012": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.6,
+    "forward_outlook": 0.3,
+    "fundamental_quality": 0.3,
+    "rationale": "Regulated utility with modest revenue and net income growth YoY; heavy capital expenditures funded mainly by new long-term debt issuance is typical for the sector and not itself a red flag, but it does elevate leverage.",
+    "spans_used": [
+      "Total operating revenues2,176 2,097",
+      "Net Income358 290",
+      "Capital expenditures(1,574)(1,064)",
+      "Issuances of long-term debt1,297 1,099"
+    ]
+  },
+  "task_0013": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.45,
+    "forward_outlook": 0.5,
+    "fundamental_quality": 0.4,
+    "rationale": "GAAP earnings attributable to common shareholders rose YoY driven by transmission investment, favorable rate proceedings, and new data-center demand growth; a probable partial disallowance of a plant's book value in a rate case is a minor, disclosed regulatory red flag. Full balance sheet/cash-flow statements were not present in the truncated text, limiting conviction.",
+    "spans_used": [
+      "Earnings Attributable to TICKER_A Common Shareholders increased from $800 million in 2025 to $874 million in [REDACTED_DATE]",
+      "An increase in sales volume driven primarily by new data processing load added in the commercial and industrial customer classes",
+      "A decrease due to a probable partial disallowance of the Pirkey Plant net book value in the SWEPCo 2025 Texas Base Rate Case"
+    ]
+  },
+  "task_0015": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.55,
+    "forward_outlook": 0.1,
+    "fundamental_quality": 0.1,
+    "rationale": "Net earnings swung sharply higher YoY, but the increase is driven almost entirely by a shift from large net investment losses to modest gains rather than core underwriting improvement; net earned premiums actually declined slightly YoY, so underlying operating quality is roughly neutral.",
+    "spans_used": [
+      "Net earnings$1,019 $29",
+      "Net investment gains (losses)49 (963)",
+      "Net earned premiums, principally supplemental health insurance (1)\n$3,310 $3,381"
+    ]
+  },
+  "task_0017": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.75,
+    "forward_outlook": 0.3,
+    "fundamental_quality": 0.55,
+    "rationale": "Net income nearly doubled YoY on higher premiums and fee income; segment EBITDA grew across both reportable segments. Investment portfolio unrealized losses narrowed vs prior year end. No going-concern, restatement, or control-weakness language.",
+    "spans_used": [
+      "Net income$274.1 $146.6",
+      "Total gross unrealized losses represented approximately 7% of the aggregate fair value of the related securities as of March 31, 2026 and 9% as of December 31, 2025",
+      "Segment Adjusted EBITDA$236.7 $197.8"
+    ]
+  },
+  "task_0018": {
+    "accounting_red_flags": 0.1,
+    "conviction": 0.7,
+    "forward_outlook": 0.35,
+    "fundamental_quality": 0.5,
+    "rationale": "Net earnings up ~17% YoY with commissions/fees up ~35-39% (acquisition-driven). Leverage rose materially (total borrowings ~$2.04B) and a large purchase price allocation for a major acquisition remains provisional, which is normal M&A accounting rather than a red flag.",
+    "spans_used": [
+      "Net earnings823 709",
+      "Total borrowings outstanding2,040.9 1,990.8",
+      "The allocation of the purchase price for AssuredPartners is preliminary, as we have not finalized the valuation of certain acquired identifiable intangible assets"
+    ]
+  },
+  "task_0020": {
+    "accounting_red_flags": 0.2,
+    "conviction": 0.65,
+    "forward_outlook": 0.05,
+    "fundamental_quality": 0.15,
+    "rationale": "Gross profit rose sharply off a very weak prior-year base, aided by a large divestiture that also cut debt roughly in half; but the quarter includes a $95M loss on sale of business, restructuring charges, and a disclosed (immaterial) revision of prior-period cash flow statement classifications, which is a mild but explicit accounting flag.",
+    "spans_used": [
+      "Gross profit500,966 156,299",
+      "Loss on sale of business95,018 \u2014",
+      "the Company identified an error in classification within its condensed consolidated statements of cash flows",
+      "determined that the resulting misclassification was not material"
+    ]
+  },
+  "task_0022": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.75,
+    "forward_outlook": 0.3,
+    "fundamental_quality": 0.6,
+    "rationale": "Net income surged to $2,458M from $596M YoY, driven mainly by lower property/casualty claims expense; underwriting income improved substantially. Investment portfolio shows routine unrealized losses with no credit-loss allowance deterioration flagged as severe.",
+    "spans_used": [
+      "Net income$2,458 $596",
+      "Property and casualty insurance claims and claims expense9,185 10,815",
+      "Allstate Protection$2,659 $364"
+    ]
+  },
+  "task_0023": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.6,
+    "forward_outlook": 0.05,
+    "fundamental_quality": 0.2,
+    "rationale": "Net earnings declined modestly YoY ($138.1M vs $148.2M) despite higher revenue, implying margin compression; balance sheet remains solid with manageable leverage and no impairment or control-weakness disclosures.",
+    "spans_used": [
+      "Net earnings$138.1 $148.2",
+      "Net revenues$1,033.6 $941.9",
+      "There was no impairment of goodwill for the three months ended March 31, 2026 and 2025"
+    ]
+  },
+  "task_0025": {
+    "accounting_red_flags": 0.15,
+    "conviction": 0.6,
+    "forward_outlook": 0.1,
+    "fundamental_quality": 0.1,
+    "rationale": "Revenue and operating income rose sharply, almost entirely reflecting a large recent merger rather than organic growth; long-term debt increased materially, purchase price allocation remains preliminary, and management disclosed small out-of-period adjustments deemed immaterial \u2014 a mild accounting caution flag amid heavy integration/restructuring costs.",
+    "spans_used": [
+      "Net sales$5,914 $3,333",
+      "Long-term debt, less current portion15,200 13,841",
+      "the Company recorded out of period adjustments that increased cost of sales by $3 million",
+      "The purchase price allocation is preliminary in nature and subject to adjustments, which could be material"
+    ]
+  },
+  "task_0027": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.75,
+    "forward_outlook": 0.35,
+    "fundamental_quality": 0.6,
+    "rationale": "Net income grew ~13.5% YoY with operating margin above 26%, moderate leverage, and continued bolt-on acquisitions funded from cash flow. No impairment, restatement, or going-concern language present in the text.",
+    "spans_used": [
+      "Net income$399,357 $351,758",
+      "Operating income514,936 454,829",
+      "The Company spent $209.6 million in cash, net of cash acquired, to acquire LKC Technologies"
+    ]
+  },
+  "task_0028": {
+    "accounting_red_flags": 0.25,
+    "conviction": 0.65,
+    "forward_outlook": -0.15,
+    "fundamental_quality": 0.35,
+    "rationale": "Net income and operating cash flow improved YoY with a strong cash position, but the filing discloses large unresolved IRS tax disputes (potential liabilities in the billions) and an FDA proposal to withdraw approval for a product carrying a $2.4B intangible asset balance, both explicit forward-looking risks not yet reflected in impairment.",
+    "spans_used": [
+      "Net income$1,819 $1,730",
+      "The Notices seek to increase our U.S. taxable income for the years 2010\u20132012 by an amount that would result in additional federal tax of approximately $3.6 billion",
+      "the FDA\u2019s Center for Drug Evaluation and Research (CDER) issued a proposal to withdraw approval of TAVNEOS",
+      "The developed-product-technology rights intangible assets related to TAVNEOS have a carrying value of $2.4 billion"
+    ]
+  },
+  "task_0030": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.65,
+    "forward_outlook": 0.2,
+    "fundamental_quality": 0.3,
+    "rationale": "Net income nearly doubled YoY driven by lower foreign-currency losses and higher property revenue, but the balance sheet carries very high absolute leverage ($37.3B total obligations) with a large current-portion spike, typical of a capital-intensive infrastructure model rather than a distress signal.",
+    "spans_used": [
+      "NET INCOME878.5 498.6",
+      "Total37,321.5 37,220.3",
+      "Current portion of long-term obligations6,119.0 3,387.8"
+    ]
+  },
+  "task_0032": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.8,
+    "forward_outlook": 0.5,
+    "fundamental_quality": 0.75,
+    "rationale": "Net income grew ~26% YoY with gross margin near 62% and minimal debt; cash and marketable securities rose to over $12.3B combined while deferred revenue and remaining performance obligations both expanded, indicating strong forward demand visibility. No red flags evident in the text.",
+    "spans_used": [
+      "Net income$1,022.9 $813.8",
+      "Total revenue from our contract liabilities, deferred revenue and other performance obligations that is expected to be recognized in future periods amounts to $7.7 billion",
+      "Deferred revenue, ending balance$6,198.7 $3,088.8"
+    ]
+  },
+  "task_0050": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.75,
+    "forward_outlook": 0.15,
+    "fundamental_quality": 0.35,
+    "rationale": "Stable revenue/margins, strong operating cash flow, but total stockholders' deficit (-$2.78B) from sustained aggressive buybacks; debt covenants in compliance and LIFO reserve growth reflects tariff-driven cost inflation, not distress.",
+    "spans_used": [
+      "Total stockholders\u2019 deficit\n\n\n(2,784,552)",
+      "Net cash provided by operating activities\n\n2,119,587",
+      "the Company was in compliance with all covenants",
+      "due to price changes on the Company\u2019s merchandise purchases, primarily due to inflation driven by tariffs"
+    ]
+  },
+  "task_0052": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.8,
+    "forward_outlook": 0.3,
+    "fundamental_quality": 0.55,
+    "rationale": "Net income up ~16% YoY, ROTCE improved to 16.0% from 13.97%, efficiency ratio improved, lower credit loss provision and stable/improving credit quality; capital ratios remain solid though CET1 ticked down slightly.",
+    "spans_used": [
+      "Net income was $8.6 billion, or $1.11 per diluted share, for the three months ended March 31, 2026 compared to $7.4 billion",
+      "Return on average tangible common shareholders\u2019 equity (2)\n16.00 13.97",
+      "The provision for credit losses decreased $143 million to $1.3 billion"
+    ]
+  },
+  "task_0053": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.6,
+    "forward_outlook": 0.25,
+    "fundamental_quality": 0.3,
+    "rationale": "Net sales up ~16% YoY and segment operating earnings up across all reportable regions, but operating cash flow was sharply negative due to seasonal working-capital build and rising short-term debt; no impairment or control-weakness signals.",
+    "spans_used": [
+      "Net sales\n\n\n\n$\n3,603",
+      "Cash provided by (used in) operating activities\n\n\n\n(777)",
+      "Reportable segment comparable operating earnings\n\n\n\n406\n\n\n\n378"
+    ]
+  },
+  "task_0055": {
+    "accounting_red_flags": 0.1,
+    "conviction": 0.7,
+    "forward_outlook": 0.2,
+    "fundamental_quality": 0.4,
+    "rationale": "Revenue and comparable sales grew, operating income nearly doubled on lower restructuring charges, and net earnings rose ~37%; a large one-time-favorable effective tax rate swing and ongoing restructuring/impairment history are mild quality caveats.",
+    "spans_used": [
+      "we generated $8.9 billion in revenue and our comparable sales grew 2.0%",
+      "Operating income$370 $219",
+      "Effective tax rate (\u201cETR\u201d) increased to 26.9% in the first quarter of fiscal [REDACTED_DATE] compared to 8.6%"
+    ]
+  },
+  "task_0057": {
+    "accounting_red_flags": 0.3,
+    "conviction": 0.65,
+    "forward_outlook": 0.15,
+    "fundamental_quality": 0.35,
+    "rationale": "Revenue and net income attributable rose sharply YoY, but the filing discloses a revision to previously issued cash-flow disclosures and material ongoing DOJ/SEC investigations plus an ERISA lawsuit tied to a subsidiary's trade allocation practices.",
+    "spans_used": [
+      "Net Income Attributable to Franklin Resources, Inc.$268.2 $151.4",
+      "the amount reported in the supplemental disclosure of cash flow information ... was understated by $185.2 million",
+      "WAM received notification of parallel investigations by the SEC and the U.S. Department of Justice"
+    ]
+  },
+  "task_0058": {
+    "accounting_red_flags": 0.0,
+    "conviction": 0.1,
+    "forward_outlook": 0.2,
+    "fundamental_quality": 0.0,
+    "rationale": "Excerpt is business/brand description only; no income statement, balance sheet, or cash flow data provided, so financial-strength and accounting-quality cannot be judged from this text.",
+    "spans_used": [
+      "we are the largest American-owned premium-plus spirits company",
+      "Recognizing the strong cash-generating capacity and capital efficiency of our business"
+    ]
+  },
+  "task_0060": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.75,
+    "forward_outlook": 0.35,
+    "fundamental_quality": 0.5,
+    "rationale": "Revenue grew modestly and net income rose ~33% with lower restructuring and strong operating cash flow growth; a large pending debt-funded acquisition adds integration/leverage risk but no accounting red flags are evident.",
+    "spans_used": [
+      "Net income attributable to COMPANY_A$319.5 $240.5",
+      "Net cash flow provided by (used in) operating activities645.5 259.3",
+      "we would pay Apellis shareholders $41.00 per share in cash, representing an expected total transaction value of approximately $5.6 billion"
+    ]
+  },
+  "task_0062": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.65,
+    "forward_outlook": 0.3,
+    "fundamental_quality": 0.5,
+    "rationale": "Net income attributable more than doubled YoY, aided substantially by a large one-time gain on business dispositions; balance sheet remains levered with a lingering accumulated deficit, and $9.9B of new debt was issued to fund a pending acquisition.",
+    "spans_used": [
+      "Net income attributable to Baker Hughes Company\n$930 $402",
+      "Gain on business dispositions\n\n(721)\u2014",
+      "Retained loss(2,322)(3,252)"
+    ]
+  },
+  "task_0063": {
+    "accounting_red_flags": 0.1,
+    "conviction": 0.75,
+    "forward_outlook": -0.35,
+    "fundamental_quality": -0.5,
+    "rationale": "Revenue fell ~10% YoY, gross margin compressed, operating income collapsed over 90%, and the company swung to a net loss; retained earnings were wiped to zero as continued large buybacks were funded despite the loss.",
+    "spans_used": [
+      "Net sales\n$\n3,287,077\n$\n3,657,496",
+      "Income from operations\n16,516\n184,441",
+      "Net income (loss)\n$\n(47,414\n)\n$\n96,304",
+      "Repurchase of common stock (2)(3)\n(3,283"
+    ]
+  },
+  "task_0065": {
+    "accounting_red_flags": 0.2,
+    "conviction": 0.7,
+    "forward_outlook": -0.05,
+    "fundamental_quality": 0.15,
+    "rationale": "Revenue and net earnings grew modestly, driven by a Growth Portfolio offsetting Legacy Portfolio erosion (e.g., Revlimid down sharply) from loss of exclusivity; a $410M IPRD impairment and unresolved material IRS transfer-pricing dispute for 2008-2012 temper quality.",
+    "spans_used": [
+      "Net earnings/(loss) attributable to BMS$2,677 $2,456",
+      "Revlimid349 936",
+      "$410 million of IPRD impairment charges were recorded",
+      "could have a material impact on BMS's consolidated financial statements"
+    ]
+  },
+  "task_0084": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.75,
+    "forward_outlook": 0.2,
+    "fundamental_quality": 0.55,
+    "rationale": "IT solutions distributor with growing net sales, stable gross margin (~21%), positive operating cash flow, and debt covenant compliance. Ongoing DOJ False Claims Act CID and a mid-quarter segment realignment/cost-allocation change add mild opacity but no impairment or restatement evidence.",
+    "spans_used": [
+      "Net sales$5,679.8 $5,199.1",
+      "Net income $235.4 $224.9",
+      "As of March 31, 2026, the Company is in compliance with the covenants under its credit agreements and indentures.",
+      "The Company received a Civil Investigative Demand, issued by the Department of Justice"
+    ]
+  },
+  "task_0085": {
+    "accounting_red_flags": 0.1,
+    "conviction": 0.7,
+    "forward_outlook": 0.35,
+    "fundamental_quality": 0.6,
+    "rationale": "Utility/generation company with net income up >10x YoY (largely acquisition-driven scale) and operating income more than 5x prior year, but leverage rose sharply (total assets $96.9B vs $57.2B, short-term borrowings up substantially) following a large debt-and-stock-funded acquisition; purchase accounting is still preliminary, adding some estimation uncertainty.",
+    "spans_used": [
+      "Net income (loss)1,603 129",
+      "Operating income (loss)2,332 451",
+      "Total assets(a)\n$96,911 $57,249",
+      "The allocation is preliminary and subject to revision during the measurement period, which will not exceed one year from the Acquisition Date."
+    ]
+  },
+  "task_0087": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.8,
+    "forward_outlook": 0.4,
+    "fundamental_quality": 0.65,
+    "rationale": "Regional bank with net income up $144M YoY, net interest margin up 25bps, efficiency ratio improved to 63.6% from 67.9%, ROTCE up to 12.2%, and declining provision expense reflecting improving credit trends. No red flags evident; forward-looking risk factors are boilerplate regulatory/macro language.",
+    "spans_used": [
+      "Net income of $517 million for the three months ended March 31, 2026 increased $144 million",
+      "ROTCE of 12.2% for the three months ended March 31, 2026 compared to 9.6% for the same period in 2025.",
+      "Provision expense of $140 million for the three months ended March 31, 2026 decreased $13 million"
+    ]
+  },
+  "task_0089": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.55,
+    "forward_outlook": 0.05,
+    "fundamental_quality": -0.1,
+    "rationale": "Logistics/brokerage firm with modest revenue decline and roughly flat operating income, but rising long-term debt ($1.34B vs $1.09B) and shrinking stockholders' investment (down ~$141M), driven substantially by treasury stock buybacks outpacing retained earnings growth. No overt accounting red flags in the shown text.",
+    "spans_used": [
+      "Total revenues4,012,934 4,046,740",
+      "Long-term debt1,342,727 1,089,438",
+      "Total stockholders\u2019 investment1,704,121 1,845,647"
+    ]
+  },
+  "task_0090": {
+    "accounting_red_flags": 0.1,
+    "conviction": 0.55,
+    "forward_outlook": -0.05,
+    "fundamental_quality": -0.2,
+    "rationale": "Cable operator with very high leverage (~$94.4B long-term debt against $154.6B total assets, thin shareholders' equity relative to franchise/goodwill-heavy asset base) and revenue roughly flat to slightly down YoY. Pending large M&A (Liberty Broadband, Cox) introduces integration and financing uncertainty, though no impairment or control-weakness language appears in the shown text.",
+    "spans_used": [
+      "LONG-TERM DEBT94,414 94,006",
+      "REVENUES$13,597 $13,735",
+      "our ability to satisfy the conditions to consummate the Liberty Broadband Combination and/or the Cox Transactions"
+    ]
+  },
+  "task_0092": {
+    "accounting_red_flags": 0.02,
+    "conviction": 0.8,
+    "forward_outlook": 0.6,
+    "fundamental_quality": 0.75,
+    "rationale": "Networking equipment maker with revenue up ~40% YoY, gross margin expansion (44% vs 40%), net income up more than 20x YoY, and strong operating cash flow ($487M vs $261M). Balance sheet shows large cash/investment balances relative to debt. No red flags evident in the shown text.",
+    "spans_used": [
+      "Total revenue1,570,739 1,125,878",
+      "Net income$218,220 $8,969",
+      "Net cash provided by operating activities487,347 260,669"
+    ]
+  },
+  "task_0094": {
+    "accounting_red_flags": 0.1,
+    "conviction": 0.6,
+    "forward_outlook": -0.05,
+    "fundamental_quality": 0.05,
+    "rationale": "Consumer products company with revenue growth (+8.4% YoY) but declining operating profit and net income, and a razor-thin total shareholders' equity of $145M against $16.6B total assets driven by years of treasury-stock buybacks funded partly by rising long-term debt ($7.94B vs $6.87B). Cash flow from operations improved. No going-concern or restatement language.",
+    "spans_used": [
+      "Net sales$5,324 $4,911",
+      "Operating profit964 1,076",
+      "Total Colgate-Palmolive Company shareholders\u2019 equity145 54",
+      "Long-term debt7,937 6,871"
+    ]
+  },
+  "task_0095": {
+    "accounting_red_flags": 0.15,
+    "conviction": 0.6,
+    "forward_outlook": 0.0,
+    "fundamental_quality": -0.15,
+    "rationale": "Consumer products company with flat net sales and net earnings YoY, but a swing to a stockholders' deficit for the parent (-$67M) and a sharp jump in notes and loans payable ($1,591M from $4M), signaling a large new short-term borrowing that materially increased balance-sheet leverage even as cash balance rose.",
+    "spans_used": [
+      "Net sales$1,670 $1,668",
+      "Net earnings\n191 191",
+      "Total Clorox stockholders\u2019 (deficit) equity\n(67)321",
+      "Notes and loans payable$1,591 $4"
+    ]
+  },
+  "task_0097": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.75,
+    "forward_outlook": 0.4,
+    "fundamental_quality": 0.7,
+    "rationale": "Derivatives exchange operator with net income up ~21% YoY ($1,154.3M vs $956.2M) driven by higher clearing/transaction fees and investment income, and a very large, offsetting performance-bond/guaranty-fund balance on both sides of the balance sheet (customer collateral, not operating risk). Shareholders' equity declined modestly on buybacks/dividends versus retained earnings growth.",
+    "spans_used": [
+      "Total Revenues1,880.1 1,642.3",
+      "Net Income$1,154.3 $956.2",
+      "Total TICKER_A Group Shareholders\u2019 Equity26,618.2 28,728.2"
+    ]
+  },
+  "task_0099": {
+    "accounting_red_flags": 0.05,
+    "conviction": 0.6,
+    "forward_outlook": -0.15,
+    "fundamental_quality": -0.05,
+    "rationale": "Engine/power manufacturer with net sales up modestly (+2.7% YoY) but operating income down ~16% and net income attributable to the company down ~21% YoY, driven partly by a jump in 'Other operating expense, net' from $37M to $239M. Balance sheet remains solid (total assets $34.4B, manageable debt), with no red-flag accounting language evident.",
+    "spans_used": [
+      "NET SALES (Notes 1 and 2)\n$8,398 $8,174",
+      "OPERATING INCOME 949 1,134",
+      "NET INCOME ATTRIBUTABLE TO COMPANY_A. $654 $824",
+      "Other operating expense, net (Note 14)239 37"
+    ]
+  }
+}

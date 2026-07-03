@@ -1,0 +1,24 @@
+{
+  "per_rebalance": [
+    {
+      "rebalance_date": "2026-05-06",
+      "forward_date": "2026-06-05",
+      "n_names": 26,
+      "q5_n": 5,
+      "rank_ic": 0.16056160210352932,
+      "rank_ic_pvalue": 0.43330672481661525,
+      "q5_fwd_return": -0.005051433932368265,
+      "q1_fwd_return": -0.03629715123229458,
+      "q5_minus_q1_spread": 0.031245717299926312,
+      "placebo_rank_ic": -0.07874023130876705,
+      "placebo_rank_ic_pvalue": 0.7022044396744573
+    }
+  ],
+  "pooled": {
+    "mean_ic": 0.16056160210352932,
+    "ic_std": null,
+    "n_rebalances": 1,
+    "ic_ir": null,
+    "placebo_mean_ic": -0.07874023130876705
+  }
+}
