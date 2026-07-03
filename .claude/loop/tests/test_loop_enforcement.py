@@ -290,6 +290,39 @@ def test_verify_gate(tmp: Path):
     v = json.loads(outp.read_text())
     check("AST halt-guard FAIL on commented/dead guard", r.returncode == 2 and v["hard_no_ok"] is False, v)
 
+    # 2026-07-03: form (b) — the fail-closed assign-then-branch guard now live in execution.py
+    # (`_halted = ...get_halted_strict()` in a try; except sets True; `if _halted: return`) must PASS
+    formb = build_repo(tmp / "vg_halt_formb", extra_files={
+        "src/scanner/execution.py":
+        "def execute_trade(self):\n"
+        "    try:\n"
+        "        _halted = StateEngine(lane='oanda_fx').get_halted_strict()\n"
+        "    except Exception:\n"
+        "        _halted = True\n"
+        "    if _halted:\n"
+        "        logger.warning('execute_trade BLOCKED — state.halted=True')\n"
+        "        return None\n"})
+    outp = tmp / "vg_halt_formb/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(formb), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    check("AST halt-guard PASS on assign-then-branch get_halted_strict form",
+          r.returncode == 0 and v["hard_no_ok"] is True, v)
+
+    # inverted form (b): Return only in the ELSE branch must NOT pass (same rule as form (a))
+    formb_inv = build_repo(tmp / "vg_halt_formb_inverted", extra_files={
+        "src/scanner/execution.py":
+        "def execute_trade(self):\n"
+        "    _halted = StateEngine(lane='oanda_fx').get_halted_strict()\n"
+        "    if _halted:\n"
+        "        proceed()\n"
+        "    else:\n"
+        "        return None\n"})
+    outp = tmp / "vg_halt_formb_inverted/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(formb_inv), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    check("AST halt-guard FAIL on inverted assign-then-branch guard",
+          r.returncode == 2 and v["hard_no_ok"] is False, v)
+
     # memory enforcement: a lesson with no recall-trigger row fails the gate (integrity, not Hard-NO)
     orphan = build_repo(tmp / "vg_orphan_lesson", extra_files={
         ".claude/LESSONS.md": "# Lessons\n## L-099 — orphan\nbody, no recall-trigger index\n"})

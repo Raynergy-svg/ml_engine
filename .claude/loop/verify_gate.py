@@ -121,8 +121,13 @@ def _ship_gate_violation(repo: Path):
 
 
 def _halt_guard_violation(repo: Path):
-    """AST: require a LIVE `if ...get_halted(): ... return ...` guard in execution.py, so a
-    commented-out/dead occurrence cannot satisfy the check (comments are absent from the AST)."""
+    """AST: require a LIVE halt guard in execution.py, in either accepted form:
+      (a) direct:  `if ...get_halted*(): ... return ...`  (original shape), or
+      (b) assign-then-branch:  `_halted = ...get_halted_strict()` ... `if _halted: ... return ...`
+          (the 2026-07-02 per-lane fail-closed hardening — the call moved out of the if-test into
+          a try-body so an unreadable state file blocks instead of proceeding).
+    Comments are absent from the AST, so a commented-out/dead occurrence cannot satisfy the check.
+    Both forms require the Return in the THEN-body (inverted guards must not pass)."""
     txt = _read(repo / "src/scanner/execution.py")
     if not txt:
         return "execution.py missing/empty"
@@ -130,17 +135,30 @@ def _halt_guard_violation(repo: Path):
         tree = ast.parse(txt)
     except Exception:
         return "execution.py unparseable (cannot verify halt guard)"
+    # Form (b) support: collect names assigned from a get_halted*/get_halted_strict call.
+    halted_names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+            fn = node.value.func
+            if isinstance(fn, ast.Attribute) and fn.attr.startswith("get_halted"):
+                for t in node.targets:
+                    if isinstance(t, ast.Name):
+                        halted_names.add(t.id)
     for node in ast.walk(tree):
         if not isinstance(node, ast.If):
             continue
         calls = [n for n in ast.walk(node.test) if isinstance(n, ast.Call)]
         attrs = [c.func.attr for c in calls if isinstance(c.func, ast.Attribute)]
+        test_names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
         # Return must be in the THEN-body (node.body), not the else-branch — an inverted guard
         # `if get_halted(): proceed() else: return` must NOT pass. (Verifier round-2 finding #2.)
         body_returns = any(isinstance(n, ast.Return) for b in node.body for n in ast.walk(b))
-        if "get_halted" in attrs and body_returns:
+        if body_returns and (
+            any(a.startswith("get_halted") for a in attrs) or (test_names & halted_names)
+        ):
             return None
-    return "no live `if ...get_halted(): return ...` guard in execution.py (commented/dead/inverted?)"
+    return ("no live halt guard in execution.py — need `if ...get_halted*(): return` or "
+            "`<name> = ...get_halted_strict()` + `if <name>: return` (commented/dead/inverted?)")
 
 
 def _lessons_without_triggers(repo: Path):
@@ -165,7 +183,8 @@ def check_hard_nos(repo: Path) -> list[dict]:
     NOT the primary guard; the hard guards live in execution.py + the HARD_MAX_GAP quarantine):
       - regexes are literal/positional: `= .15`, `= 1e-1`, computed/`float()`/env-var values, and
         the gap/env read from config can slip the pattern.
-      - the halt-guard check is now AST-verified (live `if get_halted(): return` in the THEN-body).
+      - the halt-guard check is AST-verified (live `if get_halted*(): return` in the THEN-body, or
+        the assign-then-branch `get_halted_strict()` form; see _halt_guard_violation).
       - ship-gate is AST-verified over Assign/AnnAssign/AugAssign/NamedExpr targets, fail-closed on
         anything not reducible to a single literal ≤0.10.
       - STILL out of scope (a STATIC tripwire cannot see these — the code-level guard in

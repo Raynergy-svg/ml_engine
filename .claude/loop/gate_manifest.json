@@ -4,8 +4,8 @@
   ".claude/loop/loop_gate.py": "6945a56681e170379c3b8f0657891b76d56414181f319b0afb2bb2331ec6e4ce",
   ".claude/loop/record_cycle.py": "31d8c23e165b724098fd6c5c714d04f91093ca9ef63e21906778d6929b64b486",
   ".claude/loop/record_verdict.py": "8e9e98b5b5539356fcb043882ce45414bee8c833f370dea8eb578683c3343da8",
-  ".claude/loop/tests/test_loop_enforcement.py": "cc802c8f1e5c796b110d63b947e440d0defe57d9a450e5477958b7b1bcdf79b9",
-  ".claude/loop/verify_gate.py": "d5e58dcfbe360ceac77bb75db8cb9db74da398b5912f80c47fd2e5b60c18219e",
+  ".claude/loop/tests/test_loop_enforcement.py": "4035877b2a608a5283e8503083804c49a62eb274de6bfd81ee4b8a7a7aebc943",
+  ".claude/loop/verify_gate.py": "790b56c8cbc817ca58469464706d61e65de483f9339d4098dbdf9f6baf19e6a6",
   ".claude/tools/risk_monitor.sh": "737827cdd2afb87dd52ca42e4c4e6e9188d291cc4960b9debe534b58d4ac49ff",
   ".claude/tools/session_context_boot.sh": "3aeb4fcd6c12ddccda6f9b07a77ddfe8bad4d0ab2dbcb17cf793a3e44af74efe",
   ".claude/tools/stop_gate.sh": "ba40ff12f4a12f82a6b43549dda0de6dbfa50dc858826a4aba189079426672a5"
