@@ -4,11 +4,34 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-03T04:45Z by Claude (training-architecture audit — docs + a verify_gate
-matcher fix; no state.json write). Disk truth AS OF THIS TOUCH (state.json READ fresh
-2026-07-03T01:00Z): **global `halted=true` AND all five `halted_lanes` true** (oanda_fx, equity,
-brain, crypto_momentum, track_b), `last_actor=operator-stand-down-2026-07-02-per-lane-control-
-pending` — supersedes the 07-02 01:02Z snapshot below. Verify freshly before relying on it.
+Last touched: 2026-07-03T20:15Z by Claude (approved-items ship; no state.json write). Disk truth
+AS OF THIS TOUCH (state.json + AXIOM audit READ fresh ~19:45Z): **UNHALTED — global false, all
+five lanes false; SYSTEM LIVE-TRADING.** Operator unhalted via AXIOM guarded arm+unhalt
+2026-07-03T18:25Z (control_audit.jsonl: gates_green, verdict_age 4.3h, dd 1.07%). Known cosmetic
+gap: dashboard unhalt does NOT stamp state.json `last_actor` (stale stand-down label survives) —
+1-line fix candidate in dashboard/server/control.py. Verify freshly before relying on this.
+
+## Approved items SHIPPED — learning loop closed (2026-07-03T19:30-20:15Z, operator: "Approved on all accounts")
+
+Commit `4f808d8` (pushed; separate verifier PASS at live-trading bar).
+- **Item 1 (execution.py rl filter): implemented by a CONCURRENT session** (rl_eligible pending
+  filter + comment, uncommitted in their tree) — deliberately NOT committed here; theirs to land.
+- **Item 2 SHIPPED**: engine.py init applies the durable overlay AFTER apply_profile (ordering
+  test-pinned); TIER7_CONSUME_ADJUSTMENTS default now **1** — supervisor consumes approved
+  adjustments headlessly into `.claude/config_overlay.json`. **VERIFIER MODEL CORRECTION relayed
+  to operator: self_heal writes SELF-approved entries directly into config_adjustments history
+  (adjustment_approver's "sole writer" docstring is wrong; self_heal.py:1255) — consumption ON
+  makes self-heal's autonomous adjustments DURABLE with no per-entry human approval.** Bounded
+  vocabulary + evidence/debounce/budget + 4-layer PROTECTED_FIELDS rail hold; revert lever:
+  TIER7_CONSUME_ADJUSTMENTS=0.
+- **Item 3 SHIPPED**: min_samples_for_retrain 50→100 (entry floor aligned with the eval gate's
+  20-sample holdout; gate floor stays test-exercised via pinned 60).
+- **Rode along (attributed)**: concurrent handover session's supervisor singleton flock
+  (launchd+nohup double-writer fix; verifier: correct, released-before-execv, denied instance
+  exits clean). Supervisor now launchd-managed (PID 88167); trend lane PID 14533 on current code.
+- **Follow-up chips**: task_4078c99d — TUI `_reload_config_now` consumes adjustments to memory
+  only (those are still restart-lost; route through overlay). Known interactive-only clobber:
+  config_screen profile re-apply overrides overlay values until next restart.
 
 ## Self-heal degraded-loop fix + P0 trio + P1 overlay (2026-07-03T05:15-15:00Z, operator: "patch him as if patching yourself")
 
@@ -905,3 +928,41 @@ Killed the `run_equity_harvester.py --broker ibkr-paper` background loop I'd sta
   path — independently verified PASS), `docs/equity-harvester-sizing-2026-07-01.md` (honest 0.739
   full / 0.354 OOS sizing numbers). USD_JPY/USD_CAD/AUD_USD H1 direction models confirmed still
   unloadable (no artifacts in this repo) by two independent checks.
+
+---
+
+## 2026-07-03 (afternoon) — launchd `com.buddy.tier7` EX_CONFIG fixed; nohup handed over
+
+- **Symptom:** `com.buddy.tier7` LaunchAgent crash-looped `last exit code = 78: EX_CONFIG`,
+  `runs = 8444+`, ZERO output in its StandardOutPath. The supervisor was surviving only via a
+  `nohup` instance (PID 16644, started earlier 2026-07-03).
+- **Root cause (HIGH confidence):** `xpcproxy` (launchd's pre-exec spawn helper) hit a macOS
+  Sandbox `deny(1) file-read-data` on the stdout target
+  `trained_data/axiom/tier7_loop.out` — **every spawn, in lockstep with the 30s ThrottleInterval**
+  (proven via `/usr/bin/log show --predicate 'eventMessage CONTAINS "tier7"'`). The path is inside
+  `~/Documents`, a TCC-protected folder. The working `com.buddy.trend` writes to the SAME dir but
+  its `trend_loop.out` carries a `com.apple.macl` sandbox-grant xattr; `tier7_loop.out` had only
+  `com.apple.provenance` (no grant ever recorded for that specific file). Same binary, same
+  `WorkingDirectory` — only the per-file TCC grant differed.
+- **Fix:** moved `StandardOutPath`/`StandardErrorPath` in
+  `~/Library/LaunchAgents/com.buddy.tier7.plist` out of `~/Documents` →
+  `~/Library/Logs/com.buddy.tier7.log` (not TCC-protected). `WorkingDirectory` unchanged (trend
+  proves running processes CAN write `~/Documents`). Reloaded via `bootout`+`bootstrap`. Result:
+  `state=running`, `runs=1`, stable past throttle window, ticking cleanly. First try.
+- **Handoff (clean, verified):** confirmed the launchd process (PID 88167) writes state files
+  INTO `~/Documents` (`tier7_state.json` `supervisor_pid: 88167`, fresh) → not sandboxed from the
+  state dir → safe to retire nohup. `kill -TERM 16644` (exited in ~1s). Heartbeat pid flipped to
+  88167 immediately (deference logic `run_tier7_loop.py:127` releases the beacon when the foreign
+  writer dies). Now ONE supervisor (88167), `heartbeat.json` fresh, old `tier7_loop.out` idle.
+- **Singleton lock — FIXED (2026-07-03 same session).** `run_tier7_loop.py` now has the same
+  flock guard as trend (`_acquire_singleton_lock`/`_release_singleton_lock`/`_singleton_lock_path`
+  → `trained_data/axiom/tier7_loop.singleton.lock`). A second supervisor refuses to start (exit 1)
+  while a live one holds the lock. **Tier7-specific subtlety** vs trend: tier7 self-restarts via
+  `os.execv` (same PID, in-place) for code-freshness, NOT exit-for-respawn — so it must
+  `_release_singleton_lock()` immediately before `execv` or the re-exec'd image would be denied by
+  its OWN inherited lock and refuse to start. Verified LIVE: the running supervisor (88167)
+  code-freshness-picked-up this very edit and re-exec'd itself twice (15:42, 15:45) — each followed
+  by a clean `START`, never `refusing to start`; lock file holds its own pid; a manual 2nd instance
+  refused with exit 1. Tests: `tests/test_run_tier7_singleton_2026_07_03.py` (4, incl. the execv
+  release path). 24 adjacent tests green, flake8 clean, risk monitor GREEN. Did NOT touch
+  state.json / halt flags / any order path.
