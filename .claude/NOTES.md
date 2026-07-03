@@ -4,10 +4,39 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-02T13:25Z by Claude (SEC EDGAR value + accruals PIT factor test — research
-only, no state.json touch). Disk truth AS OF THIS TOUCH: unchanged from the 01:02Z entry below
-(`halted=false`, `halted_lanes={oanda_fx:true, equity:false, brain:false}`) — this session did not
-read or write state.json; verify freshly before relying on it.
+Last touched: 2026-07-03T04:45Z by Claude (training-architecture audit — docs + a verify_gate
+matcher fix; no state.json write). Disk truth AS OF THIS TOUCH (state.json READ fresh
+2026-07-03T01:00Z): **global `halted=true` AND all five `halted_lanes` true** (oanda_fx, equity,
+brain, crypto_momentum, track_b), `last_actor=operator-stand-down-2026-07-02-per-lane-control-
+pending` — supersedes the 07-02 01:02Z snapshot below. Verify freshly before relying on it.
+
+## Training-architecture audit + modernization plan (2026-07-03T01:30-04:45Z)
+
+Operator-directed 3-phase audit; deliverable `docs/training-architecture-audit-2026-07-03.md`
+(commit 8e34e03, pushed). Four read-only specialist passes (code map / data inventory /
+retrain-gates / control-flow), every running-status claim re-derived per L-017.
+- **Coin-flip diagnosis: already closed, documented, not re-litigated** (L-001 leak + broken gap
+  gate + scaler double-fit all fixed → 52% = market wall, L-022). Modernization targets the
+  RUNTIME LEARNING WIRING instead: (1) all FX learning loops welded to the TUI process (dormant
+  now; heartbeat `scanner_alive:true` overstates), (2) live self-heal PRODUCES config adjustments
+  only the dormant TUI can CONSUME (dead-write class, process level), (3) online_retrainer has NO
+  eval gate (HARD_MAX_GAP only at Tier-1), (4) 3 divergent post-trade paths + duplicated
+  alert/calibrator modules, (5) drift detection logs-only (active unack'd 7-loss WARNING in
+  alert_state.json), (6) only 18/205 journal trades carry full RL context, (7) no tick store
+  (tick_capture.py exists, `trained_data/ticks` absent). Roadmap: P0 truth/safety patches → P1
+  gated-harness library + single feedback path + headless learning supervisor → P2 operator
+  levers (tick capture, paid data) → P3 Lane-Contract unification. UNVERIFIED items flagged in
+  doc Appendix A (MetaManager live wiring, regime_quantiles threading) — queued as P0 checks.
+- **Found+fixed in passing: verify_gate false-FAIL** — `_halt_guard_violation` only matched the
+  old `if ...get_halted():` shape; the 2026-07-02 hardening moved the guard to the STRONGER
+  fail-closed `_halted = get_halted_strict()` + `if _halted: return` form. Matcher now accepts
+  both forms, inverted guards still rejected; +2 enforcement fixtures (form-b accept/inverted
+  reject) → 111/111; manifest regenerated (commit aa5e9fd, pushed). **Separate Code Reviewer
+  verifier: PASS** — empirically no weaker than old matcher on adversarial cases; non-blocking
+  note: docstring could enumerate the reassignment-between-assign-and-branch vector.
+- Gates at close: verify_gate PASS (28 checks), risk_monitor GREEN (per-lane visible),
+  enforcement suite 111/111. Session touched ONLY: the doc, verify_gate.py, gate_manifest.json,
+  test_loop_enforcement.py, this file. No hot path, no state.json write, practice pin untouched.
 
 ## SEC EDGAR value + accruals PIT factors — BOTH FAIL THE GATE (2026-07-02T08:23-13:25Z)
 

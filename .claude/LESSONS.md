@@ -45,6 +45,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | a backtest fails the gate on drawdown / cost-fragility / turnover, OR you're tempted to blame "our harsh cost model / daily rebalance" (or to fix infra and call it edge) | **L-020** infra tuning moves the COSMETIC gate-failures (DD/cost/turnover) but NOT significance — significance is gated by effective-N + history (structural, untunable) |
 | a trend / TS-momentum book posts strong Sharpe + low DD + beats buy-hold and you're tempted to call it "edge"/"alpha"; any plan to deploy/scale trend | **L-021** trend/TS-momentum = reproducible drawdown-controlled RISK-PREMIUM, not alpha — report on both axes; never call a non-significance-clearing trend book "alpha" |
 | ANY free-data daily-bar return/direction alpha hunt ("test signal X", "more data/news/sentiment/a new model will find edge", a fresh edge-hunt without a materially new input) | **L-022** no free-data small-operator-accessible return-ALPHA exists (whole campaign + 5-source literature sweep) — don't re-run the exhausted hunt without a MATERIALLY new input |
+| changing the shape of guarded code (halt guard / env pin / gap constant), or a gate that false-FAILs on stronger code or passes via a comment | **L-023** co-update enforcement matchers in the same change |
 
 ---
 
@@ -438,3 +439,26 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Source: 2026-06-29 crypto Round-2 + the whole campaign; 5-source literature sweep (Harvey-Liu-Zhu,
   Hou-Xue-Zhang, McLean-Pontiff, Meese-Rogoff, Muravyev-Pearson-Pollet 2025, Novy-Marx-Velikov,
   Han-Kang-Ryu 2024); verdict docs in `docs/`. Builds on L-016 (FX retired) + L-021.
+
+## L-023 — hardening guarded code desyncs its enforcement matchers; co-update them in the same change   [ACTIVE]
+- Trigger: any change to the SHAPE of a guarded/enforced pattern (halt-guard form, env-pin
+  assignment, gap-constant read) — or a gate that false-FAILs on stronger code, or stays green
+  only because a comment/docstring contains the matched string.
+- Root cause: gate scripts encode the guarded code's shape (AST pattern / grep string). The
+  2026-07-02 per-lane halt hardening (get_halted() in the if-test → assign-then-branch
+  get_halted_strict()) left BOTH matchers stale: verify_gate._halt_guard_violation false-FAILED
+  the STRONGER guard (blocking STOP-DONE on honest work), while risk_monitor.sh's literal
+  "get_halted()" grep stayed satisfied only by a comment at execution.py:2096 (false floor — a
+  gutted guard keeping the comment would read GREEN). A matcher drifts toward BOTH failure
+  polarities when the code it mirrors changes without it.
+- Rule: a change to guarded/enforced code MUST, in the same commit: (1) re-run every gate script
+  against the live repo; (2) update stale matchers to the new shape WITHOUT weakening (old form
+  still accepted where valid, inverted/neutered cases still rejected); (3) add regression
+  fixtures for the new shape (accept + reject); (4) regenerate gate_manifest.json; (5) have the
+  SEPARATE verifier adversarially confirm no-weakening (L-006). A string grep satisfiable by a
+  comment is not enforcement — prefer structural/AST matchers for load-bearing checks.
+- Scope: execution.py guards, config env pin, HARD_MAX_GAP, and every matcher in verify_gate.py /
+  risk_monitor.sh / loop_gate.py / stop_gate.sh.
+- Source: 2026-07-03 audit session — verify_gate false-FAIL fixed in aa5e9fd (separate verifier
+  PASS, suite 111/111); comment-satisfied risk_monitor grep found same session (background task
+  task_89450a16); original stale-grep false-ALARM flagged 2026-07-02.
