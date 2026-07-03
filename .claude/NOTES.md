@@ -10,6 +10,46 @@ matcher fix; no state.json write). Disk truth AS OF THIS TOUCH (state.json READ 
 brain, crypto_momentum, track_b), `last_actor=operator-stand-down-2026-07-02-per-lane-control-
 pending` — supersedes the 07-02 01:02Z snapshot below. Verify freshly before relying on it.
 
+## Self-heal degraded-loop fix + P0 trio + P1 overlay (2026-07-03T05:15-15:00Z, operator: "patch him as if patching yourself")
+
+Four commits, all pushed, each separately verifier-PASSed: `a5b93c3` (degraded loop), `a46e01a`
+(P0 trio), `917ee55`+`b5cf510` (P1 overlay + test fixup).
+- **Degraded loop DEAD (live-verified)**: was `degraded actions=2` every 30s forever. Causes: prose
+  ("Retrain core models: train-joint…" — DEPRECATED pipeline for the RETIRED L-016 lane) fed to the
+  action executor → unknown_action_string every tick; frozen evidence (halted ⇒ journal tail static)
+  re-firing reduce_risk after every debounce window (burned the 10/day budget); suppression
+  reported as "degraded". Fixed: recommendations channel (doctrine-correct text, surfaces in
+  maintenance report), evidence-fingerprint debounce (v2 schema {ts,evidence}, legacy-compatible),
+  status honesty ("suppressed"). Live tick now: `self_heal=suppressed n_applied=0` + L-016 rec.
+  Also fixed test self-poisoning (ACTION_BUDGET_PATH was the one un-isolated fixture path).
+- **P0**: online_retrainer eval gate (fail-closed: temporal 20% holdout, min 20 samples, MSE vs
+  existing +5% tol, degenerate refusal; consequence: needs ≥100 buffer samples to ship);
+  trend_journal_sync COMMITTED after focused review (3 real bugs fixed: wrong-shape clobber,
+  RMW lock, partial-close P&L — outcome now from realized_pl_total) + enriched records
+  (entry/close spread, half-spread costs, financing, atr_stop_distance; null-when-unavailable);
+  alert routing map (every active alert names owner+mechanism, unknown → UNROUTED-escalate).
+  Appendix-A UNVERIFIEDs RESOLVED: MetaManager WIRED-LIVE (orchestrator :451/:1507);
+  regime_quantiles threaded end-to-end (real values in quarantined artifact).
+- **P1 v1**: `config_overlay.py` — durable overlay closes producer-alive/consumer-dead AND
+  restart-loss (consume moves approved adjustments → .claude/config_overlay.json with provenance,
+  crash-safe ordering; apply_overlay replays onto fresh ScannerConfig). **Consumption OPT-IN
+  (`TIER7_CONSUME_ADJUSTMENTS=1`, default OFF; running: NO)** — flipping it + the one-line engine
+  seam (`apply_overlay(config)` AFTER `apply_profile`) = OPERATOR wiring decision. **Hard-NO rail
+  added in depth** (found: field-membership validation alone would let an approved
+  oanda_environment adjustment propagate): PROTECTED_FIELDS refused at proposal/approval
+  validation + overlay consume + overlay apply + ConfigAdjuster.apply itself; single test drives
+  all layers incl. tampered overlay → config stays practice.
+- **OPERATOR DECISIONS SURFACED (not acted)**: (1) execution.py:5330 pending filter needs
+  `lane != "trend"` / rl_eligible guard (regime:None AttributeError at :5469/:5483 can abort an
+  RL-sync batch) — HOT PATH, needs explicit approval; 1-line change, verifier-confirmed real.
+  (2) Flip TIER7_CONSUME_ADJUSTMENTS + wire the engine overlay seam (together). (3) Retrainer
+  floor: 50-99-sample retrains now always refused — raise min_samples_for_retrain to 100 for a
+  clearer refusal message? (4) legacy 179 trend entries carry bare regime:None (inert today).
+- **Honesty note (L-018 self-report)**: `917ee55` was committed with 1 failing test because
+  `pytest | tail` masked the exit code (the documented pipeline-masking trap); caught immediately
+  post-push, fixed in `b5cf510` (test asserted refusal LAYER, not outcome; defense had gotten
+  stronger). Gating runs now use pipefail.
+
 ## Autonomy-layer fix — SHIPPED + LIVE (2026-07-03T04:30-05:10Z, operator-directed)
 
 Operator: "autonomy layer is fucked… won't pick up any changes or report maintenance/diagnostics
