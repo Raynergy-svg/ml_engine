@@ -124,7 +124,11 @@ class RetrainConfig:
     max_retrains_per_day: int = 3  # Daily limit
     
     # Data requirements
-    min_samples_for_retrain: int = 50  # Minimum replay samples needed
+    # 100 (was 50; operator-approved 2026-07-03): the eval gate holds out the
+    # last 20% and fail-closed refuses holdouts < 20 samples, so 50-99-sample
+    # retrains always ended 'refused' at the gate — refusing at THIS explicit
+    # entry check instead gives a clearer message and no wasted candidate fit.
+    min_samples_for_retrain: int = 100  # Minimum replay samples needed
     min_accuracy_drop: float = 0.05  # 5% accuracy drop triggers retrain
     
     # Training parameters

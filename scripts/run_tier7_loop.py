@@ -38,6 +38,53 @@ if str(REPO_ROOT) not in sys.path:
 logger = logging.getLogger("run_tier7_loop")
 SELFHEAL_EVENTS_REL = ".claude/tier7_selfheal_events.jsonl"
 
+_SINGLETON_LOCK_FH = None  # holds the singleton flock for this process's lifetime
+
+
+def _singleton_lock_path() -> Path:
+    return REPO_ROOT / "trained_data" / "axiom" / "tier7_loop.singleton.lock"
+
+
+def _acquire_singleton_lock(lock_path: Path):
+    """Exclusive, non-blocking process lock (2026-07-03 handover finding): a
+    launchd-spawned supervisor and a leftover nohup supervisor ran concurrently,
+    each writing the shared heartbeat / tier7_state / self-heal event log every
+    tick with no mutual exclusion — a two-writer collision on the self-heal
+    config/weight surface. Mirrors run_oanda_trend's guard. Returns an open file
+    object the caller MUST keep referenced for the process lifetime (closing/
+    GC'ing it releases the lock); a live holder makes this return ``None``. The
+    OS releases the flock on process exit or crash, so there is no stale-lock-
+    file cleanup problem.
+    """
+    import fcntl
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(lock_path, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    fh.write(str(os.getpid()))
+    fh.flush()
+    return fh
+
+
+def _release_singleton_lock() -> None:
+    """Release the singleton lock held by this process. Called immediately before
+    ``os.execv`` on the code-freshness self-restart: execv replaces the image in
+    place (same PID, FDs otherwise survive), so the re-exec'd image would be
+    DENIED BY ITS OWN inherited lock and refuse to start. Explicit release here
+    guarantees the fresh image re-acquires cleanly regardless of O_CLOEXEC
+    semantics. (run_oanda_trend never needs this — it EXITS for a launchd
+    respawn, which frees the lock via process death.)"""
+    global _SINGLETON_LOCK_FH
+    if _SINGLETON_LOCK_FH is not None:
+        try:
+            _SINGLETON_LOCK_FH.close()
+        except OSError:
+            pass
+        _SINGLETON_LOCK_FH = None
+
 
 def _read_mode(root: Path) -> str:
     try:
@@ -129,11 +176,12 @@ def _tick(root: Path, cycle: int, max_autonomy_level: int) -> None:
                         scanner_alive=False, pid=os.getpid(),
                         extra={"writer": "tier7_supervisor", "supervisor_alive": True})
     sh = _self_heal_tick(root, max_autonomy_level)
-    # P1 headless adjustment consumption — OPT-IN (TIER7_CONSUME_ADJUSTMENTS=1).
-    # Default OFF: until the engine startup path calls config_overlay.apply_overlay,
-    # consuming here would hide adjustments from a future TUI session (it skips
-    # consumed ids and doesn't read the overlay yet). Operator flips both together.
-    if os.getenv("TIER7_CONSUME_ADJUSTMENTS", "0") == "1":
+    # P1 headless adjustment consumption — ON by default (operator-approved
+    # 2026-07-03, flipped together with the engine seam: engine.py init now
+    # calls config_overlay.apply_overlay AFTER apply_profile, so consumed
+    # adjustments reach every future scanner process via the durable overlay).
+    # Set TIER7_CONSUME_ADJUSTMENTS=0 to revert to report-only.
+    if os.getenv("TIER7_CONSUME_ADJUSTMENTS", "1") == "1":
         try:
             from src.scanner.automation.config_overlay import consume_approved_adjustments
             consumed = consume_approved_adjustments(root)
@@ -184,6 +232,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         max_autonomy = min(5, max(3, int(raw)))
     except (ValueError, TypeError):
         max_autonomy = 5   # default after the 2026-06-29 operator raise
+    # Singleton guard (2026-07-03): refuse to start if another supervisor already
+    # holds the lock. Two concurrent self-heal loops writing the same heartbeat /
+    # tier7_state / event log is a two-writer collision. Held for process lifetime
+    # via the module global; released explicitly before the code-freshness execv.
+    global _SINGLETON_LOCK_FH
+    _SINGLETON_LOCK_FH = _acquire_singleton_lock(_singleton_lock_path())
+    if _SINGLETON_LOCK_FH is None:
+        logger.error("another run_tier7_loop supervisor already holds the singleton "
+                     "lock (%s) — refusing to start", _singleton_lock_path())
+        return 1
+
     logger.info("Tier 7 self-heal supervisor START (pid %d, bounded: no trade/unhalt/env path; "
                 "self_heal max_autonomy_level=%d)", os.getpid(), max_autonomy)
 
@@ -209,6 +268,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "ts": datetime.now(timezone.utc).isoformat(), "cycle": cycle,
                 "status": "self_restart", "reason": reason, "n_actions": 0, "actions": [],
             })
+            _release_singleton_lock()  # free the lock so the re-exec'd image re-acquires
             os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve())]
                      + sys.argv[1:])
         time.sleep(float(args.interval))

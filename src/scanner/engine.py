@@ -1359,6 +1359,25 @@ class Scanner:
         # Load config
         self._load_yaml_config()
 
+        # Durable config overlay (P1, operator-approved 2026-07-03): replay
+        # approved adjustments consumed headlessly by the tier7 supervisor onto
+        # this fresh config. MUST run after _load_yaml_config (which calls
+        # apply_profile) — profile dicts would otherwise clobber overlay values.
+        # Fail-open by design (apply_overlay never raises); protected fields
+        # (oanda_environment) are refused inside apply_overlay (Hard NO, L-003).
+        try:
+            from pathlib import Path as _OverlayPath
+            from src.scanner.automation.config_overlay import apply_overlay
+            _overlay_applied = apply_overlay(self.config, _OverlayPath("."))
+            if _overlay_applied:
+                logger.info(
+                    "config_overlay: %d adjustment(s) restored at engine init: %s",
+                    len(_overlay_applied),
+                    ", ".join(a["key"] for a in _overlay_applied),
+                )
+        except Exception as _ov_exc:  # noqa: BLE001 — overlay is never fatal
+            logger.warning(f"config_overlay apply failed (non-fatal): {_ov_exc}")
+
         # Phase 74: Restore mutable scan state from last session
         self.load_scan_state()
 

@@ -14,10 +14,9 @@ Validates:
 from __future__ import annotations
 
 import json
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -98,7 +97,9 @@ class TestRetrainConfig:
         config = RetrainConfig()
         assert config.cooldown_minutes == 60
         assert config.max_retrains_per_day == 3
-        assert config.min_samples_for_retrain == 50
+        # 100 since 2026-07-03 (operator-approved): aligned with the eval
+        # gate's 20-sample holdout floor (20% of 100).
+        assert config.min_samples_for_retrain == 100
         assert config.validation_split == 0.2
         assert config.retrain_xgboost is True
         assert config.retrain_rf is True

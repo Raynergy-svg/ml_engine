@@ -143,6 +143,34 @@ def test_protected_field_refused_at_every_layer(tmp_path) -> None:
     assert cfg.oanda_environment == "practice"
 
 
+def test_overlay_applies_after_profile_and_wins_overlapping_keys(tmp_path) -> None:
+    """The engine-seam ordering contract (operator-approved wiring 2026-07-03):
+    apply_profile first, apply_overlay second — the overlay must win on
+    overlapping keys, and re-applying the profile afterwards would clobber
+    (which is exactly why the engine seam sits AFTER _load_yaml_config)."""
+    (tmp_path / ".claude").mkdir(parents=True, exist_ok=True)
+
+    cfg = ScannerConfig()
+    cfg.apply_profile("smart")
+    profile_value = cfg.min_confidence
+
+    overlay_value = float(profile_value) + 7.0  # guaranteed different
+    (tmp_path / OVERLAY).write_text(json.dumps({
+        "version": 1, "cycle": 1,
+        "values": {"min_confidence": overlay_value},
+        "provenance": {"min_confidence": {"source": "test"}},
+    }))
+
+    applied = apply_overlay(cfg, tmp_path)
+    assert [a["key"] for a in applied] == ["min_confidence"]
+    assert cfg.min_confidence == overlay_value          # overlay wins post-profile
+
+    # Documenting the hazard the ordering protects against: a later profile
+    # re-apply clobbers the overlay value (so overlay must always come last).
+    cfg.apply_profile("smart")
+    assert cfg.min_confidence == profile_value
+
+
 def test_overlay_status_lands_in_maintenance_report(tmp_path) -> None:
     _seed_approved(tmp_path, [
         {"proposal_id": "p4", "key": "min_confidence", "new_value": 0.49,

@@ -133,11 +133,18 @@ def test_worse_candidate_refused_and_original_bytes_untouched(tmp_path, caplog):
 
 
 def test_tiny_holdout_refused_fail_closed(tmp_path):
-    """(c) Holdout below GATE_MIN_HOLDOUT_SAMPLES ⇒ refuse, write nothing."""
+    """(c) Holdout below GATE_MIN_HOLDOUT_SAMPLES ⇒ refuse, write nothing.
+
+    Pins min_samples_for_retrain=60: the default entry floor was raised to 100
+    (operator-approved 2026-07-03) precisely so real 50-99-sample retrains
+    refuse at the entry check — but THIS test exercises the gate's own holdout
+    floor as defense-in-depth, so it lowers the entry floor to reach it.
+    """
     retrainer = make_retrainer(tmp_path)
+    retrainer.config.min_samples_for_retrain = 60
     model_path = retrainer.model_dir / "ridge_confidence.pkl"
 
-    # 60 samples clears min_samples_for_retrain (50) but leaves a 12-sample
+    # 60 samples clears the (pinned) entry floor but leaves a 12-sample
     # holdout (< 20) — too small to judge, so the gate must fail closed.
     X, y = make_data(n=60, seed=5)
     assert int(len(X) * GATE_HOLDOUT_FRACTION) < GATE_MIN_HOLDOUT_SAMPLES
