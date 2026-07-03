@@ -145,3 +145,21 @@ def test_recommendations_land_in_maintenance_report(tmp_path) -> None:
     assert report["recommendations"] == ["a", "b"]
     # Informational only — never inflates needs_attention.
     assert report["needs_attention"] == []
+
+
+def test_active_alerts_carry_a_route(tmp_path) -> None:
+    claude = tmp_path / ".claude"
+    claude.mkdir(parents=True)
+    (claude / "alert_state.json").write_text(json.dumps({
+        "active_alerts": [
+            {"alert_type": "consecutive_losses", "severity": "WARNING",
+             "message": "7 losses", "timestamp": "t", "acknowledged": False},
+            {"alert_type": "brand_new_alert_kind", "severity": "WARNING",
+             "message": "x", "timestamp": "t", "acknowledged": False},
+        ],
+    }))
+    report = build_maintenance_report(tmp_path)
+    routes = {a["type"]: a["route"] for a in report["alerts"]["active"]}
+    assert "self_heal reduce_risk" in routes["consecutive_losses"]
+    # Unknown alert types fail loud, never silently unowned.
+    assert routes["brand_new_alert_kind"].startswith("UNROUTED")

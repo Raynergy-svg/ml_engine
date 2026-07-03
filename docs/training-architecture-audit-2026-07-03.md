@@ -373,8 +373,8 @@ explicit escalation; everything ships with no-mock tests + separate-verifier PAS
 | Online retrainer ungated | HIGH (confirmed by two passes) | online_retrainer.py:251-395 |
 | Only 18/205 trades carry full RL context | HIGH | journal key-level inspection (data pass) |
 | Tier-6 "not purely shadow" (engine.py:3588 consumes overrides) | MEDIUM | one consumption site traced |
-| MetaManager dormant vs event-driven | UNVERIFIED | flagged for P0 |
-| regime_quantiles threaded end-to-end | UNVERIFIED | flagged for P0 |
+| MetaManager wiring — RESOLVED 2026-07-03: WIRED-LIVE via Orchestrator dispatch (orchestrator.py:451-458, drain at :1507) invoked from the TUI scan loop; real events in .claude/meta/changes.jsonl through 2026-07-02. Shares the "welded to TUI" condition (weakness #1), not dead code. | HIGH | P0 investigation, file:line + ledger read |
+| regime_quantiles threading — RESOLVED 2026-07-03: fully threaded (trainer writes transformer_trainer.py:3230; gates reads gates.py:1269; inference uses gates.py:2194-2219; quarantined USD_JPY artifact carries real q25/q50/q75). The 2026-06-10 "unthreaded" suspicion was fixed by the later train_single_model_m1.py threading commit. | HIGH | P0 investigation incl. pickle read of real artifact |
 
 ## Appendix B — discovery provenance
 Four read-only passes on 2026-07-02/03: training-code map (Explore), data inventory

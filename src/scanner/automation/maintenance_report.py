@@ -111,8 +111,22 @@ def _adjustments_section(root: Path) -> Dict[str, Any]:
         return {"error": str(exc)}
 
 
+# Alert routing map (2026-07-03, P0 "detection without action"): every alert type
+# names its standing remediation so an active alert is never an unowned dead end.
+# The supervisor does NOT mutate alert_state.json (AlertManager's owner process
+# acks); routing here is the honest middle ground — visible owner + mechanism.
+_ALERT_ROUTES: Dict[str, str] = {
+    "consecutive_losses": "self_heal reduce_risk (evidence-anchored, auto) + auto-halt "
+                          "circuit breaker at threshold (engine); operator ack via AXIOM",
+    "drawdown": "drawdown guardian / NAV auto-halt (engine, auto); operator review",
+    "win_rate_drop": "operator review (no safe automated remediation)",
+    "weight_instability": "self_heal soft_reset_agent_weight (auto at L3+)",
+}
+
+
 def _alerts_section(root: Path) -> Dict[str, Any]:
-    """Active (unacknowledged) alerts from AlertManager's state file, verbatim."""
+    """Active (unacknowledged) alerts from AlertManager's state file, verbatim,
+    each annotated with its standing route (owner + mechanism)."""
     try:
         raw = _read_json(root / ".claude" / "alert_state.json")
         if not isinstance(raw, dict):
@@ -120,11 +134,14 @@ def _alerts_section(root: Path) -> Dict[str, Any]:
         active = []
         for alert in raw.get("active_alerts", []) or []:
             if isinstance(alert, dict) and not alert.get("acknowledged", False):
+                a_type = alert.get("alert_type") or alert.get("type")
                 active.append({
-                    "type": alert.get("alert_type") or alert.get("type"),
+                    "type": a_type,
                     "severity": alert.get("severity"),
                     "ts": alert.get("timestamp"),
                     "message": alert.get("message"),
+                    "route": _ALERT_ROUTES.get(str(a_type),
+                                               "UNROUTED — escalate to operator"),
                 })
         return {"unacknowledged": len(active), "active": active[:10]}
     except Exception as exc:  # noqa: BLE001

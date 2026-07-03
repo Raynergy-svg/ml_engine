@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -41,8 +40,12 @@ def retrainer(tmp_path: Path) -> OnlineRetrainer:
 @pytest.fixture
 def synthetic_data() -> tuple:
     rng = np.random.RandomState(42)
-    X = rng.randn(60, 12)
-    y = (rng.randn(60) > 0).astype(int)
+    # 120 samples (not 60): the 2026-07-03 eval gate holds out the last 20%
+    # temporally and fail-closed REFUSES holdouts < 20 samples. 60 → 12-sample
+    # holdout → refused (correct gate behavior, wrong fixture for these tests,
+    # which cover the W&B logging on the PASS path). 120 → 24-sample holdout.
+    X = rng.randn(120, 12)
+    y = (rng.randn(120) > 0).astype(int)
     return X, y
 
 
@@ -127,7 +130,7 @@ def test_retrain_logs_metrics_to_wandb(retrainer, synthetic_data, monkeypatch) -
     monkeypatch.setattr(online_retrainer, "_safe_log_run", fake_log_run)
 
     X, y = synthetic_data
-    out = retrainer.trigger_retrain(X_replay=X, y_replay=y, reason="test", force=True)
+    retrainer.trigger_retrain(X_replay=X, y_replay=y, reason="test", force=True)
 
     heads_logged = {c["head"] for c in captured if "head" in c}
     # At minimum, sklearn-backed heads must log (risk+confidence). Momentum
