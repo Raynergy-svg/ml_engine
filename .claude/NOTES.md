@@ -10,6 +10,35 @@ matcher fix; no state.json write). Disk truth AS OF THIS TOUCH (state.json READ 
 brain, crypto_momentum, track_b), `last_actor=operator-stand-down-2026-07-02-per-lane-control-
 pending` — supersedes the 07-02 01:02Z snapshot below. Verify freshly before relying on it.
 
+## Autonomy-layer fix — SHIPPED + LIVE (2026-07-03T04:30-05:10Z, operator-directed)
+
+Operator: "autonomy layer is fucked… won't pick up any changes or report maintenance/diagnostics
+properly." Root causes fixed (commit `5806a5e`, pushed; separate Code Reviewer verifier: PASS):
+- **Code pickup**: new `src/scanner/automation/code_freshness.py` (git-HEAD + watched-mtime,
+  2-poll debounce, fail-open toward no-restart). tier7 supervisor os.execv's itself on change;
+  trend lane clean-exits BETWEEN cycles (never mid-order) for launchd KeepAlive respawn, polled
+  ~5s inside the cadence sleep (verifier finding: was up-to-2h latency).
+- **Honest beacon (L-017)**: supervisor now writes `scanner_alive=false` + additive
+  `writer/supervisor_alive` keys; never clobbers a fresh foreign (TUI) heartbeat
+  (`_foreign_writer_owns_heartbeat`, 25s window vs TUI's 10s cadence). `write_heartbeat` gained
+  additive-only `extra` (cannot override core schema — 2026-05-12 schema-mismatch incident).
+- **Maintenance/diagnostics**: new `maintenance_report.py` (stdlib-only, READ-ONLY) → atomic
+  `.claude/maintenance_report.json` per tick + embedded in tier7_state for AXIOM: adjustment
+  backlog (identity mirrors ConfigAdjuster exactly), unacked alerts, per-lane halt+artifact
+  freshness, self-heal budget, `needs_attention` summary. Deliberately does NOT consume
+  adjustments (would steal `applied_ids` from the real scanner — dead-consumer fix is P1's
+  headless learning supervisor with a durable overlay, not headless apply).
+- **RUNNING (verified from ps/disk)**: supervisor PID 16644+ (nohup; fresh code; first tick
+  surfaced "1 unacknowledged alert"); trend lane respawned via launchd on final code, correctly
+  `REFUSED halt=True orders_placed=0`. Equity harvester (96555) untouched. 75/75 tests,
+  verify_gate 28/28 PASS, risk_monitor GREEN, flake8 clean.
+- **Open follow-ups**: (a) `com.buddy.tier7` launchd job dies EX_CONFIG with zero output (TCC on
+  ~/Documents suspected) — background task `task_185f1921`; supervisor runs nohup meanwhile (no
+  KeepAlive resilience). (b) `heartbeat_watchdog.sh` = dead code (targets unloaded
+  com.buddy.trader). (c) untracked `trend_journal_sync.py` (other session) needs its own review
+  before commit — verifier grep says no order path, `rl_eligible=False`. (d) self-heal loops
+  `degraded actions=2` every tick — visible in tier7_state.recent_events, not yet diagnosed.
+
 ## Training-architecture audit + modernization plan (2026-07-03T01:30-04:45Z)
 
 Operator-directed 3-phase audit; deliverable `docs/training-architecture-audit-2026-07-03.md`
