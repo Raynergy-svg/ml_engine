@@ -80,7 +80,10 @@ should never have been the tool for the job: `git show HEAD:<path>` or a scratch
 writing to tracked files.
 
 Nothing in this session touched `.claude/state.json`, OANDA order endpoints, `oanda_environment`,
-or any ARM path. Uncommitted as of this note — see turn-end report for the commit decision.
+or any ARM path. Committed `51b85bf`, pushed. `/evolve` folded the learnings (operator-approved):
+**L-024** (never `git stash` for exploratory checks on a repo with live daemons) added to LESSONS;
+the dead-write-collision meta-pattern (2 writers sharing one `is-this-done?` guard field) added as
+a bullet under improvement.md "Live Wiring Verification Gates" (now its 4th confirmed observation).
 
 ## Approved items SHIPPED — learning loop closed (2026-07-03T19:30-20:15Z, operator: "Approved on all accounts")
 

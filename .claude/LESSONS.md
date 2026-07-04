@@ -462,3 +462,24 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Source: 2026-07-03 audit session — verify_gate false-FAIL fixed in aa5e9fd (separate verifier
   PASS, suite 111/111); comment-satisfied risk_monitor grep found same session (background task
   task_89450a16); original stale-grep false-ALARM flagged 2026-07-02.
+
+## L-024 — never `git stash` for exploratory checks on a repo with live daemons   [ACTIVE]
+- Trigger: about to run `git stash` / `git stash pop` just to A/B-test whether something (a test
+  failure, a behavior) predates your current uncommitted changes.
+- Root cause: this repo runs live launchd daemons (com.buddy.tier7, com.buddy.trend) that write to
+  TRACKED files (`.claude/self_heal_action_budget.json`, `.claude/self_heal_debounce.json`,
+  possibly others) on their own schedule, independent of any interactive session. A stash captures
+  the working tree at one instant; if a live daemon writes to a stashed-and-since-reverted file
+  before you pop, the pop CONFLICTS, and ALL uncommitted work (not just the file in question) sits
+  stranded in `stash@{0}` — one `stash drop` / `git checkout .` away from being silently lost. Hit
+  2026-07-04: a stash-for-A/B conflicted on the two self_heal files because com.buddy.tier7 wrote a
+  real `reduce_risk_per_trade_pct` action (14:25:02Z) mid-stash; recovered by hand, no loss.
+- Rule: NEVER `git stash` to answer "does X predate my changes" — use `git show HEAD:<path>` (or a
+  scratch `cp` of the working file) to read the pre-change state without touching the working tree.
+  If a stash pop ever DOES conflict, treat it exactly like a merge conflict: diff both sides, copy
+  anything live/authoritative aside BEFORE resolving, and never `git stash drop` / discard until
+  you've confirmed nothing of value is stash-only.
+- Scope: this repo (or any repo with autonomous background writers to tracked files). A repo with no
+  live daemons touching tracked files does not have this trap.
+- Source: 1 near-miss, 2026-07-04 session (recovered without loss) — RL feedback-loop fix commit
+  51b85bf; see NOTES.md "Near-miss during the session".
