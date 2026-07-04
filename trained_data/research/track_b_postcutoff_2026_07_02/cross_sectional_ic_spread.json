@@ -3,22 +3,22 @@
     {
       "rebalance_date": "2026-05-06",
       "forward_date": "2026-06-05",
-      "n_names": 26,
-      "q5_n": 5,
-      "rank_ic": 0.16056160210352932,
-      "rank_ic_pvalue": 0.43330672481661525,
-      "q5_fwd_return": -0.005051433932368265,
-      "q1_fwd_return": -0.03629715123229458,
-      "q5_minus_q1_spread": 0.031245717299926312,
-      "placebo_rank_ic": -0.07874023130876705,
-      "placebo_rank_ic_pvalue": 0.7022044396744573
+      "n_names": 291,
+      "q5_n": 58,
+      "rank_ic": 0.09148221630681765,
+      "rank_ic_pvalue": 0.11944205716984067,
+      "q5_fwd_return": 0.00794248487911218,
+      "q1_fwd_return": -0.009730140066854222,
+      "q5_minus_q1_spread": 0.0176726249459664,
+      "placebo_rank_ic": -0.027357539899638843,
+      "placebo_rank_ic_pvalue": 0.6421011571865747
     }
   ],
   "pooled": {
-    "mean_ic": 0.16056160210352932,
+    "mean_ic": 0.09148221630681765,
     "ic_std": null,
     "n_rebalances": 1,
     "ic_ir": null,
-    "placebo_mean_ic": -0.07874023130876705
+    "placebo_mean_ic": -0.027357539899638843
   }
 }

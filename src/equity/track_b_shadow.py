@@ -11,15 +11,22 @@ into a long-only Q5 (top-quintile) equal-weight cross-sectional book — see
 pre-registration) and ``docs/track-b-postcutoff-scaleup-2026-07-02.md`` (the
 2026-07-02 scale-up run).
 
-The signal is **self-labeled INSUFFICIENT, not NO EDGE**: the post-cutoff
-scored universe (N=48: 40 from the 2026-07-02 scale-up + 8 qualifying from the
-2026-07-01 pilot) is roughly 10x short of the ~405 scored filings a rank-IC of
-+0.16 would need to clear 80% power at the Bonferroni bar (see
-``docs/adversarial-review-no-edge-verdicts-2026-07-02.md`` — the independent
-adversarial review that found the standing "no edge" framing overstated an
-underpowered result). This module's entire purpose is to let a genuine live
-forward record — which no backtest or power calculation can substitute for —
-accumulate against this specific frozen construction.
+The signal's frozen ``overall_verdict`` is **INSUFFICIENT** — and as of the
+2026-07-04 N-scale-up, that is a well-POWERED null, not an underpowered "can't
+tell." The post-cutoff scored universe was pushed from N=48 to **N=420** (300
+pre-registered + 120 content-blind extension; 419 priced), which was enough to
+answer the load-bearing question: the +0.16 rank-IC point estimate **FADES**
+toward zero as N grows — +0.160 (n=26) -> +0.123 (n=202) -> +0.091 (n=291),
+never significant (best p=0.08 at N=300, 0.12 at N=420), with a clean IC-placebo
+throughout. The single valid cross-section is now n=291 — ample power for a true
+0.16 — and the effect is +0.09 non-significant. The binding constraint is now
+the number of rebalance DATES (still only one qualifies in the ~5-month
+post-cutoff price window), not cross-sectional N; only forward time can add
+rebalances. See ``docs/track-b-postcutoff-scaleup-2026-07-02.md`` (2026-07-04
+update) and ``docs/adversarial-review-no-edge-verdicts-2026-07-02.md``. This
+module's entire purpose is to let a genuine live forward record — which no
+backtest or power calculation can substitute for — accumulate against this
+specific frozen construction.
 
 HARD LINE — everything below is SHADOW ONLY:
   * Zero orders. Zero broker/execution client. No import of any broker/
@@ -197,14 +204,19 @@ def construction_manifest(n_scored: int) -> Dict[str, Any]:
         "source_adversarial_review_doc": SOURCE_ADVERSARIAL_REVIEW_DOC,
         "gate_verdict": GATE_VERDICT,
         "coverage_note": (
-            f"UNDERPOWERED: {n_scored} post-cutoff scored filings vs "
-            f"~{POWER_REQUIRED_N_FILINGS} needed for 80% power on the +0.16 "
-            "rank-IC point estimate (Fisher-z, Bonferroni alpha=0.05/3). New "
-            "filings are scored via an explicit, separate, currently-manual "
-            "step (in-session LLM batches) — full autonomy needs a wired "
-            "ANTHROPIC_API_KEY. This lane exists to accumulate a genuine "
-            "forward record on the frozen construction, not because the "
-            "signal is verified."
+            f"{n_scored} post-cutoff scored filings. As of the 2026-07-04 "
+            f"scale-up (N=420 scored, 419 priced) the cross-sectional-N power "
+            f"target (~{POWER_REQUIRED_N_FILINGS}) is MET — and the answer is a "
+            "well-powered NULL: the +0.16 rank-IC FADED to +0.09 (n=291, "
+            "non-significant) as N grew, clean placebo throughout. The frozen "
+            "gate stays INSUFFICIENT. The remaining power gap is now TEMPORAL "
+            "(only one valid rebalance date exists in the ~5-month post-cutoff "
+            "window; pooled IC significance is uncomputable at n_rebalances=1) — "
+            "only forward shadow time can close it, which is exactly what this "
+            "lane accumulates. New filings are scored via an explicit, separate, "
+            "currently-manual step (in-session blinded LLM batches). This lane "
+            "exists to accumulate a genuine forward record on the frozen "
+            "construction, not because the signal is verified."
         ),
     }
 
@@ -259,6 +271,26 @@ def compute_shadow_cycle(refresh_prices: bool = False) -> ShadowCycleResult:
     prices = prices.loc[prices.index >= pd.Timestamp(PRICE_START, tz="UTC")]
     if prices.empty:
         raise TrackBShadowError("track_b shadow: empty price panel — no price data for the scored universe")
+
+    # Price-coverage exclusion (pre-reg §2 + the frozen backtest's no-fill
+    # contract): the backtest refuses to forward-fill ANY NaN in the panel, so
+    # a ticker whose cached/fetched series has a missing bar in the eval window
+    # is DROPPED here (both its column and its score) — logged, abstain, never
+    # forward-filled, never dropped for the value of its score (content-blind
+    # data hygiene). Mirrors the harness driver's identical exclusion so the
+    # shadow book is formed on the same priced universe the offline gate uses.
+    nan_cols = sorted(prices.columns[prices.isna().any()].tolist())
+    if nan_cols:
+        logger.warning(
+            "track_b shadow: %d tickers with NaN price bars excluded "
+            "(abstain, not forward-filled): %s", len(nan_cols), nan_cols,
+        )
+        prices = prices.drop(columns=nan_cols)
+        scores = [s for s in scores if s.ticker in prices.columns]
+        if not scores or prices.empty:
+            raise TrackBShadowError(
+                "track_b shadow: no priced scores remain after NaN-coverage exclusion"
+            )
 
     scores_by_ticker: Dict[str, List[ResearchScore]] = {}
     for s in scores:

@@ -57,11 +57,20 @@ class TestFrozenConstructionRegression:
         assert tbs.PRICE_START == _tb_postcutoff.PRICE_START
 
     def test_construction_manifest_reports_honest_coverage(self):
-        manifest = tbs.construction_manifest(n_scored=48)
-        assert manifest["n_scored_filings"] == 48
+        # Post the 2026-07-04 scale-up (N=420 scored, 419 priced) the coverage
+        # note reports a well-powered NULL, not "underpowered": the +0.16 rank-IC
+        # FADED to +0.09 (non-significant) as N grew past the ~405 target, and
+        # the remaining gap is temporal (n_rebalances=1), not cross-sectional N.
+        manifest = tbs.construction_manifest(n_scored=420)
+        assert manifest["n_scored_filings"] == 420
         assert manifest["power_required_n_filings"] == 405
-        assert "UNDERPOWERED" in manifest["coverage_note"]
-        assert "48" in manifest["coverage_note"]
+        note = manifest["coverage_note"]
+        assert "420" in note
+        # Honest self-labelling: a measured null, not a fabricated edge.
+        assert "NULL" in note
+        assert "INSUFFICIENT" in note
+        # The binding constraint is now temporal (rebalance dates), surfaced.
+        assert "rebalance" in note.lower()
         assert "INSUFFICIENT" in manifest["gate_verdict"]
         assert manifest["composite_weights"] == dict(PRIMARY_WEIGHTS)
 
