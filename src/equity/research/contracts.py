@@ -45,9 +45,12 @@ PRIMARY_WEIGHTS: Dict[str, float] = {
     "forward_outlook": 0.0,
 }
 
-# Multiple-testing budget — campaign count continues (edge-round-4 = 21).
-N_TRIALS: int = 22
-BONFERRONI_ALPHA: float = 0.05 / N_TRIALS  # 0.00227...
+# Multiple-testing budget — campaign count continues (edge-round-4 = 21; Track B = 22).
+# 2026-07-04: bumped 22 -> 24 for the FINRA short-volume pre-reg (2 new trials: H1 + H2).
+# See docs/prereg-finra-short-volume-2026-07-04.md. Historical Track B reports that cited
+# N_TRIALS=22 / alpha=0.00227 remain valid as-of-then; only NEW calls use the new budget.
+N_TRIALS: int = 24
+BONFERRONI_ALPHA: float = 0.05 / N_TRIALS  # 0.0020833...
 
 # Arm identifiers for the four pre-registered lookahead-control arms (§1).
 ARM_FULL = "full"              # whole sample — EXPECTED contaminated by pretraining
