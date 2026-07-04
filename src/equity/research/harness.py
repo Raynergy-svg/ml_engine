@@ -192,6 +192,50 @@ def _latest_scores_asof(
     return latest
 
 
+def _presort_scores_by_ticker(
+    scores_by_ticker: Dict[str, List[ResearchScore]],
+) -> Dict[str, tuple]:
+    """Pre-parse + sort each ticker's scores by ``as_of`` ascending, once.
+
+    Feeds :func:`_latest_scores_asof_presorted` so ``_build_weight_panel``'s
+    per-rebalance loop does an O(log n) bisect instead of re-parsing every ISO
+    date string and linear-scanning on every rebalance (see
+    :func:`_latest_scores_asof` docstring — that O(n) path is fine for Track
+    B's sparse per-filing scores but is intractable for a DENSE per-day score
+    panel, e.g. an alt-data z-score signal with one score per ticker per day).
+    """
+    presorted: Dict[str, tuple] = {}
+    for ticker, ticker_scores in scores_by_ticker.items():
+        if not ticker_scores:
+            continue
+        parsed = sorted(
+            ((_to_utc_ts(s.as_of), s) for s in ticker_scores), key=lambda x: x[0]
+        )
+        ts_list, s_list = zip(*parsed)
+        presorted[ticker] = (list(ts_list), list(s_list))
+    return presorted
+
+
+def _latest_scores_asof_presorted(
+    presorted: Dict[str, tuple],
+    asof: pd.Timestamp,
+) -> Dict[str, ResearchScore]:
+    """Latest score per ticker with ``as_of <= asof``, via bisect on pre-sorted lists.
+
+    Byte-for-byte equivalent to :func:`_latest_scores_asof` given the same
+    inputs (both pick the score with the maximal ``as_of <= asof``); this is
+    purely a performance path for callers with large/dense score sets.
+    """
+    from bisect import bisect_right
+
+    latest: Dict[str, ResearchScore] = {}
+    for ticker, (ts_list, s_list) in presorted.items():
+        idx = bisect_right(ts_list, asof) - 1
+        if idx >= 0:
+            latest[ticker] = s_list[idx]
+    return latest
+
+
 def _bit_reversal_order(n: int) -> List[int]:
     """A deterministic, RNG-free permutation of range(n) that scatters order.
 
@@ -340,8 +384,13 @@ def _build_weight_panel(
     # Mark which rows are rebalance rows so we can ffill ONLY from them.
     stamped_rows: List[pd.Timestamp] = []
 
+    # Pre-parse/sort once (O(n log n)) so the per-rebalance lookup below is an
+    # O(log n) bisect rather than re-parsing every score's ISO date on every
+    # rebalance (O(n) per lookup) — see _presort_scores_by_ticker docstring.
+    presorted = _presort_scores_by_ticker(scores_by_ticker)
+
     for rb in rebalance_dates:
-        latest = _latest_scores_asof(scores_by_ticker, rb)
+        latest = _latest_scores_asof_presorted(presorted, rb)
         if not latest:
             continue
         composites = {
