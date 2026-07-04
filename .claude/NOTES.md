@@ -4,12 +4,83 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-03T20:15Z by Claude (approved-items ship; no state.json write). Disk truth
-AS OF THIS TOUCH (state.json + AXIOM audit READ fresh ~19:45Z): **UNHALTED — global false, all
-five lanes false; SYSTEM LIVE-TRADING.** Operator unhalted via AXIOM guarded arm+unhalt
-2026-07-03T18:25Z (control_audit.jsonl: gates_green, verdict_age 4.3h, dd 1.07%). Known cosmetic
-gap: dashboard unhalt does NOT stamp state.json `last_actor` (stale stand-down label survives) —
-1-line fix candidate in dashboard/server/control.py. Verify freshly before relying on this.
+Last touched: 2026-07-04T14:35Z by Claude (offline continual-learning loop built; no state.json
+write; risk_monitor GREEN at close — note: it currently reports `halted=True` globally + all
+lanes, differing from the 07-03T20:15Z entry below which recorded UNHALTED — re-verify state.json
+fresh, don't trust either snapshot).
+
+## Closed-trade feedback loop fixed + market-closed continual-learning batch (2026-07-04, research/infra task)
+
+Root cause found (NOT what the task brief assumed — corrected via direct disk read, honesty
+protocol): the journal is NOT stale since mid-May in the "nothing writes to it" sense — it's
+being written constantly. The break is a **dead-write collision between two independent
+writers on the same `outcome` field**. `OutcomeBackfill._apply_closure` (src/scanner/automation/
+outcome_backfill.py, US-605, 2026-04-25) and `TrendJournalSync` both stamp `entry["outcome"]`
+(plain string) at boot/backfill time; `sync_closed_trades_rl`'s only "is this trade pending
+RL-scoring?" check is `outcome is None`. Once either writer stamps ANY value, the entry looks
+"already handled" and the real weight-updater (`ScannerAgentTeam.update_weights_from_outcome`)
+never runs on it. Confirmed empirically: last trade to ever pass through the real path was
+trade_id 1261, closed 2026-04-16 — every subsequent close (185/208 journal entries) has a
+string outcome and zero agent-weight scoring. This exact defect was independently surfaced 3x
+before (obs 1967 on 2026-05-12, 14959+15342 on 2026-07-02/03) and never fixed until now.
+**Correction to the task's own premise**: `trained_data/retrain_requests/` markers ARE
+unconsumed (12 piled up, confirmed) but `rl_position_sizer.zip`/`agent_weights.json` were NOT
+8+ days stale — they were touched 2026-07-02 by an ad-hoc smoke run (120 samples, 256
+timesteps), not the missing consumer. Both facts matter; only the marker-drain part of the
+brief was accurate.
+
+**Fix (item 1)**: `ExecutionManager.apply_pending_rl_weight_updates` (execution.py:5816) —
+outcome-shape-agnostic (handles both the string and dict shapes), tracks its own
+`rl_weights_applied` flag so it's idempotent and safe to call from both the live loop
+(wired into `embedded_scanner.py._run_smart_loop`) and the offline batch job without
+double-scoring. `sync_closed_trades_rl` also now sets the flag itself so the two never race.
+Also fixed an adjacent pre-existing crash (`win_rate_by_pair` AttributeError on string-shaped
+outcomes) found while in the same code — same schema-split root cause, one-line guard.
+
+**New (items 2-5)**: `scripts/offline_learning_cycle.py` — market-closed batch job (FX-weekend
+heuristic, `--force` for manual runs) that drains `retrain_requests/` markers (atomic move to
+`_processed/`, never deleted) and walk-forward-gates an update to a NEW
+`src/training/incremental/risk_calibration_learner.py` — a hand-rolled online (River-style,
+`learn_one`/`predict_proba_one`) logistic regression scoped to RISK/EXECUTION/CALIBRATION
+features ONLY (`ALLOWED_FEATURE_KEYS` whitelist: confidence, regime one-hot, rr_ratio, sl/tp
+pips, mae/mfe, lane — enforced by `raise ValueError`, not `assert`, so it survives `-O`).
+Deliberately NOT the `river` package (no new dependency) and deliberately NOT touching the
+15-agent directional weights — per operator scope: don't re-fit a no-edge directional signal.
+Gate: promote only if candidate's Brier score beats the incumbent's on a chronologically-later
+holdout by a margin; `size_multiplier()` is capped `[0.5, 1.0]` at the algorithm level (can
+only ask for LESS risk, never more) with an explicit NaN/inf guard (a real fragility a code
+reviewer caught: `min(1.0, nan)==1.0` in Python is argument-order luck, not a designed
+safeguard — now explicit). AXIOM: `/api/learning_loop` + `LearningLoopPanel.tsx` (Automation
+tab). launchd: `com.buddy.learning_loop.plist` added to `scripts/axiom_launchd/` but
+**deliberately kept OUT of `load.sh`'s LABELS array** (security reviewer's finding: bundling
+it would silently auto-install on the next routine reload of the other 4 live daemons) —
+README documents a separate explicit `launchctl bootstrap` activation step; **NOT loaded/
+installed this session**.
+
+**Verification**: 15 new tests (backfill sync idempotency + trend-lane exclusion + dict/string
+outcome handling; learner feature whitelist + NaN safety + state round-trip; batch job market-
+closed gating + marker drain + reproduce-then-resolve gate-rejects-worse-candidate +
+gate-accepts-better-candidate + never-touches-halt-state, verified byte-identical fixture file;
+AXIOM readout honest-empty-state), all green. Independent Code Reviewer + Security Engineer
+(parallel, no shared context): both PASS. 2 real findings fixed (NaN clamp, assert→raise);
+1 MEDIUM process-hygiene finding fixed (load.sh auto-enrollment, reverted). flake8 clean on
+every new/changed file. `risk_monitor.sh` GREEN throughout.
+
+**Near-miss during the session (logged for /evolve → LESSONS)**: ran `git stash` /
+`git stash pop` mid-session purely to A/B-test whether a pre-existing test failure predated my
+changes. The pop conflicted on `.claude/self_heal_action_budget.json` /
+`self_heal_debounce.json` because the LIVE `com.buddy.tier7` daemon wrote fresh self-heal
+activity (a real `reduce_risk_per_trade_pct` action, 2026-07-04T14:25:02Z) to those files
+*while the stash was active* — the stash was kept, not dropped, and briefly ALL uncommitted
+work (mine + everything else in the working tree) existed only inside `stash@{0}`. Recovered
+cleanly (saved the live daemon's fresher runtime-state files aside, reset just those 2 to HEAD,
+popped clean, restored the live files over the stale popped ones) — no data lost, but this
+should never have been the tool for the job: `git show HEAD:<path>` or a scratch copy answers
+"did this predate me" without touching the shared working tree of a repo with live daemons
+writing to tracked files.
+
+Nothing in this session touched `.claude/state.json`, OANDA order endpoints, `oanda_environment`,
+or any ARM path. Uncommitted as of this note — see turn-end report for the commit decision.
 
 ## Approved items SHIPPED — learning loop closed (2026-07-03T19:30-20:15Z, operator: "Approved on all accounts")
 
@@ -29,9 +100,18 @@ Commit `4f808d8` (pushed; separate verifier PASS at live-trading bar).
 - **Rode along (attributed)**: concurrent handover session's supervisor singleton flock
   (launchd+nohup double-writer fix; verifier: correct, released-before-execv, denied instance
   exits clean). Supervisor now launchd-managed (PID 88167); trend lane PID 14533 on current code.
-- **Follow-up chips**: task_4078c99d — TUI `_reload_config_now` consumes adjustments to memory
-  only (those are still restart-lost; route through overlay). Known interactive-only clobber:
-  config_screen profile re-apply overrides overlay values until next restart.
+- **Follow-up chip RESOLVED 2026-07-03T20:45Z**: TUI `_reload_config_now`
+  (src/tui/embedded_scanner.py:954) was raw-applying adjustments to memory only
+  (restart-lost). Fixed: now calls `consume_approved_adjustments(root)` +
+  `apply_overlay(config, root)`, same durable path as the headless supervisor.
+  4 no-mock regression tests (`tests/test_embedded_scanner_reload_overlay_2026_07_03.py`)
+  prove durable-write + simulated-restart survival; independent Code Reviewer PASS
+  (confirmed PROTECTED_FIELDS/oanda_environment untouched at all 3 guard layers,
+  the every-cycle raw-apply block's `old_value==new_value` short-circuit prevents
+  drift, and the applied_ids RMW race is genuinely benign same-value double-write
+  — reproduced directly, no flock needed). Not yet committed. Known
+  interactive-only clobber remains: config_screen profile re-apply overrides
+  overlay values until next restart.
 
 ## Self-heal degraded-loop fix + P0 trio + P1 overlay (2026-07-03T05:15-15:00Z, operator: "patch him as if patching yourself")
 

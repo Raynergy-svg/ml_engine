@@ -402,6 +402,29 @@ export interface BrainLoop {
   source: Record<string, string>;
 }
 
+// GET /api/learning_loop — market-closed continual-learning readout. Backing
+// job scripts/offline_learning_cycle.py drains Tier-7 retrain_requests
+// markers and walk-forward-gates a risk/calibration model update
+// (never directional alpha — see src/training/incremental/risk_calibration_learner.py).
+export interface LearningLoopCycle {
+  timestamp?: string;
+  markers_drained?: number;
+  new_outcomes?: number;
+  decision: string; // "accepted" | "rejected" | "no_new_data"
+  incumbent_brier?: number | null;
+  candidate_brier?: number | null;
+  max_size_multiplier?: number | null;
+  summary?: string;
+}
+export interface LearningLoop {
+  has_run: boolean;
+  pending_retrain_markers: number;
+  last_cycle: LearningLoopCycle | null;
+  recent_cycles: LearningLoopCycle[];
+  scope: string;
+  source: Record<string, string>;
+}
+
 // GET /api/crypto_momentum — crypto XS-momentum SHADOW lane (no live path exists;
 // this signal FAILED the ship gate on significance — see docs/experiment-crypto-
 // edge-hunt-round2-2026-06-29.md — the panel exists to show the accumulating

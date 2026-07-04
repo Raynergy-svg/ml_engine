@@ -1910,16 +1910,25 @@ class ContinuousScanner:
     def _run_smart_loop(self) -> None:
         """Run the smart trading loop: monitor, guardian, RL sync, learning, adaptation."""
         # US-502: halted hard-stop — skip entire cycle when state flag is set
+        #
+        # 2026-07-02 (operator decision): fail-CLOSED, matching execute_trade/
+        # close_trade/embedded_scanner's pre-cycle check. A broken/unreadable
+        # halt check must never let a cycle proceed silently — it skips the
+        # cycle instead. Uses get_halted_strict() (see StateEngine docstring).
         try:
             from src.scanner.automation.state_engine import StateEngine
-            from src.scanner.automation.event_bus import get_event_bus
-            _se = StateEngine()
-            if _se.get_halted(lane="oanda_fx"):
-                logger.warning("SCANNER HALTED — skipping scan cycle")
-                get_event_bus().publish("control.kill", {"source": "_run_smart_loop", "reason": "halted"})
-                return
+            _halted = StateEngine().get_halted_strict(lane="oanda_fx")
         except Exception as _halt_err:
-            logger.debug("Halted check error (non-blocking): %s", _halt_err)
+            logger.error("Halted check FAILED (%s) — fail-closed, skipping cycle", _halt_err)
+            _halted = True
+        if _halted:
+            logger.warning("SCANNER HALTED — skipping scan cycle")
+            try:
+                from src.scanner.automation.event_bus import get_event_bus
+                get_event_bus().publish("control.kill", {"source": "_run_smart_loop", "reason": "halted"})
+            except Exception as _bus_err:
+                logger.debug("event_bus publish failed (non-blocking): %s", _bus_err)
+            return
 
         try:
             from src.scanner.execution import ExecutionManager

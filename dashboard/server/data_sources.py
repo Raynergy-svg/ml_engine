@@ -827,6 +827,48 @@ def read_track_b() -> Dict[str, Any]:
     }
 
 
+_LEARNING_LOOP_HISTORY_PATH = REPO_ROOT / "trained_data" / "learning_loop" / "history.jsonl"
+_LEARNING_LOOP_STATUS_PATH = CLAUDE_DIR / "brain" / "learning_loop_status.json"
+_LEARNING_LOOP_RETRAIN_REQUESTS_DIR = REPO_ROOT / "trained_data" / "retrain_requests"
+
+
+def read_learning_loop() -> Dict[str, Any]:
+    """Market-closed continual-learning readout: last offline retrain cycle
+    (accepted/rejected, calibration metric before/after), pending Tier-7
+    retrain markers awaiting the next cycle, and recent history.
+
+    Backing job: ``scripts/offline_learning_cycle.py`` — drains
+    ``trained_data/retrain_requests/`` markers and walk-forward-gates a
+    ``RiskCalibrationLearner`` update (risk/execution/calibration scope
+    only, never directional-alpha; see risk_calibration_learner.py). This
+    panel is read-only and cannot trigger a cycle — it only reports what the
+    scheduled job already did.
+
+    Read-only, real data, no fabrication: no history file yet (job has never
+    run) renders as an honest zero-cycle state, not a fabricated result.
+    """
+    status = _read_json(_LEARNING_LOOP_STATUS_PATH, {})
+    history_rows = list(_iter_jsonl(_LEARNING_LOOP_HISTORY_PATH))
+    pending_markers = 0
+    if _LEARNING_LOOP_RETRAIN_REQUESTS_DIR.exists():
+        pending_markers = len(list(_LEARNING_LOOP_RETRAIN_REQUESTS_DIR.glob("*.json")))
+
+    return {
+        "has_run": bool(history_rows),
+        "pending_retrain_markers": pending_markers,
+        "last_cycle": status or (history_rows[-1] if history_rows else None),
+        "recent_cycles": list(reversed(history_rows[-20:])),
+        "scope": "risk/execution/calibration only (position sizing, confidence "
+                 "calibration) — never directional alpha",
+        "source": {
+            "history": "trained_data/learning_loop/history.jsonl",
+            "status": ".claude/brain/learning_loop_status.json",
+            "retrain_requests": "trained_data/retrain_requests/",
+            "batch_job": "scripts/offline_learning_cycle.py",
+        },
+    }
+
+
 def read_tier7() -> Dict[str, Any]:
     """Tier 7 autonomous-loop status — fail-soft passthrough of the bot's snapshot.
 

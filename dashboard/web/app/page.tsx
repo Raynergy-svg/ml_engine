@@ -19,6 +19,7 @@ import { EquityHarvesterPanel } from "@/components/EquityHarvesterPanel";
 import { CryptoMomentumPanel } from "@/components/CryptoMomentumPanel";
 import { TrackBPanel } from "@/components/TrackBPanel";
 import { BrainLoopPanel } from "@/components/BrainLoopPanel";
+import { LearningLoopPanel } from "@/components/LearningLoopPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
 import { FullscreenIcon, ChartTypeIcon, PanelSplitIcon, FitArrowsIcon, ChevronDown, CheckCircleSolid } from "@/components/icons";
 import { usePoll } from "@/lib/api";
@@ -264,6 +265,7 @@ function DashboardBody() {
           <>
             <ControlPanel />
             <BrainLoopPanel />
+            <LearningLoopPanel />
           </>
         )}
         {tab === "Settings" && <ControlPanel />}

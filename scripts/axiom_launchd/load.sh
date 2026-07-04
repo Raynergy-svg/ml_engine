@@ -8,6 +8,14 @@
 #   com.buddy.trend — OANDA daily-trend loop            (PRACTICE; respects halt)
 #   com.buddy.tier7 — Tier 7 bounded self-heal loop     (respects halt + practice pin)
 #
+# NOTE: com.buddy.learning_loop.plist (market-closed continual-learning batch,
+# scripts/offline_learning_cycle.py) is deliberately NOT in this script's
+# LABELS list. It is a scheduled batch job, not a resident daemon — bundling
+# it here would mean every routine reload of the four services above also
+# silently installs/enables it. Activate it as an explicit, separate step
+# (see README.md "Enabling the learning-loop schedule") once you've decided
+# you want it resident-scheduled.
+#
 # SAFETY INVARIANT (see README.md): KeepAlive restores the operator's LAST state only.
 # The trading loops re-check state.json halt + the practice pin EVERY cycle, so a
 # respawn NEVER trades while halted and NEVER flips off practice. KeepAlive is process

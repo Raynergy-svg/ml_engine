@@ -84,11 +84,11 @@ def test_close_trade_proceeds_when_not_halted(tmp_path: Path, monkeypatch: pytes
     assert "halted" not in result["error"].lower()
 
 
-def test_close_trade_halt_check_does_not_raise_when_state_unreadable(
+def test_close_trade_halt_check_blocks_when_state_unreadable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Defensive: a corrupt state.json must NOT make the close guard raise; it proceeds (matches
-    execute_trade's guard)."""
+    """2026-07-02 (operator decision): fail-CLOSED, matching execute_trade. A corrupt state.json
+    must BLOCK an autonomous close, not silently permit it. Never raises out of the guard."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".claude").mkdir()
     (tmp_path / ".claude" / "state.json").write_text("{not valid json")
@@ -96,7 +96,7 @@ def test_close_trade_halt_check_does_not_raise_when_state_unreadable(
     monkeypatch.setenv("OANDA_API_URL", "http://127.0.0.1:1")
 
     mgr = ExecutionManager(config=ExecutionConfig())
-    result = _close(mgr)  # load_state catches the JSON error -> halted=False default -> proceeds
+    result = _close(mgr)  # get_halted_strict() reads the file directly -> unreadable -> fail-closed
 
-    assert result["error"] != _BLOCKED
-    assert "halted" not in result["error"].lower()
+    assert result["success"] is False
+    assert result["error"] == _BLOCKED

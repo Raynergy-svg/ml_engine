@@ -36,6 +36,83 @@ def test_set_get_halted_false(tmp_state: Path) -> None:
     assert engine.get_halted() is False
 
 
+# ── get_halted_strict (fail-closed, 2026-07-02 operator decision) ────
+
+def test_get_halted_strict_requires_a_lane(tmp_state: Path) -> None:
+    engine = StateEngine(state_path=tmp_state)
+    with pytest.raises(ValueError):
+        engine.get_halted_strict()
+
+
+def test_get_halted_strict_rejects_unknown_lane(tmp_state: Path) -> None:
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    with pytest.raises(ValueError):
+        engine.get_halted_strict(lane="not_a_real_lane")
+
+
+def test_get_halted_strict_missing_file_fails_closed(tmp_state: Path) -> None:
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert not tmp_state.exists()
+    assert engine.get_halted_strict() is True
+
+
+def test_get_halted_strict_corrupt_json_fails_closed(tmp_state: Path) -> None:
+    tmp_state.write_text("{not valid json")
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict() is True
+
+
+def test_get_halted_strict_non_dict_payload_fails_closed(tmp_state: Path) -> None:
+    tmp_state.write_text(json.dumps([1, 2, 3]))
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict() is True
+
+
+def test_get_halted_strict_missing_halted_lanes_fails_closed(tmp_state: Path) -> None:
+    tmp_state.write_text(json.dumps({"halted": False}))
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict() is True
+
+
+def test_get_halted_strict_missing_lane_entry_fails_closed(tmp_state: Path) -> None:
+    tmp_state.write_text(json.dumps({"halted": False, "halted_lanes": {"equity": False}}))
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict() is True
+
+
+def test_get_halted_strict_non_bool_lane_entry_fails_closed(tmp_state: Path) -> None:
+    tmp_state.write_text(json.dumps({"halted": False, "halted_lanes": {"oanda_fx": "nope"}}))
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict() is True
+
+
+def test_get_halted_strict_explicit_false_is_not_halted(tmp_state: Path) -> None:
+    tmp_state.write_text(json.dumps({"halted": False, "halted_lanes": {"oanda_fx": False}}))
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict() is False
+
+
+def test_get_halted_strict_explicit_true_is_halted(tmp_state: Path) -> None:
+    tmp_state.write_text(json.dumps({"halted": False, "halted_lanes": {"oanda_fx": True}}))
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict() is True
+
+
+def test_get_halted_strict_global_halt_overrides_lane_false(tmp_state: Path) -> None:
+    tmp_state.write_text(json.dumps({"halted": True, "halted_lanes": {"oanda_fx": False}}))
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict() is True
+
+
+def test_get_halted_strict_explicit_lane_arg_overrides_bound_lane(tmp_state: Path) -> None:
+    tmp_state.write_text(json.dumps({
+        "halted": False,
+        "halted_lanes": {"oanda_fx": True, "equity": False},
+    }))
+    engine = StateEngine(state_path=tmp_state, lane="oanda_fx")
+    assert engine.get_halted_strict(lane="equity") is False
+
+
 # ── get / set paused ─────────────────────────────────────────────────
 
 def test_get_paused_default(tmp_state: Path) -> None:

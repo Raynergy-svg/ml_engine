@@ -13,9 +13,16 @@ import pytest
 # ── helpers ──────────────────────────────────────────────────────────
 
 def _mock_state_engine(halted=False, paused=False, mode="dry_run"):
-    """Return a MagicMock StateEngine with the given flag values."""
+    """Return a MagicMock StateEngine with the given flag values.
+
+    Sets both get_halted() and get_halted_strict() to the same value —
+    _run_smart_loop's pre-cycle gate switched to the fail-closed
+    get_halted_strict() on 2026-07-02 (operator decision), while other
+    callers may still use get_halted().
+    """
     se = MagicMock()
     se.get_halted.return_value = halted
+    se.get_halted_strict.return_value = halted
     se.get_paused.return_value = paused
     se.get_mode.return_value = mode
     return se

@@ -2087,23 +2087,31 @@ class ExecutionManager:
         # BEFORE the cycle starts, but a halt set MID-cycle (the common case
         # when auto_halt_loss_streak or AlertManager fires during scanning)
         # was being bypassed — see trade 1306 (2026-05-12T20:39 UTC, opened
-        # while halted=True). Read-only check; never raises out of this guard.
+        # while halted=True). Read-only check.
+        #
+        # 2026-07-02 (operator decision): fail-CLOSED, not fail-open. This is
+        # the last guard before an OANDA order fires, so a broken/unreadable
+        # halt check must never be interpreted as "not halted" — it blocks,
+        # same as an explicit halted_lanes entry. Uses get_halted_strict()
+        # (see StateEngine docstring) instead of the fail-open get_halted().
         try:
             from src.scanner.automation.state_engine import StateEngine
-            if StateEngine(lane="oanda_fx").get_halted():
-                logger.warning(
-                    "execute_trade BLOCKED — state.halted=True (mid-cycle re-check); pair=%s",
-                    pair,
-                )
-                return ExecutionResult(
-                    success=False,
-                    error="BLOCKED: state.halted=True",
-                )
+            _halted = StateEngine(lane="oanda_fx").get_halted_strict()
         except Exception as _halt_exc:  # noqa: BLE001
-            # Halt-check should never block execution due to its own failure.
-            # Log and proceed; circuit breaker + submit_trade are still in place
-            # for callers that route through them.
-            logger.warning("execute_trade halt re-check failed (%s); proceeding", _halt_exc)
+            logger.error(
+                "execute_trade halt re-check FAILED (%s) — fail-closed, blocking; pair=%s",
+                _halt_exc, pair,
+            )
+            _halted = True
+        if _halted:
+            logger.warning(
+                "execute_trade BLOCKED — state.halted=True (mid-cycle re-check); pair=%s",
+                pair,
+            )
+            return ExecutionResult(
+                success=False,
+                error="BLOCKED: state.halted=True",
+            )
 
         # Phase 84 (US-P84-004): CircuitBreaker — reject if API is degraded
         _cb = getattr(self, "_api_circuit_breaker", None)
@@ -5319,8 +5327,17 @@ class ExecutionManager:
             logger.debug("US-178: Journal parse failed in sync_closed_trades_rl: %s", e)
             return {"trades_synced": 0, "weights_updated": False, "detail": f"journal parse error: {e}"}
 
-        # Find entries without outcomes
-        pending = [e for e in entries if e.get("outcome") is None]
+        # Find entries without outcomes. Trend-lane entries are explicitly
+        # rl_eligible=False (trend_journal_sync._build_open_entry docstring:
+        # "the explicit signal that sync_closed_trades_rl ... must skip this
+        # trade") and carry regime=None (bare, not a dict) — .get("regime",
+        # {}).get(...) below raises AttributeError on a None value (the
+        # dict.get default only applies when the key is ABSENT). Scanner-lane
+        # entries never set this key, so the default keeps them included.
+        pending = [
+            e for e in entries
+            if e.get("outcome") is None and e.get("rl_eligible", True)
+        ]
         if not pending:
             return {"trades_synced": 0, "weights_updated": False, "detail": "no pending trades"}
 
@@ -5518,6 +5535,9 @@ class ExecutionManager:
                     # US-515: trade id carried through so sync_rl_weights can tag snapshot rows
                     "trade_id": tid,
                 })
+                # 2026-07-04: mark scored so apply_pending_rl_weight_updates()
+                # (the backfilled-outcome sweep) never double-applies this trade.
+                entry["rl_weights_applied"] = True
 
         # Tier 7: Expectancy, PairTracker, Attribution, DriftDetector, FeatureHealth,
         # ClusterAnalyzer, WalkForward, Tranche, AdaptiveRR, AdaptiveSizer
@@ -5791,6 +5811,130 @@ class ExecutionManager:
             "new_weights": new_weights,
             "detail": f"synced {synced} trades, {len(rl_updates)} RL updates",
             "tier7_dispatched": _t7_dispatched,
+        }
+
+    def apply_pending_rl_weight_updates(self, scanner: Any = None) -> Dict[str, Any]:
+        """Score journal entries whose outcome was resolved by a writer OTHER
+        than ``sync_closed_trades_rl`` (i.e. ``OutcomeBackfill`` or
+        ``TrendJournalSync``) but never fed into agent-weight learning.
+
+        Root cause (2026-07-04): ``sync_closed_trades_rl``'s pending filter
+        is ``entry.get("outcome") is None``. ``OutcomeBackfill._apply_closure``
+        (src/scanner/automation/outcome_backfill.py) stamps a plain string
+        outcome directly onto the journal at boot, independent of
+        ``sync_closed_trades_rl``. Once that happens, the entry looks
+        "already handled" and ``sync_closed_trades_rl`` never scores it — the
+        last live trade that ever passed through the real weight-update path
+        was trade_id 1261 (2026-04-16). This method is outcome-shape-agnostic
+        (handles both the plain string shape and the dict shape
+        ``sync_closed_trades_rl`` itself writes) and tracks its own
+        ``rl_weights_applied`` flag, so it is idempotent and safe to call from
+        both the live per-cycle loop and an offline batch job without
+        double-scoring a trade.
+
+        Never touches OANDA, never places or closes a trade, never reads or
+        writes halt/arm state — pure journal-in, weights-out.
+        """
+        import json
+        from pathlib import Path
+
+        journal_path = Path("trained_data/trade_journal_rl.json")
+        if not journal_path.exists():
+            return {"applied": 0, "weights_updated": False, "detail": "no journal"}
+
+        try:
+            entries = json.loads(journal_path.read_text())
+        except Exception as e:
+            logger.debug("apply_pending_rl_weight_updates: journal parse failed: %s", e)
+            return {"applied": 0, "weights_updated": False, "detail": f"journal parse error: {e}"}
+
+        if not isinstance(entries, list):
+            return {"applied": 0, "weights_updated": False, "detail": "journal not a list"}
+
+        candidates = []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            if e.get("outcome") is None:
+                continue
+            if not e.get("rl_eligible", True):
+                continue
+            if e.get("rl_weights_applied"):
+                continue
+            agents_field = e.get("agents")
+            if not isinstance(agents_field, dict) or not agents_field.get("agent_reasons"):
+                continue
+            candidates.append(e)
+
+        if not candidates:
+            return {"applied": 0, "weights_updated": False, "detail": "no pending backfilled outcomes"}
+
+        try:
+            from src.scanner.agents import ScannerAgentTeam
+            _rl_config = getattr(scanner, "config", None) if scanner is not None else None
+            if _rl_config is None:
+                from src.scanner.config import ScannerConfig
+                _rl_config = ScannerConfig()
+            agent_team = ScannerAgentTeam(config=_rl_config)
+        except Exception as e:
+            logger.warning("apply_pending_rl_weight_updates: agent team init failed: %s", e)
+            return {"applied": 0, "weights_updated": False, "detail": f"agent team init failed: {e}"}
+
+        applied = 0
+        for entry in candidates:
+            outcome = entry.get("outcome")
+            if isinstance(outcome, dict):
+                trade_won = bool(outcome.get("trade_won", False))
+                pnl_raw = outcome.get("realized_pl", 0.0)
+            else:
+                trade_won = str(outcome).strip().lower() == "win"
+                pnl_raw = entry.get("realized_pl", 0.0)
+            try:
+                pnl = float(pnl_raw or 0.0)
+            except (TypeError, ValueError):
+                pnl = 0.0
+
+            regime_field = entry.get("regime")
+            regime = regime_field.get("volatility_regime") if isinstance(regime_field, dict) else None
+            regime = regime or "NORMAL"
+
+            agent_verdicts = entry["agents"]["agent_reasons"]
+            try:
+                _before = dict(agent_team._learned_weights.get("_global", agent_team._BASE_WEIGHTS))
+                new_weights = agent_team.update_weights_from_outcome(
+                    agent_verdicts=agent_verdicts,
+                    trade_won=trade_won,
+                    regime=regime,
+                )
+                try:
+                    self.sync_rl_weights(
+                        weights_before=_before,
+                        weights_after=new_weights,
+                        trade_id=str(entry.get("trade_id", "")),
+                        pnl=pnl,
+                        reason="trade_closed_win" if trade_won else "trade_closed_loss",
+                    )
+                except Exception as _wh_err:
+                    logger.debug("apply_pending_rl_weight_updates: weight_history append skipped: %s", _wh_err)
+                entry["rl_weights_applied"] = True
+                applied += 1
+            except Exception as e:
+                logger.warning(
+                    "apply_pending_rl_weight_updates: weight update failed for trade %s: %s",
+                    entry.get("trade_id"), e,
+                )
+
+        if applied:
+            try:
+                from src.scanner.automation.safe_json import safe_json_write
+                safe_json_write(journal_path, entries)
+            except ImportError:
+                journal_path.write_text(json.dumps(entries, indent=2, default=str))
+
+        return {
+            "applied": applied,
+            "weights_updated": applied > 0,
+            "detail": f"{applied} backfilled outcome(s) scored",
         }
 
     def _fetch_oanda_trade_snapshots(
@@ -6132,7 +6276,10 @@ class ExecutionManager:
                 continue
             pair = e.get("pair", "UNKNOWN")
             total[pair] += 1
-            if outcome.get("trade_won"):
+            # Trend-lane/backfilled entries store outcome as a plain "win"/"loss"
+            # string; scanner-lane entries store a dict with a trade_won key.
+            won = outcome.get("trade_won") if isinstance(outcome, dict) else str(outcome).strip().lower() == "win"
+            if won:
                 wins[pair] += 1
 
         return {
@@ -6488,26 +6635,33 @@ class ExecutionManager:
         # guard (~2093). A halt means "no new exposure"; a close is risk-REDUCING, so an EXPLICIT
         # operator-initiated close may pass via operator_override=True (e.g. the TUI's halt-aware
         # confirm). AUTONOMOUS/programmatic closes (default operator_override=False) are BLOCKED while
-        # halted — fail-closed; the operator can also use the sanctioned unhalt-then-close flow. This
-        # can only make close MORE restrictive, never less. Read-only; never raises out of the guard.
+        # halted. This can only make close MORE restrictive, never less.
+        #
+        # 2026-07-02 (operator decision): fail-CLOSED, matching execute_trade. A broken/unreadable
+        # halt check blocks the autonomous close rather than silently permitting it; an explicit
+        # operator_override=True still bypasses the guard entirely regardless.
         if not operator_override:
             try:
                 from src.scanner.automation.state_engine import StateEngine
-                if StateEngine(lane="oanda_fx").get_halted():
-                    logger.warning(
-                        "close_trade BLOCKED — state.halted=True (autonomous close); trade_id=%s "
-                        "(operator may pass operator_override=True after explicit confirm, or "
-                        "unhalt-then-close)",
-                        trade_id,
-                    )
-                    return {
-                        "success": False,
-                        "trade_id": trade_id,
-                        "error": "BLOCKED: state.halted=True",
-                    }
+                _halted = StateEngine(lane="oanda_fx").get_halted_strict()
             except Exception as _halt_exc:  # noqa: BLE001
-                # Halt-check must never block a close due to its own failure (matches execute_trade).
-                logger.warning("close_trade halt re-check failed (%s); proceeding", _halt_exc)
+                logger.error(
+                    "close_trade halt re-check FAILED (%s) — fail-closed, blocking; trade_id=%s",
+                    _halt_exc, trade_id,
+                )
+                _halted = True
+            if _halted:
+                logger.warning(
+                    "close_trade BLOCKED — state.halted=True (autonomous close); trade_id=%s "
+                    "(operator may pass operator_override=True after explicit confirm, or "
+                    "unhalt-then-close)",
+                    trade_id,
+                )
+                return {
+                    "success": False,
+                    "trade_id": trade_id,
+                    "error": "BLOCKED: state.halted=True",
+                }
 
         import json
         import random

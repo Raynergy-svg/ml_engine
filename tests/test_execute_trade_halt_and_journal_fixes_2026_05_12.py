@@ -148,25 +148,24 @@ def test_execute_trade_blocks_when_halted(
     assert "halted" in (result.error or "").lower()
 
 
-def test_execute_trade_halt_check_does_not_raise_when_state_unreadable(
+def test_execute_trade_halt_check_blocks_when_state_unreadable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Defensive: if the halt-check itself fails (corrupt state.json, missing
-    StateEngine module, etc.), execute_trade must NOT raise out of the guard.
-    It logs and proceeds — the circuit breaker downstream still catches obvious
-    failures.
+    """2026-07-02 (operator decision): fail-CLOSED. This is the last guard
+    before an OANDA order fires, so a corrupt/unreadable state.json must
+    BLOCK the trade, not silently permit it. Never raises out of the guard
+    either way — it always resolves cleanly to blocked or not-blocked.
     """
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".claude").mkdir()
-    # Write corrupt state.json — load_state catches JSON errors and returns
-    # _DEFAULT_STATE (halted=False), so this exercises the no-halt path.
+    # Corrupt state.json — get_halted_strict() reads the file directly (not
+    # via load_state()'s error-swallowing default) and fails closed on any
+    # unreadable/malformed payload.
     (tmp_path / ".claude" / "state.json").write_text("{not valid json")
     (tmp_path / "trained_data").mkdir()
 
     mgr = ExecutionManager(config=ExecutionConfig())
 
-    # Should NOT raise out of the halt guard. May still fail downstream
-    # because there's no broker — but the failure must not be the halt guard.
     result = mgr.execute_trade(
         pair="EUR_USD",
         direction="LONG",
@@ -174,9 +173,8 @@ def test_execute_trade_halt_check_does_not_raise_when_state_unreadable(
         current_price=1.0800,
         atr=0.0010,
     )
-    # The halt guard is non-raising — either trade proceeds past it (and
-    # fails for a different reason downstream), or returns a non-halt error.
-    assert "halted" not in (result.error or "").lower()
+    assert result.success is False
+    assert result.error == "BLOCKED: state.halted=True"
 
 
 def test_execute_trade_proceeds_past_halt_guard_when_not_halted(
