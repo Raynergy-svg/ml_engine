@@ -129,7 +129,8 @@ def wf_lesson(lid: str, title: str) -> str:
 
 # ---- tests --------------------------------------------------------------------------------------
 
-def test_risk_monitor(tmp: Path):
+def test_risk_monitor(tmp_path: Path):
+    tmp = tmp_path
     print("\n[risk_monitor.sh]")
     good = build_repo(tmp / "rm_good")
     r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(good)})
@@ -195,7 +196,8 @@ def test_risk_monitor(tmp: Path):
           all(f"{lane}_halted=True" in r.stdout for lane in ("oanda_fx", "equity", "brain", "crypto_momentum", "track_b")), r.stdout)
 
 
-def test_verify_gate(tmp: Path):
+def test_verify_gate(tmp_path: Path):
+    tmp = tmp_path
     print("\n[verify_gate.py]")
     good = build_repo(tmp / "vg_good")
     r = run([sys.executable, str(VERIFY), "--repo", str(good), "--out", str(tmp / "vg_good/v.json")])
@@ -388,7 +390,8 @@ def test_verify_gate(tmp: Path):
     check("tampered test-suite FAILs gate (suite hash-pinned)", r.returncode == 2 and sc.get("ok") is False, sc)
 
 
-def test_loop_gate(tmp: Path):
+def test_loop_gate(tmp_path: Path):
+    tmp = tmp_path
     print("\n[loop_gate.py]  (objective signals: open_questions from questions.json; facts/lessons from deltas)")
     repo = build_repo(tmp / "lg")
     qpath = tmp / "lg_questions.json"
@@ -542,7 +545,8 @@ def test_loop_gate(tmp: Path):
     check("tests recompute catches a faked tests_passed -> HALT", r.returncode == 2, r.stdout)
 
 
-def test_record_cycle(tmp: Path):
+def test_record_cycle(tmp_path: Path):
+    tmp = tmp_path
     print("\n[record_cycle.py]  (objective measurement -> state.json -> loop_gate)")
     repo = build_repo(tmp / "rc", open_qs=0)
     (repo / ".claude/LESSONS.md").write_text("# Lessons\n" + wf_lesson("L-001", "alpha") + wf_lesson("L-002", "beta"))
@@ -565,7 +569,8 @@ def test_record_cycle(tmp: Path):
           out["decision"] == "CONTINUE", out)
 
 
-def test_stop_gate(tmp: Path):
+def test_stop_gate(tmp_path: Path):
+    tmp = tmp_path
     print("\n[stop_gate.sh]")
     good = build_repo(tmp / "sg_good")
     r = run(["bash", str(STOP)], env_extra={"RISK_MONITOR_REPO": str(good)}, stdin="{}")
@@ -582,7 +587,8 @@ def test_stop_gate(tmp: Path):
     check("loop guard: exit 0 when stop_hook_active (no trap)", r.returncode == 0, f"rc={r.returncode}")
 
 
-def test_record_verdict(tmp: Path):
+def test_record_verdict(tmp_path: Path):
+    tmp = tmp_path
     print("\n[record_verdict.py + loop_gate fresh-verdict gate]")
     repo = build_repo(tmp / "rv", open_qs=0)
     qp = repo / ".claude/loop/questions.json"
@@ -609,7 +615,8 @@ def test_record_verdict(tmp: Path):
     check("stale verdict after a state change -> CONTINUE (re-verify required)", out["decision"] == "CONTINUE", out)
 
 
-def test_managed_wrapper(tmp: Path):
+def test_managed_wrapper(tmp_path: Path):
+    tmp = tmp_path
     print("\n[managed wrapper: ml_engine_gate_wrapper.run_gate (root-owned trust anchor)]")
     good = build_repo(tmp / "mw_good")
     code, msg = _wrapper.run_gate(good, {"cwd": str(good)})
@@ -644,7 +651,8 @@ def test_managed_wrapper(tmp: Path):
     check("BLOCK (2) on missing manifest (fail-closed)", code == 2)
 
 
-def test_managed_anchor(tmp: Path):
+def test_managed_anchor(tmp_path: Path):
+    tmp = tmp_path
     print("\n[managed anchor verifier: verify_managed_anchor.audit]")
 
     def write_anchor(name, *, wire=True, disable=False, readonly=True):
@@ -685,7 +693,8 @@ def test_managed_anchor(tmp: Path):
     check("OK: wired + not-user-writable + disableAllHooks:false", ok, probs)
 
 
-def test_no_live_flip_scope(tmp: Path):
+def test_no_live_flip_scope(tmp_path: Path):
+    tmp = tmp_path
     print("\n[verify_gate no_live_flip scope: docs/tests mentioning live strings don't false-trip]")
     repo = build_repo(tmp / "nlf")
     genv = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
