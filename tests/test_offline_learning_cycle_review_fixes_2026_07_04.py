@@ -22,6 +22,7 @@ no network.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -77,19 +78,21 @@ def _patch_paths(monkeypatch, tmp_path):
 
 
 # ── #1: runs by path without ModuleNotFoundError ──────────────────────────
-def test_script_runs_by_path_without_import_error():
+def test_script_runs_by_path_without_import_error(tmp_path):
     """The plist and docs invoke `python scripts/offline_learning_cycle.py`.
     That must not die at `import src.training...`. --force so it doesn't
-    early-return on market-open; it reads the real repo journal read-only-ish
-    (drains real markers into _processed, which is acceptable/reversible) —
-    we assert only that it EXITS 0 and prints a JSON result, i.e. imports
-    resolved."""
+    early-return on market-open. Runs under OLC_DATA_ROOT=tmp so it exercises
+    the real entrypoint in FULL isolation — never mutates the live journal /
+    markers / model state / cursor. We assert it EXITS 0 and prints a JSON
+    result, i.e. the run-by-path imports resolved (the #1 bug)."""
+    env = {**os.environ, "OLC_DATA_ROOT": str(tmp_path)}
     proc = subprocess.run(
         [sys.executable, "scripts/offline_learning_cycle.py", "--force"],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
         timeout=120,
+        env=env,
     )
     assert proc.returncode == 0, f"stderr:\n{proc.stderr}"
     assert "ModuleNotFoundError" not in proc.stderr

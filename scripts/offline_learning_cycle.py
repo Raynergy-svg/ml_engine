@@ -51,14 +51,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # not fix this. Insert the repo root explicitly. (Adversarial review 2026-07-04.)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-JOURNAL_PATH = ROOT / "trained_data" / "trade_journal_rl.json"
-RETRAIN_REQUESTS_DIR = ROOT / "trained_data" / "retrain_requests"
+
+# Data root. Defaults to the repo root (production). `OLC_DATA_ROOT` relocates
+# every read/write under a sandbox — used by the run-by-path smoke test so it
+# can exercise the real entrypoint WITHOUT mutating live journal / markers /
+# model state / cursor. (Added 2026-07-04 after a --force smoke run polluted
+# real state.)
+_DATA_ROOT = Path(os.environ.get("OLC_DATA_ROOT", str(ROOT)))
+JOURNAL_PATH = _DATA_ROOT / "trained_data" / "trade_journal_rl.json"
+RETRAIN_REQUESTS_DIR = _DATA_ROOT / "trained_data" / "retrain_requests"
 PROCESSED_DIR = RETRAIN_REQUESTS_DIR / "_processed"
-STATE_PATH = ROOT / "trained_data" / "models" / "risk_calibration_state.json"
-HISTORY_PATH = ROOT / "trained_data" / "learning_loop" / "history.jsonl"
-CURSOR_PATH = ROOT / ".claude" / "learning_loop_cursor.json"
-BRAIN_STATUS_PATH = ROOT / ".claude" / "brain" / "learning_loop_status.json"
-BRAIN_FEED_PATH = ROOT / ".claude" / "brain" / "feed.jsonl"
+STATE_PATH = _DATA_ROOT / "trained_data" / "models" / "risk_calibration_state.json"
+HISTORY_PATH = _DATA_ROOT / "trained_data" / "learning_loop" / "history.jsonl"
+CURSOR_PATH = _DATA_ROOT / ".claude" / "learning_loop_cursor.json"
+BRAIN_STATUS_PATH = _DATA_ROOT / ".claude" / "brain" / "learning_loop_status.json"
+BRAIN_FEED_PATH = _DATA_ROOT / ".claude" / "brain" / "feed.jsonl"
 
 MIN_HOLDOUT = 15
 PROMOTION_MARGIN = 0.005  # candidate must beat incumbent Brier score by this much
