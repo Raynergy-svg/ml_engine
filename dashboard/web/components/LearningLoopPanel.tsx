@@ -27,6 +27,9 @@ export function LearningLoopPanel() {
       <Card className="flex flex-col">
         <SectionTitle right={
           <span className="flex items-center gap-1.5">
+            <Badge color="#5a6677" dot>
+              {data.consumed_by_live_sizing ? "LIVE SIZING" : "SHADOW — advisory only"}
+            </Badge>
             <Badge color={data.pending_retrain_markers > 0 ? "#f5b14c" : "#2bd17e"} dot>
               {data.pending_retrain_markers} MARKER{data.pending_retrain_markers === 1 ? "" : "S"} PENDING
             </Badge>

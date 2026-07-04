@@ -21,6 +21,8 @@ def test_read_learning_loop_honest_empty_state_when_never_run(tmp_path, monkeypa
     assert result["recent_cycles"] == []
     assert result["pending_retrain_markers"] == 0
     assert "directional" in result["scope"]
+    # Honest shadow disclosure: nothing consumes the model in live sizing yet.
+    assert result["consumed_by_live_sizing"] is False
 
 
 def test_read_learning_loop_surfaces_pending_markers_and_last_cycle(tmp_path, monkeypatch):

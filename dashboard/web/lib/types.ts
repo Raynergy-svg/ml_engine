@@ -422,6 +422,8 @@ export interface LearningLoop {
   last_cycle: LearningLoopCycle | null;
   recent_cycles: LearningLoopCycle[];
   scope: string;
+  // SHADOW/advisory: no live sizing path consumes the learned model yet.
+  consumed_by_live_sizing: boolean;
   source: Record<string, string>;
 }
 

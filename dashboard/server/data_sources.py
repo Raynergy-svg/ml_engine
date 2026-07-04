@@ -860,6 +860,12 @@ def read_learning_loop() -> Dict[str, Any]:
         "recent_cycles": list(reversed(history_rows[-20:])),
         "scope": "risk/execution/calibration only (position sizing, confidence "
                  "calibration) — never directional alpha",
+        # Honest disclosure (adversarial review 2026-07-04): the learned
+        # size_multiplier is SHADOW/advisory — no live sizing path
+        # (DynamicPositionSizer) consumes risk_calibration_state.json yet. A
+        # promoted candidate changes this readout + the model file only, not
+        # any real order size. Wiring is a separate operator-gated hot-path step.
+        "consumed_by_live_sizing": False,
         "source": {
             "history": "trained_data/learning_loop/history.jsonl",
             "status": ".claude/brain/learning_loop_status.json",

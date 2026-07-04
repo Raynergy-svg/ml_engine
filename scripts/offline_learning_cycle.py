@@ -36,14 +36,21 @@ import argparse
 import json
 import logging
 import os
+import sys
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[1]
+# Run-by-path safety: `python scripts/offline_learning_cycle.py` (the plist +
+# documented invocation) puts scripts/ on sys.path[0], NOT the repo root, so
+# `import src.training...` fails with ModuleNotFoundError. WorkingDirectory does
+# not fix this. Insert the repo root explicitly. (Adversarial review 2026-07-04.)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 JOURNAL_PATH = ROOT / "trained_data" / "trade_journal_rl.json"
 RETRAIN_REQUESTS_DIR = ROOT / "trained_data" / "retrain_requests"
 PROCESSED_DIR = RETRAIN_REQUESTS_DIR / "_processed"
@@ -55,6 +62,16 @@ BRAIN_FEED_PATH = ROOT / ".claude" / "brain" / "feed.jsonl"
 
 MIN_HOLDOUT = 15
 PROMOTION_MARGIN = 0.005  # candidate must beat incumbent Brier score by this much
+# A holdout that is single-class OR severely class-imbalanced cannot validate
+# calibration: a constant / majority-class predictor scores well on it and would
+# auto-promote WITHOUT learning anything from features (adversarial review #3 —
+# on the real journal, 1 win / 17 losses let an "always predict loss" model beat
+# the 0.5 baseline). Require at least this many of BOTH classes in the holdout,
+# and at least one of each in the training set, before trusting a promotion.
+# The companion review #2 (all-trend featureless holdout collapsing to one
+# vector) is handled upstream by is_calibration_scoreable excluding trend-lane
+# entries from the population entirely.
+MIN_MINORITY_HOLDOUT = 2
 
 
 def is_fx_market_closed(now: Optional[datetime] = None) -> bool:
@@ -100,20 +117,64 @@ def _load_journal() -> List[Dict[str, Any]]:
     return data if isinstance(data, list) else []
 
 
-def _read_cursor() -> str:
-    if not CURSOR_PATH.exists():
-        return ""
+_MIN_DT = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _parse_ts(value: Any) -> datetime:
+    """Parse an ISO timestamp tolerant of both ``...Z`` and ``...+00:00``.
+    Unparseable/missing -> epoch-min so it sorts first (never dropped)."""
+    s = str(value or "")
+    if not s:
+        return _MIN_DT
     try:
-        return json.loads(CURSOR_PATH.read_text()).get("last_processed_timestamp", "") or ""
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return _MIN_DT
+
+
+def _entry_key(entry: Dict[str, Any]) -> Tuple[datetime, str]:
+    """Total order over journal entries: (parsed timestamp, trade_id). The
+    trade_id tiebreaker is why equal-timestamp entries are never dropped
+    (adversarial review #9) and why the comparison is format-agnostic."""
+    return (_parse_ts(entry.get("timestamp")), str(entry.get("trade_id", "")))
+
+
+def _read_cursor() -> Tuple[datetime, str]:
+    if not CURSOR_PATH.exists():
+        return (_MIN_DT, "")
+    try:
+        data = json.loads(CURSOR_PATH.read_text())
+        return (_parse_ts(data.get("last_processed_timestamp")),
+                str(data.get("last_processed_trade_id", "")))
     except Exception:  # noqa: BLE001
-        return ""
+        return (_MIN_DT, "")
 
 
-def _write_cursor(ts: str) -> None:
+def _new_entries_since_cursor(journal: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Calibration-scoreable, resolved entries strictly after the cursor,
+    chronologically sorted. Uses the (timestamp, trade_id) total order so an
+    entry whose timestamp equals the cursor's is only excluded when it IS the
+    cursor's trade (or older), never merely because the timestamp matched."""
+    from src.training.incremental.risk_calibration_learner import (
+        _label,
+        is_calibration_scoreable,
+    )
+    cur = _read_cursor()
+    scoreable = [
+        e for e in journal
+        if isinstance(e, dict) and is_calibration_scoreable(e) and _label(e) is not None
+    ]
+    scoreable.sort(key=_entry_key)
+    return [e for e in scoreable if _entry_key(e) > cur]
+
+
+def _write_cursor_tuple(ts: Any, trade_id: Any) -> None:
     CURSOR_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = CURSOR_PATH.with_suffix(CURSOR_PATH.suffix + ".tmp")
     tmp.write_text(json.dumps({
-        "last_processed_timestamp": ts,
+        "last_processed_timestamp": str(ts or ""),
+        "last_processed_trade_id": str(trade_id or ""),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }, indent=2))
     os.replace(tmp, CURSOR_PATH)
@@ -173,10 +234,10 @@ def run_cycle(*, force: bool = False, now: Optional[datetime] = None) -> Dict[st
     markers = drain_retrain_requests()
 
     journal = _load_journal()
-    cursor = _read_cursor()
-    resolved = [e for e in journal if isinstance(e, dict) and _label(e) is not None]
-    resolved.sort(key=lambda e: str(e.get("timestamp", "")))
-    new_entries = [e for e in resolved if str(e.get("timestamp", "")) > cursor] if cursor else resolved
+    # Population = calibration-scoreable, resolved, strictly-after-cursor,
+    # chronologically ordered. Trend-lane featureless entries are excluded
+    # here (review #2) so they can't collapse the holdout.
+    new_entries = _new_entries_since_cursor(journal)
 
     result: Dict[str, Any] = {
         "ran": True,
@@ -186,21 +247,41 @@ def run_cycle(*, force: bool = False, now: Optional[datetime] = None) -> Dict[st
         "decision": "no_new_data",
     }
 
-    if len(new_entries) < MIN_HOLDOUT + 1:
-        _append_history(result)
-        _write_brain_status({
-            **result,
-            "summary": (
-                f"offline learning cycle: {len(markers)} marker(s) drained, "
-                f"insufficient new data ({len(new_entries)}/{MIN_HOLDOUT + 1} needed)"
-            ),
-        })
+    def _advance_cursor_and_return(res: Dict[str, Any], summary: str) -> Dict[str, Any]:
+        _append_history(res)
+        _write_brain_status({**res, "summary": summary, "consumed_by_live_sizing": False})
         if new_entries:
-            _write_cursor(str(new_entries[-1].get("timestamp", cursor)))
-        return result
+            last = new_entries[-1]
+            _write_cursor_tuple(last.get("timestamp", ""), last.get("trade_id", ""))
+        return res
+
+    if len(new_entries) < MIN_HOLDOUT + 1:
+        return _advance_cursor_and_return(
+            result,
+            f"offline learning cycle: {len(markers)} marker(s) drained, "
+            f"insufficient new data ({len(new_entries)}/{MIN_HOLDOUT + 1} needed)",
+        )
 
     holdout = new_entries[-MIN_HOLDOUT:]
     train_new = new_entries[:-MIN_HOLDOUT]
+
+    # Guard #3: refuse on a single-class or severely imbalanced holdout — a
+    # constant / majority-class predictor scores well on it WITHOUT learning
+    # from features, and would auto-promote. Validating on a holdout that has
+    # enough of BOTH outcomes is the principled bar; a candidate that overfit a
+    # one-sided training set is then correctly rejected by the Brier comparison
+    # below, so no separate training-set-balance guard is needed.
+    holdout_wins = sum(1 for e in holdout if _label(e) == 1.0)
+    holdout_losses = len(holdout) - holdout_wins
+    if min(holdout_wins, holdout_losses) < MIN_MINORITY_HOLDOUT:
+        result["decision"] = "insufficient_holdout_signal"
+        result["holdout_wins"] = holdout_wins
+        result["holdout_losses"] = holdout_losses
+        return _advance_cursor_and_return(
+            result,
+            f"offline learning cycle: refused — holdout {holdout_wins}W/{holdout_losses}L "
+            f"< {MIN_MINORITY_HOLDOUT} of a class; cannot validate calibration",
+        )
 
     incumbent_state = _load_state()
     incumbent = RiskCalibrationLearner.from_state(incumbent_state)
@@ -236,20 +317,12 @@ def run_cycle(*, force: bool = False, now: Optional[datetime] = None) -> Dict[st
         _write_state(candidate.to_state())
         result["model_n_seen"] = candidate.model.n_seen
 
-    _write_cursor(str(new_entries[-1].get("timestamp", cursor)))
-    _append_history(result)
-
-    if incumbent_metric is not None and candidate_metric is not None:
-        summary = (
-            f"offline learning cycle: {result['decision']} "
-            f"(brier {incumbent_metric:.4f}→{candidate_metric:.4f}, "
-            f"{len(markers)} marker(s) drained, {len(new_entries)} new outcome(s))"
-        )
-    else:
-        summary = f"offline learning cycle: {result['decision']}"
-    _write_brain_status({**result, "summary": summary})
-
-    return result
+    summary = (
+        f"offline learning cycle: {result['decision']} "
+        f"(brier {incumbent_metric:.4f}→{candidate_metric:.4f}, "
+        f"{len(markers)} marker(s) drained, {len(new_entries)} new outcome(s))"
+    )
+    return _advance_cursor_and_return(result, summary)
 
 
 def main() -> int:

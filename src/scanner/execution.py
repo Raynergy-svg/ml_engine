@@ -5534,10 +5534,11 @@ class ExecutionManager:
                     "shaped_reward": _shaped_reward,
                     # US-515: trade id carried through so sync_rl_weights can tag snapshot rows
                     "trade_id": tid,
+                    # 2026-07-04 (review #4): carry the entry ref so
+                    # rl_weights_applied is set AFTER the weight update
+                    # succeeds, never before — see the weight-update block.
+                    "entry": entry,
                 })
-                # 2026-07-04: mark scored so apply_pending_rl_weight_updates()
-                # (the backfilled-outcome sweep) never double-applies this trade.
-                entry["rl_weights_applied"] = True
 
         # Tier 7: Expectancy, PairTracker, Attribution, DriftDetector, FeatureHealth,
         # ClusterAnalyzer, WalkForward, Tranche, AdaptiveRR, AdaptiveSizer
@@ -5673,6 +5674,15 @@ class ExecutionManager:
                     except Exception as _wh_err:
                         logger.debug(f"US-515 weight_history append skipped: {_wh_err}")
 
+                    # 2026-07-04 (review #4): mark scored ONLY now that this
+                    # trade's weight update actually succeeded, so a failure
+                    # mid-loop leaves it retryable (unflagged) rather than
+                    # stranded as "handled" with no weights moved. Persisted
+                    # to disk after the loop (see below).
+                    _upd_entry = upd.get("entry")
+                    if isinstance(_upd_entry, dict):
+                        _upd_entry["rl_weights_applied"] = True
+
                     # Restore boost after each trade (penalty restored below or in trailing logic)
                     if _rl_config is not None:
                         setattr(_rl_config, "weight_boost_on_win", _orig_boost)
@@ -5680,6 +5690,21 @@ class ExecutionManager:
                 # Restore original penalty
                 if _rl_config is not None:
                     setattr(_rl_config, "weight_penalty_on_loss", _orig_penalty)
+
+                # 2026-07-04 (review #4): re-persist the journal so the
+                # rl_weights_applied flags set above (AFTER weights moved) land
+                # on disk. The earlier write (before this block) persisted the
+                # outcomes; this one persists the scored-flags. On a crash
+                # between agent_weights.json (written per-call inside
+                # update_weights_from_outcome) and this write, the trade is
+                # re-scored next cycle — a bounded, decaying double-count, never
+                # a permanent strand (the safe failure direction).
+                if any(isinstance(u.get("entry"), dict) for u in rl_updates):
+                    try:
+                        from src.scanner.automation.safe_json import safe_json_write
+                        safe_json_write(journal_path, entries)
+                    except ImportError:
+                        journal_path.write_text(json.dumps(entries, indent=2, default=str))
 
                 weights_updated = True
                 # Log weight changes for observability
@@ -5880,6 +5905,13 @@ class ExecutionManager:
             logger.warning("apply_pending_rl_weight_updates: agent team init failed: %s", e)
             return {"applied": 0, "weights_updated": False, "detail": f"agent team init failed: {e}"}
 
+        def _persist_journal() -> None:
+            try:
+                from src.scanner.automation.safe_json import safe_json_write
+                safe_json_write(journal_path, entries)
+            except ImportError:
+                journal_path.write_text(json.dumps(entries, indent=2, default=str))
+
         applied = 0
         for entry in candidates:
             outcome = entry.get("outcome")
@@ -5918,18 +5950,18 @@ class ExecutionManager:
                     logger.debug("apply_pending_rl_weight_updates: weight_history append skipped: %s", _wh_err)
                 entry["rl_weights_applied"] = True
                 applied += 1
+                # 2026-07-04 (review #5): persist the flag PER ENTRY, right
+                # after its weights moved, so a crash caps the double-count
+                # window at ONE trade instead of the whole batch. This path is
+                # rare (steady-state has ~0-1 pending/cycle); the one-time
+                # backfill drain of many entries pays a bounded re-serialize
+                # cost, worth it for crash-consistency.
+                _persist_journal()
             except Exception as e:
                 logger.warning(
                     "apply_pending_rl_weight_updates: weight update failed for trade %s: %s",
                     entry.get("trade_id"), e,
                 )
-
-        if applied:
-            try:
-                from src.scanner.automation.safe_json import safe_json_write
-                safe_json_write(journal_path, entries)
-            except ImportError:
-                journal_path.write_text(json.dumps(entries, indent=2, default=str))
 
         return {
             "applied": applied,

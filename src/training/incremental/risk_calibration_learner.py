@@ -10,6 +10,18 @@ intraday direction has no edge (docs/fx-edge-search-final-verdict-2026-06-18.md)
 re-fitting a directional signal from journal outcomes would only overfit
 noise, not add an edge. ``ALLOWED_FEATURE_KEYS`` is the enforced whitelist.
 
+SHADOW / ADVISORY — NOT YET WIRED TO LIVE SIZING (honest disclosure,
+2026-07-04): ``size_multiplier`` is computed and surfaced (AXIOM
+``/api/learning_loop``) but is currently read by NO live position-sizing
+path — ``DynamicPositionSizer`` (src/risk/position_sizing.py) does not
+consume ``risk_calibration_state.json`` (grep-confirmed). A promoted
+candidate therefore changes the shadow model file and the readout only, not
+any real order size. Wiring this into live sizing touches the per-trade hot
+path and is an explicit operator-gated step (CLAUDE.md "IMMUTABLE
+ESCALATIONS"), deliberately NOT done here. The [0.5, 1.0] cap and the
+walk-forward promotion gate exist so that IF/WHEN it is wired, it can only
+ever reduce risk, never increase it.
+
 No new dependency: this hand-rolls the River `learn_one` / `predict_one`
 idiom (constant-size state, O(1) update per sample, no full retrain) rather
 than adding the `river` package, to avoid new supply-chain surface for a
@@ -83,10 +95,54 @@ def build_features(entry: Dict[str, Any]) -> Dict[str, float]:
         "lane_trend": 1.0 if lane == "trend" else 0.0,
     }
     if not (set(feats) <= ALLOWED_FEATURE_KEYS):
-        # Not an assert: this boundary must hold even under -O/PYTHONOPTIMIZE,
-        # since it's the only enforcement of "never a directional feature".
+        # Guards a FUTURE source edit that adds a key here without adding it to
+        # ALLOWED_FEATURE_KEYS — it cannot fire on runtime data (the dict above
+        # is a fixed literal). A raise (not an assert) so the boundary survives
+        # -O/PYTHONOPTIMIZE. The runtime "no directional feature" guarantee
+        # comes from build_features only ever reading named risk/calibration
+        # fields, not from this check.
         raise ValueError("feature leak outside risk/calibration whitelist")
     return feats
+
+
+def is_calibration_scoreable(entry: Any) -> bool:
+    """True only for entries that actually carry the risk/execution/calibration
+    signal this learner is scoped to — i.e. scanner-lane trades with a genuine
+    confidence AND at least one execution/risk feature (regime, rr_ratio, sl/tp).
+
+    Why this filter exists (adversarial review 2026-07-04): ~90% of the live
+    journal is trend-lane entries (``rl_eligible=False``) with a bare-string
+    outcome and no confidence/regime/sl/tp. ``build_features`` maps every one of
+    them to the SAME all-default vector, so including them collapses the
+    walk-forward holdout to a single repeated feature point and makes the gate
+    decide on the win/loss ratio of the last N trades rather than calibration
+    skill. Excluding them here mirrors the existing ``rl_eligible=False``
+    convention and keeps the learner on the population it was designed for.
+    """
+    if not isinstance(entry, dict):
+        return False
+    if entry.get("rl_eligible") is False:
+        return False
+    conf = entry.get("confidence")
+    try:
+        conf = float(conf) if conf is not None else None
+    except (TypeError, ValueError):
+        conf = None
+    if conf is None:
+        return False
+    regime_field = entry.get("regime")
+    has_regime = bool(
+        (isinstance(regime_field, dict) and regime_field.get("volatility_regime"))
+        or isinstance(entry.get("regime_at_entry"), str)
+    )
+    outcome = entry.get("outcome")
+    rr = (outcome.get("rr_ratio") if isinstance(outcome, dict) else None)
+    if rr is None:
+        rr = entry.get("rr_ratio")
+    has_risk = has_regime or any(
+        entry.get(k) is not None for k in ("rr_ratio", "sl_pips", "tp_pips")
+    ) or rr is not None
+    return bool(has_risk)
 
 
 def _label(entry: Dict[str, Any]) -> Optional[float]:
@@ -182,7 +238,12 @@ class RiskCalibrationLearner:
     def size_multiplier(self, entry_features: Dict[str, float]) -> float:
         """Risk-decreasing-only multiplier in [0.5, 1.0]. Can only ask for
         LESS risk than the caller's existing sizing when calibration says
-        raw confidence overstates realized win probability — never more."""
+        raw confidence overstates realized win probability — never more.
+
+        ADVISORY / SHADOW: no live sizing path reads this yet (see module
+        docstring). It is computed for the AXIOM readout and the promotion
+        gate only; wiring it into DynamicPositionSizer is a separate
+        operator-gated hot-path change."""
         p = self.model.predict_proba_one(entry_features)
         raw_conf = entry_features.get("confidence", 0.5)
         if raw_conf <= 0:

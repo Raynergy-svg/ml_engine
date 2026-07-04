@@ -79,6 +79,38 @@ should never have been the tool for the job: `git show HEAD:<path>` or a scratch
 "did this predate me" without touching the shared working tree of a repo with live daemons
 writing to tracked files.
 
+**Adversarial review round (operator: "send out review agent… I will not accept slop")** — a
+fresh independent Code Reviewer ran the batch job against the REAL journal and found REAL defects
+(not nits); all confirmed ones fixed with TDD (reproduce→resolve), commit after `8a70a3b`:
+- **#1 (blocker)**: the batch job crashed `ModuleNotFoundError` on its documented/plist invocation
+  (`python scripts/offline_learning_cycle.py`) — no `sys.path` insert; the plist would have died at
+  import every scheduled run. Fixed (sys.path insert at module top; subprocess smoke test).
+- **#2/#3 (blocker)**: the walk-forward gate was invalid on real data — 90% of the journal is
+  trend-lane bare-string entries with all-None features that collapsed the holdout to one repeated
+  vector, and on the real 1-win/17-loss scoreable set a majority-class "always predict loss" model
+  beat the 0.5 baseline and got PROMOTED. Fixed: `is_calibration_scoreable()` excludes trend-lane/
+  featureless entries from the population (mirrors rl_eligible convention), + a min-minority-class
+  holdout guard (`MIN_MINORITY_HOLDOUT=2`) refuses single-class/severely-imbalanced holdouts.
+  Verified on a scratch copy of the real journal: now `insufficient_holdout_signal`, promotes
+  NOTHING (correct — 1 positive example can't calibrate).
+- **#6 (oversold)**: `size_multiplier` is consumed by NO live sizing path. Disclosed honestly —
+  module + method docstrings say SHADOW/advisory, `read_learning_loop` returns
+  `consumed_by_live_sizing:false`, panel shows a "SHADOW — advisory only" badge. NOT wired to live
+  sizing (hot path = operator-gated).
+- **#4/#5 (atomicity)**: sync set `rl_weights_applied` in the collection block BEFORE weights moved
+  (strand-on-failure); apply_pending wrote flags once at batch-end (crash → whole-batch
+  double-count). Fixed: flag set per-entry AFTER the weight update succeeds + journal re-persisted
+  post-loop (sync) / per-entry (apply_pending); crash now costs at most one bounded/decaying
+  double-count, never a permanent strand. 3 no-mock tests induce a real per-entry failure (malformed
+  `agent_reasons=[42]`) and assert the failed entry stays retryable.
+- **#9 (cursor)**: `str > cursor` dropped equal-timestamp entries and mis-sorted `Z` vs `+00:00`.
+  Fixed: (parsed-datetime, trade_id) tuple watermark; test proves an equal-timestamp twin isn't lost.
+- Reviewer CONFIRMED the safety rules held: no OANDA/state.json/env, halt only stricter, size cap
+  uncrackable, live wiring real (not orphaned), reject-test non-tautological.
+- New tests: `tests/test_offline_learning_cycle_review_fixes_2026_07_04.py` (8),
+  `tests/test_rl_backfill_atomicity_2026_07_04.py` (3). 158 targeted tests green, flake8 clean,
+  tsc clean, risk_monitor GREEN. UNCOMMITTED as of this note — commit next.
+
 Nothing in this session touched `.claude/state.json`, OANDA order endpoints, `oanda_environment`,
 or any ARM path. Committed `51b85bf`, pushed. `/evolve` folded the learnings (operator-approved):
 **L-024** (never `git stash` for exploratory checks on a repo with live daemons) added to LESSONS;
