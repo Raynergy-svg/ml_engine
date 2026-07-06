@@ -21,8 +21,8 @@
   },
   "config_overlay": null,
   "lanes": {
-    "equity_artifact_stale": true,
-    "equity_ledger_age_s": 65990.79288864136,
+    "equity_artifact_stale": false,
+    "equity_ledger_age_s": 884.4360644817352,
     "global_halted": true,
     "halted_lanes": {
       "brain": true,
@@ -37,7 +37,7 @@
       "scanner_alive": false,
       "writer": "tier7_supervisor"
     },
-    "trend_account_state_age_s": 24.19088315963745,
+    "trend_account_state_age_s": 131.61130666732788,
     "trend_artifact_stale": false
   },
   "needs_attention": [
@@ -52,7 +52,7 @@
     "last_action_at": "2026-07-06T07:13:35.725761+00:00",
     "last_action_label": "retrain_rl_position_sizer"
   },
-  "supervisor_pid": 88167,
-  "ts_iso": "2026-07-06T09:33:29.390733+00:00",
+  "supervisor_pid": 10958,
+  "ts_iso": "2026-07-06T09:53:04.182673+00:00",
   "writer": "tier7_supervisor"
 }

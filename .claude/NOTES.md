@@ -4,10 +4,44 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-04T14:35Z by Claude (offline continual-learning loop built; no state.json
-write; risk_monitor GREEN at close — note: it currently reports `halted=True` globally + all
-lanes, differing from the 07-03T20:15Z entry below which recorded UNHALTED — re-verify state.json
-fresh, don't trust either snapshot).
+Last touched: 2026-07-06T09:52Z by Claude (AXIOM Agent Runtime foundation built; no state.json
+write; verified `.claude/state.json` unchanged before/after via `git diff HEAD` — currently
+`halted=true` globally + all 5 lanes, confirmed fresh this session, not a stale snapshot).
+
+## AXIOM Agent Runtime foundation — tool registry + policy engine + audit (2026-07-06, scaffolding-only task)
+
+Built `src/agent_runtime/` (policy.py, audit.py, tools/) — the safety-critical base a future
+resident AI trading operator will sit on top of. **No LLM reasoning loop yet; nothing armed,
+unhalted, or traded.** Commit `046bf13` on `ralph/equity-harvester-bot`.
+
+- **Policy engine** (`policy.py`): 3 tiers — OPERATIONAL (preflight+audit, allowed), DEESCALATION
+  (autonomous, structurally risk-decreasing only — `halt_lane` hardcodes `set_halted(True, ...)`
+  with no value param to flip; `reduce_gross_leverage` refuses any non-strict-decrease), ESCALATION
+  (`unhalt_lane`, `arm_live_gate`, `increase_gross_leverage`, `promote_model`,
+  `enable_new_exposure`, `change_strategy_or_code` — NEVER autonomous, `ActionSpec` structurally
+  cannot carry an execute callable for this tier, and `PolicyEngine.submit()`'s escalation branch
+  never reads `.execute` even if a spec were tampered post-construction via
+  `object.__setattr__` — added a redundant submit-time check for that theoretical bypass).
+  Fail-closed on unknown actions. Practice-pin re-derived from `ScannerConfig` every call, every tier.
+- **Audit** (`audit.py`): extends the EXISTING `dashboard.server.control_safety.audit()` ->
+  `trained_data/axiom/control_audit.jsonl` with `source="agent_runtime"` entries — one unified log,
+  not a second file.
+- **Tools** (`tools/`): 9 READ-ONLY wrappers (health check, gate health via a private-tmpfile
+  verify_gate re-run that never clobbers the real verdict.json, tier7/self-heal status, per-lane
+  halt state, OANDA account state, trade journal, agent weights, LESSONS/NOTES, shadow ledgers
+  crypto_momentum/track_b/harvester) — every one calls an EXISTING function, all tagged
+  OPERATIONAL, all routed through the same PolicyEngine so every tool call is preflighted+audited.
+- **Verification**: 41 new no-mock tests (real disk via tmp_path) prove escalation is
+  proposal-only, de-escalation can't increase risk, operational actions preflight+audit, unknown
+  actions fail closed, no tool/action can trade/arm/unhalt. Independent Security Engineer verifier:
+  PASS on all 8 structural checks (escalation boundary genuinely structural, not just tested;
+  practice-pin/halt/no-LLM-in-hot-path all confirmed). Production `.claude/state.json` and
+  `.claude/loop/verdict.json` confirmed byte-identical before/after (git diff clean).
+- **Known minor gap, not fixed (no concurrent caller exists yet)**: `reduce_gross_leverage` has a
+  TOCTOU window between reading the current override and writing the new one — fine today
+  (single-writer), worth a lock once a real reasoning loop can submit concurrent proposals.
+- **Next (follow-up tasks, not this one)**: the resident reasoning loop that actually calls these
+  tools + submits actions through the policy engine, and the Activity mind-window panel.
 
 ## Closed-trade feedback loop fixed + market-closed continual-learning batch (2026-07-04, research/infra task)
 
