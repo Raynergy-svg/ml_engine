@@ -14,7 +14,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -489,6 +489,210 @@ def train_rl_sizer(
     ))
 
 
+# --- Fail-closed eval gate for `retrain_gates()` (P0 2026-07-06) -----------
+# This path fetches FRESH OANDA data and retrains XGBoost/RF/Ridge from
+# scratch, then used to call trainer.save(...) unconditionally — the one
+# ungated model-write path flagged in docs/ENGINEERING_BRAIN.md P0 #2
+# (online_retrainer.py's own incremental-retrain gate does NOT cover this
+# CLI/subprocess path; src/core/modular_inference.py's drift callback falls
+# back to exactly this command when OnlineRetrainer is unavailable).
+#
+# The data loaders already reserve an untouched temporal test split
+# (X_test/y_test, the tail of the 0.7/0.2/0.1 split) that the trainer never
+# sees during fit or early-stopping (that's X_val) — the same role
+# online_retrainer's holdout tail plays. A freshly trained candidate may
+# only overwrite the on-disk .pkl if it does not regress, on this held-out
+# slice, vs. the EXISTING model scored on the SAME slice. Missing/unloadable
+# incumbent => PASSED (first deploy / no baseline to beat).
+CLI_GATE_MIN_TEST_SAMPLES = 20
+CLI_GATE_REL_TOLERANCE = 0.05  # candidate may be at most 5% worse (MAE) than existing
+CLI_GATE_DEGENERATE_STD = 1e-9
+
+CLI_GATE_PASSED = "PASSED"
+CLI_GATE_REFUSED = "REFUSED"
+
+
+def _cli_gate_degenerate(pred: np.ndarray) -> bool:
+    return bool(np.asarray(pred, dtype=float).std() < CLI_GATE_DEGENERATE_STD)
+
+
+def _cli_gate_verdict(candidate_mae: float, existing_mae: Optional[float], n_test: int) -> Dict[str, Any]:
+    """Shared REFUSED/PASSED decision on a single lower-is-better MAE metric."""
+    gate: Dict[str, Any] = {
+        "n_test": int(n_test),
+        "candidate_mae": candidate_mae,
+        "existing_mae": existing_mae,
+    }
+    if n_test < CLI_GATE_MIN_TEST_SAMPLES:
+        gate["verdict"] = CLI_GATE_REFUSED
+        gate["reason"] = f"test_holdout_too_small:{n_test}<{CLI_GATE_MIN_TEST_SAMPLES}"
+        return gate
+    if candidate_mae != candidate_mae:  # NaN guard
+        gate["verdict"] = CLI_GATE_REFUSED
+        gate["reason"] = "candidate_mae_nan"
+        return gate
+    if existing_mae is None:
+        gate["verdict"] = CLI_GATE_PASSED
+        gate["reason"] = "no_scorable_existing_model_candidate_sane"
+        return gate
+    if candidate_mae > existing_mae * (1.0 + CLI_GATE_REL_TOLERANCE):
+        gate["verdict"] = CLI_GATE_REFUSED
+        gate["reason"] = (
+            f"candidate_worse_than_existing:cand={candidate_mae:.6f}>"
+            f"exist={existing_mae:.6f}*{1.0 + CLI_GATE_REL_TOLERANCE:.2f}"
+        )
+        return gate
+    gate["verdict"] = CLI_GATE_PASSED
+    gate["reason"] = "candidate_not_worse_than_existing_within_tolerance"
+    return gate
+
+
+def _log_cli_gate(head: str, gate: Dict[str, Any]) -> None:
+    """One grep-friendly structured line per gate decision (mirrors online_retrainer.py)."""
+    _logger.info(
+        "[RETRAIN_GATES_GATE] head=%s verdict=%s reason=%s",
+        head, gate.get("verdict"), gate.get("reason"),
+    )
+
+
+def _score_existing_xgb_momentum(
+    model_path: Path, config: Any, X_test: np.ndarray, y_test_momentum: np.ndarray,
+) -> Optional[float]:
+    """Score the EXISTING on-disk xgb_momentum.pkl on the gate holdout. None if unscorable."""
+    if not model_path.exists():
+        return None
+    try:
+        from src.training.modular_trainers import XGBoostTrainer
+        existing = XGBoostTrainer(config)
+        existing.load(str(model_path))
+        x_scaled = existing.scaler.transform(X_test)
+        pred = np.asarray(existing.momentum_model.predict(x_scaled), dtype=float)
+        return float(np.mean(np.abs(pred - y_test_momentum)))
+    except Exception as exc:  # noqa: BLE001 — unscorable incumbent is a valid outcome
+        _logger.warning("gate: could not score existing xgb model %s: %s", model_path, exc)
+        return None
+
+
+def _apply_xgb_gate(
+    trainer: Any, model_path: Path, config: Any, X_test: np.ndarray, y_test: np.ndarray,
+) -> Dict[str, Any]:
+    y_test_momentum = y_test[:, 0]
+    cand_pred = np.asarray(
+        trainer.momentum_model.predict(trainer.scaler.transform(X_test)), dtype=float
+    )
+    cand_mae = float(np.mean(np.abs(cand_pred - y_test_momentum)))
+    if _cli_gate_degenerate(cand_pred):
+        gate = {"verdict": CLI_GATE_REFUSED, "reason": "degenerate_candidate_constant_predictions",
+                "candidate_mae": cand_mae, "existing_mae": None, "n_test": int(len(y_test_momentum))}
+        _log_cli_gate("xgboost", gate)
+        return gate
+    existing_mae = _score_existing_xgb_momentum(model_path, config, X_test, y_test_momentum)
+    gate = _cli_gate_verdict(cand_mae, existing_mae, len(y_test_momentum))
+    _log_cli_gate("xgboost", gate)
+    return gate
+
+
+def _score_existing_rf(
+    model_path: Path, config: Any, X_test: np.ndarray,
+    y_test_drawdown: np.ndarray, y_test_streak: np.ndarray,
+) -> Tuple[Optional[float], Optional[float]]:
+    """Score the EXISTING on-disk rf_risk.pkl on the gate holdout. (None, None) if unscorable."""
+    if not model_path.exists():
+        return None, None
+    try:
+        from src.training.modular_trainers import RandomForestTrainer
+        existing = RandomForestTrainer(config)
+        existing.load(str(model_path))
+        x_scaled = existing.scaler.transform(X_test)
+        dd_pred = np.asarray(existing.drawdown_model.predict(x_scaled), dtype=float)
+        sk_pred = np.asarray(existing.streak_model.predict(x_scaled), dtype=float)
+        return (
+            float(np.mean(np.abs(dd_pred - y_test_drawdown))),
+            float(np.mean(np.abs(sk_pred - y_test_streak))),
+        )
+    except Exception as exc:  # noqa: BLE001 — unscorable incumbent is a valid outcome
+        _logger.warning("gate: could not score existing rf model %s: %s", model_path, exc)
+        return None, None
+
+
+def _apply_rf_gate(
+    trainer: Any, model_path: Path, config: Any, X_test: np.ndarray, y_test: np.ndarray,
+) -> Dict[str, Any]:
+    """RF has two sub-targets (drawdown, streak); refuse if EITHER regresses."""
+    y_test_drawdown = y_test[:, 0]
+    y_test_streak = y_test[:, 1]
+    n_test = len(y_test_drawdown)
+    x_scaled = trainer.scaler.transform(X_test)
+    dd_pred = np.asarray(trainer.drawdown_model.predict(x_scaled), dtype=float)
+    sk_pred = np.asarray(trainer.streak_model.predict(x_scaled), dtype=float)
+    if _cli_gate_degenerate(dd_pred) or _cli_gate_degenerate(sk_pred):
+        gate = {"verdict": CLI_GATE_REFUSED, "reason": "degenerate_candidate_constant_predictions",
+                "n_test": int(n_test)}
+        _log_cli_gate("risk", gate)
+        return gate
+    dd_mae = float(np.mean(np.abs(dd_pred - y_test_drawdown)))
+    sk_mae = float(np.mean(np.abs(sk_pred - y_test_streak)))
+    existing_dd_mae, existing_sk_mae = _score_existing_rf(
+        model_path, config, X_test, y_test_drawdown, y_test_streak
+    )
+    dd_gate = _cli_gate_verdict(dd_mae, existing_dd_mae, n_test)
+    sk_gate = _cli_gate_verdict(sk_mae, existing_sk_mae, n_test)
+    both_pass = dd_gate["verdict"] == CLI_GATE_PASSED and sk_gate["verdict"] == CLI_GATE_PASSED
+    gate = {
+        "verdict": CLI_GATE_PASSED if both_pass else CLI_GATE_REFUSED,
+        "reason": "both_targets_pass" if both_pass else
+                  f"drawdown={dd_gate['reason']}|streak={sk_gate['reason']}",
+        "drawdown_gate": dd_gate, "streak_gate": sk_gate, "n_test": int(n_test),
+    }
+    _log_cli_gate("risk", gate)
+    return gate
+
+
+def _ridge_predict_batch(trainer: Any, X: np.ndarray) -> np.ndarray:
+    """Batch predict through a RidgeTrainer, mirroring its own predict()'s
+    DataFrame-for-LightGBM handling (LightGBM warns/mis-scores on a bare
+    ndarray if it was trained on a DataFrame with feature names)."""
+    x_scaled = trainer.scaler.transform(X)
+    if getattr(trainer, "_model_type", "elasticnet") == "lightgbm":
+        import pandas as pd
+        fn = trainer.feature_names or [f"feature_{i}" for i in range(x_scaled.shape[1])]
+        x_scaled = pd.DataFrame(x_scaled, columns=fn)
+    return np.asarray(trainer.model.predict(x_scaled), dtype=float)
+
+
+def _score_existing_ridge(
+    model_path: Path, config: Any, X_test: np.ndarray, y_test_conf: np.ndarray,
+) -> Optional[float]:
+    """Score the EXISTING on-disk ridge_confidence.pkl on the gate holdout."""
+    if not model_path.exists():
+        return None
+    try:
+        from src.training.modular_trainers import RidgeTrainer
+        existing = RidgeTrainer(config)
+        existing.load(str(model_path))
+        pred = _ridge_predict_batch(existing, X_test)
+        return float(np.mean(np.abs(pred - y_test_conf)))
+    except Exception as exc:  # noqa: BLE001 — unscorable incumbent is a valid outcome
+        _logger.warning("gate: could not score existing ridge model %s: %s", model_path, exc)
+        return None
+
+
+def _apply_ridge_gate(
+    trainer: Any, model_path: Path, config: Any, X_test: np.ndarray, y_test: np.ndarray,
+) -> Dict[str, Any]:
+    cand_pred = _ridge_predict_batch(trainer, X_test)
+    cand_mae = float(np.mean(np.abs(cand_pred - y_test)))
+    if _cli_gate_degenerate(cand_pred):
+        gate = {"verdict": CLI_GATE_REFUSED, "reason": "degenerate_candidate_constant_predictions",
+                "candidate_mae": cand_mae, "existing_mae": None, "n_test": int(len(y_test))}
+        _log_cli_gate("confidence", gate)
+        return gate
+    existing_mae = _score_existing_ridge(model_path, config, X_test, y_test)
+    gate = _cli_gate_verdict(cand_mae, existing_mae, len(y_test))
+    _log_cli_gate("confidence", gate)
+    return gate
+
+
 def retrain_gates(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
@@ -670,6 +874,7 @@ def retrain_gates(
     # Train XGBoost
     console.print("\n[bold]Step 4: Training XGBoost (Momentum)...[/bold]")
 
+    xgb_path = model_dir / "xgb_momentum.pkl"
     xgb_trainer = XGBoostTrainer(config)
     xgb_metrics = xgb_trainer.train(
         xgb_data['X_train'], xgb_data['y_train'],
@@ -677,39 +882,58 @@ def retrain_gates(
         feature_names=xgb_data['feature_names'],
         momentum_norm_factor=xgb_data.get('momentum_norm_factor'),
     )
-    xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
-
-    console.print(f"  [green]✓ XGBoost: momentum_mae={xgb_metrics['momentum_mae']:.4f}, "
-                  f"accel_acc={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
+    xgb_gate = _apply_xgb_gate(xgb_trainer, xgb_path, config, xgb_data['X_test'], xgb_data['y_test'])
+    xgb_metrics['gate'] = xgb_gate
+    if xgb_gate['verdict'] == CLI_GATE_PASSED:
+        xgb_trainer.save(str(xgb_path))
+        console.print(f"  [green]✓ XGBoost: momentum_mae={xgb_metrics['momentum_mae']:.4f}, "
+                      f"accel_acc={xgb_metrics['acceleration_accuracy']:.1%} "
+                      f"— gate PASSED, written[/green]")
+    else:
+        console.print(f"  [yellow]✗ XGBoost REFUSED by eval gate ({xgb_gate['reason']}) "
+                      f"— incumbent .pkl left untouched[/yellow]")
 
     # Train RF
     console.print("\n[bold]Step 5: Training Random Forest (Risk)...[/bold]")
 
+    rf_path = model_dir / "rf_risk.pkl"
     rf_trainer = RandomForestTrainer(config)
     rf_metrics = rf_trainer.train(
         rf_data['X_train'], rf_data['y_train'],
         rf_data['X_val'], rf_data['y_val'],
         feature_names=rf_data['feature_names'],
     )
-    rf_trainer.save(str(model_dir / "rf_risk.pkl"))
-
+    rf_gate = _apply_rf_gate(rf_trainer, rf_path, config, rf_data['X_test'], rf_data['y_test'])
+    rf_metrics['gate'] = rf_gate
     drawdown_mae_bps = rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pct', 0) * 10000)
-    console.print(f"  [green]✓ RF: drawdown_mae={drawdown_mae_bps:.1f} bps, "
-                  f"streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
+    if rf_gate['verdict'] == CLI_GATE_PASSED:
+        rf_trainer.save(str(rf_path))
+        console.print(f"  [green]✓ RF: drawdown_mae={drawdown_mae_bps:.1f} bps, "
+                      f"streak_mae={rf_metrics['streak_prob_mae']:.4f} "
+                      f"— gate PASSED, written[/green]")
+    else:
+        console.print(f"  [yellow]✗ RF REFUSED by eval gate ({rf_gate['reason']}) "
+                      f"— incumbent .pkl left untouched[/yellow]")
 
     # Train Ridge
     console.print("\n[bold]Step 6: Training ElasticNet (Confidence)...[/bold]")
 
+    ridge_path = model_dir / "ridge_confidence.pkl"
     ridge_trainer = RidgeTrainer(config)
     ridge_metrics = ridge_trainer.train(
         ridge_data['X_train'], ridge_data['y_train'],
         ridge_data['X_val'], ridge_data['y_val'],
         feature_names=ridge_data['feature_names'],
     )
-    ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
-
-    console.print(f"  [green]✓ Ridge: MAE={ridge_metrics['confidence_mae']:.2f}, "
-                  f"R²={ridge_metrics['r2_score']:.4f}[/green]")
+    ridge_gate = _apply_ridge_gate(ridge_trainer, ridge_path, config, ridge_data['X_test'], ridge_data['y_test'])
+    ridge_metrics['gate'] = ridge_gate
+    if ridge_gate['verdict'] == CLI_GATE_PASSED:
+        ridge_trainer.save(str(ridge_path))
+        console.print(f"  [green]✓ Ridge: MAE={ridge_metrics['confidence_mae']:.2f}, "
+                      f"R²={ridge_metrics['r2_score']:.4f} — gate PASSED, written[/green]")
+    else:
+        console.print(f"  [yellow]✗ Ridge REFUSED by eval gate ({ridge_gate['reason']}) "
+                      f"— incumbent .pkl left untouched[/yellow]")
 
     # Update metadata
     console.print("\n[bold]Step 7: Updating metadata...[/bold]")
@@ -721,7 +945,10 @@ def retrain_gates(
     else:
         meta = {}
 
-    # Update with new training info
+    # Update with new training info (this records the ATTEMPT; per-model
+    # `results.<head>.gate` below is the source of truth for what was
+    # actually WRITTEN — a REFUSED gate means the existing .pkl is untouched
+    # even though a candidate was fit this run).
     meta['gate_models_retrained_at'] = datetime.now().isoformat()
     meta['gate_models_trained_on'] = 'local_m1'
     meta['sklearn_version'] = sklearn.__version__
@@ -742,24 +969,40 @@ def retrain_gates(
 
     console.print(f"  [green]✓ Metadata updated with sklearn={sklearn.__version__}, xgboost={xgboost.__version__}[/green]")
 
-    # Summary
+    # Summary — honest per-model PASSED/REFUSED, never a blanket "success"
+    written = [
+        name for name, gate in (
+            ("XGBoost", xgb_gate), ("Random Forest", rf_gate), ("ElasticNet", ridge_gate),
+        ) if gate['verdict'] == CLI_GATE_PASSED
+    ]
+    refused = [
+        name for name, gate in (
+            ("XGBoost", xgb_gate), ("Random Forest", rf_gate), ("ElasticNet", ridge_gate),
+        ) if gate['verdict'] != CLI_GATE_PASSED
+    ]
+    header = (
+        "[bold green]Gate Models Retrained[/bold green]" if not refused
+        else "[bold yellow]Gate Retrain: Partial — Eval Gate Refused Some Candidates[/bold yellow]"
+    )
     console.print("\n" + "=" * 60)
     console.print(Panel(
-        f"[bold green]Gate Models Retrained Successfully![/bold green]\n\n"
+        f"{header}\n\n"
         f"[bold]sklearn version:[/bold] {sklearn.__version__}\n"
         f"[bold]xgboost version:[/bold] {xgboost.__version__}\n\n"
-        f"[bold]XGBoost (Momentum):[/bold]\n"
+        f"[bold]Written (gate PASSED):[/bold] {', '.join(written) if written else 'none'}\n"
+        f"[bold]Refused (incumbent kept):[/bold] {', '.join(refused) if refused else 'none'}\n\n"
+        f"[bold]XGBoost (Momentum):[/bold] {xgb_gate['verdict']}\n"
         f"  MAE: {xgb_metrics['momentum_mae']:.4f}\n"
         f"  Acceleration Accuracy: {xgb_metrics['acceleration_accuracy']:.1%}\n\n"
-        f"[bold]Random Forest (Risk):[/bold]\n"
+        f"[bold]Random Forest (Risk):[/bold] {rf_gate['verdict']}\n"
         f"  Drawdown MAE: {drawdown_mae_bps:.1f} bps\n"
         f"  Streak MAE: {rf_metrics['streak_prob_mae']:.4f}\n\n"
-        f"[bold]ElasticNet (Confidence):[/bold]\n"
+        f"[bold]ElasticNet (Confidence):[/bold] {ridge_gate['verdict']}\n"
         f"  MAE: {ridge_metrics['confidence_mae']:.2f}\n"
         f"  R²: {ridge_metrics['r2_score']:.4f}\n\n"
         f"[dim]Run 'buddy predict' to test the updated gates[/dim]",
-        title="✅ Complete",
-        border_style="green"
+        title="✅ Complete" if not refused else "⚠️  Complete (partial)",
+        border_style="green" if not refused else "yellow"
     ))
 
 

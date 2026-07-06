@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Deterministic running-status oracle (L-017) — LIVE lane + dormant harvester lane.
+"""Deterministic running-status oracle (L-017) — LIVE lane + every shadow lane.
 
-Re-derives running:YES/NO from disk + ps, fail-closed, read-only. Reports TWO clearly
-LABELED lanes so a dormant lane's "running:NO" is NEVER mistaken for "the bot is down"
-(the trap that caused a false "nothing running" on 2026-06-29):
+Re-derives running:YES/NO from disk + ps, fail-closed, read-only. Reports EVERY
+lane distinctly LABELED so a dormant/legacy lane's "running:NO" is NEVER mistaken
+for "the bot is down" (the trap that caused a false "nothing running" on
+2026-06-29), and — the P0 2026-07-06 fix — so an ACTIVE shadow lane is never
+mislabeled "dormant/legacy" just because it shares a code family with a
+genuinely retired path.
 
   LIVE LANE  = the OANDA **practice** trend loop (the actual trader) + the Tier 7
                self-heal supervisor. This is what is actually live. running:YES if ANY of:
@@ -12,10 +15,22 @@ LABELED lanes so a dormant lane's "running:NO" is NEVER mistaken for "the bot is
                      loop's hourly output — a disk proxy when ps is unavailable), OR
                  (c) the Tier 7 heartbeat (`.claude/heartbeat.json`) is fresh (<=90s)
                      AND its pid is alive.
-  HARVESTER LANE (dormant/legacy IBKR path, SUPERSEDED by the OANDA lane) = the original
-               equity-harvester. Its running:NO is EXPECTED and means NOTHING is wrong.
+  SHADOW LANES (each a distinct `.claude/state.json` `halted_lanes` key, none can
+               trade/arm — read-only research/harvester loops) = equity (the
+               OANDA-based shadow harvester, `run_equity_harvester.py` — NOT the
+               same thing as the retired IBKR-era path below), brain
+               (`run_brain_loop.py`), crypto_momentum (`run_crypto_momentum_
+               shadow.py`), track_b (`run_track_b_shadow.py`). running:YES if the
+               process is alive OR its ledger/state artifact is fresh for its
+               own cadence (each script logs its own `--interval`).
+  LEGACY LANE (dormant, RETIRED IBKR-era code paths, SUPERSEDED by the lanes
+               above) = `AutonomousLoop` / `embedded_scanner` / `continuous.py` /
+               `buddy_scanner`. Its running:NO is EXPECTED and means NOTHING is
+               wrong.
 
-`--assert-running` asserts the LIVE lane (exit 3 only if the LIVE lane is down).
+`--assert-running` asserts the LIVE lane only (exit 3 if it's down) — the shadow
+and legacy lanes are informational, matching the fact that only the LIVE lane
+can place an order.
 """
 from __future__ import annotations
 
@@ -31,12 +46,22 @@ ROOT = Path(__file__).resolve().parents[2]  # repo root from .claude/loop/
 HEARTBEAT_FRESH_S = 90
 ACCOUNT_STATE_FRESH_S = 7200  # trend loop ticks hourly -> 2h tolerance
 _TREND_NEEDLE = "run_oanda_trend"
-_HARVESTER_NEEDLES = (
-    "run_equity_harvester", "AutonomousLoop", "embedded_scanner",
-    "continuous.py", "buddy_scanner",
+_LEGACY_NEEDLES = (
+    "AutonomousLoop", "embedded_scanner", "continuous.py", "buddy_scanner",
 )
-_ARTIFACTS = (
-    "cycle_ledger.jsonl", "rebalance_state.json", "portfolio_state.json", "loop_state.json",
+
+# Shadow lanes (P0 2026-07-06): each entry is (label, process needle, artifact
+# path relative to ROOT, freshness tolerance). Artifact freshness is a
+# best-effort SECONDARY signal — the daily-interval lanes (crypto_momentum,
+# track_b) only touch their ledger once every ~24h by design, and brain_loop's
+# ledger stays empty until it proposes its first hypothesis — so a lane is
+# "running" if its PROCESS is alive, even when the artifact hasn't ticked yet.
+_SHADOW_LANES = (
+    ("equity", "run_equity_harvester", "trained_data/equity/cycle_ledger.jsonl", 7200),
+    ("brain", "run_brain_loop", "trained_data/brain_loop/hypotheses.jsonl", 90000),
+    ("crypto_momentum", "run_crypto_momentum_shadow",
+     "trained_data/crypto/shadow_momentum_ledger.jsonl", 172800),
+    ("track_b", "run_track_b_shadow", "trained_data/research/track_b_shadow_ledger.jsonl", 172800),
 )
 
 
@@ -100,17 +125,25 @@ def _tier7_heartbeat() -> tuple[bool, float | None, bool]:
     return (fresh, age, _pid_alive(pid))
 
 
-def _harvester_cycles() -> int:
-    ledger = ROOT / "trained_data" / "equity" / "cycle_ledger.jsonl"
-    try:
-        return sum(1 for ln in ledger.read_text(encoding="utf-8").splitlines() if ln.strip())
-    except OSError:
-        return 0
+def shadow_lanes_running(lines: list[str] | None = None) -> dict:
+    """Disk/ps-derived status for every shadow lane, keyed by lane name.
 
-
-def _harvester_artifacts() -> bool:
-    d = ROOT / "trained_data" / "equity"
-    return any((d / f).exists() for f in _ARTIFACTS) if d.exists() else False
+    ``lines`` lets ``main()`` reuse one ``ps`` snapshot across all lanes
+    instead of shelling out per lane.
+    """
+    if lines is None:
+        lines = _ps_lines()
+    out: dict = {}
+    for name, needle, artifact_rel, fresh_s in _SHADOW_LANES:
+        proc = _proc_alive((needle,), lines)
+        fresh, age = _file_fresh(artifact_rel, fresh_s)
+        out[name] = {
+            "running": bool(proc or fresh),
+            "process_alive": proc,
+            "artifact_fresh": fresh,
+            "artifact_age_s": age,
+        }
+    return out
 
 
 def live_lane_running() -> dict:
@@ -133,10 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     live = live_lane_running()
 
     lines = _ps_lines()
-    harv_proc = _proc_alive(_HARVESTER_NEEDLES, lines)
-    harv_cycles = _harvester_cycles()
-    harv_art = _harvester_artifacts()
-    harv_running = harv_proc and (harv_cycles > 0 or harv_art)
+    shadow = shadow_lanes_running(lines)
+    legacy_proc = _proc_alive(_LEGACY_NEEDLES, lines)
 
     def _ag(x):
         return "n/a" if x is None else ("%.0fs" % x)
@@ -152,11 +183,19 @@ def main(argv: list[str] | None = None) -> int:
             _ag(live["tier7_heartbeat_age_s"]), "YES" if live["tier7_pid_alive"] else "NO",
         )
     )
+    for name, st in shadow.items():
+        print(
+            "SHADOW LANE %s (read-only research/harvester — cannot trade/arm) — running: %s "
+            "· process: %s · artifact_fresh: %s (%s)" % (
+                name, "YES" if st["running"] else "NO",
+                "YES" if st["process_alive"] else "NO",
+                "YES" if st["artifact_fresh"] else "NO", _ag(st["artifact_age_s"]),
+            )
+        )
     print(
-        "HARVESTER LANE (dormant/legacy IBKR — SUPERSEDED; running:NO is EXPECTED, not a fault) "
-        "— running: %s · process: %s · cycles_executed: %d · live_artifacts: %s" % (
-            "YES" if harv_running else "NO", "YES" if harv_proc else "NO",
-            harv_cycles, "YES" if harv_art else "NO",
+        "LEGACY LANE (dormant, retired IBKR-era code — SUPERSEDED; running:NO is EXPECTED, "
+        "not a fault) — running: %s · process: %s" % (
+            "YES" if legacy_proc else "NO", "YES" if legacy_proc else "NO",
         )
     )
     if "--assert-running" in argv and not live["running"]:

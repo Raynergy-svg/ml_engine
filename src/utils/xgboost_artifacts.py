@@ -170,7 +170,18 @@ def save_native_xgboost_bundle(
         sidecar = xgboost_sidecar_path(path, model_key, alias_map=alias_map)
         # Atomic (2026-06-10): save to tmp-in-same-dir then os.replace so an
         # interrupted write can't leave a truncated sidecar for routing.
-        _tmp_sidecar = sidecar.with_name(sidecar.name + ".tmp")
+        # The ".tmp" MUST come before the real suffix, not after: XGBoost's
+        # save_model() picks its on-disk format from the file's extension at
+        # save time, and a trailing ".tmp" (i.e. "<name>.json.tmp") is an
+        # unrecognized extension that silently falls back to UBJSON — the
+        # bytes are then renamed under a ".json" name they don't match, and
+        # load_model() (which also dispatches on extension) fails to parse
+        # them. Found 2026-07-06 while gating retrain_gates(): a real
+        # XGBoostTrainer.save()+.load() round trip failed under the pinned
+        # xgboost 3.2.0; the existing test suite didn't catch it because it
+        # exercises this function against a fully mocked xgboost module
+        # whose fake save_model()/load_model() ignore format entirely.
+        _tmp_sidecar = sidecar.with_name(sidecar.stem + ".tmp" + sidecar.suffix)
         model.save_model(str(_tmp_sidecar))
         os.replace(_tmp_sidecar, sidecar)
         model_specs[model_key] = {
