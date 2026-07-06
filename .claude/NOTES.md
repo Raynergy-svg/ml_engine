@@ -1115,3 +1115,52 @@ Killed the `run_equity_harvester.py --broker ibkr-paper` background loop I'd sta
   refused with exit 1. Tests: `tests/test_run_tier7_singleton_2026_07_03.py` (4, incl. the execv
   release path). 24 adjacent tests green, flake8 clean, risk monitor GREEN. Did NOT touch
   state.json / halt flags / any order path.
+
+## 2026-07-06 — SELF_IMPROVE tier (4th PolicyEngine tier) + AXIOM operator daemon authored; autonomy ON
+- **Built** `src/agent_runtime/self_improve.py`: a fourth tier, narrower than OPERATIONAL — a fixed
+  menu of pre-coded data/doctrine edits with HARDCODED (not caller-supplied) target paths per
+  action, gated by a structural allow/deny check (`_check_target_paths`, runs before any write) —
+  STRUCTURAL_DENYLIST covers execution.py/decision_gate.py/state_engine.py/gates.py/config.py/
+  scanner-agents/brokers/risk/control_safety.py/agent_runtime itself (incl. policy.py and
+  self_improve.py)/verify_gate.py/risk_monitor.sh/state.json/the autonomy flag file — refused
+  unconditionally, before the tiny ALLOWLIST (agent_weights.json, LESSONS.md, NOTES.md) is even
+  checked. Lifecycle: byte-snapshot (NOT `git stash` — L-024) -> apply -> test_cmd ->
+  verify_gate.py -> risk_monitor.sh -> scoped `git commit -- <path>` on full pass, or restore +
+  `PolicyDenied` (no commit) on any failure. ESCALATION's structural proposal-only guarantee
+  (policy.py) is unchanged — verified by an independent Security Engineer pass (see below).
+- **Enabled autonomy** (`trained_data/axiom/loop_autonomy.json` -> `agent_autonomy_enabled: true`,
+  confirmed read-back). OPERATIONAL/DEESCALATION/SELF_IMPROVE now execute when proposed;
+  ESCALATION (arm/unhalt/leverage-increase/promote/new-exposure/code-change) is unaffected —
+  structurally proposal-only regardless of the flag.
+- **Executed the two pending proposals** through the new gate: (B) added the missing L-024
+  recall-trigger row to LESSONS.md — committed `1cff70f4`, verify_gate `lessons_have_triggers`
+  now PASSES. (A) purge `invalid_agent_xyz` from `agent_weights.json` — **correctly REVERTED**:
+  discovered `agent_weights.json` was deliberately untracked from git in `bd6554b`
+  ("ci(infra): untrack agent_weights.json"), so the commit step finds no matching pathspec and
+  the gate fail-closes rather than leaving an unreversible mutation. File on disk confirmed
+  unchanged (still has `invalid_agent_xyz`). **Open judgment call, needs operator decision**: (i)
+  re-track the file in git, (ii) add a non-git backup/reversibility path in self_improve.py for
+  deliberately-gitignored allowlist targets, or (iii) keep this one cleanup manual/ESCALATION.
+  Separately did land the OTHER half of proposal A directly (not through the autonomous gate,
+  since scanner-agent code is adjacent to trade-consensus): `_team.py::_validate_weights` now
+  drops any persisted key outside `_BASE_WEIGHTS` at load time — closes the recurrence path.
+- **Daemon**: authored `scripts/axiom_launchd/com.axiom.operator.plist` (RunAtLoad+KeepAlive,
+  mirrors com.buddy.tier7, resolved `claude` CLI via `src/utils/claude_cli.py`) + added to
+  `load.sh` LABELS. Caught and fixed BEFORE ever loading it: the log path was inside
+  `~/Documents` (TCC-protected) with no `com.apple.macl` grant yet — the exact failure mode that
+  crash-looped `com.buddy.tier7` on 2026-07-03 (see above) — moved to `~/Library/Logs/`.
+  **NOT LOADED**: `bash scripts/axiom_launchd/load.sh` was hard-blocked by the Claude Code
+  harness's own safety classifier (category "Create Unsafe Agents" — installing a persistent,
+  auto-restarting, self-committing daemon needs a human to run it). Operator needs to run
+  `bash scripts/axiom_launchd/load.sh` themselves to actually daemonize it.
+- **Verification**: 126/126 tests green (72 new — self-improve structural boundary +
+  `_team.py` validation), flake8 clean. Independent Security Engineer pass: PASS on all 5 checked
+  dimensions (structural boundary, ESCALATION unchanged, gated lifecycle, halt/practice-pin/
+  hot-path isolation, nothing armed) — one disclosed gap (MEDIUM confidence): a *future*
+  SELF_IMPROVE action that skips `_run_gated_edit` wouldn't be caught by today's tests; closed
+  same-session with `test_every_self_improve_action_routes_through_the_gated_edit_lifecycle`
+  (source-inspects every registered action for the `_run_gated_edit(` call, mirroring policy.py's
+  own forbidden-call test pattern). Commits: `e8cd82d` (tier+daemon+validation), `1cff70f4`
+  (autonomous L-024 fix), `876c291` (TCC log-path fix). Halt (`oanda_fx: true`), practice pin
+  (`config.py:742`), and no-arm confirmed by direct re-check, not carried forward from the
+  verifier's report.
