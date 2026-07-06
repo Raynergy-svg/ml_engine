@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -37,6 +38,29 @@ LANE_FRESH_S = 7200.0      # trend lane rebalances hourly; account snapshot <2h 
 # Absent => panel renders honest not-connected (never fabricates loop activity).
 TIER7_STATE_PATH = CLAUDE_DIR / "tier7_state.json"
 TIER7_FRESH_S = 900.0      # snapshot-write freshness; >15m old => snapshot considered stale
+
+ACTIVITY_LOG_FEEDS = [
+    {
+        "id": "trend",
+        "title": "OANDA trend loop",
+        "path": Path("trained_data/axiom/trend_loop.out"),
+    },
+    {
+        "id": "tier7",
+        "title": "Tier 7 supervisor",
+        "path": Path("trained_data/axiom/tier7_loop.out"),
+    },
+    {
+        "id": "equity",
+        "title": "Equity harvester",
+        "path": Path("logs/equity_harvester_loop.out"),
+    },
+    {
+        "id": "safety",
+        "title": "Safety monitor",
+        "path": Path("trained_data/axiom/safety_monitor.out"),
+    },
+]
 
 
 # --------------------------------------------------------------------------- #
@@ -83,6 +107,27 @@ def _str_or_none(value: Any) -> Optional[str]:
     if value is None:
         return None
     return str(value)
+
+
+def _utc_iso_from_ts(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+
+def _tail_text_lines(path: Path, limit: int) -> List[str]:
+    """Return a bounded tail from a fixed local log file.
+
+    These logs are small enough for simple line reads today, but the byte cap keeps
+    this read-only dashboard endpoint predictable even if a loop log grows large.
+    """
+    try:
+        with path.open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - 64_000))
+            text = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    return [line.strip() for line in text.splitlines() if line.strip()][-limit:]
 
 
 def _fill_kind(t: Dict[str, Any]) -> Optional[str]:
@@ -139,6 +184,61 @@ def _transaction_status(t: Dict[str, Any], fills_by_order: Dict[str, Dict[str, A
     if tx_type.endswith("_ORDER"):
         return "ACTIVE"
     return "RECORDED"
+
+
+def read_activity(line_limit: int = 8) -> Dict[str, Any]:
+    """Concise live operations feed for the AXIOM Activity tab.
+
+    Combines the structured BackgroundActivity registry with short tails from the
+    fixed loop logs. No caller-supplied path is accepted here; this is read-only
+    visibility into known bot processes, not a file browser.
+    """
+    try:
+        from src.scanner.automation.background_activity import get_background_activity_tracker
+
+        background = get_background_activity_tracker().get_snapshot(limit=12)
+    except Exception as exc:  # noqa: BLE001 - dashboard visibility must degrade, not crash
+        background = {
+            "updated_at": None,
+            "active_count": 0,
+            "history_count": 0,
+            "active": [],
+            "history": [],
+            "error": str(exc),
+        }
+
+    now = time.time()
+    feeds: List[Dict[str, Any]] = []
+    for feed in ACTIVITY_LOG_FEEDS:
+        rel_path = feed["path"]
+        abs_path = REPO_ROOT / rel_path
+        lines = _tail_text_lines(abs_path, line_limit)
+        try:
+            stat = abs_path.stat()
+            updated_at = _utc_iso_from_ts(stat.st_mtime)
+            age_s: Optional[float] = round(now - stat.st_mtime, 1)
+            size_bytes: Optional[int] = stat.st_size
+        except OSError:
+            updated_at = None
+            age_s = None
+            size_bytes = None
+
+        feeds.append({
+            "id": feed["id"],
+            "title": feed["title"],
+            "path": str(rel_path),
+            "exists": abs_path.exists(),
+            "updated_at": updated_at,
+            "age_s": age_s,
+            "size_bytes": size_bytes,
+            "lines": lines,
+        })
+
+    return {
+        "updated_at": _utc_iso_from_ts(now),
+        "background": background,
+        "log_feeds": feeds,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -624,6 +724,45 @@ _BRAIN_LOOP_DIR = REPO_ROOT / "trained_data" / "brain_loop"
 _BRAIN_LOOP_LEDGER_PATH = _BRAIN_LOOP_DIR / "hypotheses.jsonl"
 _BRAIN_LOOP_REQUESTS_DIR = _BRAIN_LOOP_DIR / "promotion_requests"
 _BRAIN_LOOP_AUDIT_PATH = CLAUDE_DIR / "brain_loop_audit.jsonl"
+
+
+def read_axiom_operator() -> Dict[str, Any]:
+    """Subscription-backed AXIOM operator status.
+
+    This is intentionally read-only dashboard hydration. It never starts Claude,
+    never touches controls, and degrades to an honest idle snapshot before the
+    first operator epoch has run.
+    """
+    try:
+        from src.axiom_operator.session import read_operator_snapshot
+
+        return read_operator_snapshot()
+    except Exception as exc:  # noqa: BLE001 - dashboard visibility must not crash
+        logger.warning("axiom operator snapshot unreadable: %s", exc)
+        return {
+            "has_run": False,
+            "session": {
+                "status": "unavailable",
+                "provider": "claude_subscription",
+                "epoch": 0,
+                "handoff_summary": "AXIOM operator snapshot unavailable.",
+                "open_incidents": [],
+                "last_tools": [],
+                "blocked_reasons": [str(exc)],
+                "next_action": "wait_for_operator",
+                "last_action": None,
+                "last_reasoning": None,
+                "last_error": str(exc),
+                "api_key_refused": False,
+                "cli_available": None,
+            },
+            "last_decision": None,
+            "recent_decisions": [],
+            "source": {
+                "session": "trained_data/axiom/operator_session.json",
+                "decisions": "trained_data/axiom/operator_decisions.jsonl",
+            },
+        }
 
 
 def _brain_loop_ledger_tail(limit: int = 10) -> List[Dict[str, Any]]:

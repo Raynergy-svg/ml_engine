@@ -2,10 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dashboard",
-      "runtimeExecutable": "/Library/Developer/CommandLineTools/usr/bin/python3",
-      "runtimeArgs": ["/tmp/serve_dashboard.py", "8501"],
-      "port": 8501
+      "name": "axiom-api",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "uvicorn", "dashboard.server.app:app", "--port", "8888"],
+      "port": 8888,
+      "env": { "AXIOM_CONTROL_ENABLED": "1" }
+    },
+    {
+      "name": "axiom-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "dashboard/web"],
+      "port": 3000
     }
   ]
 }

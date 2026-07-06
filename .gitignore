@@ -189,6 +189,7 @@ htmlcov/
 .claude/heartbeat.json
 .claude/alert_state.json
 .claude/last_tx_id.json
+.claude/trend_journal_sync_cursor.json
 .claude/state_drift_log.jsonl
 .claude/ralph/memory.json
 .claude/scheduled_tasks.lock
@@ -268,3 +269,17 @@ trained_data/axiom/
 market_data/oanda_books/
 market_data/multi_asset/
 market_data/factor/
+market_data/equity_alt/
+
+# Debug/session scratch artifacts (nohup dumps, screenshots, tool caches — not project data)
+/checkpoint.log.*
+/cli.log.*
+/train.log.*
+/tensorboard.log.*
+/axiom-*.jpeg
+/axiom-*.png
+/overview*.png
+/recon-*.png
+logs/equity_harvester_loop.out
+.playwright-mcp/
+.superpowers/

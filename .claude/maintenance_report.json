@@ -1,0 +1,58 @@
+{
+  "adjustments": {
+    "approved_unconsumed": 0,
+    "approved_unconsumed_keys": [],
+    "invalid_proposals": 0,
+    "oldest_pending_ts": null,
+    "oldest_unconsumed_ts": null,
+    "pending_proposals": 0
+  },
+  "alerts": {
+    "active": [
+      {
+        "message": "7 consecutive losses (threshold: 3)",
+        "route": "self_heal reduce_risk (evidence-anchored, auto) + auto-halt circuit breaker at threshold (engine); operator ack via AXIOM",
+        "severity": "WARNING",
+        "ts": "2026-07-02T12:58:07.588699",
+        "type": "consecutive_losses"
+      }
+    ],
+    "unacknowledged": 1
+  },
+  "config_overlay": null,
+  "lanes": {
+    "equity_artifact_stale": true,
+    "equity_ledger_age_s": 65990.79288864136,
+    "global_halted": true,
+    "halted_lanes": {
+      "brain": true,
+      "crypto_momentum": true,
+      "equity": true,
+      "oanda_fx": true,
+      "track_b": true
+    },
+    "heartbeat": {
+      "fresh": true,
+      "pid_alive": true,
+      "scanner_alive": false,
+      "writer": "tier7_supervisor"
+    },
+    "trend_account_state_age_s": 24.19088315963745,
+    "trend_artifact_stale": false
+  },
+  "needs_attention": [
+    "1 unacknowledged alert(s)"
+  ],
+  "recommendations": [
+    "Model freshness CRITICAL (per_pair_models (48d)). NOTE: FX direction staleness is by-design (L-016 retired; ship-gate quarantined) \u2014 do NOT retrain FX direction and never via deprecated train-joint. If a stale NON-retired head matters, escalate to the operator for scripts/run_full_training.sh (per-pair path)."
+  ],
+  "self_heal": {
+    "actions_today": 4,
+    "available": true,
+    "last_action_at": "2026-07-06T07:13:35.725761+00:00",
+    "last_action_label": "retrain_rl_position_sizer"
+  },
+  "supervisor_pid": 88167,
+  "ts_iso": "2026-07-06T09:33:29.390733+00:00",
+  "writer": "tier7_supervisor"
+}

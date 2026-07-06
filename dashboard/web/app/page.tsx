@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { StreamProvider, useStream } from "@/lib/stream";
 import { control } from "@/lib/control";
 import { AccountHeader } from "@/components/AccountHeader";
@@ -14,12 +14,9 @@ import { SentimentPlaceholder } from "@/components/SentimentPlaceholder";
 import { Tier7Panel } from "@/components/Tier7Panel";
 import { Tier7Cockpit } from "@/components/Tier7Cockpit";
 import { ControlPanel } from "@/components/ControlPanel";
-import { HealthPanel } from "@/components/HealthPanel";
-import { EquityHarvesterPanel } from "@/components/EquityHarvesterPanel";
-import { CryptoMomentumPanel } from "@/components/CryptoMomentumPanel";
-import { TrackBPanel } from "@/components/TrackBPanel";
 import { BrainLoopPanel } from "@/components/BrainLoopPanel";
 import { LearningLoopPanel } from "@/components/LearningLoopPanel";
+import { ActivityPanel } from "@/components/ActivityPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
 import { FullscreenIcon, ChartTypeIcon, PanelSplitIcon, FitArrowsIcon, ChevronDown, CheckCircleSolid } from "@/components/icons";
 import { usePoll } from "@/lib/api";
@@ -31,7 +28,7 @@ const GRANS = [
   { label: "1W", code: "W" }, { label: "1M", code: "M" },
 ];
 
-const TABS = ["Overview", "Markets", "Positions", "Orders", "Executions", "Risk", "Automation", "Journal", "Analytics", "Settings"] as const;
+const TABS = ["Overview", "Markets", "Positions", "Orders", "Executions", "Activity", "Automation", "Journal", "Analytics", "Settings"] as const;
 type Tab = (typeof TABS)[number];
 const MAJORS = ["EUR_USD", "USD_JPY", "GBP_USD", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "EUR_JPY", "GBP_JPY", "EUR_GBP"];
 
@@ -54,10 +51,10 @@ function useStoredValue(key: string, fallback: string) {
     };
   }, [key, value]);
 
-  const setValue = (next: string) => {
+  const setValue = useCallback((next: string) => {
     setValueState(next);
     window.localStorage.setItem(key, next);
-  };
+  }, [key]);
 
   return [value, setValue] as const;
 }
@@ -82,10 +79,13 @@ function DashboardBody() {
   const [sidePanelHidden, setSidePanelHidden] = useState(false);
   const [resetZoomTick, setResetZoomTick] = useState(0);
   const [storedTab, setStoredTab] = useStoredValue("axiom:selectedTab", "Overview");
-  const tab: Tab = TABS.includes(storedTab as Tab) ? (storedTab as Tab) : "Overview";
-  const setTab = (next: Tab) => setStoredTab(next);
+  const normalizedStoredTab = storedTab === "Risk" ? "Activity" : storedTab;
+  const tab: Tab = TABS.includes(normalizedStoredTab as Tab) ? (normalizedStoredTab as Tab) : "Overview";
+  const setTab = useCallback((next: Tab) => setStoredTab(next), [setStoredTab]);
+  const chartTabs = new Set<Tab>(["Overview", "Markets"]);
   const marketTabs = new Set<Tab>(["Markets"]);
   const ledgerTabs = new Set<Tab>(["Orders", "Executions", "Journal"]);
+  const showChartControls = chartTabs.has(tab);
   const { payload } = useStream();
   const halted = payload?.status?.halted ?? null;
 
@@ -124,7 +124,7 @@ function DashboardBody() {
       },
     ];
     return [...nav, ...actions, ...instruments];
-  }, [halted]);
+  }, [halted, setTab]);
 
   return (
     <div className="dashboard-shell">
@@ -146,7 +146,7 @@ function DashboardBody() {
               </button>
             ))}
           </div>
-          <div className="ml-auto hidden shrink-0 items-center gap-1 md:flex">
+          {showChartControls && <div className="ml-auto hidden shrink-0 items-center gap-1 md:flex">
             <div className="relative">
               <button
                 onClick={() => setGranMenuOpen((v) => !v)}
@@ -203,7 +203,7 @@ function DashboardBody() {
             >
               <FitArrowsIcon />
             </button>
-          </div>
+          </div>}
         </nav>
       </div>
 
@@ -253,14 +253,7 @@ function DashboardBody() {
 
         {tab === "Positions" && <div className="h-[520px] min-w-0"><PositionsTable /></div>}
 
-        {tab === "Risk" && (
-          <>
-            <HealthPanel />
-            <EquityHarvesterPanel />
-            <CryptoMomentumPanel />
-            <TrackBPanel />
-          </>
-        )}
+        {tab === "Activity" && <ActivityPanel />}
         {tab === "Automation" && (
           <>
             <ControlPanel />
@@ -291,9 +284,15 @@ function DashboardBody() {
 function useClock(): string {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
-    setNow(new Date());
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setNow(new Date());
+    });
     const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
   if (!now) return "";
   return now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });

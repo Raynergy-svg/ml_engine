@@ -108,7 +108,8 @@ def root() -> Dict[str, Any]:
                           "/api/strategy", "/api/sentiment", "/api/tier7", "/api/system_health",
                           "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream",
                           "/api/equity_sleeve", "/api/lanes", "/api/brain_loop",
-                          "/api/crypto_momentum", "/api/track_b", "/api/learning_loop"]}
+                          "/api/crypto_momentum", "/api/track_b", "/api/learning_loop",
+                          "/api/activity", "/api/axiom_operator"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -171,6 +172,36 @@ def brain_loop() -> Dict[str, Any]:
     return ds.read_brain_loop()
 
 
+@app.get("/api/axiom_operator")
+def axiom_operator() -> Dict[str, Any]:
+    return ds.read_axiom_operator()
+
+
+@app.post("/api/axiom_operator/run")
+def axiom_operator_run() -> Dict[str, Any]:
+    from src.axiom_operator.runner import AxiomOperator
+
+    result = AxiomOperator(project_root=REPO_ROOT).run_once(
+        observation={
+            "source": "dashboard",
+            "trigger": "operator_requested_epoch",
+            "activity": ds.read_activity(line_limit=4),
+            "health": ds.read_health(),
+            "control_enabled": _CONTROL_ENABLED,
+        },
+        timeout_seconds=int(os.environ.get("AXIOM_OPERATOR_TIMEOUT_SECONDS", "120")),
+    )
+    return {
+        "ok": result.ok,
+        "status": result.status,
+        "epoch": result.epoch,
+        "action": result.action,
+        "error": result.error,
+        "decision": result.decision,
+        "session": result.session,
+    }
+
+
 @app.get("/api/crypto_momentum")
 def crypto_momentum() -> Dict[str, Any]:
     return ds.read_crypto_momentum()
@@ -184,6 +215,13 @@ def track_b() -> Dict[str, Any]:
 @app.get("/api/learning_loop")
 def learning_loop() -> Dict[str, Any]:
     return ds.read_learning_loop()
+
+
+@app.get("/api/activity")
+@app.get("/api/background_activity")
+@app.get("/api/background-activity")
+def activity() -> Dict[str, Any]:
+    return ds.read_activity()
 
 
 @app.get("/api/tier7")

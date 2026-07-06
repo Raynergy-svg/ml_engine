@@ -108,7 +108,20 @@ def _make_ibkr_paper_fill(broker, prices: pd.DataFrame) -> Callable[[Order], boo
 
 
 def _connect_ibkr_paper(snapshot, prices, root: Path):
-    """Attempt a live IBKR PAPER connection. Returns (fill_callback or None, blocker_msg)."""
+    """Attempt a live IBKR PAPER connection. Returns (fill_callback or None, blocker_msg).
+
+    ARM CHECKPOINT (fixed 2026-07-01 — audit finding, see
+    docs/equity-harvester-verdict-2026-07-01-independent-audit.md §3 item 5):
+    this path used to call ``place_equity_order`` the moment a broker
+    connection + ship-gate succeeded, entirely bypassing
+    :class:`src.equity.live_gate.LiveGate`. That meant the typed
+    "LIVE" confirmation the PRD describes was never actually required
+    to place a real (paper) order. We now require ``LiveGate.is_armed()``
+    before returning a real fill callback. Construction here NEVER calls
+    ``.arm()`` — arming is an out-of-band operator action (typed "LIVE"
+    token, e.g. via the TUI ModeConfirmModal or an explicit arm script);
+    this script only ever *checks* armed state, it never sets it.
+    """
     try:
         from src.brokers.factory import create_broker
     except Exception as exc:  # pragma: no cover
@@ -135,7 +148,20 @@ def _connect_ibkr_paper(snapshot, prices, root: Path):
         enforce_equity_ship_gate(root / _SHIP_GATE_REL, snapshot.universe_hash)
     except Exception as exc:
         return None, f"equity ship-gate guard refused unlock ({type(exc).__name__}: {exc})."
-    logger.info("IBKR PAPER connected (port %d), NAV=%.2f", IBKR_PAPER_PORT, broker.get_nav())
+
+    from src.equity.live_gate import LiveGate, LiveGateConfig
+    gate = LiveGate(LiveGateConfig())
+    if not gate.is_armed():
+        return None, (
+            "ARM checkpoint refused: LiveGate is not armed (trained_data/equity/"
+            "live_gate_state.json missing or armed=false). Broker connection and "
+            "ship-gate both cleared, but no order will be placed without an explicit "
+            "typed 'LIVE' confirmation via LiveGate.arm() (TUI ModeConfirmModal or "
+            "operator arm script). This script never arms the gate itself."
+        )
+
+    logger.info("IBKR PAPER connected (port %d), NAV=%.2f, LiveGate ARMED",
+                IBKR_PAPER_PORT, broker.get_nav())
     return _make_ibkr_paper_fill(broker, prices), ""
 
 

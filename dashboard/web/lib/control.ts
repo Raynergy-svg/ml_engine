@@ -11,6 +11,16 @@ export interface ControlResult {
   data: Record<string, unknown> & { state?: ControlState };
 }
 
+function actorId(): string {
+  if (typeof window === "undefined") return "dashboard-server";
+  const key = "axiom_actor_id";
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+  const generated = `dashboard-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  window.localStorage.setItem(key, generated);
+  return generated;
+}
+
 export async function control(
   action: string,
   params: Record<string, unknown> = {},
@@ -19,7 +29,11 @@ export async function control(
   try {
     res = await fetch(`/api/control/${action}`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-axiom-confirm": action },
+      headers: {
+        "content-type": "application/json",
+        "x-axiom-confirm": action,
+        "x-axiom-actor": actorId(),
+      },
       body: JSON.stringify({ params }),
     });
   } catch {

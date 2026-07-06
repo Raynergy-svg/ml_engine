@@ -427,6 +427,117 @@ export interface LearningLoop {
   source: Record<string, string>;
 }
 
+export interface ActivityEvent {
+  timestamp?: string;
+  level?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+}
+export interface ActivityItem {
+  id: string;
+  kind: string;
+  title: string;
+  source: string;
+  status: string;
+  started_at?: string | null;
+  updated_at?: string | null;
+  ended_at?: string | null;
+  summary?: string | null;
+  error?: string | null;
+  metadata?: Record<string, unknown>;
+  events?: ActivityEvent[];
+}
+export interface BackgroundActivity {
+  updated_at?: string | null;
+  active_count: number;
+  history_count: number;
+  active: ActivityItem[];
+  history: ActivityItem[];
+  error?: string;
+}
+export interface ActivityLogFeed {
+  id: string;
+  title: string;
+  path: string;
+  exists: boolean;
+  updated_at?: string | null;
+  age_s?: number | null;
+  size_bytes?: number | null;
+  lines: string[];
+}
+export interface ActivitySnapshot {
+  updated_at: string;
+  background: BackgroundActivity;
+  log_feeds: ActivityLogFeed[];
+}
+
+// GET /api/axiom_operator — subscription-backed Claude Code operator session.
+export interface AxiomOperatorSession {
+  session_id?: string;
+  status: "idle" | "running" | "acted" | "held" | "waiting" | "handoff" | "unavailable" | string;
+  provider: string;
+  epoch: number;
+  context_budget_chars?: number;
+  rollover_threshold?: number;
+  context_used_chars?: number;
+  context_used_pct?: number;
+  handoff_summary?: string | null;
+  open_incidents: string[];
+  last_tools: string[];
+  blocked_reasons: string[];
+  next_action?: string | null;
+  last_action?: string | null;
+  last_reasoning?: string | null;
+  last_error?: string | null;
+  last_effect?: Record<string, unknown> | null;
+  last_started_at?: string | null;
+  last_completed_at?: string | null;
+  updated_at?: string | null;
+  api_key_refused?: boolean;
+  cli_available?: boolean | null;
+  mcp_config?: string | null;
+  mode?: string;
+}
+export interface AxiomOperatorDecision {
+  ts?: string;
+  epoch?: number;
+  status?: string;
+  action?: string;
+  params?: Record<string, unknown>;
+  policy?: {
+    allowed?: boolean;
+    tier?: string;
+    requires_human?: boolean;
+    reason?: string;
+  };
+  tools_called?: string[];
+  blocked_reasons?: string[];
+  context_used_chars?: number;
+  context_used_pct?: number;
+  rollover?: boolean;
+  duration_seconds?: number;
+  returncode?: number;
+  handoff_summary?: string;
+  next_action?: string;
+}
+export interface AxiomOperator {
+  has_run: boolean;
+  session: AxiomOperatorSession;
+  last_decision: AxiomOperatorDecision | null;
+  recent_decisions: AxiomOperatorDecision[];
+  source: Record<string, string>;
+}
+
+export interface AxiomOperatorRunResult {
+  ok: boolean;
+  status: string;
+  epoch: number;
+  action: string;
+  error?: string | null;
+  decision?: AxiomOperatorDecision;
+  session?: AxiomOperatorSession;
+}
+
 // GET /api/crypto_momentum — crypto XS-momentum SHADOW lane (no live path exists;
 // this signal FAILED the ship gate on significance — see docs/experiment-crypto-
 // edge-hunt-round2-2026-06-29.md — the panel exists to show the accumulating

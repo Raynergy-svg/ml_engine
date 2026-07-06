@@ -1,5 +1,157 @@
-# Ralph Progress - equity-harvester-bot
-# Started: 2026-06-18
-# Source PRD: tasks/prd-equity-harvester-bot.md (22 stories)
-# US-005 is a HARD GATE: writes SHIP_GATE.json; US-006+ refuse to build unless gate_pass==true.
-
+# Ralph Progress Log
+Started: Thu Jul  2 09:02:24 EDT 2026
+---
+[2026-07-02 09:02:24] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:02:25] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:02:25] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:02:25] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:02:25] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:02:26] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:03:34] Story US-001 attempt made, not yet complete
+[2026-07-02 09:03:34] Story US-001 attempt made, not yet complete
+[2026-07-02 09:03:37] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:03:37] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:03:37] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:03:37] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:04:16] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:04:16] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:05:41] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:05:41] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:05:41] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:05:41] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:05:41] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:05:41] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:06:05] Story US-001 attempt made, not yet complete
+[2026-07-02 09:06:06] Story US-001 attempt made, not yet complete
+[2026-07-02 09:06:08] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:06:08] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:06:08] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:06:08] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:07:27] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:07:27] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:08:39] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:08:39] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:08:39] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:08:41] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:08:41] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:08:41] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:09:10] Story US-001 attempt made, not yet complete
+[2026-07-02 09:09:12] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:09:12] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:09:21] Story US-001 attempt made, not yet complete
+[2026-07-02 09:09:24] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:09:24] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:09:53] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:10:13] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:11:02] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:11:02] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:11:02] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:11:03] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:11:03] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:11:03] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:11:49] Story US-001 attempt made, not yet complete
+[2026-07-02 09:11:52] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:11:52] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:11:56] Story US-001 attempt made, not yet complete
+[2026-07-02 09:11:58] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:11:58] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:13:09] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:13:09] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:14:25] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:14:25] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:14:25] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:14:25] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:14:25] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:14:25] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:14:58] Story US-001 attempt made, not yet complete
+[2026-07-02 09:14:59] Story US-001 attempt made, not yet complete
+[2026-07-02 09:15:00] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:15:01] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:15:01] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:15:01] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:15:38] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:15:39] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:17:09] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:17:09] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:17:09] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:17:10] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:17:10] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:17:10] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:18:20] Story US-001 attempt made, not yet complete
+[2026-07-02 09:18:20] Story US-001 attempt made, not yet complete
+[2026-07-02 09:18:23] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:18:23] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:18:23] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:18:23] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:19:19] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:19:22] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:21:11] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:21:11] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:21:11] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:21:12] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:21:12] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:21:12] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:22:33] Story US-001 attempt made, not yet complete
+[2026-07-02 09:22:35] Story US-001 attempt made, not yet complete
+[2026-07-02 09:22:35] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:22:36] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:22:37] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:22:38] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:25:15] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:25:19] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:27:32] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:27:32] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:27:32] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:27:32] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:27:32] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:27:32] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:27:52] Story US-001 attempt made, not yet complete
+[2026-07-02 09:27:52] Story US-001 attempt made, not yet complete
+[2026-07-02 09:27:54] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:27:54] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:27:54] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:27:54] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:28:18] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:28:18] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:29:22] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:29:22] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:29:22] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:29:22] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:29:22] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:29:22] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:29:56] Story US-001 attempt made, not yet complete
+[2026-07-02 09:29:56] Story US-001 attempt made, not yet complete
+[2026-07-02 09:29:59] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:29:59] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:29:59] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:29:59] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:30:34] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:30:34] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:31:25] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:31:25] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:31:25] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:31:25] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:31:25] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:31:25] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:31:52] Story US-001 attempt made, not yet complete
+[2026-07-02 09:31:52] Story US-001 attempt made, not yet complete
+[2026-07-02 09:31:55] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:31:55] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:31:55] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:31:55] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:32:18] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:32:19] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:32:47] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:32:47] Ralph started with tool=claude, max_iterations=10
+[2026-07-02 09:32:47] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:32:47] Iteration 1: Progress 0/29 complete, 29 pending
+[2026-07-02 09:32:47] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:32:47] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:32:58] Story US-001 attempt made, not yet complete
+[2026-07-02 09:32:59] Story US-001 attempt made, not yet complete
+[2026-07-02 09:33:00] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:33:00] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:33:01] Iteration 2: Progress 0/29 complete, 29 pending
+[2026-07-02 09:33:01] Processing story: US-001 - Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster [model: claude-opus-4-7]
+[2026-07-02 09:33:11] Ralph aborted: 2 consecutive auth/session-limit errors
+[2026-07-02 09:33:13] Ralph aborted: 2 consecutive auth/session-limit errors

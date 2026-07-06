@@ -5,10 +5,11 @@
   "correlated_pairs": [
     "EUR_USD",
     "GBP_USD",
+    "USD_JPY",
     "USD_CHF",
     "AUD_USD",
-    "EUR_GBP"
+    "EUR_JPY"
   ],
   "correlation_threshold": 0.7,
-  "saved_at": "2026-05-13T06:10:29.993515"
+  "saved_at": "2026-07-03T14:37:05.283672"
 }

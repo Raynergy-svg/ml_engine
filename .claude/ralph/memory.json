@@ -4,8 +4,8 @@
   "description": "Hot-state memory for the PRD improvement loop. Written by Ralph/user as stories complete. Read by scheduled sweep and chain agents.",
   "current_prd": {
     "file": ".claude/ralph/prd.json",
-    "phase": "ralph/buddy-gap-resolution-phase38",
-    "total_stories": 26,
+    "phase": "ralph/buddy-gap-resolution-phase3",
+    "total_stories": 29,
     "passed_stories": 0,
     "story_status": {
       "US-001": {
@@ -31,121 +31,136 @@
       "US-005": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, mul"
+        "title": "Wire save_state() into graceful shutdown for: model_router, causal_filter, modul"
       },
       "US-006": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: position_timeout, hermes_daily_brie"
+        "title": "Enable config flags for wired modules: trader_readiness_agent, llm_macro_agent, "
       },
       "US-007": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: policy_types, microstructure_regime"
+        "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, mul"
       },
       "US-008": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: adaptive_lr, confidence_calibrator,"
+        "title": "Register modules in dispatcher/orchestrator: position_timeout, hermes_daily_brie"
       },
       "US-009": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: outcome_backfill, pair_transfer, th"
+        "title": "Register modules in dispatcher/orchestrator: policy_types, microstructure_regime"
       },
       "US-010": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: background_activity, post_deploy_cr"
+        "title": "Register modules in dispatcher/orchestrator: adaptive_lr, confidence_calibrator,"
       },
       "US-011": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: regime_broadcaster, agent_accuracy_"
+        "title": "Register modules in dispatcher/orchestrator: outcome_backfill, pair_transfer, th"
       },
       "US-012": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: adjustment_validator, session_snaps"
+        "title": "Register modules in dispatcher/orchestrator: background_activity, post_deploy_cr"
       },
       "US-013": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: dynamic_hedging, dynamic_drawdown, "
+        "title": "Register modules in dispatcher/orchestrator: regime_broadcaster, agent_accuracy_"
       },
       "US-014": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: chain_memory, model_calibration, ex"
+        "title": "Register modules in dispatcher/orchestrator: adjustment_validator, session_snaps"
       },
       "US-015": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: state_reconciler, supervision_polic"
+        "title": "Register modules in dispatcher/orchestrator: dynamic_hedging, dynamic_drawdown, "
       },
       "US-016": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: hermes_digest, regime_reward, train"
+        "title": "Register modules in dispatcher/orchestrator: chain_memory, model_calibration, ex"
       },
       "US-017": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: event_queue, model_bandit, ensemble"
+        "title": "Register modules in dispatcher/orchestrator: state_reconciler, supervision_polic"
       },
       "US-018": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: position_manager, briefing_snapshot"
+        "title": "Register modules in dispatcher/orchestrator: hermes_digest, regime_reward, train"
       },
       "US-019": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, c"
+        "title": "Register modules in dispatcher/orchestrator: event_queue, model_bandit, ensemble"
       },
       "US-020": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: supervision_tick, validation_stats,"
+        "title": "Register modules in dispatcher/orchestrator: position_manager, briefing_snapshot"
       },
       "US-021": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: pair_affinity, seasonality, trading"
+        "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, c"
       },
       "US-022": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: deterministic_surgeon, feature_atte"
+        "title": "Register modules in dispatcher/orchestrator: supervision_tick, validation_stats,"
       },
       "US-023": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: attention_feedback, brain_caps, obs"
+        "title": "Register modules in dispatcher/orchestrator: pair_affinity, seasonality, trading"
       },
       "US-024": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, t"
+        "title": "Register modules in dispatcher/orchestrator: deterministic_surgeon, feature_atte"
       },
       "US-025": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: drift_projector, event_history, pha"
+        "title": "Register modules in dispatcher/orchestrator: attention_feedback, brain_caps, obs"
       },
       "US-026": {
         "passed": false,
         "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, t"
+      },
+      "US-027": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: drift_projector, event_history, pha"
+      },
+      "US-028": {
+        "passed": false,
+        "completed_at": null,
         "title": "Register modules in dispatcher/orchestrator: api_retry, meta_types"
+      },
+      "US-029": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Connect feedback consumers for: confidence_calibrator"
       }
     },
     "last_story_completed": null,
-    "last_updated": "2026-06-15T22:11:45.107210+00:00",
+    "last_updated": "2026-07-02T13:33:48.361805+00:00",
     "all_complete": false
   },
   "loop_history": {
     "total_phases_completed": 29,
-    "total_chain_runs": 99,
+    "total_chain_runs": 363,
     "total_stories_implemented": 0,
     "phases": [
       "phase8",
@@ -172,24 +187,17 @@
       "phase29"
     ],
     "last_chain_result": {
-      "timestamp": "2026-06-15T22:11:44.975253+00:00",
+      "timestamp": "2026-07-02T13:33:48.357383+00:00",
       "review_passed": true,
       "blockers": 0,
       "review_cycles_used": 0
     }
   },
-  "pending_actions": [
-    {
-      "action": "chain_started",
-      "phase": "unknown",
-      "gaps": 125,
-      "timestamp": "2026-06-15T22:11:45.056713+00:00"
-    }
-  ],
+  "pending_actions": [],
   "flags": {
-    "ralph_in_progress": true,
+    "ralph_in_progress": false,
     "review_in_progress": false,
-    "chain_in_progress": true,
+    "chain_in_progress": false,
     "manual_override": false
   },
   "last_chain_sweep": {

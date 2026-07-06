@@ -1,0 +1,14 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 1100,
+  "buffer_size": 110,
+  "saved_at": "2026-07-03T14:37:10.243638",
+  "data_sources": [
+    {
+      "id": "JOINT_EUR_USD_20260703_143515_9daa368c",
+      "n_samples": 1100,
+      "timestamp": "2026-07-03T14:35:16.797828"
+    }
+  ]
+}

@@ -1,20 +1,22 @@
 "use client";
 
 export function Logo({ height = 32 }: { height?: number }) {
-  const w = (height / 96) * 310;
+  const w = (height / 48) * 214;
   return (
-    <svg height={height} width={w} viewBox="0 0 310 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="AXIOM">
-      <defs>
-        <linearGradient id="axiomGradMark" x1="0" y1="96" x2="96" y2="0" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#22D3EE" />
-          <stop offset="1" stopColor="#34E5A1" />
-        </linearGradient>
-      </defs>
-      <g transform="translate(7 16)">
-        <path d="M8 58 36 8 64 58H46L36 38 26 58H8Z" fill="url(#axiomGradMark)" />
-        <path d="M38 8 64 58H49L31 24 38 8Z" fill="#34E5A1" opacity="0.9" />
+    <svg height={height} width={w} viewBox="0 0 214 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="AXIOM">
+      <g transform="translate(2 7)" fill="#2FE084">
+        <path d="M0.5 32 14.8 3.6 23.5 3.6 10.7 32H0.5Z" />
+        <path d="M18.2 3.6 35.2 32H24.2L12.5 11.4 18.2 3.6Z" />
       </g>
-      <text x="86" y="60" fontFamily="var(--font-sans)" fontSize="40" fontWeight="760" letterSpacing="3.5" fill="#F3F7F8">
+      <text
+        x="48"
+        y="34"
+        fontFamily="Inter, var(--font-sans), Arial, sans-serif"
+        fontSize="28"
+        fontWeight="800"
+        letterSpacing="1.15"
+        fill="#F4F7F8"
+      >
         AXIOM
       </text>
     </svg>
@@ -25,15 +27,9 @@ export function Logo({ height = 32 }: { height?: number }) {
 export function LogoMark({ size = 28 }: { size?: number }) {
   return (
     <svg height={size} width={size} viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="AXIOM">
-      <defs>
-        <linearGradient id="axiomGradOnly" x1="0" y1="96" x2="96" y2="0" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#22D3EE" />
-          <stop offset="1" stopColor="#34E5A1" />
-        </linearGradient>
-      </defs>
-      <g transform="translate(12 16)">
-        <path d="M8 58 36 8 64 58H46L36 38 26 58H8Z" fill="url(#axiomGradOnly)" />
-        <path d="M38 8 64 58H49L31 24 38 8Z" fill="#34E5A1" opacity="0.9" />
+      <g transform="translate(13 14) scale(1.95)" fill="#2FE084">
+        <path d="M0.5 32 14.8 3.6 23.5 3.6 10.7 32H0.5Z" />
+        <path d="M18.2 3.6 35.2 32H24.2L12.5 11.4 18.2 3.6Z" />
       </g>
     </svg>
   );

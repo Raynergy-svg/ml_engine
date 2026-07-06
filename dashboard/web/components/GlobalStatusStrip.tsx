@@ -37,7 +37,7 @@ export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => voi
   const halted = payload?.status?.halted ?? null;
   const loops = controlState?.loops;
   const automationOn = !!(loops?.trend?.running || loops?.tier7?.running);
-  const [openMenu, setOpenMenu] = useState<"strategy" | "risk" | "automation" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"main" | "strategy" | "risk" | "automation" | "more" | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function doHalt() {
@@ -94,11 +94,25 @@ export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => voi
   return (
     <div className="relative mx-auto flex w-full max-w-[1680px] flex-wrap items-center gap-2 border-b px-3 py-2 hairline sm:px-4">
       <button
+        onClick={() => setOpenMenu(openMenu === "main" ? null : "main")}
         className="grid h-[58px] w-[58px] shrink-0 place-items-center rounded-md border bg-surface/75 text-dim hairline hover:text-text"
         title="Menu"
       >
         <span className="text-[28px] leading-none">≡</span>
       </button>
+      {openMenu === "main" && (
+        <div className="card absolute left-3 top-[74px] z-20 min-w-[240px] p-1.5">
+          <button
+            onClick={() => { setOpenMenu(null); onOpenPalette?.(); }}
+            className="w-full rounded px-2.5 py-1.5 text-left font-mono text-[12px] text-dim hover:bg-surface2 hover:text-text"
+          >
+            Open command palette
+          </button>
+          <div className="px-2.5 py-1 font-mono text-[10px] text-faint">
+            Use the tab rail for views; write actions stay in Automation / Settings.
+          </div>
+        </div>
+      )}
 
       <button
         onClick={onOpenPalette}
@@ -188,7 +202,31 @@ export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => voi
       >
         NEW SESSION
       </button>
-      <button className="px-1 font-mono text-[22px] text-faint hover:text-text" title="More">⋮</button>
+      <div className="relative">
+        <button
+          onClick={() => setOpenMenu(openMenu === "more" ? null : "more")}
+          className="px-1 font-mono text-[22px] text-faint hover:text-text"
+          title="More"
+        >
+          ⋮
+        </button>
+        {openMenu === "more" && (
+          <div className="card absolute right-0 top-9 z-20 min-w-[230px] p-2">
+            <div className="rounded px-2 py-1.5 font-mono text-[12px] text-text">
+              {armed ? "Controls armed" : "Controls disarmed"}
+            </div>
+            <div className="px-2 py-1 font-mono text-[10.5px] text-faint">
+              trend {loops?.trend?.running ? "running" : "offline"} · tier7 {loops?.tier7?.running ? "running" : "offline"}
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-1 w-full rounded px-2 py-1.5 text-left font-mono text-[12px] text-dim hover:bg-surface2 hover:text-text"
+            >
+              Reload dashboard
+            </button>
+          </div>
+        )}
+      </div>
 
       {openMenu && <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />}
     </div>

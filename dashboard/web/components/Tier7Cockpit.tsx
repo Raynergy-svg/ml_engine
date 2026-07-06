@@ -98,6 +98,7 @@ export function Tier7Cockpit() {
   const tier7Proc = controlState?.loops?.tier7;
   const tier7ProcRunning = tier7Proc?.running === true;
   const controlDisabled = !!controlError && /404/.test(controlError);
+  const armed = controlState?.armed === true;
   const mismatch = data.connected === true && tier7Proc != null && tier7ProcRunning !== running;
   const sh = data.self_heal;
   const ab = sh?.action_budget;
@@ -199,7 +200,7 @@ export function Tier7Cockpit() {
               label="START"
               color="#2bd17e"
               onRun={() => runControl("start_loop", { loop: "tier7" })}
-              disabled={controlDisabled || tier7ProcRunning}
+              disabled={controlDisabled || tier7ProcRunning || !armed}
             />
             <ConfirmButton
               label="STOP"

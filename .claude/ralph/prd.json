@@ -1,395 +1,493 @@
 {
+  "branchName": "ralph/buddy-gap-resolution-phase3",
+  "description": "Auto-generated gap resolution PRD. Source: prd_aura_phase2.json. Detected 138 integration gaps across 4 categories. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
   "project": "ML_Engine",
-  "branchName": "ralph/equity-harvester-bot",
-  "description": "Fully Hands-Off Equity-Beta Harvester Bot - re-point the autonomous engine from dead FX direction onto the validated equity-beta harvester (vol-managed beta + drawdown circuit-breaker). 22 dependency-ordered stories; US-005 is a HARD GATE (SHIP_GATE.json) guarding all downstream build stories. Single-stock universe, IBKR equities, gated live, FX path retired. Source: tasks/prd-equity-harvester-bot.md",
-  "last_updated": "2026-06-18",
   "userStories": [
     {
+      "acceptanceCriteria": [
+        "Add self.state_engine.save_state() to graceful shutdown in continuous.py",
+        "Add self.memory_manager.save_state() to graceful shutdown in continuous.py",
+        "Add self.pair_transfer.save_state() to graceful shutdown in continuous.py",
+        "Add self.threshold_optimizer.save_state() to graceful shutdown in continuous.py",
+        "Add self.regime_broadcaster.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-001",
-      "title": "Equity price data-loader (point-in-time, adjusted, fail-loud)",
-      "description": "As the bot, I want cached gap-validated daily equity prices so every downstream story has a real data source.",
-      "acceptanceCriteria": [
-        "Daily adjusted OHLCV loader mirroring src/factor/data_loader.py atomic/cache/fail-loud contract; caches under market_data/equity/",
-        "Names the live EOD source explicitly (IBKR fetch_candles 'D' preferred for live; yfinance backtest-only) and records which was used",
-        "Stale/NaN guard: latest row older than freshness window OR NaN closes -> raises (no silent forward-fill)",
-        "Unit test asserts cache round-trip + that a stale/NaN fixture raises",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 1,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-001). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster"
     },
     {
+      "acceptanceCriteria": [
+        "Add self.agent_accuracy_matrix.save_state() to graceful shutdown in continuous.py",
+        "Add self.health_registry.save_state() to graceful shutdown in continuous.py",
+        "Add self.agent_lifecycle.save_state() to graceful shutdown in continuous.py",
+        "Add self.signal_timing.save_state() to graceful shutdown in continuous.py",
+        "Add self.model_calibration.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-002",
-      "title": "Single-stock universe builder (point-in-time, no survivorship)",
-      "description": "As a developer, I want a reproducible look-ahead-safe universe so the bot trades a defensible list.",
-      "acceptanceCriteria": [
-        "Date-indexed membership of liquid US large caps (top-N by $volume/market cap), documented reconstitution rules",
-        "Point-in-time membership (a name appears only on dates it qualified); emits a universe_hash for the deployed set",
-        "Unit test asserts membership on date D includes only tickers qualified as of D and EXCLUDES a known later-IPO ticker (no future leak)",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 2,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-002). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Wire save_state() into graceful shutdown for: agent_accuracy_matrix, health_registry, agent_lifecycle, signal_timing, model_calibration"
     },
     {
+      "acceptanceCriteria": [
+        "Add self.execution_router.save_state() to graceful shutdown in continuous.py",
+        "Add self.execution_quality_optimizer.save_state() to graceful shutdown in continuous.py",
+        "Add self.training_augmenter.save_state() to graceful shutdown in continuous.py",
+        "Add self.model_bandit.save_state() to graceful shutdown in continuous.py",
+        "Add self.affinity_portfolio.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-003",
-      "title": "Portfolio-weight backtest harness (weights -> curve/Sharpe/maxDD/turnover)",
-      "description": "As a developer, I want a portfolio backtester so the US-005 gate is real and reproducible.",
-      "acceptanceCriteria": [
-        "Takes date x ticker target weights + prices -> equity curve, net Sharpe, maxDD, CAGR, turnover; reuses stats()/overlay() from build_equity_harvester.py",
-        "Minimal per-name cost model here (flat bps + ADV-scaled slippage); depth-aware book (US-014) is execution-only and NOT required here",
-        "Execution lag >=1 bar (causal); unit test on a synthetic 2-name panel asserts known Sharpe/maxDD/turnover",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 3,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-003). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Wire save_state() into graceful shutdown for: execution_router, execution_quality_optimizer, training_augmenter, model_bandit, affinity_portfolio"
     },
     {
+      "acceptanceCriteria": [
+        "Add self.position_manager.save_state() to graceful shutdown in continuous.py",
+        "Add self.temporal_attention.save_state() to graceful shutdown in continuous.py",
+        "Add self.dynamic_risk_allocator.save_state() to graceful shutdown in continuous.py",
+        "Add self.execution_quality_tracker.save_state() to graceful shutdown in continuous.py",
+        "Add self.attention_feedback.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-004",
-      "title": "Strategy/engine interface contract",
-      "description": "As the control loop, I want a defined strategy protocol so US-006 and US-017 agree on the interface.",
-      "acceptanceCriteria": [
-        "Typed protocol compute_target_weights(asof)->dict[ticker,float] (causal; sums/bounds documented)",
-        "Explicitly REUSE src/factor/portfolio.py (vol-target + gross/per-name caps) rather than rebuilding; document how US-017 loop consumes it",
-        "A stub strategy implements the protocol; test asserts the loop can call it",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 4,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-004). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Wire save_state() into graceful shutdown for: position_manager, temporal_attention, dynamic_risk_allocator, execution_quality_tracker, attention_feedback"
     },
     {
+      "acceptanceCriteria": [
+        "Add self.model_router.save_state() to graceful shutdown in continuous.py",
+        "Add self.causal_filter.save_state() to graceful shutdown in continuous.py",
+        "Add self.module_activation.save_state() to graceful shutdown in continuous.py",
+        "Add self.replay_validator.save_state() to graceful shutdown in continuous.py",
+        "Add self.pair_regime_agent_matrix.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "id": "US-005",
-      "title": "HARD GATE: re-validate harvester on single-stock universe -> SHIP_GATE.json",
-      "description": "As the operator, I want machine-readable proof the harvester clears the gate on the deployed universe before anything is built on it.",
-      "acceptanceCriteria": [
-        "Run harvester overlay on US-002 universe via US-003 harness full-cycle (>=2010-2026) with realistic per-name costs; write trained_data/backtests/equity_harvester_singlestock_*.json",
-        "REUSE src/factor/ship_gate.evaluate_gate (do not hand-roll); decide explicitly whether MIN_POSITIVE_YEARS=6/MIN_TOTAL_YEARS=10 apply and record it; resolve 2-vs-4-criterion inconsistency vs build_equity_harvester.py",
-        "Write trained_data/backtests/SHIP_GATE.json atomically: {gate_pass, net_sharpe, max_dd, positive_years, universe_hash, asof}",
-        "If gate_pass==false: document + recommend reverting to validated EW-sector universe; all downstream build stories (US-006+) are guarded by this artifact",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 5,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-005). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Wire save_state() into graceful shutdown for: model_router, causal_filter, module_activation, replay_validator, pair_regime_agent_matrix"
     },
     {
+      "acceptanceCriteria": [
+        "Change enable_trader_readiness_agent default to True in ScannerConfig",
+        "Change enable_llm_macro_agent default to True in ScannerConfig",
+        "Change enable_llm_trade_analysis default to True in ScannerConfig",
+        "Change enable_meta_manager default to True in ScannerConfig",
+        "Change enable_equity_harvester default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "id": "US-006",
-      "title": "Harvester strategy module (runtime, deterministic)",
-      "description": "As the autonomous loop, I want the harvester as a strategy module implementing the US-004 protocol.",
-      "acceptanceCriteria": [
-        "HarvesterStrategy returns target weights (vol-managed exposure x drawdown/vol-spike scalar), causal, deterministic, NO LLM/NO network in compute path (same inputs->same weights, unit test)",
-        "Reuses src/factor/portfolio.py weight construction/caps; thresholds configurable via ScannerConfig (dataclass field -> profile dict -> consumer getattr, all three)",
-        "Long-only by default (FR-11)",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 6,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-006). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Enable config flags for wired modules: trader_readiness_agent, llm_macro_agent, llm_trade_analysis, meta_manager, equity_harvester"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'dynamic_sl_tp' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_explainer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'multi_horizon_fusion' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'claude_subprocess' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'group_momentum' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-007",
-      "title": "Rebalance scheduler with idempotent restart",
-      "description": "As the bot, I want to rebalance on schedule without churn or double-fills on restart.",
-      "acceptanceCriteria": [
-        "Triggers monthly (configurable) and/or on weight-drift beyond a no-trade band; emits order delta current->target; respects the band",
-        "Idempotent: orders carry stable client-order-IDs; restart mid-rebalance reconciles sent/filled vs target and sends only the remaining delta (test: kill after 2 of 5 orders -> restart sends exactly the missing 3, no double-fill)",
-        "State (last rebalance, current target, in-flight order IDs) persisted atomically; survives restart",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 7,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-007). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, multi_horizon_fusion, claude_subprocess, group_momentum"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'position_timeout' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hermes_daily_brief' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'entropy_sizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'approval_queue' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'retrain_trigger' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-008",
-      "title": "Lean deterministic portfolio-risk agent layer",
-      "description": "As the bot, I want risk gates suited to a harvester (not a direction bet).",
-      "acceptanceCriteria": [
-        "Lean agents returning the existing AgentVerdict shape (_team.py:159): drawdown guardian, vol-targeter, gross/per-name exposure caps, concentration/correlation check, per-name ADV/participation cap (<=X% of 20-day ADV per rebalance), rebalance gate",
-        "Drawdown guardian runs EVERY cycle; breach de-grosses/halts via the circuit-breaker",
-        "Unit tests drive each gate with real configs and assert block/allow on edge cases (zero/negative/None)",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 8,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-008). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: position_timeout, hermes_daily_brief, entropy_sizer, approval_queue, retrain_trigger"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'policy_types' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'microstructure_regime' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'broker_transport' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'kelly_portfolio' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hermes_watchdog' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-009",
-      "title": "Corporate-action handling (single-stock critical)",
-      "description": "As the bot, I must reconcile splits/dividends/delistings so price/position math does not silently corrupt.",
-      "acceptanceCriteria": [
-        "Detect+apply splits & dividends consistently between data source and live broker positions; a 4:1 split must NOT register as a -75% drawdown",
-        "Daily adjusted-vs-raw price sanity check: if back-adjusted series and broker-held shares/price diverge beyond tolerance, HALT + ALERT (do not trade on skew)",
-        "Delisting/M&A: universe builder drops the dead ticker and position manager liquidates/handles cash-out; test drives a synthetic split, dividend, and delisting and asserts correct adjustment + halt-on-divergence",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 9,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-009). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: policy_types, microstructure_regime, broker_transport, kelly_portfolio, hermes_watchdog"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'adaptive_lr' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'confidence_calibrator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'capacity_model' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'memory_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_outcome_predictor' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-010",
-      "title": "Equity market-calendar / session / halt gate",
-      "description": "As the bot, I must only trade when the equity market is actually open.",
-      "acceptanceCriteria": [
-        "Replace FX is_market_open (config.py:1420) on this path with a real NYSE/Nasdaq calendar (regular session 09:30-16:00 ET, holidays, half-days) via exchange_calendars/pandas_market_calendars",
-        "No rebalance/order outside the regular session; LULD/halt awareness (a rejected/halted order is detected and retried/deferred, not silently dropped)",
-        "Test asserts: open on a normal weekday 10:00 ET, closed on a holiday and at 03:00 ET; a simulated halt defers the order",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 10,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-010). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: adaptive_lr, confidence_calibrator, capacity_model, memory_manager, trade_outcome_predictor"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'outcome_backfill' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_transfer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'threshold_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_model_selector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'reflection_events' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-011",
-      "title": "IBKR equity contracts + connect + place one order",
-      "description": "As the bot, I need IBKR to accept equity orders at all.",
-      "acceptanceCriteria": [
-        "Add 'EQUITY' to the AssetClass literal + validators (src/brokers/instrument.py:58, registry.py) and a Stock(symbol,'SMART','USD') path in ibkr.py _build_contract (currently Forex/Future only)",
-        "Connect to an IBKR paper account; place + confirm one whole-share equity order end-to-end (@pytest.mark.integration, skips cleanly without IBGateway)",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 11,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-011). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: outcome_backfill, pair_transfer, threshold_optimizer, pair_model_selector, reflection_events"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'background_activity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'post_deploy_critic' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'counterfactual_learner' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'serial_executor' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'event_handlers' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-012",
-      "title": "IBKR order lifecycle (types, TIF, fills, reconciliation, retries)",
-      "description": "As the bot, I need robust equity order execution.",
-      "acceptanceCriteria": [
-        "Documented policy: market vs limit for rebalance, DAY vs GTC TIF, whole-share rounding with a residual-cash rule (NOT the FX bracket SL/TP order)",
-        "Partial-fill handling + reconciliation; order state machine {SUBMITTED,PARTIAL,FILLED,FAILED}; a forced reconcile mismatch -> FAILED, logged at ERROR with reason_code",
-        "Simulated connection drop during place_order -> retries up to MAX_RETRIES with backoff and raises named BrokerTimeoutError; test asserts retry count + exception type; grep confirms zero bare except in ibkr.py",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 12,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-012). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: background_activity, post_deploy_critic, counterfactual_learner, serial_executor, event_handlers"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'regime_broadcaster' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'agent_accuracy_matrix' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'self_model_state' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'health_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'portfolio_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-013",
-      "title": "IBKR-native kill switch (flatten_all)",
-      "description": "As the operator, I need a working hard kill switch on the equity path.",
-      "acceptanceCriteria": [
-        "Implement flatten_all via the broker abstraction for IBKR (cancel all open orders + market-close all equity positions); the current execution.py:6272 is hardcoded to OANDA REST and would no-op on equities",
-        "Integration-tested on paper: open positions/orders -> flatten_all -> assert flat",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 13,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-013). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: regime_broadcaster, agent_accuracy_matrix, self_model_state, health_registry, portfolio_optimizer"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'adjustment_validator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'session_snapshot' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_funnel' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trading_events' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'alert_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-014",
-      "title": "Depth-aware execution pricing (hummingbot, Apache-2.0)",
-      "description": "As the bot, I need realistic fill-price-at-size for execution sizing.",
-      "acceptanceCriteria": [
-        "Reimplement get_price_for_volume/get_vwap_for_volume (from hummingbot order_book.pyx) for the equities path; Apache-2.0 attribution header + NOTICE entry retained; used for live execution sizing",
-        "Unit test vs a synthetic L2 book asserts correct VWAP-for-size / price-for-volume",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 14,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-014). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: adjustment_validator, session_snapshot, execution_funnel, trading_events, alert_manager"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'dynamic_hedging' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_drawdown' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'agent_lifecycle' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'signal_timing' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trading_event_bus' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-015",
-      "title": "Order-lifecycle executor framework (hummingbot, Apache-2.0)",
-      "description": "As the bot, I need a clean decoupled execution layer.",
-      "acceptanceCriteria": [
-        "Adapt the strategy_v2/executors pattern (executor base + position/TWAP executors) for equity orders via the IBKR broker; Apache-2.0 attribution retained; routes through US-012 lifecycle",
-        "Integration test (paper IBKR) places + reconciles an order via the executor",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 15,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-015). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: dynamic_hedging, dynamic_drawdown, agent_lifecycle, signal_timing, trading_event_bus"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'chain_memory' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_calibration' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'adversarial_trainer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-016",
-      "title": "Shadow fill simulator",
-      "description": "As the bot, I need simulated fills so shadow mode and the loop smoke-test can run without real orders.",
-      "acceptanceCriteria": [
-        "A simulator takes an order + price/L2 input (US-014) and returns a fill with modeled slippage; used by both US-017 and US-021",
-        "Unit test asserts deterministic fills for a fixed input",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 16,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-016). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: chain_memory, model_calibration, execution_router, execution_quality_optimizer, adversarial_trainer"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'state_reconciler' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'supervision_policy_engine' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'autonomous_trainer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'supervision_core' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-017",
-      "title": "Autonomous control loop (fully hands-off)",
-      "description": "As the operator, I want the bot to run itself.",
-      "acceptanceCriteria": [
-        "Loop runs continuously: schedule -> weights -> risk gates -> rebalance/execute (US-016 in shadow) -> drawdown monitor -> state persist -> self-heal, no human in the loop",
-        "Port OANDA-only adapters to IBKR-equity: state_reconciler IBKR fetcher reconciling SHARES + CASH (not just NAV) with equity drift thresholds; IBKR transport FSM (CONNECTED->DEGRADED->RECONNECTING) + heartbeat; on disconnect the loop FAILS CLOSED (no blind rebalance)",
-        "Graceful shutdown persists state atomically; restart resumes (freshness-checked); corrupt state -> log STATE_CORRUPT, skip execute, stay halted (test: inject corrupt file -> no order emitted + halted true)",
-        "Standing Claude-free canary test: AST/grep test asserts no LLM import is reachable from the strategy/execution modules",
-        "Smoke test: loop runs >=10 cycles with a null/stub executor; test greps logs/buddy_debug.log for exact expected substrings",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 17,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-017). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: state_reconciler, supervision_policy_engine, autonomous_trainer, supervision_core, model_manager"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'hermes_digest' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_reward' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'training_augmenter' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'causal_counterfactual' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_slots' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-018",
-      "title": "Out-of-band alerting + harvester alert conditions",
-      "description": "As the operator of a hands-off bot, I need out-of-band notification when something breaks.",
-      "acceptanceCriteria": [
-        "Add a real notification channel (email/Slack/SMS) for HALT / broker-disconnect / DD-breach / rebalance-failed / stale-data / position-drift; alert_manager currently only writes files",
-        "Replace directional-trade alert conditions (consecutive_losses, win_rate_drop) with the harvester conditions above",
-        "Test asserts a simulated breach emits a notification payload",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 18,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-018). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: hermes_digest, regime_reward, training_augmenter, causal_counterfactual, trade_slots"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'event_queue' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_bandit' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'ensemble_disagreement' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'affinity_portfolio' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-019",
-      "title": "Outcome-grounded reflection loop (Tier-7 planning only)",
-      "description": "As the planning layer, I want to learn from realized outcomes - never in the hot path.",
-      "acceptanceCriteria": [
-        "Reimplement (~100 lines, not imported) the TradingAgents (Apache-2.0) pattern: log decision pending -> on maturity fetch realized return vs benchmark (alpha) -> write compact alpha-cited lesson -> inject curated lessons into the next PLANNING prompt; anchored on trained_data/trade_journal_rl.json, atomic append-only, rotation-capped, idempotent",
-        "Runs only in the Tier-7 planning/post-mortem path; the US-017 canary test confirms it is not reachable from the hot path",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 19,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-019). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: event_queue, model_bandit, ensemble_disagreement, regime_tracker, affinity_portfolio"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'position_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'briefing_snapshot' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'cycle_autonomy' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'smart_execution' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'accuracy_gate' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-020",
-      "title": "Deprecate & retire the FX directional path (non-destructive)",
-      "description": "As the operator, I want the dead FX path retired cleanly without losing history.",
-      "acceptanceCriteria": [
-        "FX directional engine path + the 15 directional agents disabled from the active runtime (config flags off; removed from the harvester engine path); code PRESERVED in git history - no hard-delete of artifacts/journals",
-        "Deprecation notes in code + docs pointing to this PRD and the research verdicts; no runtime path still depends on the retired agents; suite green after removal",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
+      "notes": "",
+      "passes": false,
       "priority": 20,
-      "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-020). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "title": "Register modules in dispatcher/orchestrator: position_manager, briefing_snapshot, cycle_autonomy, smart_execution, accuracy_gate"
     },
     {
+      "acceptanceCriteria": [
+        "Register 'temporal_attention' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'orchestrator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'constitution' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_risk_allocator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hermes_state' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
       "id": "US-021",
-      "title": "Shadow / paper mode end-to-end",
-      "description": "As the operator, I want to watch the whole bot run in simulation before any real money.",
-      "acceptanceCriteria": [
-        "Full pipeline runs in shadow (paper IBKR + US-016 simulated fills): real decisions, no real capital; bot stays halted/fail-closed by default",
-        "Divergence check (verifiable): if realized shadow maxDD exceeds backtest maxDD by >X pp OR turnover differs by >Y% (operator sets X,Y), emit a DIVERGENCE warning; test drives synthetic stats past/under the threshold",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
-      ],
-      "priority": 21,
+      "notes": "",
       "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-021). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "priority": 21,
+      "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, constitution, dynamic_risk_allocator, hermes_state"
     },
     {
-      "id": "US-022",
-      "title": "Gated live path (typed confirmation + universe-keyed gate)",
-      "description": "As the operator, I want a safe explicit path to real money.",
       "acceptanceCriteria": [
-        "Live blocked unless: (a) SHIP_GATE.json gate_pass==true AND its universe_hash matches the deployed universe, AND (b) explicit typed confirmation (reuse src/tui/screens/mode_modal.py ModeConfirmModal)",
-        "Position sizing capped to a configurable small initial NAV fraction; max portfolio risk <=15% NAV; drawdown guardian + US-013 kill switch active",
-        "Any failed precondition -> refuse + stay halted; every live enable/disable logged; test asserts live cannot fire with a missing/false/mismatched gate",
-        "Ship-gate guard: module refuses to run unless trained_data/backtests/SHIP_GATE.json exists with gate_pass==true AND matching universe_hash; test asserts guard blocks when missing/false/mismatched",
-        "pytest passes (python -m pytest tests/ -q --tb=short)",
-        "flake8 src/ --config=.flake8 passes",
-        "No mocks: real classes + real disk via tmp_path (no unittest.mock/MagicMock/patch)",
-        "Atomic state writes (tmp + os.replace); no bare except (log + surface)"
+        "Register 'supervision_tick' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'validation_stats' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'lead_lag_detector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'continuous' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'market_impact' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
-      "priority": 22,
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-022",
+      "notes": "",
       "passes": false,
-      "notes": "Full spec + cross-cutting rules: tasks/prd-equity-harvester-bot.md (US-022). Hard constraints: Claude-free deterministic hot path; fail-closed; long-only default; hummingbot Apache-2.0 attribution, NO freqtrade GPL copy."
+      "priority": 22,
+      "title": "Register modules in dispatcher/orchestrator: supervision_tick, validation_stats, lead_lag_detector, continuous, market_impact"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'pair_affinity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'seasonality' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trading_control_plane' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'learnings_outcomes' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'close_diagnostician' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-023",
+      "notes": "",
+      "passes": false,
+      "priority": 23,
+      "title": "Register modules in dispatcher/orchestrator: pair_affinity, seasonality, trading_control_plane, learnings_outcomes, close_diagnostician"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'deterministic_surgeon' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'feature_attention' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'supervision_runtime' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hierarchical_risk_parity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-024",
+      "notes": "",
+      "passes": false,
+      "priority": 24,
+      "title": "Register modules in dispatcher/orchestrator: deterministic_surgeon, feature_attention, supervision_runtime, hierarchical_risk_parity, execution_quality_tracker"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'attention_feedback' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'brain_caps' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'observational_learning' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'causal_filter' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-025",
+      "notes": "",
+      "passes": false,
+      "priority": 25,
+      "title": "Register modules in dispatcher/orchestrator: attention_feedback, brain_caps, observational_learning, model_router, causal_filter"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'module_activation' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'concept_drift' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trigger_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'drift_monitor' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'crisis_generator' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-026",
+      "notes": "",
+      "passes": false,
+      "priority": 26,
+      "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, trigger_registry, drift_monitor, crisis_generator"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'drift_projector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'event_history' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'phase_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'session_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_regime_agent_matrix' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-027",
+      "notes": "",
+      "passes": false,
+      "priority": 27,
+      "title": "Register modules in dispatcher/orchestrator: drift_projector, event_history, phase_manager, session_registry, pair_regime_agent_matrix"
+    },
+    {
+      "acceptanceCriteria": [
+        "Register 'api_retry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'meta_types' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "id": "US-028",
+      "notes": "",
+      "passes": false,
+      "priority": 28,
+      "title": "Register modules in dispatcher/orchestrator: api_retry, meta_types"
+    },
+    {
+      "acceptanceCriteria": [
+        "Wire 'confidence_calibrator' output into observation_consumer or learning_engine",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
+      "id": "US-029",
+      "notes": "",
+      "passes": false,
+      "priority": 29,
+      "title": "Connect feedback consumers for: confidence_calibrator"
     }
   ]
 }

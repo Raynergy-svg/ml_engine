@@ -4,12 +4,16 @@ import { usePoll } from "@/lib/api";
 import { useStream } from "@/lib/stream";
 import { control, type ControlResult } from "@/lib/control";
 import type { ControlState, SystemHealth, Tier7 } from "@/lib/types";
+import { LANE_META } from "@/lib/lanes";
 import { Card, SectionTitle, Badge, StatusDot } from "./ui";
 import { ago, shortTime } from "@/lib/format";
 
 interface AuditEntry {
   ts: string; action: string; allowed?: boolean; reason?: string; result?: string;
   params?: Record<string, unknown>;
+  /** Attribution (2026-07-01+): absent on entries written before the actor-attribution
+   * fix — render "—" rather than a fabricated identity for those older rows. */
+  actor?: string;
 }
 interface AuditResp { entries: AuditEntry[]; count: number }
 
@@ -163,6 +167,31 @@ export function ControlPanel() {
               <div className="font-mono text-[10px] text-faint">gated: drawdown &lt; 20% · gates GREEN · practice</div></div>
             <ConfirmButton label="UNHALT" color="#2bd17e" onRun={() => runControl("unhalt")} disabled={halted === false || !armed} />
           </div>
+          <div className="rounded-md border p-3 hairline sm:col-span-2">
+            <div className="mb-2 flex items-center justify-between font-mono text-[11px] text-dim">
+              <span>Per-lane halt / unhalt</span>
+              <span className="text-faint">global HALT above overrides every lane</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {Object.entries(LANE_META).map(([lane, meta]) => {
+                const laneHalted = controlState?.lanes?.[lane] ?? null;
+                return (
+                  <div key={lane} className="flex flex-col gap-1.5 rounded-md border p-2.5 hairline">
+                    <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                      <StatusDot color={laneHalted === true ? "#ff4d6d" : laneHalted === false ? "#2bd17e" : "#5a6677"} />
+                      <span className="text-text">{meta.label}</span>
+                    </div>
+                    <div className="font-mono text-[10px] text-faint">{meta.hint}</div>
+                    <div className="mt-0.5 flex gap-1.5">
+                      <ConfirmButton label="HALT" color="#ff4d6d" onRun={() => runControl("halt", { lane })} disabled={laneHalted === true} />
+                      <ConfirmButton label="UNHALT" color="#2bd17e" onRun={() => runControl("unhalt", { lane })} disabled={laneHalted === false || !armed} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between rounded-md border p-3 hairline">
             <div><div className="font-mono text-[12px] text-text">Trend loop</div>
               <div className="font-mono text-[10px] text-faint">start / stop the OANDA trend lane</div></div>
@@ -185,7 +214,7 @@ export function ControlPanel() {
                 </div>
               </div>
               <span className="flex shrink-0 gap-1.5">
-                <ConfirmButton label="START" color="#2bd17e" onRun={() => runControl("start_loop", { loop: "tier7" })} disabled={tier7ProcRunning} />
+                <ConfirmButton label="START" color="#2bd17e" onRun={() => runControl("start_loop", { loop: "tier7" })} disabled={tier7ProcRunning || !armed} />
                 <ConfirmButton label="STOP" color="#ff4d6d" onRun={() => runControl("stop_loop", { loop: "tier7" })} disabled={!tier7ProcRunning} />
               </span>
             </div>
@@ -252,6 +281,7 @@ export function ControlPanel() {
                 <div className="min-w-0 flex-1">
                   <span className="text-text">{e.action}</span>
                   <span className="text-faint"> · {e.result ?? (e.allowed ? "ok" : "denied")}</span>
+                  <span className="text-faint"> · by {e.actor ?? "—"}</span>
                   {e.reason && e.allowed === false && <div className="truncate text-[10px] text-neg" title={e.reason}>{e.reason}</div>}
                 </div>
                 <span className="shrink-0 text-[10px] text-faint tnum">{shortTime(e.ts)}</span>
