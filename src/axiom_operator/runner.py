@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 import time
@@ -23,6 +22,7 @@ from src.axiom_operator.session import (
     save_session,
     utc_now,
 )
+from src.utils.claude_cli import augmented_path_env, resolve_claude_cli
 
 
 SAFE_BUDDY_TOOLS = (
@@ -104,7 +104,7 @@ class AxiomOperator:
                 api_key_refused=True,
             )
 
-        cli_path = shutil.which(self.claude_bin)
+        cli_path = resolve_claude_cli(self.claude_bin)
         if not cli_path:
             return self._held(session, action="none", reason="claude CLI not found on PATH", cli_available=False)
         session["cli_available"] = True
@@ -120,6 +120,8 @@ class AxiomOperator:
             with tempfile.NamedTemporaryFile("w", suffix=".md", prefix="axiom_operator_", delete=False, dir="/tmp") as fh:
                 fh.write(prompt)
                 prompt_file = fh.name
+            child_env = os.environ.copy()
+            child_env["PATH"] = augmented_path_env(child_env)
             with open(prompt_file, "r", encoding="utf-8") as stdin_fh:
                 proc = self.subprocess_runner(
                     command,
@@ -128,7 +130,7 @@ class AxiomOperator:
                     text=True,
                     timeout=timeout_seconds,
                     cwd=str(self.project_root),
-                    env=os.environ.copy(),
+                    env=child_env,
                 )
             stdout = proc.stdout or ""
             stderr = proc.stderr or ""
