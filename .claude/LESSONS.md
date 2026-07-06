@@ -46,6 +46,7 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | a trend / TS-momentum book posts strong Sharpe + low DD + beats buy-hold and you're tempted to call it "edge"/"alpha"; any plan to deploy/scale trend | **L-021** trend/TS-momentum = reproducible drawdown-controlled RISK-PREMIUM, not alpha — report on both axes; never call a non-significance-clearing trend book "alpha" |
 | ANY free-data daily-bar return/direction alpha hunt ("test signal X", "more data/news/sentiment/a new model will find edge", a fresh edge-hunt without a materially new input) | **L-022** no free-data small-operator-accessible return-ALPHA exists (whole campaign + 5-source literature sweep) — don't re-run the exhausted hunt without a MATERIALLY new input |
 | changing the shape of guarded code (halt guard / env pin / gap constant), or a gate that false-FAILs on stronger code or passes via a comment | **L-023** co-update enforcement matchers in the same change |
+| about to run `git stash` / `git stash pop` just to A/B-test whether something (a test failure, a behavior) predates your current uncommitted changes. | **L-024** never `git stash` for exploratory checks on a repo with live daemons |
 
 ---
 
