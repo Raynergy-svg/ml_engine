@@ -392,6 +392,8 @@ SELF_IMPROVE_ACTIONS: Dict[str, ActionSpec] = {
             "would be violated after removal. Test+verify gated; commits on pass, reverts on fail."
         ),
         execute=_self_improve_purge_agent_weight_keys,
+        params_hint='EXACTLY one optional kwarg: "keys" (list[str], defaults to ["invalid_agent_xyz"] '
+        'if omitted). No other kwarg is accepted -- e.g. "regimes"/"reason"/"tiers" will be REJECTED.',
     ),
     "self_improve_add_lessons_recall_row": ActionSpec(
         name="self_improve_add_lessons_recall_row",
@@ -403,5 +405,7 @@ SELF_IMPROVE_ACTIONS: Dict[str, ActionSpec] = {
             "reverts on fail."
         ),
         execute=_self_improve_add_lessons_recall_row,
+        params_hint='EXACTLY one required kwarg: "lesson_id" (str, form "L-NNN", e.g. "L-024"). '
+        "No other kwarg is accepted.",
     ),
 }

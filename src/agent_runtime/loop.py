@@ -302,7 +302,19 @@ class ResidentLoop:
         return parsed
 
     def _build_prompt(self, observations: Dict[str, Any]) -> str:
-        known_actions = sorted(self.engine._registry)  # noqa: SLF001 -- read-only introspection, same process
+        registry = self.engine._registry  # noqa: SLF001 -- read-only introspection, same process
+        known_actions = sorted(registry)
+        param_hints = [
+            f"  {name}: {spec.params_hint}"
+            for name, spec in sorted(registry.items())
+            if spec.params_hint
+        ]
+        hints_block = (
+            "\n\nExact parameter contracts for actions that take params (using any OTHER "
+            "kwarg name is REJECTED -- the action is denied, not partially applied):\n"
+            + "\n".join(param_hints)
+            if param_hints else ""
+        )
         return (
             "You are the AXIOM resident reasoning loop for a PRACTICE-only trading bot. "
             "You reason and sequence; you are NEVER in the trade hot path and cannot execute "
@@ -315,7 +327,8 @@ class ResidentLoop:
             '  "reasoning": "one or two sentences of reasoning",\n'
             '  "proposed_actions": [{"action": "<name>", "params": {}, "rationale": "..."}]\n'
             "}</agent-loop>\n\n"
-            f"Known action names: {known_actions}\n\n"
+            f"Known action names: {known_actions}"
+            f"{hints_block}\n\n"
             f"Observations:\n{json.dumps(observations, indent=2, sort_keys=True, default=str)}\n"
         )
 
@@ -400,6 +413,18 @@ class ResidentLoop:
                 action=item.action, tier=item.tier, executed=False, shadow=False,
                 proposal=False, denied=True, detail={"reason": str(exc)},
             )
+        except Exception as exc:  # noqa: BLE001 -- an ESCALATION attempt is ALWAYS
+            # refused (submit() never gives this tier an execute path -- see
+            # policy.PolicyEngine.submit's ESCALATION branch). But the act of
+            # BLOCKING it can itself raise (e.g. PolicyRegistrationError from the
+            # tampered-spec defense-in-depth check, or any other error while
+            # building/auditing the denial) -- that must degrade to a logged
+            # deny, never propagate and kill the whole cycle. The escalation is
+            # refused either way; only the failure mode changes.
+            return ActionOutcome(
+                action=item.action, tier=item.tier, executed=False, shadow=False,
+                proposal=False, denied=True, detail={"reason": f"escalation blocked with error: {exc!r}"},
+            )
         proposal_detail: Dict[str, Any] = {}
         if result.proposal is not None:
             proposal_detail = {
@@ -430,6 +455,14 @@ class ResidentLoop:
             return ActionOutcome(
                 action=item.action, tier=item.tier, executed=False, shadow=False,
                 proposal=False, denied=True, detail={"reason": str(exc)},
+            )
+        except Exception as exc:  # noqa: BLE001 -- an action's execute() raising an
+            # unexpected error (e.g. the LLM's proposal used a wrong param name) must
+            # deny that ONE action, not crash the whole cycle. submit() already
+            # audited this as outcome="error" before re-raising -- nothing is lost.
+            return ActionOutcome(
+                action=item.action, tier=item.tier, executed=False, shadow=False,
+                proposal=False, denied=True, detail={"reason": f"action execution error: {exc!r}"},
             )
         return ActionOutcome(
             action=item.action, tier=item.tier, executed=result.executed, shadow=False,

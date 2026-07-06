@@ -56,9 +56,20 @@ def _test_registry(side_effects):
         side_effects.append(("deescalate_executed", kwargs))
         return {"result": "deescalated"}
 
+    def _broken_execute():
+        # Simulates a real failure mode: the LLM's proposal used a param name
+        # the action doesn't accept (e.g. "tiers" instead of "keys") -- calling
+        # this with any kwarg raises TypeError before ever reaching the body.
+        return {"should": "never reach here with an unexpected kwarg"}
+
     op_spec = policy.ActionSpec(
         name="test_op_action", tier=policy.ActionTier.OPERATIONAL,
         description="test operational action", execute=_op_execute,
+    )
+    broken_spec = policy.ActionSpec(
+        name="test_broken_action", tier=policy.ActionTier.OPERATIONAL,
+        description="test action whose execute() raises an unexpected exception",
+        execute=_broken_execute,
     )
     deescalate_spec = policy.ActionSpec(
         name="test_deescalate_action", tier=policy.ActionTier.DEESCALATION,
@@ -71,6 +82,7 @@ def _test_registry(side_effects):
     )
     return policy.build_registry({
         "test_op_action": op_spec,
+        "test_broken_action": broken_spec,
         "test_deescalate_action": deescalate_spec,
         "test_observe_tool": observe_spec,
     })
@@ -181,6 +193,35 @@ def test_flag_true_deescalation_action_actually_executes(tmp_path, monkeypatch):
 
     assert side_effects == [("deescalate_executed", {})]
     assert result.outcomes[0].executed is True
+
+
+def test_action_raising_unexpected_exception_is_denied_not_a_cycle_crash(tmp_path, monkeypatch):
+    """Reproduces a real incident: the LLM's diagnosis proposed a real action
+    with a wrong param name (a TypeError from execute()). The whole cycle must
+    NOT crash -- that one action is denied, the cycle still completes and logs."""
+    side_effects = []
+    stdout = _diagnosis_stdout([
+        {"action": "test_broken_action", "params": {"unexpected_param": "x"}, "rationale": "bad params"},
+        {"action": "test_op_action", "params": {}, "rationale": "should still run"},
+    ])
+    resident = _build_loop(tmp_path, monkeypatch, side_effects=side_effects, stdout=stdout, autonomy_enabled=True)
+
+    result = resident.run_cycle(actor="test-agent")  # must not raise
+
+    broken_outcome, op_outcome = result.outcomes
+    assert broken_outcome.action == "test_broken_action"
+    assert broken_outcome.executed is False
+    assert broken_outcome.denied is True
+    assert "unexpected keyword argument" in broken_outcome.detail["reason"]
+
+    # the NEXT proposed action in the same cycle still ran -- one bad action
+    # doesn't take down the rest of the cycle either.
+    assert op_outcome.action == "test_op_action"
+    assert op_outcome.executed is True
+    assert side_effects == [("op_executed", {})]
+
+    rows = _read_audit_rows(cs.AUDIT_PATH)
+    assert any(r["outcome"] == "error" and r["action"] == "test_broken_action" for r in rows)
 
 
 def test_run_cycle_fails_closed_when_flag_file_has_garbage_bytes_at_read_time(tmp_path, monkeypatch):
@@ -310,6 +351,50 @@ def test_escalation_action_never_auto_executes_even_with_autonomy_flag_true(tmp_
     assert result.verified is True
     # the lane must remain halted -- the proposal touched nothing
     assert StateEngine(state_path=state_path).get_halted(lane="equity") is True
+
+
+def test_tampered_escalation_spec_is_denied_not_a_cycle_crash(tmp_path, monkeypatch):
+    """Reproduces a defense-in-depth failure mode: if an ESCALATION spec's
+    execute callable were ever forced onto it at runtime (bypassing
+    __post_init__ via object.__setattr__ -- the documented Python escape hatch
+    for frozen dataclasses that policy.ActionSpec's docstring warns about),
+    PolicyEngine.submit() correctly refuses to run it and raises
+    PolicyRegistrationError. That raise must not propagate past
+    _act_escalation and crash the whole cycle -- the escalation stays BLOCKED
+    either way; only the failure mode changes from a process kill to a logged
+    deny."""
+    _isolate_audit(tmp_path, monkeypatch)
+    _fresh_state(tmp_path)
+    autonomy_path = tmp_path / "loop_autonomy.json"
+    agent_loop.set_autonomy_enabled(True, path=autonomy_path)
+
+    tampered_spec = policy.ActionSpec(
+        name="tampered_escalation", tier=policy.ActionTier.ESCALATION,
+        description="escalation spec tampered with an execute callable at runtime",
+    )
+    object.__setattr__(tampered_spec, "execute", lambda **kw: {"should": "never run"})
+
+    engine = policy.PolicyEngine({"tampered_escalation": tampered_spec}, audit_fn=_audit_record_for(tmp_path))
+    stdout = _diagnosis_stdout([{"action": "tampered_escalation", "params": {}, "rationale": "should be blocked, not crash"}])
+    resident = agent_loop.ResidentLoop(
+        engine=engine, cycles_path=tmp_path / "loop_cycles.jsonl", autonomy_path=autonomy_path,
+        observe_tool_names=(), shadow_lanes=(),
+        cli_resolver=lambda _bin: "/usr/bin/fake-claude",
+        subprocess_runner=_fake_subprocess_runner(stdout),
+    )
+
+    result = resident.run_cycle(actor="test-agent")  # must not raise
+
+    outcome = result.outcomes[0]
+    assert outcome.action == "tampered_escalation"
+    assert outcome.tier == "escalation"
+    assert outcome.executed is False
+    assert outcome.proposal is False
+    assert outcome.denied is True
+    assert "PolicyRegistrationError" in outcome.detail["reason"]
+
+    rows = _read_audit_rows(cs.AUDIT_PATH)
+    assert any(r["outcome"] == "denied_tampered_spec" and r["action"] == "tampered_escalation" for r in rows)
 
 
 def test_unknown_action_name_is_denied_fail_closed(tmp_path, monkeypatch):

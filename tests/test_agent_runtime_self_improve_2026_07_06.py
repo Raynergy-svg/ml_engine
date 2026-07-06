@@ -99,6 +99,27 @@ def test_self_improve_actions_are_correctly_tiered_and_carry_execute():
         assert spec.execute is not None, name
 
 
+def test_self_improve_actions_carry_a_params_hint_the_diagnosing_llm_will_see():
+    """Reproduces a real incident: the diagnosing LLM proposed
+    self_improve_purge_agent_weight_keys with param names it invented
+    ("tiers", then "regimes") because the prompt only showed the bare action
+    name -- execute()'s strict signature rejected the unexpected kwarg and the
+    action was denied every cycle. params_hint is how loop.py's _build_prompt
+    tells the LLM the real contract; every self-improve action must set one."""
+    from src.agent_runtime import loop as agent_loop
+
+    for name, spec in si.SELF_IMPROVE_ACTIONS.items():
+        assert spec.params_hint, f"{name} has no params_hint -- the diagnosing LLM will guess"
+
+    engine = policy.default_engine(si.SELF_IMPROVE_ACTIONS)
+    resident = agent_loop.ResidentLoop.__new__(agent_loop.ResidentLoop)
+    resident.engine = engine
+    prompt = resident._build_prompt({})
+    assert "keys" in prompt
+    assert "lesson_id" in prompt
+    assert "self_improve_purge_agent_weight_keys" in prompt
+
+
 def test_every_self_improve_action_routes_through_the_gated_edit_lifecycle():
     """Convention alone doesn't stop a future action from skipping the gate --
     prove it structurally the same way policy.py's own test suite proves no

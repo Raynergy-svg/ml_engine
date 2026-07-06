@@ -99,6 +99,15 @@ class ActionSpec:
     description: str
     execute: Optional[Callable[..., Dict[str, Any]]] = None
     preflight: Optional[Callable[[Dict[str, Any]], None]] = None
+    params_hint: Optional[str] = None
+    """Optional one-line description of the EXACT accepted kwargs, surfaced to the
+    diagnosing LLM in loop.py's prompt. Without this, the model has only the bare
+    action name to go on and will guess plausible-sounding param names (observed
+    live: "tiers", "regimes" instead of the actual "keys") -- execute()'s strict
+    signature then rejects the unexpected kwarg and the action is denied every
+    cycle. This closes that gap; it is documentation only, never a trust boundary
+    (the structural denylist/allowlist and hardcoded target paths don't depend on
+    the LLM getting this right)."""
 
     def __post_init__(self) -> None:
         if self.tier is ActionTier.ESCALATION:
