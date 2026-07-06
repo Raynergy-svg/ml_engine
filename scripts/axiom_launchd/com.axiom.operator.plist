@@ -41,9 +41,15 @@
   <true/>
   <key>ThrottleInterval</key>
   <integer>30</integer>
+  <!-- StandardOutPath/StandardErrorPath deliberately point OUTSIDE ~/Documents (a
+       TCC-protected folder). com.buddy.tier7 previously crash-looped because
+       xpcproxy's pre-exec stdout redirect hit a Sandbox file-read-data denial on
+       a brand-new file under ~/Documents with no com.apple.macl grant yet -- see
+       NOTES.md "Root cause (HIGH confidence)" 2026-07-03. resident_loop.out has
+       never been created, so it would hit the identical failure mode. -->
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/resident_loop.out</string>
+  <string>/Users/buddy/Library/Logs/com.axiom.operator.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/resident_loop.out</string>
+  <string>/Users/buddy/Library/Logs/com.axiom.operator.log</string>
 </dict>
 </plist>
