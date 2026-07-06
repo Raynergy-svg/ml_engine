@@ -17,6 +17,8 @@ import pandas as pd
 import pytest
 
 from src.equity.risk_agents import (
+    VOL_WARMUP_FACTOR,
+    ZERO_EXPOSURE_EPSILON,
     PortfolioState,
     RiskAgentConfig,
     RiskAgentError,
@@ -187,13 +189,17 @@ def test_drawdown_guardian_handles_negative_nav():
 # ---------------------------------------------------------------------------
 
 
-def test_vol_targeter_warmup_pass_through():
+def test_vol_targeter_warmup_caps_leverage():
+    # H6 fail-closed: warm-up (< vol_lookback obs) must NOT size at full
+    # leverage. The factor is clamped to a conservative floor below max_lev.
     config = _config(vol_lookback=21)
     state = _state(recent_returns=[0.001, -0.002])
     v = vol_targeter(state, config)
     assert v.passed is True
-    assert v.reason_code == "vol_warmup"
-    assert v.metadata["vol_factor"] == 1.0
+    assert v.reason_code == "vol_warmup"  # reason stays observable
+    assert v.metadata["vol_factor"] == pytest.approx(VOL_WARMUP_FACTOR)
+    assert v.metadata["vol_factor"] < 1.0
+    assert v.metadata["vol_factor"] <= config.max_lev
 
 
 def test_vol_targeter_zero_returns_caps_at_max_lev():
@@ -590,10 +596,11 @@ def _layer(tmp_path: Path, **config_overrides) -> RiskAgentLayer:
 
 def test_evaluate_clean_cycle_passes(tmp_path):
     layer = _layer(tmp_path)
+    # Past warm-up with a low-vol returns tail so vol_factor caps at max_lev.
     decision = layer.evaluate(
         asof=pd.Timestamp("2026-06-21", tz="UTC"),
         target_weights={"AAPL": 0.05, "MSFT": 0.05},
-        state=_state(),
+        state=_state(recent_returns=[0.0001] * 21),
         adv={"AAPL": 1e9, "MSFT": 1e9},
     )
     assert isinstance(decision, RiskDecision)
@@ -724,3 +731,121 @@ def test_evaluate_rebalance_plan_in_flight_blocks(tmp_path):
     )
     assert decision.block_trade is True
     assert "rebalance_plan_active" in decision.reasons
+
+
+# ---------------------------------------------------------------------------
+# H4 — soft-band degross-to-(approximately)-zero must BLOCK, not pass a tiny
+# live weight that a block_trade-only consumer would size into max drawdown.
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_degross_to_zero_sets_block_trade(tmp_path):
+    layer = _layer(tmp_path, dd_soft=0.10, dd_hard=0.20)
+    # Drawdown a hair below dd_hard (0.20): still in the soft band (no halt),
+    # but the linear degross collapses the factor below the zero-exposure
+    # epsilon. The drawdown guardian itself returns block_trade=False here.
+    nav = 800_000.05  # dd = 0.19999995 -> factor ~5e-7 < ZERO_EXPOSURE_EPSILON
+    state = _state(nav=nav, peak_nav=1_000_000.0)
+    decision = layer.evaluate(
+        asof=pd.Timestamp("2026-06-21", tz="UTC"),
+        target_weights={"AAPL": 0.05, "MSFT": 0.05},
+        state=state,
+        adv={"AAPL": 1e9, "MSFT": 1e9},
+    )
+    # The guardian did NOT halt (still in soft band) and did NOT block on its
+    # own — proving the new composite-level fail-closed is what catches this.
+    dd_verdict = decision.verdicts[0]
+    assert dd_verdict.name == "drawdown_guardian"
+    assert dd_verdict.metadata["halt"] is False
+    assert dd_verdict.block_trade is False
+    # Composite collapsed to ~zero -> MUST be expressed as a block.
+    assert decision.degross_factor <= ZERO_EXPOSURE_EPSILON
+    assert decision.block_trade is True
+    assert "degross_zero_exposure_block" in decision.reasons
+    assert decision.halt is False  # zero-exposure block is not a circuit trip
+
+
+def test_evaluate_small_but_nonzero_degross_still_trades(tmp_path):
+    # Guardrail on the H4 fix: a normal soft-band degross (clearly above the
+    # epsilon) must STILL be tradeable — we only block at ~zero exposure.
+    layer = _layer(tmp_path, dd_soft=0.10, dd_hard=0.20)
+    # 15% DD -> dd_factor 0.5; low-vol returns past warm-up -> vol_factor 1.0,
+    # so the composite is the clean 0.5 degross (well above epsilon).
+    state = _state(
+        nav=850_000.0, peak_nav=1_000_000.0, recent_returns=[0.0001] * 21
+    )
+    decision = layer.evaluate(
+        asof=pd.Timestamp("2026-06-21", tz="UTC"),
+        target_weights={"AAPL": 0.05, "MSFT": 0.05},
+        state=state,
+        adv={"AAPL": 1e9, "MSFT": 1e9},
+    )
+    assert decision.block_trade is False
+    assert decision.degross_factor == pytest.approx(0.5)
+    assert "degross_zero_exposure_block" not in decision.reasons
+
+
+# ---------------------------------------------------------------------------
+# H5 — evaluate() must NEVER raise into the caller. Any unexpected error is
+# logged and converted to a fail-CLOSED (block + halt) decision.
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_malformed_weight_blocks_instead_of_raising(tmp_path):
+    layer = _layer(tmp_path)
+    # A non-numeric weight makes an inner gate raise RiskAgentError. Without
+    # the try/except that exception would propagate into the execution hot
+    # path; with it, the gate degrades to a blocking, halting decision.
+    decision = layer.evaluate(
+        asof=pd.Timestamp("2026-06-21", tz="UTC"),
+        target_weights={"AAPL": "not-a-number"},  # type: ignore[dict-item]
+        state=_state(),
+        adv={"AAPL": 1e9},
+    )
+    assert isinstance(decision, RiskDecision)
+    assert decision.block_trade is True
+    assert decision.halt is True
+    assert decision.degross_factor == 0.0
+    assert "evaluate_failed_closed" in decision.reasons
+
+
+def test_evaluate_non_finite_weight_blocks_instead_of_raising(tmp_path):
+    layer = _layer(tmp_path)
+    decision = layer.evaluate(
+        asof=pd.Timestamp("2026-06-21", tz="UTC"),
+        target_weights={"AAPL": math.inf},
+        state=_state(),
+        adv={"AAPL": 1e9},
+    )
+    assert decision.block_trade is True
+    assert decision.halt is True
+    assert "evaluate_failed_closed" in decision.reasons
+
+
+# ---------------------------------------------------------------------------
+# H6 — vol-targeter warm-up window must cap leverage end-to-end through the
+# composite, not pass full leverage through.
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_warmup_caps_composite_leverage(tmp_path):
+    layer = _layer(tmp_path, vol_lookback=21)
+    # Only 2 observations -> warm-up. Drawdown is clean (factor 1.0), so the
+    # composite is driven entirely by the vol warm-up cap.
+    state = _state(
+        nav=1_000_000.0,
+        peak_nav=1_000_000.0,
+        recent_returns=[0.001, -0.002],
+    )
+    decision = layer.evaluate(
+        asof=pd.Timestamp("2026-06-21", tz="UTC"),
+        target_weights={"AAPL": 0.05, "MSFT": 0.05},
+        state=state,
+        adv={"AAPL": 1e9, "MSFT": 1e9},
+    )
+    vt = next(v for v in decision.verdicts if v.name == "vol_targeter")
+    assert vt.reason_code == "vol_warmup"
+    assert vt.metadata["vol_factor"] == pytest.approx(VOL_WARMUP_FACTOR)
+    # Composite leverage must reflect the warm-up cap, NOT full leverage.
+    assert decision.degross_factor == pytest.approx(VOL_WARMUP_FACTOR)
+    assert decision.degross_factor < 1.0

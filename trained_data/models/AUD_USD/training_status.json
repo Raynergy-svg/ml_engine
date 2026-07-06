@@ -1,28 +1,28 @@
 {
-  "candles": 6000,
-  "completed_at_utc": "2026-05-27T21:48:42.336131+00:00",
-  "duration_s": 50.3,
+  "candles": 25000,
+  "completed_at_utc": "2026-06-15T22:54:49.086995+00:00",
+  "duration_s": 203.9,
   "errors": [],
-  "failed_count": 1,
-  "git_commit": "5647ed9",
-  "granularity": "D",
+  "failed_count": 0,
+  "git_commit": "dad8624",
+  "granularity": "H1",
   "instrument": "AUD_USD",
   "model_filter": "transformer",
-  "passed_count": 0,
-  "quarantined_count": 1,
+  "passed_count": 1,
+  "quarantined_count": 0,
   "results": [
     {
-      "duration_s": 50.0,
-      "gap": 0.17331760130378993,
+      "duration_s": 202.9,
+      "gap": 0.04183182601898272,
       "instrument": "AUD_USD",
       "model": "transformer",
-      "passed": false,
-      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/AUD_USD/_quarantine/transformer_direction-20260527T214841Z",
-      "quarantined": true,
-      "train_acc": 0.7667467594146729,
-      "val_acc": 0.5934291581108829
+      "passed": true,
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.557239830493927,
+      "val_acc": 0.5990716565129097
     }
   ],
   "schema_version": 1,
-  "started_at_utc": "2026-05-27T21:47:52.062704+00:00"
+  "started_at_utc": "2026-06-15T22:51:25.231443+00:00"
 }

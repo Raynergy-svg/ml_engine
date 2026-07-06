@@ -19,6 +19,7 @@ Covers all US-010 ACs:
 from __future__ import annotations
 
 import json
+import multiprocessing as mp
 from pathlib import Path
 from typing import List
 
@@ -36,6 +37,28 @@ from src.equity.market_calendar import (
     OrderOutcome,
 )
 from src.equity.rebalance import Order
+
+
+# ---------------------------------------------------------------------------
+# Module-level worker for the M5 concurrent-writer test. Must be top-level
+# (not a closure) so it is picklable under the "spawn" start method.
+# ---------------------------------------------------------------------------
+def _register_halt_worker(
+    state_path_str: str,
+    ticker: str,
+    start_barrier: "mp.synchronize.Barrier",
+    now_iso: str,
+) -> None:
+    """Register one distinct halt against the shared state file.
+
+    Real process, real disk, real HaltRegistry, real fcntl lock. The
+    barrier makes every process attempt its read-modify-write at the same
+    instant — this is what would lose halts if the lock were absent.
+    """
+    reg = HaltRegistry(Path(state_path_str))
+    now = pd.Timestamp(now_iso)
+    start_barrier.wait()
+    reg.register_halt(ticker, now=now, reason=f"halt-{ticker}")
 
 
 UNIVERSE_HASH = "abc12345" * 8  # 64-char placeholder
@@ -160,10 +183,49 @@ class TestEquityMarketCalendar:
         next_open = pd.Timestamp(status["next_open_utc"])
         assert next_open > HOLIDAY_10AM_UTC
 
-    def test_naive_timestamp_is_assumed_utc(self) -> None:
+    def test_naive_timestamp_is_rejected(self) -> None:
+        """M6: a naive timestamp is REFUSED, not silently assumed UTC.
+
+        Assuming naive==UTC would shift an exchange-local (ET) wall clock
+        4-5 hours and could report the session open pre-market.
+        """
         cal = EquityMarketCalendar()
         naive = pd.Timestamp("2026-06-22 14:00:00")  # no tz
-        assert cal.is_session_open(naive) is True
+        with pytest.raises(MarketCalendarError, match="naive timestamp"):
+            cal.is_session_open(naive)
+
+    def test_naive_premarket_et_does_not_report_open(self) -> None:
+        """M6 correctness: a naive 09:30 ET wall-clock used to (wrongly)
+        be read as 09:30 UTC = 05:30 ET (pre-market) yet land inside the
+        UTC-interpreted regular window in other cases; either way the
+        silent-UTC assumption was unsafe. We now REFUSE the naive input
+        rather than guess, so the market is never reported open from an
+        ambiguous timestamp.
+        """
+        cal = EquityMarketCalendar()
+        # 04:30 wall-clock, naive. If silently read as UTC this is
+        # 00:30 ET (closed); if read as ET it is pre-market (closed).
+        # The point: we must not guess — refuse.
+        naive_premarket = pd.Timestamp("2026-06-22 09:30:00")  # naive ET
+        with pytest.raises(MarketCalendarError, match="naive timestamp"):
+            cal.is_session_open(naive_premarket)
+
+    def test_tz_aware_et_timestamp_converts_correctly(self) -> None:
+        """A tz-aware ET timestamp is converted to UTC, not mislabeled.
+
+        09:30 America/New_York on a regular Monday is the open — and the
+        equivalent of 13:30 UTC (EDT). A correct conversion reports open;
+        the old naive-as-UTC bug would have treated the 09:30 wall clock
+        as 09:30 UTC = 05:30 ET (pre-market, closed).
+        """
+        cal = EquityMarketCalendar()
+        et_open = pd.Timestamp("2026-06-22 09:30:00", tz="America/New_York")
+        assert cal.is_session_open(et_open) is True
+        # And the pre-market ET time is correctly closed.
+        et_premarket = pd.Timestamp(
+            "2026-06-22 05:30:00", tz="America/New_York"
+        )
+        assert cal.is_session_open(et_premarket) is False
 
     def test_unknown_exchange_raises(self) -> None:
         with pytest.raises(MarketCalendarError):
@@ -239,6 +301,118 @@ class TestHaltRegistry:
         reg = HaltRegistry(tmp_path / "halts.json")
         with pytest.raises(MarketCalendarError):
             reg.register_halt("", now=WEEKDAY_10AM_UTC)
+
+    def test_register_halt_rejects_naive_now(self, tmp_path: Path) -> None:
+        """M6: register_halt refuses a naive ``now`` rather than guessing."""
+        reg = HaltRegistry(tmp_path / "halts.json")
+        naive = pd.Timestamp("2026-06-22 14:00:00")  # no tz
+        with pytest.raises(MarketCalendarError, match="naive timestamp"):
+            reg.register_halt("AAPL", now=naive)
+
+
+# ---------------------------------------------------------------------------
+# M5 — HaltRegistry concurrency: the fcntl lock must not lose halts
+# ---------------------------------------------------------------------------
+class TestHaltRegistryConcurrency:
+    def test_concurrent_writers_no_halt_lost(self, tmp_path: Path) -> None:
+        """N real processes each register a DISTINCT halt against the same
+        file at the same instant. With the read-modify-write guarded by an
+        exclusive fcntl lock, ALL N halts must survive — none clobbered.
+
+        This is the load-bearing M5 proof: without the lock, two processes
+        that both load the same prior snapshot and then save would have the
+        later save overwrite the earlier's freshly-registered halt, and a
+        halt would be silently lost (a safety failure).
+        """
+        state_path = tmp_path / "state" / "halts.json"
+        n_writers = 12
+        tickers = [f"TKR{i:02d}" for i in range(n_writers)]
+        now_iso = WEEKDAY_10AM_UTC.isoformat()
+
+        # "spawn" is the strictest start method (no inherited state) and is
+        # the cross-platform default; it exercises real, independent procs.
+        ctx = mp.get_context("spawn")
+        barrier = ctx.Barrier(n_writers)
+        procs = [
+            ctx.Process(
+                target=_register_halt_worker,
+                args=(str(state_path), ticker, barrier, now_iso),
+            )
+            for ticker in tickers
+        ]
+        for p in procs:
+            p.start()
+        for p in procs:
+            p.join(timeout=60)
+
+        # No worker crashed.
+        for p in procs:
+            assert p.exitcode == 0, f"worker exited with {p.exitcode}"
+
+        # Every distinct halt survived — none clobbered by a racing writer.
+        reg = HaltRegistry(state_path)
+        state = reg.load()
+        registered = set(state.halts.keys())
+        assert registered == set(tickers), (
+            "lost halts under concurrency: missing "
+            f"{set(tickers) - registered}"
+        )
+        for ticker in tickers:
+            assert reg.is_halted(ticker, now=WEEKDAY_10AM_UTC) is True
+
+        # The on-disk JSON is well-formed (atomic write held under lock).
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        assert set(payload["halts"].keys()) == set(tickers)
+        # No stray temp or lock-leak artifacts beyond the .lock sidecar.
+        stray_tmp = [
+            p for p in state_path.parent.iterdir() if p.suffix == ".tmp"
+        ]
+        assert stray_tmp == []
+
+    def test_concurrent_writers_via_threads_no_halt_lost(
+        self, tmp_path: Path
+    ) -> None:
+        """Same invariant, in-process via real threads (no mocks).
+
+        Threads share the process but each opens its own lock fd, so the
+        flock still serialises the RMW. Complements the multiprocessing
+        test and runs even where ``spawn`` is constrained.
+        """
+        import threading
+
+        state_path = tmp_path / "state" / "halts.json"
+        n_writers = 16
+        tickers = [f"THR{i:02d}" for i in range(n_writers)]
+        start = threading.Barrier(n_writers)
+        errors: List[BaseException] = []
+        lock = threading.Lock()
+
+        def worker(ticker: str) -> None:
+            try:
+                reg = HaltRegistry(state_path)
+                start.wait()
+                reg.register_halt(
+                    ticker, now=WEEKDAY_10AM_UTC, reason=f"halt-{ticker}"
+                )
+            except BaseException as exc:  # surface, don't swallow
+                with lock:
+                    errors.append(exc)
+
+        threads = [
+            threading.Thread(target=worker, args=(t,)) for t in tickers
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=60)
+
+        assert errors == [], f"worker errors: {errors}"
+        reg = HaltRegistry(state_path)
+        state = reg.load()
+        assert set(state.halts.keys()) == set(tickers), (
+            "lost halts under threaded concurrency: missing "
+            f"{set(tickers) - set(state.halts.keys())}"
+        )
 
 
 # ---------------------------------------------------------------------------

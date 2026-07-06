@@ -70,6 +70,15 @@ logger = logging.getLogger(__name__)
 SHIP_GATE_PATH_DEFAULT = "trained_data/backtests/SHIP_GATE.json"
 STATE_VERSION = 1
 
+# Re-poll budget for confirming the book is actually flat after flatten
+# orders are accepted. A merely-ACCEPTED (PENDING) flatten order is NOT a
+# closed position — we must re-read get_open_positions() until the symbol
+# is gone from the book or the budget is exhausted. On exhaustion we fail
+# closed (escalate) rather than report a flat that isn't confirmed.
+CONFIRM_FLAT_MAX_POLLS_DEFAULT = 5
+CONFIRM_FLAT_BACKOFF_BASE_S_DEFAULT = 0.5
+CONFIRM_FLAT_BACKOFF_MAX_S_DEFAULT = 8.0
+
 
 class EquityKillSwitchError(RuntimeError):
     """Raised when the kill switch refuses to construct or fire.
@@ -321,6 +330,14 @@ class EquityKillSwitch:
         asset_classes: Sequence[str] = ("EQUITY",),
         now_fn: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         monotonic_fn: Callable[[], float] = time.monotonic,
+        sleep_fn: Callable[[float], None] = time.sleep,
+        confirm_flat_max_polls: int = CONFIRM_FLAT_MAX_POLLS_DEFAULT,
+        confirm_flat_backoff_base_s: float = (
+            CONFIRM_FLAT_BACKOFF_BASE_S_DEFAULT
+        ),
+        confirm_flat_backoff_max_s: float = (
+            CONFIRM_FLAT_BACKOFF_MAX_S_DEFAULT
+        ),
     ) -> KillSwitchResult:
         """Cancel every working order and market-flat every equity position.
 
@@ -338,9 +355,18 @@ class EquityKillSwitch:
            filter by ``asset_classes`` (default ``("EQUITY",)``),
            resolve each symbol to an :class:`Instrument`, and submit a
            whole-share opposing market order via
-           ``broker.place_equity_order(...)``. A result whose status is
-           ``"PENDING"`` is counted as closed (the order has been
-           accepted by IBKR); anything else counts as failed.
+           ``broker.place_equity_order(...)``. **An accepted order
+           (PENDING/FILLED status) is NOT yet a closed position** — it
+           only means the broker took the request. The kill switch then
+           RE-POLLS ``broker.get_open_positions()`` with bounded retries
+           and backoff until every symbol it flattened is gone from the
+           book, OR the retry budget is exhausted. A symbol counts as
+           CLOSED only when the broker confirms it is absent from the
+           live book. A symbol whose flatten order was rejected outright,
+           or which is still present after the budget is exhausted,
+           counts as FAILED (remaining) — this is the fail-closed path:
+           a kill switch must never declare flat while exposure may be
+           live.
         4. Persist a structured event to ``state_path`` atomically.
         5. Raise :class:`EquityKillSwitchPartialFailure` if any leg
            failed; the caller is the supervisor and MUST see a hard
@@ -358,6 +384,18 @@ class EquityKillSwitch:
                 that pin a deterministic timestamp without monkey-
                 patching ``datetime``).
             monotonic_fn: Wall-clock duration injection point.
+            sleep_fn: Backoff sleep injection point. Tests pass a no-op
+                so the bounded re-poll loop runs instantly without real
+                wall-clock delay; production uses :func:`time.sleep`.
+            confirm_flat_max_polls: Number of times to re-poll
+                ``get_open_positions()`` to confirm the book is flat
+                AFTER sending flatten orders. Must be >= 1. The first
+                poll happens immediately (no sleep); subsequent polls
+                back off. If positions remain after the last poll, they
+                are reported as remaining (escalation).
+            confirm_flat_backoff_base_s: Base backoff seconds between
+                re-polls (exponential, doubling each attempt).
+            confirm_flat_backoff_max_s: Backoff ceiling per sleep.
 
         Returns:
             :class:`KillSwitchResult` even when partial — the exception
@@ -370,8 +408,9 @@ class EquityKillSwitch:
                 violated (e.g. resolver returns a non-EQUITY
                 Instrument).
             EquityKillSwitchPartialFailure: If any order failed to
-                cancel or any position failed to close after the broker
-                accepted the request.
+                cancel, or any position could not be CONFIRMED flat
+                within the re-poll budget. An accepted-but-unconfirmed
+                flatten is a FAILURE, not a success.
         """
         if not isinstance(reason, str) or not reason:
             raise EquityKillSwitchError(
@@ -381,6 +420,11 @@ class EquityKillSwitch:
         if not asset_classes_set:
             raise EquityKillSwitchError(
                 "flatten_all requires at least one asset_class to flatten"
+            )
+        if confirm_flat_max_polls < 1:
+            raise EquityKillSwitchError(
+                "confirm_flat_max_polls must be >= 1 "
+                f"(got {confirm_flat_max_polls!r})"
             )
 
         # Step 1: re-enforce the gate. Don't trust the constructor's
@@ -398,12 +442,19 @@ class EquityKillSwitch:
             self._cancel_working_orders(broker)
         )
 
-        # Step 3: flatten positions.
+        # Step 3: flatten positions, then RE-POLL to confirm flat.
         (
             positions_closed,
             positions_failed,
             remaining_positions,
-        ) = self._flatten_positions(broker, asset_classes_set)
+        ) = self._flatten_positions(
+            broker,
+            asset_classes_set,
+            sleep_fn=sleep_fn,
+            max_polls=confirm_flat_max_polls,
+            backoff_base_s=confirm_flat_backoff_base_s,
+            backoff_max_s=confirm_flat_backoff_max_s,
+        )
 
         duration_s = monotonic_fn() - start
         result = KillSwitchResult(
@@ -488,22 +539,34 @@ class EquityKillSwitch:
         return cancelled, failed, remaining
 
     def _flatten_positions(
-        self, broker: BrokerClient, asset_classes: set
+        self,
+        broker: BrokerClient,
+        asset_classes: set,
+        *,
+        sleep_fn: Callable[[float], None],
+        max_polls: int,
+        backoff_base_s: float,
+        backoff_max_s: float,
     ) -> tuple[int, int, List[str]]:
-        try:
-            positions: List[PositionInfo] = list(broker.get_open_positions())
-        except (ConnectionError, OSError, TimeoutError) as exc:
-            logger.error(
-                "kill switch: get_open_positions() failed: %s",
-                exc, exc_info=True,
-            )
-            raise EquityKillSwitchError(
-                f"kill switch could not enumerate open positions: {exc}"
-            ) from exc
+        """Send opposing flats, then re-poll until the book confirms flat.
 
-        closed = 0
-        failed = 0
-        remaining: List[str] = []
+        Fail-closed contract: a position is CLOSED only when the broker's
+        ``get_open_positions()`` no longer reports it. An accepted
+        (PENDING/FILLED) flatten order is necessary but NOT sufficient —
+        we re-poll the live book with bounded backoff and only credit a
+        close once the symbol is gone. Symbols whose order was rejected,
+        or which remain after the retry budget is exhausted, are reported
+        as remaining so :meth:`flatten_all` escalates.
+        """
+        positions = self._enumerate_positions(broker)
+
+        # Symbols we attempted to flatten and the broker ACCEPTED — these
+        # must be CONFIRMED gone from the book before we count them closed.
+        awaiting_confirm: set = set()
+        # Symbols that failed up-front (rejected order / un-flattenable
+        # quantity). These never enter the confirm loop.
+        failed_symbols: List[str] = []
+
         for position in positions:
             symbol = str(position.instrument)
             quantity = position.quantity
@@ -540,8 +603,7 @@ class EquityKillSwitch:
                     "to int (%r): %s — counting as failed",
                     symbol, quantity, exc,
                 )
-                failed += 1
-                remaining.append(symbol)
+                failed_symbols.append(symbol)
                 continue
             if flat_qty <= 0:
                 logger.info(
@@ -552,24 +614,135 @@ class EquityKillSwitch:
                 continue
 
             opposing = _opposing_direction(direction)
-            placed = self._place_flat_order(
+            accepted = self._place_flat_order(
                 broker, instrument, opposing, flat_qty,
             )
-            if placed:
-                closed += 1
+            if accepted:
+                # Order ACCEPTED is NOT confirmation of flat — defer the
+                # close credit to the re-poll loop below.
+                awaiting_confirm.add(symbol)
                 logger.info(
                     "kill switch: flat order accepted for %s "
-                    "(%s %d shares)", symbol, opposing, flat_qty,
+                    "(%s %d shares) — awaiting flat confirmation",
+                    symbol, opposing, flat_qty,
                 )
             else:
-                failed += 1
-                remaining.append(symbol)
+                failed_symbols.append(symbol)
                 logger.error(
                     "kill switch: flat order REJECTED for %s "
                     "(%s %d shares) — position still open",
                     symbol, opposing, flat_qty,
                 )
+
+        # Re-poll the live book to CONFIRM the accepted flats actually
+        # cleared. Until proven flat, exposure is assumed live.
+        confirmed_flat = self._confirm_flat(
+            broker,
+            awaiting_confirm,
+            sleep_fn=sleep_fn,
+            max_polls=max_polls,
+            backoff_base_s=backoff_base_s,
+            backoff_max_s=backoff_max_s,
+        )
+
+        still_open = sorted(awaiting_confirm - confirmed_flat)
+        remaining = sorted(set(failed_symbols) | set(still_open))
+        closed = len(confirmed_flat)
+        failed = len(remaining)
         return closed, failed, remaining
+
+    def _enumerate_positions(
+        self, broker: BrokerClient
+    ) -> List[PositionInfo]:
+        """Read live positions, failing closed if the broker can't answer."""
+        try:
+            return list(broker.get_open_positions())
+        except (ConnectionError, OSError, TimeoutError) as exc:
+            logger.error(
+                "kill switch: get_open_positions() failed: %s",
+                exc, exc_info=True,
+            )
+            raise EquityKillSwitchError(
+                f"kill switch could not enumerate open positions: {exc}"
+            ) from exc
+
+    def _confirm_flat(
+        self,
+        broker: BrokerClient,
+        awaiting_confirm: set,
+        *,
+        sleep_fn: Callable[[float], None],
+        max_polls: int,
+        backoff_base_s: float,
+        backoff_max_s: float,
+    ) -> set:
+        """Re-poll the live book until ``awaiting_confirm`` symbols are flat.
+
+        Returns the set of symbols CONFIRMED absent from
+        ``get_open_positions()`` (i.e. actually flat). Symbols still
+        present after ``max_polls`` are NOT in the returned set — the
+        caller treats them as remaining/failed and escalates.
+
+        The first poll runs immediately; subsequent polls sleep with
+        exponential backoff (capped). Each poll logs the attempt number
+        and the symbols still open so the operator can watch the book
+        drain (or fail to).
+        """
+        confirmed: set = set()
+        if not awaiting_confirm:
+            return confirmed
+
+        for attempt in range(1, max_polls + 1):
+            try:
+                live = list(broker.get_open_positions())
+            except (ConnectionError, OSError, TimeoutError) as exc:
+                # Cannot confirm flat — fail closed. Do NOT credit closes
+                # we could not verify; surface as a hard error so a human
+                # checks the book manually.
+                logger.error(
+                    "kill switch: re-poll get_open_positions() failed on "
+                    "attempt %d/%d: %s", attempt, max_polls, exc,
+                    exc_info=True,
+                )
+                raise EquityKillSwitchError(
+                    "kill switch could not confirm flat: re-poll failed "
+                    f"after {attempt - 1} confirmed poll(s): {exc}"
+                ) from exc
+
+            open_symbols = {str(p.instrument) for p in live}
+            newly_flat = {
+                s for s in awaiting_confirm
+                if s not in confirmed and s not in open_symbols
+            }
+            confirmed |= newly_flat
+
+            still_open = sorted(awaiting_confirm - confirmed)
+            if not still_open:
+                logger.info(
+                    "kill switch: book confirmed flat on attempt %d/%d "
+                    "(%d position(s) closed)",
+                    attempt, max_polls, len(confirmed),
+                )
+                return confirmed
+
+            logger.warning(
+                "kill switch: re-poll %d/%d — %d position(s) still open: %s",
+                attempt, max_polls, len(still_open), still_open,
+            )
+            if attempt < max_polls:
+                delay = min(
+                    backoff_base_s * (2 ** (attempt - 1)), backoff_max_s
+                )
+                sleep_fn(delay)
+
+        # Budget exhausted with positions still on the book.
+        unconfirmed = sorted(awaiting_confirm - confirmed)
+        logger.error(
+            "kill switch: re-poll budget exhausted (%d polls) — %d "
+            "position(s) NOT confirmed flat: %s — escalating",
+            max_polls, len(unconfirmed), unconfirmed,
+        )
+        return confirmed
 
     def _place_flat_order(
         self,
@@ -579,6 +752,13 @@ class EquityKillSwitch:
         quantity: int,
     ) -> bool:
         """Submit one whole-share opposing market order.
+
+        Returns ``True`` if the broker ACCEPTED the order (status in
+        ``{PENDING, FILLED}``), ``False`` if it rejected or raised a
+        recoverable broker error. **Acceptance is NOT confirmation that
+        the position closed** — the caller must re-poll
+        ``get_open_positions()`` to confirm flat. This method only
+        distinguishes "request taken" from "request refused".
 
         ``BrokerClient`` does not enshrine ``place_equity_order`` in
         the ABC (that method lives on :class:`IBKRBroker` for now), so
@@ -600,11 +780,12 @@ class EquityKillSwitch:
             )
             return False
         status = getattr(result, "status", None)
-        # PENDING == broker accepted the order; market orders on
-        # equity fill on the next tick at the latest. "FILLED" is also
-        # acceptable in case a synchronous broker returns it directly.
-        # Anything else (e.g. "rejected") is a failure for kill-switch
-        # purposes — the position is still open.
+        # PENDING == broker accepted the order; FILLED == synchronous
+        # broker confirmed the fill in-band. Either means the request was
+        # taken. Anything else (e.g. "rejected") means the broker refused
+        # the order outright — that symbol cannot enter the confirm loop.
+        # NOTE: acceptance != flat. The caller re-polls get_open_positions
+        # to confirm the position actually cleared before crediting it.
         return str(status).upper() in {"PENDING", "FILLED"}
 
     def _append_event(

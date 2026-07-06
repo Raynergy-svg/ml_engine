@@ -49,7 +49,6 @@ from src.brokers.base import BrokerClient
 from src.brokers.instrument import Instrument
 from src.brokers.types import (
     AccountSummary,
-    CandleData,
     OrderResult,
     PositionInfo,
     TradeInfo,
@@ -507,14 +506,23 @@ class TestFlattenAllHappyPath:
 
     def test_quantity_floored_to_int_for_whole_shares(self, tmp_path):
         # IBKR PositionInfo can carry a float quantity for fractional
-        # accounts; the kill switch must round DOWN to whole shares.
+        # accounts; the kill switch must round DOWN to whole shares for
+        # the ORDER. A whole-share flatten of a 12.7-share long leaves a
+        # 0.7-share residual, so the book is NOT confirmed flat — the
+        # kill switch must escalate (M2: confirm flat, do not assume it).
         ks = _make_kill_switch(tmp_path)
         broker = PaperEquityBroker()
         broker.seed_position("AAPL", "BUY", 12.7)
 
-        result = ks.flatten_all(broker, reason="unit_test")
-        assert result.positions_closed == 1
+        with pytest.raises(EquityKillSwitchPartialFailure) as exc_info:
+            ks.flatten_all(
+                broker, reason="unit_test", sleep_fn=lambda _d: None,
+            )
+        # The order quantity was floored to whole shares...
         assert broker.placed_orders[0]["quantity"] == 12
+        # ...but the 0.7-share residual means the book is not confirmed
+        # flat, so the symbol is surfaced rather than falsely credited.
+        assert exc_info.value.remaining_positions == ["AAPL"]
 
     def test_cancels_orders_and_flattens_positions_together(self, tmp_path):
         ks = _make_kill_switch(tmp_path)
@@ -692,6 +700,290 @@ class TestFlattenAllPartialFailure:
         # exception carries the remaining order. Position WAS flattened.
         assert exc_info.value.remaining_orders == ["99"]
         assert exc_info.value.remaining_positions == []
+
+
+# ---------------------------------------------------------------------------
+# Re-poll-to-confirm-flat (M2 fix): "flat" only after the broker confirms the
+# book is actually empty across re-polls; never-flat escalates rather than
+# reporting success. No mocks — real BrokerClient subclasses with plain flags.
+# ---------------------------------------------------------------------------
+
+
+class DelayedFlatBroker(PaperEquityBroker):
+    """Accepts the flatten order but the book clears only after N re-polls.
+
+    Real BrokerClient subclass (no mock). ``place_equity_order`` returns a
+    PENDING OrderResult and DOES NOT mutate the position immediately —
+    modelling a broker whose flatten order is accepted (PENDING) but whose
+    fill confirms asynchronously. ``get_open_positions`` keeps reporting the
+    position until it has been polled ``flat_after_polls`` times, then drops
+    it (the fill settled). This proves the kill switch credits a close ONLY
+    after the broker confirms the symbol is gone from the book.
+    """
+
+    def __init__(self, *, flat_after_polls: int) -> None:
+        super().__init__()
+        self.flat_after_polls = flat_after_polls
+        self.position_poll_count = 0
+        self._symbols_pending_fill: set = set()
+
+    def place_equity_order(self, instrument, direction, quantity):
+        symbol = instrument.symbol
+        self.placed_orders.append(
+            {
+                "symbol": symbol,
+                "direction": direction,
+                "quantity": quantity,
+                "asset_class": instrument.asset_class,
+            }
+        )
+        if symbol in self.positions_to_fail_flat:
+            return OrderResult(
+                trade_id="0",
+                fill_price=0.0,
+                status="rejected",
+                error_message="paper broker forced rejection",
+            )
+        # Accepted (PENDING) but NOT yet settled — the position lingers on
+        # the book until enough re-polls elapse.
+        self._symbols_pending_fill.add(symbol)
+        self._next_id += 1
+        return OrderResult(
+            trade_id=str(self._next_id),
+            fill_price=0.0,
+            status="PENDING",
+        )
+
+    def get_open_positions(self):
+        if self.get_positions_raises is not None:
+            raise self.get_positions_raises
+        self.position_poll_count += 1
+        if self.position_poll_count >= self.flat_after_polls:
+            # Fill settled — drop every pending-fill symbol from the book.
+            for symbol in list(self._symbols_pending_fill):
+                self._positions.pop(symbol, None)
+            self._symbols_pending_fill.clear()
+        return list(self._positions.values())
+
+
+class NeverFlatBroker(PaperEquityBroker):
+    """Accepts the flatten order (PENDING) but the book NEVER clears.
+
+    Real BrokerClient subclass (no mock). Models the worst case for a kill
+    switch: the broker takes the order, reports PENDING, yet the position
+    stays live indefinitely (rejected-at-exchange, hung fill, partial). The
+    kill switch must NOT report success — it must exhaust its re-poll budget
+    and escalate.
+    """
+
+    def place_equity_order(self, instrument, direction, quantity):
+        symbol = instrument.symbol
+        self.placed_orders.append(
+            {
+                "symbol": symbol,
+                "direction": direction,
+                "quantity": quantity,
+                "asset_class": instrument.asset_class,
+            }
+        )
+        self._next_id += 1
+        # Accepted, but DELIBERATELY do not touch self._positions — the
+        # book stays long forever.
+        return OrderResult(
+            trade_id=str(self._next_id),
+            fill_price=0.0,
+            status="PENDING",
+        )
+
+
+class TestConfirmFlatViaRepoll:
+    def test_reports_flat_only_after_book_confirmed_empty(self, tmp_path):
+        # Order accepted (PENDING) immediately, but the book only clears on
+        # the 3rd re-poll. The kill switch must keep polling and credit the
+        # close ONLY once the symbol is gone — not on mere acceptance.
+        ks = _make_kill_switch(tmp_path)
+        broker = DelayedFlatBroker(flat_after_polls=3)
+        broker.seed_position("AAPL", "BUY", 40)
+
+        sleeps: List[float] = []
+        result = ks.flatten_all(
+            broker,
+            reason="confirm_after_repoll",
+            sleep_fn=lambda d: sleeps.append(d),
+            confirm_flat_max_polls=5,
+        )
+
+        # Credited closed ONLY after the broker confirmed the book flat.
+        assert result.positions_closed == 1
+        assert result.positions_failed == 0
+        assert result.remaining_position_symbols == []
+        # The book is genuinely flat now.
+        assert broker.get_open_positions() == []
+        # The flatten order was sent exactly ONCE; re-polls do not re-send.
+        assert len(broker.placed_orders) == 1
+        # It took multiple re-polls to confirm (so we backed off at least
+        # once before the book cleared).
+        assert broker.position_poll_count >= 3
+        assert len(sleeps) >= 1
+
+    def test_acceptance_alone_is_not_credited_as_closed(self, tmp_path):
+        # If the book clears only on the LAST allowed poll, the close is
+        # still credited — but acceptance on poll 1 must NOT have been
+        # enough on its own (the broker kept reporting the position).
+        ks = _make_kill_switch(tmp_path)
+        broker = DelayedFlatBroker(flat_after_polls=4)
+        broker.seed_position("MSFT", "BUY", 10)
+
+        result = ks.flatten_all(
+            broker,
+            reason="last_poll_flat",
+            sleep_fn=lambda _d: None,
+            confirm_flat_max_polls=4,
+        )
+        assert result.positions_closed == 1
+        assert result.remaining_position_symbols == []
+        assert broker.position_poll_count == 4
+
+    def test_never_flat_escalates_instead_of_reporting_success(self, tmp_path):
+        # The broker accepts the order (PENDING) but the position never
+        # leaves the book. The kill switch MUST exhaust its re-poll budget
+        # and raise — never silently report a flat that isn't real.
+        ks = _make_kill_switch(tmp_path)
+        broker = NeverFlatBroker()
+        broker.seed_position("AAPL", "BUY", 25)
+
+        sleeps: List[float] = []
+        with pytest.raises(EquityKillSwitchPartialFailure) as exc_info:
+            ks.flatten_all(
+                broker,
+                reason="never_flat",
+                sleep_fn=lambda d: sleeps.append(d),
+                confirm_flat_max_polls=3,
+            )
+
+        # The un-confirmed symbol is surfaced for the supervisor.
+        assert exc_info.value.remaining_positions == ["AAPL"]
+        assert exc_info.value.remaining_orders == []
+        # Order was accepted (sent once) but exposure remains live.
+        assert len(broker.placed_orders) == 1
+        assert broker._positions  # still long — proves no false flat
+        # Bounded retries: max_polls - 1 backoff sleeps (last poll no sleep).
+        assert len(sleeps) == 2
+
+    def test_never_flat_event_log_records_remaining(self, tmp_path):
+        ks = _make_kill_switch(tmp_path)
+        broker = NeverFlatBroker()
+        broker.seed_position("AAPL", "BUY", 25)
+        with pytest.raises(EquityKillSwitchPartialFailure):
+            ks.flatten_all(
+                broker,
+                reason="never_flat_logged",
+                sleep_fn=lambda _d: None,
+                confirm_flat_max_polls=2,
+            )
+        state = json.loads(ks.state_path.read_text(encoding="utf-8"))
+        event = state["events"][-1]
+        assert event["result"]["positions_closed"] == 0
+        assert event["result"]["positions_failed"] == 1
+        assert event["result"]["remaining_position_symbols"] == ["AAPL"]
+
+    def test_partial_book_one_flat_one_stuck_escalates(self, tmp_path):
+        # Two positions: one flattens cleanly, one never clears. The clean
+        # one is credited; the stuck one escalates. A kill switch must not
+        # average a partial flat into a green light.
+        class MixedBroker(PaperEquityBroker):
+            """AAPL flattens (synchronous fill); STUCK never clears."""
+
+            def place_equity_order(self, instrument, direction, quantity):
+                symbol = instrument.symbol
+                self.placed_orders.append(
+                    {
+                        "symbol": symbol,
+                        "direction": direction,
+                        "quantity": quantity,
+                        "asset_class": instrument.asset_class,
+                    }
+                )
+                self._next_id += 1
+                if symbol == "AAPL":
+                    self._positions.pop(symbol, None)
+                # STUCK: accepted but left on the book.
+                return OrderResult(
+                    trade_id=str(self._next_id),
+                    fill_price=0.0,
+                    status="PENDING",
+                )
+
+        ks = _make_kill_switch(tmp_path)
+        broker = MixedBroker()
+        broker.seed_position("AAPL", "BUY", 10)
+        broker.seed_position("STUCK", "BUY", 10)
+
+        with pytest.raises(EquityKillSwitchPartialFailure) as exc_info:
+            ks.flatten_all(
+                broker,
+                reason="mixed_flat",
+                sleep_fn=lambda _d: None,
+                confirm_flat_max_polls=3,
+            )
+        assert exc_info.value.remaining_positions == ["STUCK"]
+        assert "AAPL" not in exc_info.value.remaining_positions
+
+    def test_rejected_order_not_confirmed_and_never_polled_as_flat(
+        self, tmp_path
+    ):
+        # A rejected flatten order fails up-front and must NOT be credited
+        # even though the broker book happens to not contain it.
+        ks = _make_kill_switch(tmp_path)
+        broker = DelayedFlatBroker(flat_after_polls=1)
+        broker.seed_position("AAPL", "BUY", 10)
+        broker.positions_to_fail_flat.add("AAPL")
+        with pytest.raises(EquityKillSwitchPartialFailure) as exc_info:
+            ks.flatten_all(
+                broker,
+                reason="rejected_flat",
+                sleep_fn=lambda _d: None,
+            )
+        assert exc_info.value.remaining_positions == ["AAPL"]
+
+    def test_repoll_broker_failure_fails_closed(self, tmp_path):
+        # If the re-poll itself can't reach the broker, the kill switch
+        # must fail closed (raise) rather than assume flat.
+        class RepollDiesBroker(NeverFlatBroker):
+            def __init__(self):
+                super().__init__()
+                self._poll_calls = 0
+
+            def get_open_positions(self):
+                # First call (the initial enumerate) succeeds; the confirm
+                # re-poll then dies.
+                self._poll_calls += 1
+                if self._poll_calls >= 2:
+                    raise ConnectionError("broker dropped during confirm")
+                return list(self._positions.values())
+
+        ks = _make_kill_switch(tmp_path)
+        broker = RepollDiesBroker()
+        broker.seed_position("AAPL", "BUY", 10)
+        with pytest.raises(
+            EquityKillSwitchError, match="could not confirm flat"
+        ):
+            ks.flatten_all(
+                broker,
+                reason="repoll_dies",
+                sleep_fn=lambda _d: None,
+            )
+
+    def test_invalid_max_polls_refused(self, tmp_path):
+        ks = _make_kill_switch(tmp_path)
+        with pytest.raises(
+            EquityKillSwitchError, match="confirm_flat_max_polls"
+        ):
+            ks.flatten_all(
+                PaperEquityBroker(),
+                reason="bad_polls",
+                confirm_flat_max_polls=0,
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 {
-  "candles": 6000,
-  "failed": 1,
+  "candles": 25000,
+  "failed": 0,
   "instrument": "AUD_USD",
   "params": {
     "batch_size": 128,
@@ -22,20 +22,20 @@
     "tcn_nb_filters": 64,
     "top_features": null
   },
-  "passed": 0,
+  "passed": 1,
   "results": [
     {
-      "duration_s": 50.0,
-      "gap": 0.17331760130378993,
+      "duration_s": 202.9,
+      "gap": 0.04183182601898272,
       "instrument": "AUD_USD",
       "model": "transformer",
-      "passed": false,
-      "quarantine_dir": "/Users/buddy/Documents/ml_engine/trained_data/models/AUD_USD/_quarantine/transformer_direction-20260527T214841Z",
-      "quarantined": true,
-      "train_acc": 0.7667467594146729,
-      "val_acc": 0.5934291581108829
+      "passed": true,
+      "quarantine_dir": null,
+      "quarantined": false,
+      "train_acc": 0.557239830493927,
+      "val_acc": 0.5990716565129097
     }
   ],
-  "timestamp": "2026-05-27 17:48:42",
-  "total_duration_s": 50.3
+  "timestamp": "2026-06-15 22:54:49",
+  "total_duration_s": 203.9
 }

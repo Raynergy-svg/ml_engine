@@ -1,0 +1,20 @@
+{
+  "cycles": 3,
+  "workers": 0,
+  "pairs": [
+    "AUD_USD",
+    "EUR_USD",
+    "GBP_USD",
+    "NZD_USD",
+    "USD_CAD",
+    "USD_CHF",
+    "USD_JPY"
+  ],
+  "sequential_walls": [],
+  "parallel_walls": [],
+  "decision_match_per_cycle": [],
+  "mismatches": [],
+  "errors": [
+    "warmup: 'ScanResult' object is not iterable"
+  ]
+}

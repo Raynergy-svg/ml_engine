@@ -78,6 +78,38 @@ class OrderStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class ExecResult(str, Enum):
+    """Outcome an :meth:`RebalanceScheduler.execute_plan` ``send_order``
+    callback reports for a single order.
+
+    The split exists to stop conflating a CONFIRMED fill with mere broker
+    ACCEPTANCE. Booking acceptance as a fill corrupted the actual-weights
+    ledger that drives the next drift calc — see
+    ``docs/equity-execution-review-2026-06-21.md`` (C3) and the 2026-06-30
+    re-review. ``ACCEPTED`` is fail-closed: the order is marked SENT
+    (in-flight) and is NOT counted as a position until a reconcile pass
+    confirms real broker shares.
+    """
+
+    FILLED = "FILLED"      # broker confirmed shares executed
+    ACCEPTED = "ACCEPTED"  # broker accepted the order; fill NOT yet confirmed
+    REJECTED = "REJECTED"  # broker rejected / no order placed
+
+
+def normalize_exec_result(raw: "ExecResult | bool | None") -> "ExecResult":
+    """Map a ``send_order`` return value onto an :class:`ExecResult`.
+
+    Backward-compatible with the legacy ``bool`` contract: ``True`` is a
+    CONFIRMED fill (the shadow simulator fills synchronously), ``False`` is a
+    rejection. A broker that merely ACCEPTED an order without confirming a
+    fill MUST return :attr:`ExecResult.ACCEPTED` — never bare ``True`` — or it
+    re-introduces the C3 phantom-fill bug.
+    """
+    if isinstance(raw, ExecResult):
+        return raw
+    return ExecResult.FILLED if bool(raw) else ExecResult.REJECTED
+
+
 @dataclass
 class Order:
     """A single BUY/SELL order keyed by a stable ``client_order_id``.
@@ -546,25 +578,47 @@ class RebalanceScheduler:
     def execute_plan(
         self,
         plan: RebalancePlan,
-        send_order: Callable[[Order], bool],
+        send_order: Callable[[Order], "ExecResult | bool"],
     ) -> List[Order]:
         """Send each non-FILLED order; persist after EVERY attempt.
 
-        ``send_order`` is a broker-side callback that returns ``True`` on
-        a successful fill and ``False`` on a graceful rejection. Any
-        exception is logged, persisted as :attr:`OrderStatus.FAILED`, and
-        re-raised so the caller's retry/halt logic stays in control.
+        ``send_order`` reports an :class:`ExecResult` (or the legacy ``bool``:
+        ``True`` == confirmed fill, ``False`` == rejection). The three
+        outcomes are kept distinct because conflating broker ACCEPTANCE with
+        a confirmed FILL corrupted the actual-weights ledger (C3):
 
-        Persisting after each attempt is the load-bearing invariant for
-        the AC: kill mid-loop → restart resumes from the same state →
-        only non-FILLED orders re-send → no double-fill.
+        * :attr:`ExecResult.FILLED` → mark FILLED + book ``fill_weight``.
+        * :attr:`ExecResult.ACCEPTED` → mark :attr:`OrderStatus.SENT`
+          (in-flight). Fail-closed: NOT counted as a position; a reconcile
+          pass promotes SENT→FILLED only when real broker shares confirm.
+        * :attr:`ExecResult.REJECTED` → mark FAILED.
+
+        Any exception is logged, persisted as FAILED, and re-raised so the
+        caller's retry/halt logic stays in control.
+
+        Persisting after each attempt is the load-bearing invariant for the
+        AC: kill mid-loop → restart resumes from the same state → FILLED
+        orders never re-send, and a SENT (in-flight) order is NOT resubmitted
+        — it awaits fill confirmation, which also avoids a restart
+        double-submit.
         """
         touched: List[Order] = []
         for order in plan.orders:
             if order.is_filled:
                 continue
+            if order.status == OrderStatus.SENT.value:
+                # In-flight: broker accepted it, fill not yet confirmed.
+                # Resubmitting would risk a double-submit; leave it for the
+                # reconcile pass to promote SENT→FILLED (or to re-arm).
+                logger.warning(
+                    "order %s is SENT (awaiting fill confirmation) — NOT "
+                    "resubmitting; reconcile must resolve it",
+                    order.client_order_id,
+                )
+                touched.append(order)
+                continue
             try:
-                ok = bool(send_order(order))
+                outcome = normalize_exec_result(send_order(order))
             except Exception as exc:
                 logger.error(
                     "send_order raised for %s: %s — marking FAILED",
@@ -575,10 +629,17 @@ class RebalanceScheduler:
                 order.status = OrderStatus.FAILED.value
                 self._persist_after_order(plan)
                 raise
-            if ok:
+            if outcome is ExecResult.FILLED:
                 order.status = OrderStatus.FILLED.value
                 order.fill_weight = float(order.target_weight)
-            else:
+            elif outcome is ExecResult.ACCEPTED:
+                order.status = OrderStatus.SENT.value
+                logger.info(
+                    "order %s ACCEPTED by broker (fill unconfirmed) → SENT; "
+                    "ledger unchanged until reconcile confirms the fill",
+                    order.client_order_id,
+                )
+            else:  # REJECTED
                 order.status = OrderStatus.FAILED.value
             touched.append(order)
             self._persist_after_order(plan)

@@ -76,6 +76,16 @@ SHIP_GATE_PATH_DEFAULT = "trained_data/backtests/SHIP_GATE.json"
 STATE_VERSION = 1
 ANNUALIZATION_FACTOR = 252  # daily harvester
 
+# Fail-closed floor for the vol-targeter warm-up window. With < ``vol_lookback``
+# observations there is no realised-vol estimate, so we CANNOT size at full
+# leverage (the old ``vol_factor=1.0`` pass-through sized the first ~21 bars
+# with no vol control at all). Cap leverage hard during warm-up instead.
+VOL_WARMUP_FACTOR = 0.25
+
+# Composite size/degross factors at or below this are "approximately zero"
+# exposure — expressed as a block_trade, never as a tiny live weight.
+ZERO_EXPOSURE_EPSILON = 1e-6
+
 
 class RiskAgentError(RuntimeError):
     """Raised on malformed inputs or ship-gate refusal."""
@@ -365,25 +375,28 @@ def vol_targeter(
 ) -> AgentVerdict:
     """Annualised realised vol from the recent-returns tail.
 
-    Insufficient history (< ``vol_lookback``) emits a pass-through factor of
-    1.0 with reason_code ``vol_warmup`` — the harvester's overlay handles the
-    warm-up window symmetrically (US-003).
+    Insufficient history (< ``vol_lookback``) is FAIL-CLOSED: with no realised
+    vol estimate we cannot size at full leverage, so warm-up clamps the factor
+    to a conservative floor (``VOL_WARMUP_FACTOR``) under ``max_lev`` rather
+    than passing 1.0 through. reason_code stays ``vol_warmup`` for observability.
     """
     tail = [float(r) for r in state.recent_returns[-config.vol_lookback:]]
     if len(tail) < config.vol_lookback:
+        warmup_factor = min(VOL_WARMUP_FACTOR, float(config.max_lev))
         return _verdict(
             "vol_targeter",
             passed=True,
-            score=1.0,
+            score=float(min(1.0, warmup_factor / config.max_lev)),
             reason=(
                 f"insufficient history "
-                f"({len(tail)} < {config.vol_lookback}) — warm-up factor 1.0"
+                f"({len(tail)} < {config.vol_lookback}) — warm-up leverage "
+                f"capped at factor {warmup_factor:.4f}"
             ),
             reason_code="vol_warmup",
             metadata={
                 "realized_vol": 0.0,
                 "target_vol": float(config.target_vol),
-                "vol_factor": 1.0,
+                "vol_factor": float(warmup_factor),
             },
         )
     arr = np.array(tail, dtype=float)
@@ -887,7 +900,51 @@ class RiskAgentLayer:
         adv: Optional[Mapping[str, float]] = None,
         correlations: Optional[pd.DataFrame] = None,
     ) -> RiskDecision:
-        """Run all gates and synthesise the composite decision."""
+        """Run all gates and synthesise the composite decision.
+
+        Fail-closed contract: this method must NEVER raise into the execution
+        hot path. Any unexpected error is logged with context and converted to
+        a blocking, halting :class:`RiskDecision` so a malformed input degrades
+        to "do not trade", never to an uncaught exception in the caller.
+        """
+        try:
+            return self._evaluate_inner(
+                asof=asof,
+                target_weights=target_weights,
+                state=state,
+                adv=adv,
+                correlations=correlations,
+            )
+        except Exception as exc:  # noqa: BLE001 — fail-closed risk boundary
+            logger.error(
+                "RiskAgentLayer.evaluate failed-closed: %s | "
+                "asof=%r n_weights=%s nav=%r adv_present=%s",
+                exc,
+                asof,
+                (len(target_weights) if hasattr(target_weights, "__len__")
+                 else "?"),
+                getattr(state, "nav", "?"),
+                adv is not None,
+                exc_info=True,
+            )
+            return RiskDecision(
+                verdicts=[],
+                block_trade=True,
+                degross_factor=0.0,
+                halt=True,
+                reasons=["evaluate_failed_closed"],
+            )
+
+    def _evaluate_inner(
+        self,
+        *,
+        asof: pd.Timestamp,
+        target_weights: Mapping[str, float],
+        state: PortfolioState,
+        adv: Optional[Mapping[str, float]] = None,
+        correlations: Optional[pd.DataFrame] = None,
+    ) -> RiskDecision:
+        """Run all gates and synthesise the composite decision (raw body)."""
         verdicts: List[AgentVerdict] = []
         reasons: List[str] = []
 
@@ -949,6 +1006,16 @@ class RiskAgentLayer:
         )
         if halt:
             composite = 0.0
+
+        # H4 fail-closed: a composite size collapsed toward zero (soft-band
+        # degross-to-zero, or vol_factor clamped to ~0) is effectively "no
+        # position". Trading approximately-zero size must be expressed as a
+        # BLOCK — never as a tiny live weight a block_trade-only consumer would
+        # size into max drawdown.
+        if composite <= ZERO_EXPOSURE_EPSILON and not block:
+            block = True
+            reasons.append("degross_zero_exposure_block")
+
         return RiskDecision(
             verdicts=verdicts,
             block_trade=block,

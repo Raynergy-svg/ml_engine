@@ -1,18 +1,61 @@
 {
+  "calibration_corpus": "archive+live",
   "label_mode": "journal_outcome_blend",
   "metadata": {
     "leak_fix_version": "2026-04-30",
+    "n_archive_used": 683,
+    "n_live_skipped_no_outcome": 10,
+    "n_live_skipped_wrong_dim": 0,
+    "n_live_used": 7,
     "n_regimes": 1,
-    "n_trades": 683
+    "n_trades": 690,
+    "prior_brier": 0.21400043701566954,
+    "prior_ece": 0.016598128629355613,
+    "prior_version": 2
   },
   "platt_params": {
     "_global": {
-      "coef": 0.27694690180025494,
-      "intercept": -0.8962623053608351
+      "coef": 0.586059584880041,
+      "intercept": -1.1385825305444552
     }
   },
-  "timestamp": "2026-05-01T17:57:41.062688+00:00",
+  "timestamp": "2026-05-01T18:29:06.255446+00:00",
   "trade_history": [
+    [
+      0.6381866331053757,
+      0.0,
+      "LOW"
+    ],
+    [
+      0.5584836647805049,
+      0.0,
+      "HIGH"
+    ],
+    [
+      0.5584836647805049,
+      0.0,
+      "NORMAL"
+    ],
+    [
+      0.6668963823378165,
+      0.0,
+      "LOW"
+    ],
+    [
+      0.5950907585740248,
+      0.0,
+      "LOW"
+    ],
+    [
+      0.5584836647805049,
+      0.0,
+      "LOW"
+    ],
+    [
+      0.5950907585740248,
+      0.0,
+      "LOW"
+    ],
     [
       0.692402640953435,
       0.0,
@@ -3430,24 +3473,24 @@
     ]
   ],
   "validation": {
-    "brier": 0.21400043701566954,
+    "brier": 0.22609540022464697,
     "buckets": [
       [
-        0.32542165804112033,
-        0.3088235294117647,
-        136
+        0.31303829265257915,
+        0.34057971014492755,
+        138
       ]
     ],
-    "ece": 0.016598128629355613,
+    "ece": 0.027541417492348397,
     "gates_passed": {
       "brier_under_0.30": true,
       "ece_under_0.15": true,
       "monotonic_5_buckets": true,
       "n_buckets_in_test": 1
     },
-    "n_test": 136,
-    "n_train": 547,
+    "n_test": 138,
+    "n_train": 552,
     "reliability_monotonic": false
   },
-  "version": 2
+  "version": 3
 }
