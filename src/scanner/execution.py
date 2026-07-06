@@ -2166,7 +2166,7 @@ class ExecutionManager:
         if not ctx.get("agent_passed", False):
             return ExecutionResult(
                 success=False,
-                error=f"BLOCKED: agent_passed=False (agents voted NO)",
+                error="BLOCKED: agent_passed=False (agents voted NO)",
             )
         # 2026-04-20: Re-check agent-team circuit breakers at execution boundary.
         # Promoted rules (trading.md 2026-04-15):
@@ -2807,7 +2807,6 @@ class ExecutionManager:
         # Fail-open: any exception in a filter returns PASS so no broken filter blocks trading.
         if self._filter_chain is not None and self._filter_chain.get_filter_names():
             try:
-                from src.scanner.execution_filters import FilterResult as _FR
                 _fc_context = {
                     "pair": pair,
                     "direction": direction,
@@ -3100,7 +3099,6 @@ class ExecutionManager:
         try:
             open_trades = self.monitor_open_trades(evaluate_exits=False)
             if open_trades:
-                _CORR_THRESHOLD = 0.80
                 _CORR_PAIRS = {
                     "EUR_USD": {"GBP_USD", "EUR_GBP", "EUR_CHF"},
                     "GBP_USD": {"EUR_USD", "EUR_GBP", "GBP_JPY"},
@@ -3432,8 +3430,6 @@ class ExecutionManager:
                     # Phase 56 (US-349): TCA fill feedback — record fill metrics to ExecutionQualityTracker
                     if self._exec_quality_tracker is not None:
                         try:
-                            import time as _time_mod
-                            _fill_pip_value = _get_pip_value(pair, 0.0001)
                             _fill_slippage_abs = abs(slippage) if slippage is not None else 0.0
                             _fill_status_str = "filled" if fill_status == "FULL" else (
                                 "partial" if fill_status == "RETRIED" else "rejected"
@@ -3553,7 +3549,7 @@ class ExecutionManager:
                             success=False,
                             error=f"Order rejected twice: {order_result.error_message}",
                             fill_status="REJECTED",
-                )
+                        )
 
         except Exception as e:
             # Phase 84 (US-P84-004): Record API failure on exception
@@ -3589,7 +3585,6 @@ class ExecutionManager:
         """
         import json
         import os
-        import threading
         import uuid
         from datetime import datetime, timezone
         from pathlib import Path
@@ -5385,9 +5380,6 @@ class ExecutionManager:
             if trade_state != "closed" or not ct:
                 continue
 
-            # Phase 90: Extract pair from entry — was undefined, causing NameError downstream
-            pair = entry.get("pair", entry.get("instrument", ""))
-
             realized_pl = float(ct.get("realizedPL", 0))
             trade_won = realized_pl > 0
             close_price = float(ct.get("averageClosePrice", 0))
@@ -6249,7 +6241,8 @@ class ExecutionManager:
             # M-4: Fallback atomic write
             _perf_tmp = perf_path.with_suffix(".tmp")
             _perf_tmp.write_text(json.dumps(dict(stats), indent=2), encoding="utf-8")
-            import os as _os; _os.replace(str(_perf_tmp), str(perf_path))
+            import os as _os
+            _os.replace(str(_perf_tmp), str(perf_path))
 
     def get_pair_performance(self, pair: Optional[str] = None) -> Dict[str, Any]:
         """Read per-pair performance stats.
@@ -6697,7 +6690,6 @@ class ExecutionManager:
 
         import json
         import random
-        import time
         import requests as _requests
         from pathlib import Path
 

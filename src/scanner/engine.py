@@ -2167,6 +2167,7 @@ class Scanner:
         except Exception as exc:
             logger.warning("HybridInference init failed: %s", exc)
             return False
+
     def _init_causal_feature_selector(self) -> bool:
         """Initialize CausalFeatureSelector (US-015)."""
         if self._causal_feature_selector is not None:
@@ -2181,7 +2182,6 @@ class Scanner:
         except Exception as exc:
             logger.debug("CausalFeatureSelector init deferred: %s", exc)
             return False
-
 
     def _init_causal_discovery(self) -> bool:
         """Initialize CausalDiscovery (US-013)."""
@@ -2952,7 +2952,6 @@ class Scanner:
                     return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, details
             except Exception as _hybrid_err:
                 logger.debug("%s: HybridInference error: %s", pair, _hybrid_err)
-
 
         # === SECOND: Legacy fallback volatility gate ===
         vol_allowed, volatility_regime = self._check_volatility_regime(df_feat, pair)
@@ -5245,7 +5244,7 @@ class Scanner:
             elif "No module" in error_msg or "cannot import" in error_msg.lower():
                 friendly = f"Missing dependency: {error_msg}"
             elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                friendly = f"Data fetch timeout — check OANDA connection"
+                friendly = "Data fetch timeout — check OANDA connection"
             elif "401" in error_msg or "403" in error_msg or "Unauthorized" in error_msg:
                 friendly = "OANDA auth failed — check API token in env"
             elif "connection" in error_msg.lower() or "refused" in error_msg.lower():
@@ -7870,7 +7869,7 @@ class Scanner:
                             reason=gm_result.reason,
                         )
                     except Exception as e:
-                        logger.debug("%s: group_momentum block observation log skipped: %s", trade.get('pair','?'), e)
+                        logger.debug("%s: group_momentum block observation log skipped: %s", trade.get('pair', '?'), e)
                         pass
                     continue
                 elif gm_result.action == "boost":
@@ -7892,7 +7891,7 @@ class Scanner:
                             reason=gm_result.reason,
                         )
                     except Exception as e:
-                        logger.debug("%s: group_momentum boost observation log skipped: %s", trade.get('pair','?'), e)
+                        logger.debug("%s: group_momentum boost observation log skipped: %s", trade.get('pair', '?'), e)
                         pass
                 filtered_trades.append(trade)
             trades = filtered_trades

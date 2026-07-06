@@ -850,7 +850,7 @@ def _parse_repair_result(stdout: str) -> Dict[str, Any]:
     raw = match.group(1).strip()
     # Strip code fences
     if "```" in raw:
-        lines = [l for l in raw.splitlines() if not l.strip().startswith("```")]
+        lines = [line for line in raw.splitlines() if not line.strip().startswith("```")]
         raw = "\n".join(lines).strip()
     # Try JSON
     try:
@@ -1138,7 +1138,6 @@ def invoke_code_repair(
         else:
             # Parse repair result block
             repair_data = _parse_repair_result(stdout)
-            promise_found = bool(REPAIR_PROMISE_RE.search(stdout))
 
             if repair_data:
                 result.files_edited = repair_data.get("files_edited", [])

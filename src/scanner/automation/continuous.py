@@ -2500,7 +2500,6 @@ class ContinuousScanner:
           - Candidate model failure is graceful: shadows back to incumbent-only testing
           - Candidate model is lazy-loaded on first call and unloaded when disabled
         """
-        import json
         from datetime import datetime, timezone
         from pathlib import Path
 
