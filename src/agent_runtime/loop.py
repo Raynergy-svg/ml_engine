@@ -14,14 +14,18 @@ from policy.py apply here unchanged:
     ``agent_autonomy_enabled`` -- the tier's structural guarantee (no execute
     callable can ever exist on an ESCALATION ActionSpec) makes that the only
     possible behavior, not a design choice this module could get wrong.
-  - OPERATIONAL / DEESCALATION actions PROPOSED by the LLM additionally
-    require ``agent_autonomy_enabled=True`` (an operator-set flag, persisted
-    to disk, DEFAULT FALSE) before this loop will actually call
-    ``PolicyEngine.submit()`` with intent to execute. With the flag False,
-    the loop still OBSERVEs (the read-only tools always run -- they gather
-    the context the LLM reasons over, and are harmless by construction) and
-    still PROPOSEs, but ACT logs a "shadow" audit line ("would execute ...")
-    instead of calling submit().
+  - OPERATIONAL / DEESCALATION / SELF_IMPROVE actions PROPOSED by the LLM
+    additionally require ``agent_autonomy_enabled=True`` (an operator-set
+    flag, persisted to disk, DEFAULT FALSE) before this loop will actually
+    call ``PolicyEngine.submit()`` with intent to execute. With the flag
+    False, the loop still OBSERVEs (the read-only tools always run -- they
+    gather the context the LLM reasons over, and are harmless by
+    construction) and still PROPOSEs, but ACT logs a "shadow" audit line
+    ("would execute ...") instead of calling submit(). SELF_IMPROVE actions
+    are additionally bounded by ``src.agent_runtime.self_improve``'s own
+    structural allow/deny check and test+verify+commit-or-revert gate --
+    autonomy=True only lets the loop ATTEMPT one of a fixed menu of narrow,
+    pre-coded edits; it does not widen what those edits are allowed to touch.
 
 Degrades honestly if the claude CLI is unavailable: OBSERVE still runs,
 DIAGNOSE returns an ``available: False`` stub with no proposed actions, and
@@ -42,6 +46,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.agent_runtime import audit as art_audit
 from src.agent_runtime.policy import ActionTier, PolicyDenied, PolicyEngine, default_engine
+from src.agent_runtime.self_improve import SELF_IMPROVE_ACTIONS
 from src.agent_runtime.tools import readers
 from src.agent_runtime.tools.registry import TOOL_ACTIONS, TOOLS
 from src.axiom_operator.session import append_jsonl, tail_jsonl, utc_now
@@ -163,7 +168,7 @@ class ResidentLoop:
         cli_resolver: Callable[[str], Optional[str]] = resolve_claude_cli,
     ) -> None:
         self.project_root = Path(project_root)
-        self.engine = engine or default_engine(TOOL_ACTIONS)
+        self.engine = engine or default_engine(TOOL_ACTIONS, SELF_IMPROVE_ACTIONS)
         self.cycles_path = Path(cycles_path)
         self.autonomy_path = Path(autonomy_path)
         self.observe_tool_names = tuple(observe_tool_names)
@@ -363,7 +368,9 @@ class ResidentLoop:
             if item.tier == ActionTier.ESCALATION.value:
                 outcomes.append(self._act_escalation(item, actor=actor))
                 continue
-            # OPERATIONAL / DEESCALATION -- gated by the autonomy flag.
+            # OPERATIONAL / DEESCALATION / SELF_IMPROVE -- gated by the autonomy flag.
+            # (SELF_IMPROVE's own module adds a second, independent allow/deny +
+            # test/verify/commit-or-revert gate on top of this -- see self_improve.py.)
             if not autonomy_enabled:
                 outcomes.append(self._act_shadow(item, actor=actor))
                 continue

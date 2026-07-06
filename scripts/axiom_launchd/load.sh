@@ -3,10 +3,13 @@
 # whole stack back automatically. Idempotent: re-running re-installs and reloads.
 #
 # Services:
-#   com.axiom.api   — FastAPI read/control data layer  (:8888, loopback-only)
-#   com.axiom.web   — Next.js operator cockpit          (:51999)
-#   com.buddy.trend — OANDA daily-trend loop            (PRACTICE; respects halt)
-#   com.buddy.tier7 — Tier 7 bounded self-heal loop     (respects halt + practice pin)
+#   com.axiom.api      — FastAPI read/control data layer   (:8888, loopback-only)
+#   com.axiom.web      — Next.js operator cockpit           (:51999)
+#   com.buddy.trend    — OANDA daily-trend loop             (PRACTICE; respects halt)
+#   com.buddy.tier7    — Tier 7 bounded self-heal loop      (respects halt + practice pin)
+#   com.axiom.operator — AXIOM resident reasoning loop      (respects halt + practice pin;
+#                        starts in whatever autonomy state loop_autonomy.json says;
+#                        ESCALATION always proposal-only regardless of that flag)
 #
 # NOTE: com.buddy.learning_loop.plist (market-closed continual-learning batch,
 # scripts/offline_learning_cycle.py) is deliberately NOT in this script's
@@ -25,7 +28,7 @@ set -euo pipefail
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="$HOME/Library/LaunchAgents"
 UID_NUM="$(id -u)"
-LABELS=(com.axiom.api com.axiom.web com.buddy.trend com.buddy.tier7)
+LABELS=(com.axiom.api com.axiom.web com.buddy.trend com.buddy.tier7 com.axiom.operator)
 
 mkdir -p "$DEST"
 mkdir -p "$(cd "$SRC_DIR/../.." && pwd)/trained_data/axiom"

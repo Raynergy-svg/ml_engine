@@ -504,6 +504,16 @@ class ScannerAgentTeam:
 
             regime_weights = data[regime]
             for agent_name in list(regime_weights.keys()):
+                if agent_name not in self._BASE_WEIGHTS:
+                    logger.warning(
+                        f"Unknown agent key {agent_name!r} in {regime} weights (not in "
+                        "_BASE_WEIGHTS). Dropping -- persisted weight data should only ever "
+                        "contain the canonical agent roster."
+                    )
+                    del regime_weights[agent_name]
+                    issues_found = True
+                    continue
+
                 val = regime_weights[agent_name]
 
                 # Check for NaN or inf

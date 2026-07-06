@@ -1,7 +1,7 @@
 """AXIOM Agent Runtime — action-policy engine.
 
 Classifies every action a future resident agent loop might invoke into exactly
-one of three tiers and enforces the tier's contract:
+one of four tiers and enforces the tier's contract:
 
   OPERATIONAL      — restart a daemon, refresh data, run a diagnostic, clear a
                       stale flag. Allowed after a preflight check, audited.
@@ -9,6 +9,17 @@ one of three tiers and enforces the tier's contract:
                       but preflighted + audited, and structurally
                       risk-DECREASING only (see the ``ActionSpec`` contract
                       below and the individual action implementations).
+  SELF_IMPROVE     — a fixed menu of narrow, pre-coded data/doctrine edits
+                      (see ``src/agent_runtime/self_improve.py``) against a
+                      hardcoded target path per action, gated by apply -> test
+                      -> verify -> commit-or-revert. Autonomy-flag-gated like
+                      OPERATIONAL/DEESCALATION. A second, independent
+                      allow/deny check in that module refuses any target
+                      outside a tiny explicit allowlist (data-hygiene JSON,
+                      LESSONS.md, NOTES.md) and refuses a STRUCTURAL denylist
+                      unconditionally (trade/execution/gate/policy/autonomy-
+                      flag code, the practice pin, LiveGate/ARM code) —
+                      those stay ESCALATION regardless of any flag.
   ESCALATION       — arm, unhalt, size up, enable new exposure, promote a
                       model, change strategy/code. NEVER autonomous — the
                       engine can only ever return a ``Proposal`` for the
@@ -36,6 +47,7 @@ from typing import Any, Callable, Dict, Optional
 class ActionTier(str, Enum):
     OPERATIONAL = "operational"
     DEESCALATION = "deescalation"
+    SELF_IMPROVE = "self_improve"
     ESCALATION = "escalation"
 
 
