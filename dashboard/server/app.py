@@ -109,7 +109,7 @@ def root() -> Dict[str, Any]:
                           "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream",
                           "/api/equity_sleeve", "/api/lanes", "/api/brain_loop",
                           "/api/crypto_momentum", "/api/track_b", "/api/learning_loop",
-                          "/api/activity", "/api/axiom_operator"]}
+                          "/api/activity", "/api/axiom_operator", "/api/mind_window"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -222,6 +222,11 @@ def learning_loop() -> Dict[str, Any]:
 @app.get("/api/background-activity")
 def activity() -> Dict[str, Any]:
     return ds.read_activity()
+
+
+@app.get("/api/mind_window")
+def mind_window() -> Dict[str, Any]:
+    return ds.read_mind_window()
 
 
 @app.get("/api/tier7")

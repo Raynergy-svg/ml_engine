@@ -17,6 +17,7 @@ import { ControlPanel } from "@/components/ControlPanel";
 import { BrainLoopPanel } from "@/components/BrainLoopPanel";
 import { LearningLoopPanel } from "@/components/LearningLoopPanel";
 import { ActivityPanel } from "@/components/ActivityPanel";
+import { MindWindowPanel } from "@/components/MindWindowPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
 import { FullscreenIcon, ChartTypeIcon, PanelSplitIcon, FitArrowsIcon, ChevronDown, CheckCircleSolid } from "@/components/icons";
 import { usePoll } from "@/lib/api";
@@ -253,7 +254,12 @@ function DashboardBody() {
 
         {tab === "Positions" && <div className="h-[520px] min-w-0"><PositionsTable /></div>}
 
-        {tab === "Activity" && <ActivityPanel />}
+        {tab === "Activity" && (
+          <>
+            <MindWindowPanel />
+            <ActivityPanel />
+          </>
+        )}
         {tab === "Automation" && (
           <>
             <ControlPanel />

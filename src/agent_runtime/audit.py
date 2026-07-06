@@ -66,6 +66,45 @@ def record(
     cs.audit(entry, actor=actor)
 
 
+def record_cycle(
+    *,
+    cycle_id: str,
+    actor: str,
+    cli_available: bool,
+    autonomy_enabled: bool,
+    reasoning_summary: str,
+    proposed_count: int,
+    executed_count: int,
+    shadow_count: int,
+    proposal_count: int,
+    denied_count: int,
+    verified: bool,
+) -> None:
+    """One cycle-level audit line for the resident loop (OBSERVE->...->LOG),
+    in addition to the per-action lines ``record()`` already writes for each
+    action attempted during that cycle. ``tier`` is None — a cycle isn't a
+    single-tier action."""
+    record(
+        action="resident_loop_cycle",
+        tier=None,
+        actor=actor,
+        allowed=True,
+        outcome="cycle_complete",
+        reason=reasoning_summary[:500],
+        params={
+            "cycle_id": cycle_id,
+            "cli_available": cli_available,
+            "autonomy_enabled": autonomy_enabled,
+            "proposed_count": proposed_count,
+            "executed_count": executed_count,
+            "shadow_count": shadow_count,
+            "proposal_count": proposal_count,
+            "denied_count": denied_count,
+            "verified": verified,
+        },
+    )
+
+
 def read_recent(limit: int = 50) -> List[Dict[str, Any]]:
     """Read-only tail of the shared audit log, filtered to agent-runtime entries.
 

@@ -765,6 +765,34 @@ def read_axiom_operator() -> Dict[str, Any]:
         }
 
 
+def read_mind_window() -> Dict[str, Any]:
+    """AXIOM resident reasoning loop ("mind-window") status: recent
+    OBSERVE->DIAGNOSE->PROPOSE->ACT->VERIFY->LOG cycles, the current
+    ``agent_autonomy_enabled`` flag state (SHADOW vs LIVE-OPERATIONAL), and
+    any pending ESCALATION proposals awaiting the operator. Read-only; never
+    triggers a cycle. Degrades to an honest not-yet-run snapshot before the
+    resident loop has ever executed.
+    """
+    try:
+        from src.agent_runtime.loop import read_mind_window as _read
+
+        return _read()
+    except Exception as exc:  # noqa: BLE001 - dashboard visibility must not crash
+        logger.warning("agent runtime mind-window unreadable: %s", exc)
+        return {
+            "has_run": False,
+            "autonomy_enabled": False,
+            "recent_cycles": [],
+            "last_cycle": None,
+            "pending_operator_proposals": [],
+            "error": str(exc),
+            "source": {
+                "cycles": "trained_data/axiom/loop_cycles.jsonl",
+                "autonomy_flag": "trained_data/axiom/loop_autonomy.json",
+            },
+        }
+
+
 def _brain_loop_ledger_tail(limit: int = 10) -> List[Dict[str, Any]]:
     rows = list(_iter_jsonl(_BRAIN_LOOP_LEDGER_PATH))
     return list(reversed(rows[-limit:]))

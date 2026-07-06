@@ -666,6 +666,68 @@ export interface TrackB {
   source: Record<string, string>;
 }
 
+// GET /api/mind_window — resident reasoning loop (src/agent_runtime/loop.py)
+// "mind-window": what the loop NOTICED (observations), BELIEVES (diagnosis),
+// DID-OR-WOULD-DO (outcomes), and NEEDS FROM THE OPERATOR (pending_operator_
+// proposals). Has not run in production yet (has_run=false) — render the
+// honest empty state, never fabricate a cycle.
+export type MindWindowTier = "operational" | "deescalation" | "escalation" | string;
+
+export interface MindWindowObservation {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+}
+export interface MindWindowProposedAction {
+  action: string;
+  params?: Record<string, unknown>;
+  rationale?: string;
+  tier?: MindWindowTier;
+}
+export interface MindWindowDiagnosis {
+  available: boolean;
+  reasoning?: string | null;
+  beliefs?: string | null;
+  proposed_actions?: MindWindowProposedAction[];
+}
+export interface MindWindowOutcome {
+  action: string;
+  tier?: MindWindowTier;
+  executed: boolean;
+  shadow: boolean;
+  proposal: boolean;
+  denied: boolean;
+  detail?: Record<string, unknown>;
+}
+export interface MindWindowCycle {
+  cycle_id: string;
+  ts: string;
+  actor?: string;
+  cli_available?: boolean;
+  autonomy_enabled?: boolean;
+  observations: Record<string, MindWindowObservation>;
+  diagnosis: MindWindowDiagnosis;
+  proposed_actions?: MindWindowProposedAction[];
+  outcomes: MindWindowOutcome[];
+  verified?: boolean;
+  verify_detail?: Record<string, unknown>;
+}
+// pending_operator_proposals flattens every escalation outcome with proposal=true
+// across recent_cycles, prefixed with cycle_id/ts.
+export interface MindWindowPendingProposal extends MindWindowOutcome {
+  cycle_id?: string;
+  ts?: string;
+}
+export interface MindWindow {
+  has_run: boolean;
+  autonomy_enabled: boolean;
+  recent_cycles: MindWindowCycle[];
+  last_cycle: MindWindowCycle | null;
+  pending_operator_proposals: MindWindowPendingProposal[];
+  error?: string;
+  source: Record<string, string>;
+}
+
 export interface StreamPayload {
   ts: number;
   account: Account;
