@@ -52,3 +52,23 @@ SHORT-heavy slice; the trained transformer never actually evaluated. Six simulta
 contract violations broke every transformer prediction since C1.A landed.
 
 → Rule: **Train↔Inference Contract Gates** (improvement.md); detail in `docs/strategy.md`.
+
+## Context7 API key committed in plaintext (found 2026-07-06, introduced d8a15f5)
+
+`mcp.json` carried a literal `CONTEXT7_API_KEY` value in a `mcp.servers.context7.headers`
+block since commit `d8a15f5` — in a public repo, since that commit. Two compounding bugs:
+(1) the secret was hardcoded instead of referenced via env var, and (2) the block sat under
+a non-standard `mcp.servers` key that Claude Code's `--mcp-config` never actually reads
+(`mcpServers` is the only schema key it consumes) — so context7 was silently disconnected
+the whole time regardless of the key. Fixed by moving the block into `mcpServers` and
+replacing the literal key with `${CONTEXT7_API_KEY}`, sourced from the gitignored
+`.env.local` (mirrors the OANDA credential pattern). Verified live: `claude --mcp-config
+mcp.json --strict-mcp-config` resolves a real context7 tool call end-to-end.
+
+Removing the key from HEAD does **not** un-expose it — it is permanently in git history.
+**Operator action required: rotate/revoke the old key on Context7's dashboard.** Claude
+cannot do this — it's an external account action.
+
+→ Rule: never hardcode a literal secret in a committed config file; reference env vars and
+keep the real value in `.env.local` only. Add gitleaks to CI (`code-quality.yml`) so the
+next one is caught before merge, not after a public-repo audit.
