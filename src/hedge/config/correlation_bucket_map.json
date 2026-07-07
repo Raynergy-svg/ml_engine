@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "purpose": "Equity sector -> broader macro correlation cluster, for AXIOM Hedge Layer net_correlation_bucket_exposure().",
+    "note": "FX correlation buckets are NOT redefined here — for FX, the currency itself IS the correlation bucket (src/equity/trend_risk_gates.py currency_legs is the single source of truth, reused directly by src/hedge/exposure_tags.py). This map only extends the same 'correlation bucket' concept to equities, where a single ticker/sector isn't a sufficient bucket key because multiple sectors can share one macro driver (rates, commodities, growth).",
+    "fail_closed": "A sector absent from this map is treated as UNKNOWN by portfolio_exposure.net_correlation_bucket_exposure — the caller fails closed."
+  },
+  "Technology": "growth_cyclical",
+  "Consumer Discretionary": "growth_cyclical",
+  "Communication Services": "growth_cyclical",
+  "Industrials": "growth_cyclical",
+  "Financials": "rate_sensitive",
+  "Real Estate": "rate_sensitive",
+  "Utilities": "defensive_income",
+  "Consumer Staples": "defensive_income",
+  "Healthcare": "defensive_income",
+  "Energy": "commodity_cyclical",
+  "Materials": "commodity_cyclical"
+}
