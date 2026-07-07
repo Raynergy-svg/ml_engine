@@ -1,0 +1,13 @@
+{
+  "pr": {"number": "9006", "base_ref": "main", "head_ref": "feature/promotion-tweak-with-gate"},
+  "changed_files": [
+    "src/brain_loop/promotion.py",
+    "trained_data/backtests/SHIP_GATE.json"
+  ],
+  "diff_signals": {"risky_live_patterns_found": []},
+  "review_evidence": {"checklist_file_changed": false, "labels": []},
+  "gate_evidence": {
+    "ship_gate_files_changed": ["trained_data/backtests/SHIP_GATE.json"],
+    "eval_report_files_changed": []
+  }
+}

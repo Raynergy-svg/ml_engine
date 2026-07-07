@@ -1,0 +1,10 @@
+{
+  "pr": {"number": "9004", "base_ref": "main", "head_ref": "feature/reviewed-arm-change"},
+  "changed_files": [
+    "src/equity/live_gate.py",
+    ".ci/policy/evidence/live-arm/2026-07-07-arm-review.md"
+  ],
+  "diff_signals": {"risky_live_patterns_found": []},
+  "review_evidence": {"checklist_file_changed": true, "labels": []},
+  "gate_evidence": {"ship_gate_files_changed": [], "eval_report_files_changed": []}
+}

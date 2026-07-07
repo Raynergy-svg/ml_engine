@@ -125,6 +125,7 @@ jobs:
           tests/test_agent_vote_index.py \
           tests/test_phase93_mean_reversion_veto.py \
           tests/test_training_infrastructure.py \
+          tests/test_generate_policy_input.py \
           tests/integration/test_autonomy_loop_e2e.py \
           -v --tb=short -m "not slow and not integration" 2>&1
 
@@ -203,3 +204,93 @@ jobs:
         echo "Gate 1 (orphan-keys): blocks on ScannerConfig drift (exit 1 or 2)."
         echo "Gate 2 (py_compile):  blocks on syntax errors in the 5 safety files."
         echo "Gate 3 (circuit-breaker): blocks on regression in trade-blocking gates."
+
+  policy:
+    name: Policy-as-Code Promotion Gates (OPA/Conftest)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # CI-only governance: evaluates this PR's diff against .ci/policy/rego.
+    # Never touches runtime/trading/execution/halt/config — see .ci/policy/README.md.
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    - name: Install conftest (pinned, checksum-verified)
+      env:
+        CONFTEST_VERSION: "0.68.2"
+        CONFTEST_SHA256: "e8144c6d6d2ae0260b869caa60c7c262a1f95ac63ec1e5d2fb19be452d606347"
+      run: |
+        set -euo pipefail
+        cd /tmp
+        curl -sSLO "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+        echo "${CONFTEST_SHA256}  conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" | sha256sum -c -
+        tar xzf "conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" conftest
+        sudo mv conftest /usr/local/bin/conftest
+        conftest --version
+
+    - name: Rego unit tests (conftest verify)
+      run: conftest verify --policy .ci/policy/rego
+
+    - name: Policy fixture acceptance tests (reject + allow per rule)
+      run: .ci/policy/run_fixture_tests.sh
+
+    - name: Determine diff range
+      id: diff_range
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PUSH_BEFORE_SHA: ${{ github.event.before }}
+        PUSH_HEAD_SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        if [ "${EVENT_NAME}" = "pull_request" ]; then
+          BASE_SHA="${PR_BASE_SHA}"
+          HEAD_SHA="${PR_HEAD_SHA}"
+        else
+          HEAD_SHA="${PUSH_HEAD_SHA}"
+          if [ -z "${PUSH_BEFORE_SHA}" ] || [ "${PUSH_BEFORE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            # No usable "before" SHA (e.g. first push of a new branch).
+            # Fall back to the main merge-base, then the parent commit — but
+            # never silently fall back to HEAD itself: that would produce a
+            # zero-file diff and a spurious all-green policy run instead of
+            # a loud failure.
+            BASE_SHA="$(git merge-base origin/main HEAD 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || true)"
+            if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "${HEAD_SHA}" ]; then
+              echo "::error::Could not resolve a usable base ref for the policy diff (no origin/main merge-base, no parent commit). Refusing to silently evaluate a zero-file diff."
+              exit 1
+            fi
+          else
+            BASE_SHA="${PUSH_BEFORE_SHA}"
+          fi
+        fi
+        if [ "${BASE_SHA}" = "${HEAD_SHA}" ]; then
+          echo "::error::Resolved base_sha equals head_sha (${HEAD_SHA}) — refusing to silently evaluate a zero-file diff."
+          exit 1
+        fi
+        echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+        echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+
+    - name: Generate PR-context policy input
+      env:
+        POLICY_BASE_REF: ${{ steps.diff_range.outputs.base_sha }}
+        POLICY_HEAD_REF: ${{ steps.diff_range.outputs.head_sha }}
+        POLICY_PR_NUMBER: ${{ github.event.pull_request.number }}
+        POLICY_PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+      run: python3 scripts/ci/generate_policy_input.py --output policy_input.json
+
+    - name: Evaluate promotion-gate policies against this PR
+      run: conftest test --all-namespaces --policy .ci/policy/rego policy_input.json
+
+    - name: Report
+      if: failure()
+      run: |
+        echo "::error::Policy-as-code gate failed. See the FAIL lines above for which rule fired and why."
+        echo "Generated policy input (for debugging):"
+        cat policy_input.json || true
+        echo "Rules + evidence conventions: .ci/policy/README.md"
