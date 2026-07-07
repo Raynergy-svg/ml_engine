@@ -698,6 +698,15 @@ export interface MindWindowOutcome {
   proposal: boolean;
   denied: boolean;
   detail?: Record<string, unknown>;
+  proposal_id?: string | null;
+}
+export interface ProposalDisposition {
+  proposal_id: string;
+  status: "accepted" | "denied";
+  actor: string;
+  reason?: string;
+  detail?: Record<string, unknown>;
+  decided_at: string;
 }
 export interface MindWindowCycle {
   cycle_id: string;
@@ -713,10 +722,13 @@ export interface MindWindowCycle {
   verify_detail?: Record<string, unknown>;
 }
 // pending_operator_proposals flattens every escalation outcome with proposal=true
-// across recent_cycles, prefixed with cycle_id/ts.
+// across recent_cycles, deduped by proposal_id (same proposal re-surfacing across
+// cycles shows once), prefixed with cycle_id/ts. resolved_proposals holds the ones
+// the operator has already accepted/denied (joined disposition, not hidden).
 export interface MindWindowPendingProposal extends MindWindowOutcome {
   cycle_id?: string;
   ts?: string;
+  disposition?: ProposalDisposition | null;
 }
 export interface MindWindow {
   has_run: boolean;
@@ -724,6 +736,7 @@ export interface MindWindow {
   recent_cycles: MindWindowCycle[];
   last_cycle: MindWindowCycle | null;
   pending_operator_proposals: MindWindowPendingProposal[];
+  resolved_proposals?: MindWindowPendingProposal[];
   error?: string;
   source: Record<string, string>;
 }

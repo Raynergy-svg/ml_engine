@@ -42,3 +42,35 @@ export async function control(
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { status: res.status, ok: res.ok, data };
 }
+
+// Activity panel Accept/Deny for AXIOM resident-loop proposals. Accept sends
+// the proposal's OWN action name as the confirm header (the server checks it
+// matches exactly) -- it never invents a new execution path; the server
+// dispatches to that action type's existing safeguarded function.
+export async function acceptProposal(proposalId: string, action: string): Promise<ControlResult> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/axiom_proposals/${proposalId}/accept`, {
+      method: "POST",
+      headers: { "x-axiom-confirm": action, "x-axiom-actor": actorId() },
+    });
+  } catch {
+    return { status: 0, ok: false, data: { error: "network_error" } };
+  }
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return { status: res.status, ok: res.ok, data };
+}
+
+export async function denyProposal(proposalId: string): Promise<ControlResult> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/axiom_proposals/${proposalId}/deny`, {
+      method: "POST",
+      headers: { "x-axiom-actor": actorId() },
+    });
+  } catch {
+    return { status: 0, ok: false, data: { error: "network_error" } };
+  }
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return { status: res.status, ok: res.ok, data };
+}

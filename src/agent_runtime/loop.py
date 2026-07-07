@@ -132,6 +132,10 @@ class ActionOutcome:
     proposal: bool
     denied: bool
     detail: Dict[str, Any] = field(default_factory=dict)
+    proposal_id: Optional[str] = None
+    """Set only when ``proposal`` is True -- the stable id (policy.compute_proposal_id)
+    the Activity panel's Accept/Deny endpoints (dashboard/server/axiom_proposals.py)
+    use to reference this specific ESCALATION proposal."""
 
 
 @dataclass(frozen=True)
@@ -426,14 +430,16 @@ class ResidentLoop:
                 proposal=False, denied=True, detail={"reason": f"escalation blocked with error: {exc!r}"},
             )
         proposal_detail: Dict[str, Any] = {}
+        proposal_id: Optional[str] = None
         if result.proposal is not None:
             proposal_detail = {
                 "action": result.proposal.action, "rationale": result.proposal.rationale,
                 "requires": result.proposal.requires, "params": result.proposal.params,
             }
+            proposal_id = result.proposal.proposal_id
         return ActionOutcome(
             action=item.action, tier=item.tier, executed=result.executed, shadow=False,
-            proposal=True, denied=False, detail=proposal_detail,
+            proposal=True, denied=False, detail=proposal_detail, proposal_id=proposal_id,
         )
 
     def _act_shadow(self, item: ProposedAction, *, actor: str) -> ActionOutcome:
@@ -531,24 +537,46 @@ def read_mind_window(
     """Read-only snapshot for the AXIOM "mind-window" activity panel: recent
     cycles (noticed/believed/did-or-would-do) + any pending operator
     proposals (ESCALATION actions awaiting explicit approval). Honest empty
-    state before the first cycle has ever run -- never fabricated."""
+    state before the first cycle has ever run -- never fabricated.
+
+    Each proposal is joined with its disposition (accepted/denied, if any --
+    see src.agent_runtime.proposal_store), deduped by proposal_id so the SAME
+    unresolved proposal re-surfacing across cycles shows once (most recent
+    occurrence), not once per cycle. Already-decided proposals are split into
+    ``resolved_proposals`` so accepting/denying one doesn't just hide it --
+    the operator can still see what they decided and why."""
+    from src.agent_runtime import proposal_store
+
     cycles = tail_jsonl(Path(cycles_path), limit)
-    pending: List[Dict[str, Any]] = []
-    for cycle in cycles:
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for cycle in cycles:  # newest-first (tail_jsonl order) -- first write per id wins
         for outcome in cycle.get("outcomes", []) or []:
-            if outcome.get("proposal"):
-                pending.append({
-                    "cycle_id": cycle.get("cycle_id"), "ts": cycle.get("ts"),
-                    **outcome,
-                })
+            if not outcome.get("proposal"):
+                continue
+            pid = outcome.get("proposal_id")
+            key = pid or f"{cycle.get('cycle_id')}:{outcome.get('action')}"
+            if key in by_id:
+                continue
+            by_id[key] = {"cycle_id": cycle.get("cycle_id"), "ts": cycle.get("ts"), **outcome}
+
+    dispositions = proposal_store.list_dispositions()
+    pending: List[Dict[str, Any]] = []
+    resolved: List[Dict[str, Any]] = []
+    for key, entry in by_id.items():
+        disposition = dispositions.get(entry.get("proposal_id") or "")
+        entry = {**entry, "disposition": disposition}
+        (resolved if disposition else pending).append(entry)
+
     return {
         "has_run": bool(cycles),
         "autonomy_enabled": is_autonomy_enabled(Path(autonomy_path)),
         "recent_cycles": cycles,
         "last_cycle": cycles[0] if cycles else None,
         "pending_operator_proposals": pending,
+        "resolved_proposals": resolved,
         "source": {
             "cycles": "trained_data/axiom/loop_cycles.jsonl",
             "autonomy_flag": "trained_data/axiom/loop_autonomy.json",
+            "dispositions": "trained_data/axiom/proposal_dispositions.json",
         },
     }

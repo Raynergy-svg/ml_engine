@@ -122,6 +122,10 @@ if _CONTROL_ENABLED:
     from dashboard.server.control import router as control_router
     app.include_router(control_router)
     logger.warning("AXIOM CONTROL ROUTER MOUNTED (write path ACTIVE) — AXIOM_CONTROL_ENABLED is set.")
+
+    from dashboard.server.axiom_proposals import router as axiom_proposals_router
+    app.include_router(axiom_proposals_router)
+    logger.warning("AXIOM PROPOSALS ROUTER MOUNTED (Activity panel accept/deny ACTIVE).")
 else:
     logger.info("AXIOM control router NOT mounted (read-only). Set AXIOM_CONTROL_ENABLED=1 to enable.")
 

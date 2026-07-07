@@ -1,6 +1,7 @@
 "use client";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { usePoll } from "@/lib/api";
+import { acceptProposal, denyProposal } from "@/lib/control";
 import type {
   MindWindow,
   MindWindowCycle,
@@ -86,9 +87,115 @@ function OutcomeRow({ outcome }: { outcome: MindWindowOutcome }) {
   );
 }
 
-function PendingProposalRow({ proposal }: { proposal: MindWindowPendingProposal }) {
+type RowStage = "idle" | "confirm-accept" | "confirm-deny" | "busy" | "done";
+
+function ProposalActionBar({
+  proposal,
+  onResolved,
+}: {
+  proposal: MindWindowPendingProposal;
+  onResolved: () => void;
+}) {
+  const [stage, setStage] = useState<RowStage>("idle");
+  const [message, setMessage] = useState<string | null>(null);
+  const proposalId = proposal.proposal_id;
+
+  if (!proposalId) {
+    // Older cycles logged before proposal_id existed -- can't be actioned here.
+    return <span className="font-mono text-[10px] text-faint">no id — re-propose to act</span>;
+  }
+
+  async function doAccept() {
+    setStage("busy");
+    const result = await acceptProposal(proposalId!, proposal.action);
+    setStage("done");
+    setMessage(
+      result.ok
+        ? "accepted — executing via existing safeguard"
+        : `refused (${result.status}): ${String(result.data?.detail ?? result.data?.error ?? "denied")}`,
+    );
+    onResolved();
+  }
+
+  async function doDeny() {
+    setStage("busy");
+    const result = await denyProposal(proposalId!);
+    setStage("done");
+    setMessage(result.ok ? "denied" : `deny failed (${result.status})`);
+    onResolved();
+  }
+
+  if (stage === "done") {
+    return <span className="font-mono text-[10px] text-faint">{message}</span>;
+  }
+  if (stage === "busy") {
+    return <span className="font-mono text-[10px] text-faint">working…</span>;
+  }
+  if (stage === "confirm-accept") {
+    return (
+      <span className="flex shrink-0 items-center gap-1.5">
+        <span className="font-mono text-[10px] text-warn">really accept + execute?</span>
+        <button
+          className="rounded border border-pos/40 px-1.5 py-0.5 font-mono text-[10px] text-pos hover:bg-pos/10"
+          onClick={doAccept}
+        >
+          Yes, execute
+        </button>
+        <button
+          className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-faint hairline hover:bg-white/5"
+          onClick={() => setStage("idle")}
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
+  if (stage === "confirm-deny") {
+    return (
+      <span className="flex shrink-0 items-center gap-1.5">
+        <span className="font-mono text-[10px] text-faint">deny this proposal?</span>
+        <button
+          className="rounded border border-neg/40 px-1.5 py-0.5 font-mono text-[10px] text-neg hover:bg-neg/10"
+          onClick={doDeny}
+        >
+          Yes, deny
+        </button>
+        <button
+          className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-faint hairline hover:bg-white/5"
+          onClick={() => setStage("idle")}
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
   return (
-    <div className="flex flex-col gap-1 border-t py-2 hairline first:border-t-0">
+    <span className="flex shrink-0 items-center gap-1.5">
+      <button
+        className="rounded border border-pos/40 px-1.5 py-0.5 font-mono text-[10px] text-pos hover:bg-pos/10"
+        onClick={() => setStage("confirm-accept")}
+      >
+        Accept
+      </button>
+      <button
+        className="rounded border border-neg/40 px-1.5 py-0.5 font-mono text-[10px] text-neg hover:bg-neg/10"
+        onClick={() => setStage("confirm-deny")}
+      >
+        Deny
+      </button>
+    </span>
+  );
+}
+
+function PendingProposalRow({
+  proposal,
+  onResolved,
+}: {
+  proposal: MindWindowPendingProposal;
+  onResolved: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 border-t py-2 hairline first:border-t-0">
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 truncate font-mono text-[12px] font-semibold text-warn" title={proposal.action}>
           {proposal.action}
@@ -101,6 +208,34 @@ function PendingProposalRow({ proposal }: { proposal: MindWindowPendingProposal 
       {proposal.detail && Object.keys(proposal.detail).length > 0 && (
         <div className="truncate font-mono text-[10.5px] text-faint" title={JSON.stringify(proposal.detail)}>
           {Object.entries(proposal.detail).slice(0, 3).map(([k, v]) => `${k}=${String(v)}`).join(" · ")}
+        </div>
+      )}
+      <div className="flex justify-end">
+        <ProposalActionBar proposal={proposal} onResolved={onResolved} />
+      </div>
+    </div>
+  );
+}
+
+function ResolvedProposalRow({ proposal }: { proposal: MindWindowPendingProposal }) {
+  const disposition = proposal.disposition;
+  const isAccepted = disposition?.status === "accepted";
+  return (
+    <div className="flex flex-col gap-1 border-t py-1.5 hairline first:border-t-0">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate font-mono text-[11px] text-dim" title={proposal.action}>
+          {proposal.action}
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          <Badge color={isAccepted ? "#3ee287" : "#8b98a9"}>{isAccepted ? "ACCEPTED" : "DENIED"}</Badge>
+          <span className="font-mono text-[10px] text-faint tnum">
+            {disposition ? shortTime(disposition.decided_at) : ""}
+          </span>
+        </span>
+      </div>
+      {disposition?.reason && (
+        <div className="truncate font-mono text-[10px] text-faint" title={disposition.reason}>
+          {disposition.reason}
         </div>
       )}
     </div>
@@ -182,7 +317,7 @@ function CompactCycleRow({ cycle }: { cycle: MindWindowCycle }) {
 }
 
 export function MindWindowPanel() {
-  const { data, loading, error } = usePoll<MindWindow>("/api/mind_window", 5000);
+  const { data, loading, error, reload } = usePoll<MindWindow>("/api/mind_window", 5000);
 
   if (loading && !data) {
     return <Card className="p-3"><SectionTitle>Mind Window</SectionTitle><Loading label="Loading resident loop cycles..." /></Card>;
@@ -193,6 +328,7 @@ export function MindWindowPanel() {
 
   const older = data.recent_cycles.slice(1);
   const pending = data.pending_operator_proposals ?? [];
+  const resolved = (data.resolved_proposals ?? []).slice(0, 10);
 
   return (
     <Card className="flex flex-col">
@@ -244,11 +380,26 @@ export function MindWindowPanel() {
           ) : (
             <div>
               {pending.map((p, i) => (
-                <PendingProposalRow key={`${p.cycle_id ?? "pending"}-${i}-${p.action}`} proposal={p} />
+                <PendingProposalRow
+                  key={p.proposal_id ?? `${p.cycle_id ?? "pending"}-${i}-${p.action}`}
+                  proposal={p}
+                  onResolved={reload}
+                />
               ))}
             </div>
           )}
         </div>
+
+        {!!resolved.length && (
+          <div className="rounded-md border bg-black/10 p-3 hairline">
+            <div className="eyebrow mb-1 tracking-[0.14em]">Recent decisions</div>
+            <div className="scroll-thin max-h-[160px] overflow-auto">
+              {resolved.map((p, i) => (
+                <ResolvedProposalRow key={p.proposal_id ?? `${p.cycle_id ?? "resolved"}-${i}-${p.action}`} proposal={p} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   );

@@ -39,6 +39,8 @@ audit log, ``src.scanner.config.ScannerConfig`` for the practice-pin re-derive.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, Optional
@@ -71,7 +73,19 @@ class Proposal:
     tier: ActionTier
     params: Dict[str, Any]
     rationale: str
+    proposal_id: str
     requires: str = "explicit operator approval (typed confirmation / dashboard ARM)"
+
+
+def compute_proposal_id(action: str, params: Dict[str, Any]) -> str:
+    """Stable id for a proposal, derived from (action, params) -- NOT random and
+    NOT time-based, so the identical proposal re-surfacing across resident-loop
+    cycles (e.g. the LLM re-noticing the same unresolved defect) maps to the
+    SAME id, and an operator's accept/deny decision (keyed by this id in
+    ``src.agent_runtime.proposal_store``) survives across cycles instead of
+    being asked again every 5 minutes."""
+    canonical = json.dumps({"action": action, "params": params}, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 @dataclass(frozen=True)
@@ -192,7 +206,10 @@ class PolicyEngine:
                     f"{action!r} carries an execute callable — refusing to proceed at all "
                     "(this should be structurally impossible; treat as tampering)"
                 )
-            proposal = Proposal(action=action, tier=spec.tier, params=params, rationale=spec.description)
+            proposal = Proposal(
+                action=action, tier=spec.tier, params=params, rationale=spec.description,
+                proposal_id=compute_proposal_id(action, params),
+            )
             self._audit_fn(
                 action=action, tier=spec.tier.value, actor=actor, allowed=False,
                 outcome="proposed_for_operator", reason=spec.description, params=params,
