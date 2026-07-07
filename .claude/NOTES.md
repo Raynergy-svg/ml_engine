@@ -4,9 +4,71 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-07T10:50Z by Claude (crypto_carry shadow lane committed `1eb8cfa`; verified
-`.claude/state.json` via StateEngine.set_halted only — `halted_lanes.crypto_carry=true`,
-`halted_lanes.oanda_fx=true` unchanged, global `halted` untouched by this task).
+Last touched: 2026-07-07T22:55Z by Claude (AXIOM Hedge Layer Phase 3 — hedge candidate generator —
+committed on `ralph/equity-harvester-bot`; no `.claude/state.json` touch this task, verified via
+`git diff --stat`).
+
+## AXIOM Hedge Layer Phase 3 — hedge candidate generator (2026-07-07, SHADOW/ANALYSIS-ONLY)
+
+Built on Phase 1+2 (`b4698af`): `src/hedge/hedge_candidates.py` takes a candidate trade + the
+netted post-candidate `ExposureReport` and proposes RANKED hedges — never executes. FX styles:
+direct offset (short the flagged currency, sized to fully cancel it — sign math verified exact)
+and relative-value (long/short two counter-currencies). Equity styles: market (short SPY),
+sector (short the sector ETF from `sector_bucket_map.json`), relative-value. Cost ranking reuses
+the real P2 `src/data/execution_cost_model.py` (not forked) — unknown cost (no fill/tick history)
+is NEVER assumed cheap, routes to `BLOCK_COST`. Decision enum: `APPROVE_RAW` / `APPROVE_HEDGED` /
+`REDUCE_SIZE` / `BLOCK_CORRELATION` / `BLOCK_COST` / `BLOCK_NO_VALID_HEDGE` / `SHADOW_ONLY`
+(missing/unresolved exposure data). Fixed safety triplet
+(`runtime_allowed=False, paper_only=True, human_review_required=True`) on every output — module
+constants, never parameters.
+
+- **Anti-fabrication fix mid-session**: independent Code Reviewer caught the FX relative-value
+  style initially picking "strongest/weakest" counter-currency by alphabetical sort with zero
+  ranking data behind the "does X outperform Y" claim — inconsistent with the equity RV style,
+  which correctly required a caller-supplied `relative_strength` dict. Fixed to match: FX RV now
+  also fails closed (`no_relative_strength_data_supplied`) without real ranking data.
+- **Known non-blocking gap** (Code Reviewer finding, deferred): equity hedge generation reads
+  `net_beta_exposure`/`net_sector_exposure` but not `net_correlation_bucket_exposure` — a
+  concentration that only crosses threshold at the CROSS-SECTOR cluster level (e.g. Energy +
+  Materials both mapping to `commodity_cyclical`) can surface in `risk_issue` without the
+  proposed hedge fully addressing it. Would need a new `correlation_bucket` hedge style; out of
+  scope for this pass, flagged here for a future session.
+- 17 new tests (42 total in `src/hedge/`, no mocks) + demo script
+  (`scripts/hedge_candidates_demo.py`) producing real sample JSON for the USD-pileup and a
+  Technology-sector equity sleeve. Independent Security Engineer: SAFE, all 9 checks PASS (no
+  broker/execution/halt/gate/leverage touch, safety triplet genuinely immutable, fail-closed
+  paths real not cosmetic, practice pin + halt state untouched by this diff). Independent Code
+  Reviewer: sign math verified exact, decision-tier branch ordering sound, ranking never treats
+  unknown cost as cheap, reuse-not-fork confirmed — 1 fix applied (above), 1 gap deferred (above).
+  flake8 clean.
+
+## AXIOM Hedge Layer foundation — exposure tagging + portfolio netting (2026-07-07, SHADOW/ANALYSIS-ONLY)
+
+Built per operator directive: Phase 1 (`src/hedge/exposure_tags.py`) decomposes FX pairs into
+signed currency legs (reuses `trend_risk_gates.currency_legs`, not forked) tagged risk-on/
+safe-haven/commodity-linked, plus equity tickers into sector/beta/factor/benchmark-hedge tags
+from new `src/hedge/config/{currency,sector,correlation}_bucket_map.json`. Phase 2
+(`src/hedge/portfolio_exposure.py`) nets a shadow open book + an optional candidate into
+currency/sector/beta/correlation-bucket exposure (correlation bucket = currency for FX, sector
+cluster for equity — unified, not two taxonomies), reusing
+`DEFAULT_BIAS_SHARE_THRESHOLD`/`DEFAULT_BIAS_MIN_INSTRUMENTS` from the same risk gate for
+concentration warnings.
+
+- **Reproduces the motivating case directly**: long USD_CAD + USD_CHF + USD_JPY nets to ONE
+  100%-concentrated USD bucket (`scripts/hedge_exposure_demo.py` sample output), not 3
+  independent trades — exactly the -$816 FX-day failure mode.
+- **Fail-closed contract, verified at both tag and report level**: any unresolvable instrument/
+  currency/ticker/direction sets `fail_closed=True` with a named reason; `build_exposure_report`
+  propagates any sub-failure to the whole report rather than silently zeroing the gap.
+- **No execution path**: pure functions over caller-supplied `ExposurePosition` data — zero
+  broker/network/`state.json`/`LiveGate` coupling (grep-confirmed by the verifier).
+- 25 new tests (no mocks, real disk config load via `load_bucket_map`), independent Security
+  Engineer verifier: PASS on all 6 checks (no execution surface, fail-closed contract,
+  reuse-not-fork of `trend_risk_gates`, practice/halt untouched via `git diff --stat`, test
+  integrity incl. non-tautological USD-pileup test, no-mock compliance). `risk_monitor.sh` GREEN.
+  flake8 clean. Committed `b4698af` on `ralph/equity-harvester-bot`.
+- **Phase 3 (hedge candidate generator, still analysis-only — no execution) built same day, see
+  entry above.** Phase 4+ (any actual execution) remains explicitly NOT built.
 
 ## crypto_carry SHADOW lane — cash-and-carry funding harvest (2026-07-07)
 
