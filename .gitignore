@@ -270,6 +270,9 @@ market_data/oanda_books/
 market_data/multi_asset/
 market_data/factor/
 market_data/equity_alt/
+market_data/crypto/
+market_data/equity/*.csv
+market_data/equity/sec/
 
 # Debug/session scratch artifacts (nohup dumps, screenshots, tool caches — not project data)
 /checkpoint.log.*
@@ -281,6 +284,10 @@ market_data/equity_alt/
 /overview*.png
 /recon-*.png
 logs/equity_harvester_loop.out
+logs/agent_runtime_loop.out
+logs/brain_loop.out
+logs/crypto_momentum_shadow.out
+logs/track_b_shadow.out
 .playwright-mcp/
 
 # Local git-worktree scratch dirs (created ad hoc for isolated agent work) --
