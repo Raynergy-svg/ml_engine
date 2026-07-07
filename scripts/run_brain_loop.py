@@ -58,6 +58,9 @@ def _load_hypothesis(path: Optional[str]) -> Optional[dict]:
     missing = required - payload.keys()
     if missing:
         raise ValueError(f"hypothesis file missing required keys: {sorted(missing)}")
+    harness_cmd = payload["harness_cmd"]
+    if not isinstance(harness_cmd, list) or not all(isinstance(x, str) for x in harness_cmd):
+        raise ValueError("hypothesis file 'harness_cmd' must be a list of strings")
     return payload
 
 
@@ -93,7 +96,15 @@ def main(argv: Optional[list] = None) -> int:
     cycles = 1 if args.once or not args.loop else args.max_cycles
 
     for i in range(cycles):
-        summary = _run_once(project_root, args.propose)
+        try:
+            summary = _run_once(project_root, args.propose)
+        except Exception as exc:  # noqa: BLE001 - a stuck/crashed harness must not kill --loop mode
+            if not args.loop:
+                raise
+            logger.exception("brain loop cycle %d failed; continuing loop: %s", i, exc)
+            if args.loop and i < cycles - 1:
+                time.sleep(args.interval)
+            continue
         print(json.dumps(summary, indent=2, sort_keys=True))
         if summary["halted"]:
             logger.warning("brain loop cycle %d: halted (breach_derisked=%s) — stopping", i, summary["breach_derisked"])

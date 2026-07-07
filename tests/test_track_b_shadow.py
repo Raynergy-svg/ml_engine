@@ -136,6 +136,17 @@ class TestLoadFrozenScores:
         with pytest.raises(ValueError):
             tbs.load_frozen_scores(paths=[path])
 
+    def test_missing_required_field_is_dropped_not_fatal(self, tmp_path):
+        """A missing key (malformed record) is an infrastructure abstention —
+        distinct from an out-of-range value on an otherwise well-formed record,
+        which stays fatal (see test_out_of_range_score_field_raises above)."""
+        path = tmp_path / "artifact.json"
+        incomplete = self._raw("INCOMPLETE", "2026-03-01")
+        del incomplete["conviction"]
+        self._write_artifact(path, [incomplete, self._raw("GOOD", "2026-04-01")])
+        scores = tbs.load_frozen_scores(paths=[path])
+        assert [s.ticker for s in scores] == ["GOOD"]
+
 
 class TestLedger:
     def _result(self, asof="2026-01-01", net=0.01, n_scored=48):

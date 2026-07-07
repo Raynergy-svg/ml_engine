@@ -195,7 +195,10 @@ class ResidentLoop:
         proposed = self._propose(diagnosis)
         autonomy = self.autonomy_enabled()
         outcomes = self._act(proposed, actor=actor, autonomy_enabled=autonomy)
-        verified, verify_detail = self._verify(outcomes)
+        try:
+            verified, verify_detail = self._verify(outcomes)
+        except Exception as exc:  # noqa: BLE001 - VERIFY must never suppress LOG of already-acted-on outcomes
+            verified, verify_detail = False, {"verify_error": repr(exc)}
 
         result = CycleResult(
             cycle_id=cycle_id, ts=utc_now(), actor=actor, cli_available=cli_available,

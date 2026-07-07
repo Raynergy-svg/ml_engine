@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -104,18 +103,26 @@ def run_once(api: str, *, halt_on_critical: bool = False) -> dict[str, Any]:
         }
         return result
 
+    def _safe_float(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
     loops = control.get("loops") or {}
     leverage = control.get("gross_leverage")
-    leverage_cap = float(control.get("leverage_cap") or 15.0)
-    tier7_pid = (tier7.get("last_cycle") or {}).get("pid")
+    leverage_cap = _safe_float(control.get("leverage_cap"), 15.0)
+    _last_cycle = tier7.get("last_cycle")
+    tier7_pid = _last_cycle.get("pid") if isinstance(_last_cycle, dict) else None
     tier7_control_pids = (loops.get("tier7") or {}).get("pids") or []
 
     add("api_up_practice", health.get("ok") and health.get("environment") == "practice", health, severity="critical")
     add("control_enabled", health.get("control_enabled") is True, {"control_enabled": health.get("control_enabled")}, severity="critical")
     add("control_env_practice", control.get("environment") == "practice", {"environment": control.get("environment")}, severity="critical")
+    _leverage_f = None if leverage is None else _safe_float(leverage, float("nan"))
     add(
         "leverage_cap",
-        leverage is None or (0.0 <= float(leverage) <= min(leverage_cap, 15.0)),
+        leverage is None or (_leverage_f == _leverage_f and 0.0 <= _leverage_f <= min(leverage_cap, 15.0)),
         {"gross_leverage": leverage, "leverage_cap": leverage_cap},
         severity="critical",
     )
@@ -206,7 +213,11 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     while True:
-        result = run_once(args.api, halt_on_critical=args.halt_on_critical)
+        try:
+            result = run_once(args.api, halt_on_critical=args.halt_on_critical)
+        except Exception as exc:  # noqa: BLE001 - watchdog must never die silently
+            result = {"ts": _now(), "ok": False, "fatal": f"{type(exc).__name__}: {exc}",
+                      "halt_attempted": False}
         _append_log(result)
         print(json.dumps(result, indent=2), flush=True)
         if not args.interval:

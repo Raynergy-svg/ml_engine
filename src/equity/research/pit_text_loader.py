@@ -56,8 +56,9 @@ from src.equity.research.contracts import FilingText
 
 logger = logging.getLogger(__name__)
 
-# SEC requires a descriptive UA with contact info; 10 req/s ceiling.
-SEC_UA = "ml_engine-research dcertan84@gmail.com"
+# SEC requires a descriptive UA with contact info; 10 req/s ceiling. Contact
+# email is read from env so it isn't a hardcoded personal address in source.
+SEC_UA = "ml_engine-research " + os.environ.get("SEC_EDGAR_CONTACT_EMAIL", "research@example.com")
 _REQUEST_SPACING_S = 0.13          # stay comfortably under 10 req/s
 _TIMEOUT = (5, 30)                 # (connect, read)
 
@@ -316,6 +317,8 @@ def load_pit_filing(
         return None
 
     # Walk recent + (lazily) older blocks; keep the best PIT row across blocks.
+    # Blocks are yielded newest-first, so once a candidate is found no later
+    # (older) block can beat it — stop paging immediately to save requests.
     best: Optional[dict] = None
     for block in _candidate_blocks(sess, submissions, cik10, as_of):
         cand = select_pit_filing(_iter_recent_rows(block), as_of, forms)
@@ -323,6 +326,7 @@ def load_pit_filing(
             best is None or cand["filingDate"] > best["filingDate"]
         ):
             best = cand
+            break
     if best is None:
         logger.warning(
             "load_pit_filing: no %s filing for %s with filed <= %s",
@@ -396,7 +400,7 @@ def _cache_path(
 ) -> Optional[Path]:
     if cache_dir is None:
         return None
-    safe_doc = doc.replace("/", "_")
+    safe_doc = Path(doc).name.replace("/", "_") or "unknown"
     return Path(cache_dir) / cik10 / f"{acc_nodash}__{safe_doc}.txt"
 
 

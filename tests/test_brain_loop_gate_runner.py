@@ -26,6 +26,17 @@ def _write_state(project_root, halted: bool) -> None:
     (claude_dir / "state.json").write_text(json.dumps({"halted": halted}))
 
 
+def _write_fake_harness(project_root, code: str) -> list:
+    """A real .py file under scripts/ — run_backtest's allowlist (harness_cmd[0] must
+    be a python interpreter, harness_cmd[1] a .py file inside scripts/) refuses `-c`
+    inline code, so tests need a real script on disk rather than a bare snippet."""
+    scripts_dir = project_root / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    script = scripts_dir / "fake_harness.py"
+    script.write_text(code)
+    return [sys.executable, str(script)]
+
+
 def test_evaluate_gate_refuses_when_halted(tmp_path):
     _write_state(tmp_path, halted=True)
     decision = evaluate_gate(config=ScannerConfig(), project_root=tmp_path)
@@ -50,18 +61,30 @@ def test_evaluate_gate_continue_when_ship_gate_passes(tmp_path):
 
 
 def test_run_backtest_executes_real_subprocess(tmp_path):
-    result = run_backtest([sys.executable, "-c", "print('hello-brain-loop')"], cwd=tmp_path)
+    cmd = _write_fake_harness(tmp_path, "print('hello-brain-loop')")
+    result = run_backtest(cmd, cwd=tmp_path)
     assert result.returncode == 0
     assert "hello-brain-loop" in result.stdout
 
 
 def test_run_backtest_times_out_on_a_hanging_process(tmp_path):
+    cmd = _write_fake_harness(tmp_path, "import time; time.sleep(5)")
     with pytest.raises(subprocess.TimeoutExpired):
-        run_backtest(
-            [sys.executable, "-c", "import time; time.sleep(5)"],
-            cwd=tmp_path,
-            timeout=0.2,
-        )
+        run_backtest(cmd, cwd=tmp_path, timeout=0.2)
+
+
+def test_run_backtest_refuses_non_python_interpreter(tmp_path):
+    from src.brain_loop.gate_runner import UnsafeHarnessCommand
+    with pytest.raises(UnsafeHarnessCommand):
+        run_backtest(["/bin/sh", "-c", "echo pwned"], cwd=tmp_path)
+
+
+def test_run_backtest_refuses_script_outside_scripts_dir(tmp_path):
+    from src.brain_loop.gate_runner import UnsafeHarnessCommand
+    outside = tmp_path / "outside.py"
+    outside.write_text("print('should not run')")
+    with pytest.raises(UnsafeHarnessCommand):
+        run_backtest([sys.executable, str(outside)], cwd=tmp_path)
 
 
 def test_run_and_gate_records_pass_verdict(tmp_path):
@@ -79,7 +102,7 @@ def test_run_and_gate_records_pass_verdict(tmp_path):
     summary = run_and_gate(
         hypothesis_id="h-1",
         ledger_path=ledger_path,
-        harness_cmd=[sys.executable, "-c", "print('ran')"],
+        harness_cmd=_write_fake_harness(tmp_path, "print('ran')"),
         config=ScannerConfig(),
         project_root=tmp_path,
         data_asof=pd.Timestamp.now(tz="UTC"),
@@ -104,7 +127,7 @@ def test_run_and_gate_records_fail_verdict_when_ship_gate_missing(tmp_path):
     summary = run_and_gate(
         hypothesis_id="h-1",
         ledger_path=ledger_path,
-        harness_cmd=[sys.executable, "-c", "print('ran')"],
+        harness_cmd=_write_fake_harness(tmp_path, "print('ran')"),
         config=ScannerConfig(),
         project_root=tmp_path,
     )
@@ -120,7 +143,7 @@ def test_run_and_gate_refuses_unregistered_hypothesis(tmp_path):
         run_and_gate(
             hypothesis_id="never-registered",
             ledger_path=ledger_path,
-            harness_cmd=[sys.executable, "-c", "print('ran')"],
+            harness_cmd=_write_fake_harness(tmp_path, "print('ran')"),
             config=ScannerConfig(),
             project_root=tmp_path,
         )

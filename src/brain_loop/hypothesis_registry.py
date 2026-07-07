@@ -16,13 +16,15 @@ whatever path the caller supplies (by convention, ``trained_data/brain_loop/``).
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 GENESIS_HASH = "0" * 64
 
@@ -63,6 +65,32 @@ def canonical_hash(payload: Optional[Mapping[str, Any]]) -> str:
     items = sorted((str(k), v) for k, v in (payload or {}).items())
     canonical = json.dumps(items, separators=(",", ":"), sort_keys=True, allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@contextmanager
+def _locked(path: Path) -> Iterator[None]:
+    """Exclusive cross-process flock for a read-modify-write section.
+
+    Same pattern as ``src.equity.market_calendar._TTLHaltStore._locked``: the
+    lock lives on a sibling ``<ledger>.lock`` file (never the ledger itself,
+    so the atomic tmp+rename in ``_atomic_append_line`` never swaps the inode
+    the lock is held on). Without this, two concurrent writers could each
+    read the same tail (``prev_hash``/``seq``), and the second's write would
+    silently clobber the first's freshly-appended record — a lost-update
+    race that ``verify_chain`` cannot detect after the fact, since the
+    surviving file's chain still looks internally consistent.
+    """
+    lock_path = path.with_name(path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_fd)
 
 
 def _atomic_append_line(path: Path, line: str) -> None:
@@ -112,16 +140,17 @@ def _record_hash(payload: dict) -> str:
 
 
 def _append_record(path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
-    prev_hash, seq = _last_hash_and_seq(path)
-    full = dict(payload)
-    full["seq"] = seq
-    full["ts"] = datetime.now(timezone.utc).isoformat()
-    full["prev_hash"] = prev_hash
-    rec_hash = _record_hash(full)
-    full["record_hash"] = rec_hash
-    _atomic_append_line(
-        path, json.dumps(full, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    )
+    with _locked(path):
+        prev_hash, seq = _last_hash_and_seq(path)
+        full = dict(payload)
+        full["seq"] = seq
+        full["ts"] = datetime.now(timezone.utc).isoformat()
+        full["prev_hash"] = prev_hash
+        rec_hash = _record_hash(full)
+        full["record_hash"] = rec_hash
+        _atomic_append_line(
+            path, json.dumps(full, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        )
     return full
 
 

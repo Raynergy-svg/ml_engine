@@ -58,6 +58,18 @@ def test_propose_promotion_rejects_unknown_target(tmp_path):
         )
 
 
+def test_propose_promotion_rejects_path_traversal_hypothesis_id(tmp_path):
+    """hypothesis_id feeds a filename (`{hypothesis_id}-{target}.json`) — a
+    value containing path separators/`..` must never escape requests_dir."""
+    requests_dir = tmp_path / "promotion_requests"
+    for bad_id in ("../../etc/passwd", "a/b", "..", "h\x00"):
+        with pytest.raises(ValueError):
+            propose_promotion(
+                requests_dir, hypothesis_id=bad_id, decision=_PASS_DECISION, target="shadow"
+            )
+    assert not requests_dir.exists() or list(requests_dir.glob("*")) == []
+
+
 def test_list_pending_returns_only_pending_operator_entries(tmp_path):
     requests_dir = tmp_path / "promotion_requests"
     propose_promotion(requests_dir, hypothesis_id="h-1", decision=_PASS_DECISION, target="shadow")

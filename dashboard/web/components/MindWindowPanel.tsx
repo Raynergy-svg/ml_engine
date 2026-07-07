@@ -1,5 +1,5 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { usePoll } from "@/lib/api";
 import { acceptProposal, denyProposal } from "@/lib/control";
 import type {
@@ -316,8 +316,19 @@ function CompactCycleRow({ cycle }: { cycle: MindWindowCycle }) {
   );
 }
 
+function useElapsedSeconds(iso: string | undefined): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!iso) return null;
+  return (now - new Date(iso).getTime()) / 1000;
+}
+
 export function MindWindowPanel() {
   const { data, loading, error, reload } = usePoll<MindWindow>("/api/mind_window", 5000);
+  const elapsed = useElapsedSeconds(data?.last_cycle?.ts);
 
   if (loading && !data) {
     return <Card className="p-3"><SectionTitle>Mind Window</SectionTitle><Loading label="Loading resident loop cycles..." /></Card>;
@@ -347,9 +358,7 @@ export function MindWindowPanel() {
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <span className="eyebrow tracking-[0.16em]">Most recent cycle</span>
-                  <span className="font-mono text-[10px] text-faint tnum">{ago(
-                    (Date.now() - new Date(data.last_cycle.ts).getTime()) / 1000
-                  )}</span>
+                  <span className="font-mono text-[10px] text-faint tnum">{elapsed !== null ? ago(elapsed) : null}</span>
                 </div>
                 <CycleDetail cycle={data.last_cycle} />
               </div>

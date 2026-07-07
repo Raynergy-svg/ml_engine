@@ -53,21 +53,25 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     cycles = 1 if args.once or not args.loop else max(1, args.max_cycles)
     for idx in range(cycles):
-        result = resident.run_cycle(
-            actor="scripts/run_agent_runtime_loop.py",
-            timeout_seconds=args.timeout,
-        )
-        print(json.dumps({
-            "cycle_id": result.cycle_id,
-            "cli_available": result.cli_available,
-            "autonomy_enabled": result.autonomy_enabled,
-            "proposed_actions": len(result.proposed_actions),
-            "executed": sum(1 for o in result.outcomes if o.executed),
-            "shadow_logged": sum(1 for o in result.outcomes if o.shadow),
-            "proposed_for_operator": sum(1 for o in result.outcomes if o.proposal),
-            "denied": sum(1 for o in result.outcomes if o.denied),
-            "verified": result.verified,
-        }, indent=2, sort_keys=True))
+        try:
+            result = resident.run_cycle(
+                actor="scripts/run_agent_runtime_loop.py",
+                timeout_seconds=args.timeout,
+            )
+        except Exception as exc:  # noqa: BLE001 - one bad cycle must not kill the loop
+            print(json.dumps({"cycle_error": repr(exc)}, sort_keys=True))
+        else:
+            print(json.dumps({
+                "cycle_id": result.cycle_id,
+                "cli_available": result.cli_available,
+                "autonomy_enabled": result.autonomy_enabled,
+                "proposed_actions": len(result.proposed_actions),
+                "executed": sum(1 for o in result.outcomes if o.executed),
+                "shadow_logged": sum(1 for o in result.outcomes if o.shadow),
+                "proposed_for_operator": sum(1 for o in result.outcomes if o.proposal),
+                "denied": sum(1 for o in result.outcomes if o.denied),
+                "verified": result.verified,
+            }, indent=2, sort_keys=True))
         if args.loop and idx < cycles - 1:
             time.sleep(args.interval)
     return 0

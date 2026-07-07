@@ -6,6 +6,7 @@ convention used by src/equity/cycle_ledger.py's own test suite.
 from __future__ import annotations
 
 import json
+import threading
 
 import pytest
 
@@ -133,3 +134,37 @@ def test_verify_chain_on_missing_file_is_vacuously_ok(tmp_path):
 
 def test_read_ledger_missing_file_returns_empty_list(tmp_path):
     assert read_ledger(tmp_path / "nope.jsonl") == []
+
+
+def test_concurrent_appends_do_not_lose_records_or_break_chain(tmp_path):
+    """Real threads, real disk, real flock — proves the lost-update race (two
+    writers both reading the same tail seq/prev_hash, second write clobbering
+    the first) is closed, not just that a single-writer path still works."""
+    ledger_path = tmp_path / "hypotheses.jsonl"
+    n_writers = 12
+    errors = []
+
+    def _write(i: int) -> None:
+        try:
+            register_hypothesis(
+                ledger_path, hypothesis_id=f"h-{i}", name=f"concurrent-{i}",
+                mechanism="m", novelty_justification="n", params={"i": i},
+            )
+        except Exception as exc:  # noqa: BLE001 - collected below, not swallowed
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_write, args=(i,)) for i in range(n_writers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"unexpected exceptions from concurrent writers: {errors}"
+    records = read_ledger(ledger_path)
+    assert len(records) == n_writers, "a concurrent write was silently dropped"
+    assert {r["hypothesis_id"] for r in records} == {f"h-{i}" for i in range(n_writers)}
+    assert len({r["seq"] for r in records}) == n_writers, "two records share a seq (lost update)"
+
+    ok, broken = verify_chain(ledger_path)
+    assert ok is True
+    assert broken is None

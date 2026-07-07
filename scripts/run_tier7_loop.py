@@ -148,7 +148,7 @@ def _foreign_writer_owns_heartbeat(root: Path, *, fresh_s: float = 25.0) -> bool
         if pid and pid != os.getpid() and age <= fresh_s:
             os.kill(pid, 0)  # raises if dead
             return True
-    except (OSError, ValueError, OverflowError):
+    except (OSError, ValueError, OverflowError, TypeError):
         pass
     return False
 
@@ -257,7 +257,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     cycle = 0
     while True:
         cycle += 1
-        _tick(REPO_ROOT, cycle, max_autonomy)
+        try:
+            _tick(REPO_ROOT, cycle, max_autonomy)
+        except Exception as exc:  # noqa: BLE001 - self-heal supervisor must never crash the whole loop
+            logger.exception("cycle %d: _tick raised, continuing loop: %s", cycle, exc)
         if args.once or (args.max_cycles and cycle >= args.max_cycles):
             return 0
         reason = freshness.changed()

@@ -484,9 +484,9 @@ def run_oanda_trend_cycle(
         "HARD LINE: oanda_environment must be 'practice'"
     root = Path(project_root)
 
-    halted, readable, _reason = _lane_halted(root, "oanda_fx")
+    halted, readable, reason = _lane_halted(root, "oanda_fx")
     if not readable or halted:
-        logger.warning("OANDA trend cycle REFUSED — halt=%s readable=%s", halted, readable)
+        logger.warning("OANDA trend cycle REFUSED — halt=%s readable=%s reason=%s", halted, readable, reason)
         return OandaTrendResult(False, "halted", {}, 0)
 
     # 1. candles -> close panel -> trend targets

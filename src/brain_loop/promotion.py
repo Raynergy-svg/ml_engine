@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping
 
 _VALID_TARGETS = ("shadow", "live")
+_SAFE_HYPOTHESIS_ID_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
 
 class PromotionRefused(RuntimeError):
@@ -53,6 +55,8 @@ def propose_promotion(
     """
     if target not in _VALID_TARGETS:
         raise ValueError(f"unknown promotion target {target!r}; must be one of {_VALID_TARGETS}")
+    if not _SAFE_HYPOTHESIS_ID_RE.match(str(hypothesis_id)):
+        raise ValueError(f"unsafe hypothesis_id {hypothesis_id!r} — cannot use in a file path")
     if decision.get("decision") != "continue":
         raise PromotionRefused(
             f"cannot propose {target} promotion for {hypothesis_id!r}: "

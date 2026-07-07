@@ -258,6 +258,33 @@ def test_operational_action_denied_when_practice_pin_violated(tmp_path, monkeypa
     assert rows[0]["outcome"] == "denied_preflight"
 
 
+def test_non_policy_denied_preflight_exception_is_still_audited(tmp_path, monkeypatch):
+    """A bug in a custom spec.preflight (or _preflight_practice_pin) must not
+    silently bypass the audit trail — only PolicyDenied has bespoke handling;
+    anything else must still produce an audit row before propagating."""
+    _isolate_audit(tmp_path, monkeypatch)
+    _fresh_state(tmp_path)
+
+    def _broken_preflight(_params):
+        raise RuntimeError("boom")
+
+    spec = policy.ActionSpec(
+        name="read_something",
+        tier=policy.ActionTier.OPERATIONAL,
+        description="a trivial read",
+        execute=lambda **kw: {"ok": True},
+        preflight=_broken_preflight,
+    )
+    eng = policy.default_engine({"read_something": spec})
+
+    with pytest.raises(RuntimeError, match="boom"):
+        eng.submit("read_something", {}, actor="test-agent")
+
+    rows = _read_audit_rows(cs.AUDIT_PATH)
+    assert rows[0]["outcome"] == "error_preflight"
+    assert rows[0]["allowed"] is False
+
+
 def test_operational_action_construction_requires_execute_callable():
     with pytest.raises(policy.PolicyRegistrationError):
         policy.ActionSpec(

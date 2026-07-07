@@ -10,6 +10,7 @@ is already gated and tested elsewhere.
 from __future__ import annotations
 
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence
@@ -26,6 +27,35 @@ _DEFAULT_TIMEOUT_S = 1800.0
 _STDOUT_TAIL_CHARS = 4000
 
 
+class UnsafeHarnessCommand(ValueError):
+    """Raised when a hypothesis-supplied harness_cmd fails the executable/path allowlist."""
+
+
+def _validate_harness_cmd(harness_cmd: Sequence[str], *, cwd: Path) -> None:
+    """Fail closed unless argv[0] is a Python interpreter and argv[1] resolves to a
+    ``.py`` file inside this project's ``scripts/`` directory.
+
+    ``harness_cmd`` ultimately traces back to hypothesis JSON that a scheduled Claude
+    session (or, per PROMPT.md, eventually an operator) writes — it is not raw
+    end-user input, but it is still data, not code the developer wrote. Passing it
+    to ``subprocess.run`` unchecked would let a malformed/compromised hypothesis file
+    run an arbitrary binary (CWE-78). This does not re-introduce the joint-fallback
+    or ship-gate concerns — it only constrains *which command* can run, never what
+    the backtest computes.
+    """
+    if len(harness_cmd) < 2:
+        raise UnsafeHarnessCommand("harness_cmd must be [python_interpreter, script_path, ...args]")
+    interpreter = Path(str(harness_cmd[0])).name
+    if interpreter not in {"python", "python3", Path(sys.executable).name}:
+        raise UnsafeHarnessCommand(f"harness_cmd[0] must be a python interpreter, got {harness_cmd[0]!r}")
+    scripts_dir = (Path(cwd) / "scripts").resolve()
+    script_path = (Path(cwd) / str(harness_cmd[1])).resolve()
+    if script_path.suffix != ".py" or scripts_dir not in script_path.parents:
+        raise UnsafeHarnessCommand(
+            f"harness_cmd[1] must be a .py file inside {scripts_dir}, got {harness_cmd[1]!r}"
+        )
+
+
 def run_backtest(
     harness_cmd: Sequence[str],
     *,
@@ -34,11 +64,14 @@ def run_backtest(
 ) -> subprocess.CompletedProcess:
     """Run the caller-supplied harness command as a real subprocess.
 
-    No mocking, no re-implementation of what the harness computes. Raises
+    ``harness_cmd`` is validated first (see ``_validate_harness_cmd``) so hypothesis
+    data can only select *which script under scripts/* runs, never an arbitrary
+    command. No mocking, no re-implementation of what the harness computes. Raises
     ``subprocess.TimeoutExpired`` on hang (fail loud, not silently) rather than
     swallowing a stuck backtest.
     """
-    return subprocess.run(
+    _validate_harness_cmd(harness_cmd, cwd=cwd)
+    return subprocess.run(  # noqa: S603 - harness_cmd is validated above (fixed interpreter + scripts/ allowlist)
         list(harness_cmd),
         cwd=str(cwd),
         capture_output=True,

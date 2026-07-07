@@ -203,8 +203,12 @@ def test_run_cycle_with_insufficient_new_data_does_not_promote(tmp_path, monkeyp
 
     result = olc.run_cycle(now=datetime(2026, 7, 4, 12, 0, tzinfo=timezone.utc))
 
-    assert result["decision"] == "no_new_data"
+    # 1 new entry exists but is below MIN_HOLDOUT+1 -- distinct from genuinely
+    # zero new data ("no_new_data"); the cursor must also NOT advance past this
+    # entry, since fit_incremental() never ran on it (see cursor-advance fix).
+    assert result["decision"] == "insufficient_new_data"
     assert not olc.STATE_PATH.exists()
+    assert not olc.CURSOR_PATH.exists()
 
 
 def test_run_cycle_writes_brain_status_and_history(tmp_path, monkeypatch):

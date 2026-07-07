@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -181,20 +182,32 @@ def axiom_operator() -> Dict[str, Any]:
     return ds.read_axiom_operator()
 
 
+_axiom_operator_run_lock = threading.Lock()
+
+
 @app.post("/api/axiom_operator/run")
 def axiom_operator_run() -> Dict[str, Any]:
     from src.axiom_operator.runner import AxiomOperator
 
-    result = AxiomOperator(project_root=REPO_ROOT).run_once(
-        observation={
-            "source": "dashboard",
-            "trigger": "operator_requested_epoch",
-            "activity": ds.read_activity(line_limit=4),
-            "health": ds.read_health(),
-            "control_enabled": _CONTROL_ENABLED,
-        },
-        timeout_seconds=int(os.environ.get("AXIOM_OPERATOR_TIMEOUT_SECONDS", "120")),
-    )
+    # This call can hold a worker for up to AXIOM_OPERATOR_TIMEOUT_SECONDS
+    # (120s default). Without this guard, repeated clicks (or a slow first
+    # request plus an impatient retry) could stack up overlapping epochs and
+    # exhaust the bounded threadpool, starving unrelated blocking routes.
+    if not _axiom_operator_run_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="axiom_operator epoch already in progress")
+    try:
+        result = AxiomOperator(project_root=REPO_ROOT).run_once(
+            observation={
+                "source": "dashboard",
+                "trigger": "operator_requested_epoch",
+                "activity": ds.read_activity(line_limit=4),
+                "health": ds.read_health(),
+                "control_enabled": _CONTROL_ENABLED,
+            },
+            timeout_seconds=int(os.environ.get("AXIOM_OPERATOR_TIMEOUT_SECONDS", "120")),
+        )
+    finally:
+        _axiom_operator_run_lock.release()
     return {
         "ok": result.ok,
         "status": result.status,

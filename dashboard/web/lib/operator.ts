@@ -12,8 +12,16 @@ function actorId(): string {
   return generated;
 }
 
+// Backend epoch can run up to AXIOM_OPERATOR_TIMEOUT_SECONDS (120s default).
+// Without a client-side timeout, a hung network path leaves the caller
+// awaiting the promise indefinitely with no way to recover or surface an
+// error — 130s gives the server's own timeout a chance to fire first.
+const RUN_TIMEOUT_MS = 130_000;
+
 export async function runAxiomOperator(): Promise<{ status: number; ok: boolean; data: AxiomOperatorRunResult | Record<string, unknown> }> {
   let res: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
   try {
     res = await fetch("/api/axiom_operator/run", {
       method: "POST",
@@ -22,9 +30,13 @@ export async function runAxiomOperator(): Promise<{ status: number; ok: boolean;
         "x-axiom-actor": actorId(),
       },
       body: "{}",
+      signal: controller.signal,
     });
-  } catch {
-    return { status: 0, ok: false, data: { error: "network_error" } };
+  } catch (err) {
+    const isAbort = err instanceof DOMException && err.name === "AbortError";
+    return { status: 0, ok: false, data: { error: isAbort ? "client_timeout" : "network_error" } };
+  } finally {
+    clearTimeout(timeout);
   }
   const data = (await res.json().catch(() => ({}))) as AxiomOperatorRunResult | Record<string, unknown>;
   return { status: res.status, ok: res.ok, data };

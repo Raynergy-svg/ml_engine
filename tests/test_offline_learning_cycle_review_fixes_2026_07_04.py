@@ -208,6 +208,12 @@ def test_equal_timestamp_entries_are_not_permanently_dropped(tmp_path, monkeypat
     one whose timestamp equalled the cursor forever."""
     _patch_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(olc, "MIN_HOLDOUT", 3)
+    # A 3-entry holdout can never satisfy the default MIN_MINORITY_HOLDOUT=2 for
+    # BOTH classes at once (needs >=4 total) — relax it here so the first cycle
+    # actually reaches fit_incremental() (and legitimately advances the cursor)
+    # instead of refusing on "insufficient_holdout_signal", which — after the
+    # cursor-advance-on-no-fit fix — correctly no longer writes a cursor at all.
+    monkeypatch.setattr(olc, "MIN_MINORITY_HOLDOUT", 1)
     ts = _iso(2026, 6, 10, 5, 1, 50, 123456)
     # first run establishes a cursor
     first_batch = (

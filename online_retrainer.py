@@ -670,17 +670,9 @@ class OnlineRetrainer:
             raise ImportError("XGBoost not installed")
         
         from sklearn.preprocessing import StandardScaler
-        
-        # Load existing model if available
+
         model_path = self.model_dir / "xgb_momentum.pkl"
-        if model_path.exists():
-            try:
-                with open(model_path, 'rb') as f:
-                    existing_data = pickle.load(f)
-                _ = existing_data.get('momentum_model')
-            except Exception:
-                pass
-        
+
         # Scale features
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)

@@ -167,16 +167,28 @@ def load_frozen_scores(paths: Optional[List[Path]] = None) -> List[ResearchScore
         for raw in payload.get("scores", []):
             if raw.get("as_of", "") < MODEL_CUTOFF:
                 continue  # pre-cutoff — contamination arm, never used for the live book
-            score = ResearchScore(
-                ticker=raw["ticker"],
-                as_of=raw["as_of"],
-                fundamental_quality=raw["fundamental_quality"],
-                accounting_red_flags=raw["accounting_red_flags"],
-                forward_outlook=raw["forward_outlook"],
-                conviction=raw["conviction"],
-                rationale=raw.get("rationale", ""),
-                spans_used=raw.get("spans_used", []),
-            )
+            try:
+                score = ResearchScore(
+                    ticker=raw["ticker"],
+                    as_of=raw["as_of"],
+                    fundamental_quality=raw["fundamental_quality"],
+                    accounting_red_flags=raw["accounting_red_flags"],
+                    forward_outlook=raw["forward_outlook"],
+                    conviction=raw["conviction"],
+                    rationale=raw.get("rationale", ""),
+                    spans_used=raw.get("spans_used", []),
+                )
+            except KeyError as exc:
+                # Missing field = a malformed/incomplete record — an infrastructure
+                # abstention, same class as a missing/corrupt artifact file above.
+                logger.warning(
+                    "track_b shadow: dropping score entry with missing field in %s: %s", path, exc
+                )
+                continue
+            # An out-of-range value on an otherwise well-formed record stays loud
+            # (raises) on purpose: scoring is a manual/hand-edited step, and this is
+            # exactly the fat-finger-typo case that must stop the pipeline rather
+            # than silently drop a name from the shadow book.
             score.validate()
             seen[(score.ticker, score.as_of)] = score  # last-write-wins on true dupes
     return list(seen.values())

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from dashboard.server import app as app_module
 from dashboard.server import data_sources as ds
 from dashboard.server.app import app
 from src.axiom_operator import session as op_session
@@ -16,14 +17,14 @@ def test_read_axiom_operator_empty_state(monkeypatch, tmp_path: Path):
     session_path = tmp_path / "operator_session.json"
     decisions_path = tmp_path / "operator_decisions.jsonl"
 
-    def snapshot():
-        return op_session.read_operator_snapshot(
-            session_path=session_path,
-            decisions_path=decisions_path,
-        )
+    monkeypatch.setattr(
+        ds,
+        "read_axiom_operator",
+        lambda: op_session.read_operator_snapshot(session_path=session_path, decisions_path=decisions_path),
+    )
 
-    monkeypatch.setattr(ds, "read_operator_snapshot", snapshot, raising=False)
-    out = op_session.read_operator_snapshot(session_path=session_path, decisions_path=decisions_path)
+    client = TestClient(app)
+    out = client.get("/api/axiom_operator").json()
 
     assert out["has_run"] is False
     assert out["session"]["status"] == "idle"
@@ -93,3 +94,15 @@ def test_axiom_operator_run_endpoint_invokes_epoch(monkeypatch):
     assert body["status"] == "acted"
     assert body["action"] == "recheck"
     assert calls["n"] == 1
+
+
+def test_axiom_operator_run_rejects_concurrent_call_with_409():
+    """A second request while an epoch is already running must get 409, not
+    stack up behind it and hold two workers for AXIOM_OPERATOR_TIMEOUT_SECONDS."""
+    assert app_module._axiom_operator_run_lock.acquire(blocking=False)
+    try:
+        client = TestClient(app)
+        resp = client.post("/api/axiom_operator/run")
+        assert resp.status_code == 409
+    finally:
+        app_module._axiom_operator_run_lock.release()

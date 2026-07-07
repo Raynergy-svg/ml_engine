@@ -185,6 +185,12 @@ class PolicyEngine:
                 outcome="denied_preflight", reason=str(exc), params=params,
             )
             raise
+        except Exception as exc:  # noqa: BLE001 - never let a preflight bug bypass the audit trail
+            self._audit_fn(
+                action=action, tier=spec.tier.value, actor=actor, allowed=False,
+                outcome="error_preflight", reason=repr(exc), params=params,
+            )
+            raise
 
         if spec.tier is ActionTier.ESCALATION:
             # Redundant runtime check, not just the __post_init__ guard: a

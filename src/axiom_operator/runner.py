@@ -36,6 +36,23 @@ SAFE_BUDDY_TOOLS = (
     "mcp__buddy__trigger_diagnostics",
 )
 
+_CHILD_ENV_ALLOWLIST = ("HOME", "USER", "LANG", "LC_ALL", "TMPDIR", "SHELL")
+
+
+def _build_child_env(*, allow_api_key: bool) -> Dict[str, str]:
+    """Env for the Claude CLI subprocess — an explicit allowlist, not the full
+    parent environment. The autonomous resident loop spawns this subprocess with
+    no human watching the invocation; forwarding every parent var (broker
+    credentials, other API keys) would be unnecessary exposure for a CLI that
+    only needs PATH resolution + its own config dir. ANTHROPIC_API_KEY is
+    included only when the caller explicitly opted into API billing above."""
+    child_env = {k: os.environ[k] for k in _CHILD_ENV_ALLOWLIST if k in os.environ}
+    child_env["PATH"] = augmented_path_env(os.environ)
+    if allow_api_key and os.environ.get("ANTHROPIC_API_KEY"):
+        child_env["ANTHROPIC_API_KEY"] = os.environ["ANTHROPIC_API_KEY"]
+    return child_env
+
+
 OPERATOR_BLOCK_RE = re.compile(r"<axiom-operator>(.*?)</axiom-operator>", re.DOTALL | re.IGNORECASE)
 RATE_LIMIT_RE = re.compile(r"(usage\s+limit|rate\s*limit|credit\s+balance|hit\s+your\s+limit)", re.IGNORECASE)
 RATE_LIMIT_EPOCH_RE = re.compile(r"\|\s*(\d{9,11})\b")
@@ -120,8 +137,7 @@ class AxiomOperator:
             with tempfile.NamedTemporaryFile("w", suffix=".md", prefix="axiom_operator_", delete=False, dir="/tmp") as fh:
                 fh.write(prompt)
                 prompt_file = fh.name
-            child_env = os.environ.copy()
-            child_env["PATH"] = augmented_path_env(child_env)
+            child_env = _build_child_env(allow_api_key=allow_api_key)
             with open(prompt_file, "r", encoding="utf-8") as stdin_fh:
                 proc = self.subprocess_runner(
                     command,

@@ -29,7 +29,7 @@ process, trades, or unhalts.
 from __future__ import annotations
 
 import logging
-from typing import Dict, Mapping, Sequence
+from typing import Dict, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -138,7 +138,7 @@ def build_value_panel(
     members: Sequence[str],
     *,
     components: Sequence[str] = VALUE_COMPONENTS,
-    clip_z: float = None,
+    clip_z: Optional[float] = None,
 ) -> pd.DataFrame:
     """Build a date x ticker PIT value-SCORE panel, causal fundamentals x price join.
 

@@ -57,9 +57,15 @@ def _tick(project_root: Path, refresh_prices: bool) -> dict:
         print(f"CYCLE_RESULT: ran=False reason={result['reason']} lane={LANE} orders=0", flush=True)
         return result
 
-    cycle_result = tbs.compute_shadow_cycle(refresh_prices=refresh_prices)
-    cycle_ts_iso = datetime.now(timezone.utc).isoformat()
-    row = tbs.record_shadow_cycle(cycle_result, cycle_ts_iso=cycle_ts_iso)
+    try:
+        cycle_result = tbs.compute_shadow_cycle(refresh_prices=refresh_prices)
+        cycle_ts_iso = datetime.now(timezone.utc).isoformat()
+        row = tbs.record_shadow_cycle(cycle_result, cycle_ts_iso=cycle_ts_iso)
+    except (tbs.TrackBShadowError, OSError) as exc:
+        logger.error("track_b shadow cycle failed: %s", exc, exc_info=True)
+        result = {"ran": False, "reason": f"error:{exc}", "orders": 0}
+        print(f"CYCLE_RESULT: ran=False reason=error lane={LANE} orders=0", flush=True)
+        return result
     if row is None:
         result = {
             "ran": True, "reason": "no_new_trading_day", "orders": 0,

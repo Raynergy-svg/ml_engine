@@ -132,10 +132,12 @@ def backtest(close, funding_daily, eligible, cols, *, cost_bps,
                 elig[s] = False
 
     price_ret = px.pct_change()
-    # signal: trailing 3d mean of per-interval funding, known at t-1.
-    # per-interval mean over 3 days ~ (3d funding sum)/(#intervals); use daily mean
-    # of daily-sum proxy: rolling mean of daily funding over LOOKBACK_D, shifted 1.
-    sig = fund.rolling(LOOKBACK_D, min_periods=LOOKBACK_D).mean().shift(1)
+    # signal: trailing LOOKBACK_D-day mean of daily funding, as of day d itself.
+    # The 1-day signal-to-execution lag is already provided by the loop below
+    # (w decided at iteration d is applied via prev_w starting at day d+1) — an
+    # additional .shift(1) here double-lagged the signal, so day-d P&L was
+    # actually using funding through d-2, not the intended d-1.
+    sig = fund.rolling(LOOKBACK_D, min_periods=LOOKBACK_D).mean()
     sig = sig.where(elig.shift(1).fillna(False))
 
     dates = px.index

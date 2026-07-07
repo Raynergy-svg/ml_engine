@@ -43,6 +43,17 @@ _HYPOTHESIS = {
 }
 
 
+def _hypothesis_with_real_harness(project_root) -> dict:
+    """gate_runner.run_backtest now refuses `-c` inline code (harness_cmd[1] must be
+    a real .py file under scripts/) — tests that actually reach run_and_gate need a
+    real script on disk, not the bare _HYPOTHESIS constant."""
+    scripts_dir = project_root / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    script = scripts_dir / "fake_harness.py"
+    script.write_text("print('ran')")
+    return {**_HYPOTHESIS, "harness_cmd": [sys.executable, str(script)]}
+
+
 def test_already_halted_short_circuits_everything(tmp_path):
     p = _paths(tmp_path)
     StateEngine(p["state_path"]).set_halted(True)
@@ -86,7 +97,8 @@ def test_passing_hypothesis_registers_gates_and_proposes_shadow(tmp_path):
 
     result = run_cycle(
         project_root=p["project_root"], config=ScannerConfig(), ledger_path=p["ledger_path"],
-        requests_dir=p["requests_dir"], state_path=p["state_path"], hypothesis=_HYPOTHESIS,
+        requests_dir=p["requests_dir"], state_path=p["state_path"],
+        hypothesis=_hypothesis_with_real_harness(p["project_root"]),
         data_asof=pd.Timestamp.now(tz="UTC"),
     )
 
@@ -108,7 +120,8 @@ def test_failing_hypothesis_registers_and_gates_but_never_proposes_promotion(tmp
     # No SHIP_GATE.json -> NO_ACT.
     result = run_cycle(
         project_root=p["project_root"], config=ScannerConfig(), ledger_path=p["ledger_path"],
-        requests_dir=p["requests_dir"], state_path=p["state_path"], hypothesis=_HYPOTHESIS,
+        requests_dir=p["requests_dir"], state_path=p["state_path"],
+        hypothesis=_hypothesis_with_real_harness(p["project_root"]),
         data_asof=pd.Timestamp.now(tz="UTC"),
     )
 
