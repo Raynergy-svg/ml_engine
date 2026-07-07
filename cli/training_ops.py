@@ -535,6 +535,15 @@ def _cli_gate_verdict(candidate_mae: float, existing_mae: Optional[float], n_tes
         gate["verdict"] = CLI_GATE_PASSED
         gate["reason"] = "no_scorable_existing_model_candidate_sane"
         return gate
+    if existing_mae != existing_mae:  # NaN guard on the incumbent's score — a
+        # degenerate/unscorable existing model (corrupted artifact, scaler
+        # mismatch) is treated the same as "no baseline exists": there's no
+        # valid comparison to make, so it can't be used to block a sane
+        # candidate forever. The candidate_mae NaN guard above still refuses
+        # a degenerate CANDIDATE regardless of this branch.
+        gate["verdict"] = CLI_GATE_PASSED
+        gate["reason"] = "existing_mae_nan_treated_as_unscorable"
+        return gate
     if candidate_mae > existing_mae * (1.0 + CLI_GATE_REL_TOLERANCE):
         gate["verdict"] = CLI_GATE_REFUSED
         gate["reason"] = (

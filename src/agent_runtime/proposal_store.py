@@ -15,11 +15,13 @@ module only answers: has the operator already decided on this one, and what.
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterator, Optional
 
 from src.axiom_operator.session import utc_now
 
@@ -42,6 +44,32 @@ def _atomic_write(path: Path, data: Dict[str, Any]) -> None:
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
+
+
+@contextmanager
+def _locked(path: Path) -> Iterator[None]:
+    """Exclusive cross-process flock for record_disposition's read-modify-write.
+
+    Same pattern as src.brain_loop.hypothesis_registry._locked /
+    src.equity.market_calendar._TTLHaltStore._locked: the lock lives on a
+    sibling ``<path>.lock`` file (never the dispositions file itself, so the
+    atomic tmp+rename in _atomic_write never swaps the inode the lock is held
+    on). Without this, two overlapping accept/deny requests (dashboard's
+    axiom_proposals.py has multiple write paths to this same file) could each
+    load() the same prior snapshot and the second save() would silently
+    clobber the first's freshly-recorded operator decision.
+    """
+    lock_path = path.with_name(path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    finally:
+        os.close(lock_fd)
 
 
 def _load(path: Path) -> Dict[str, Any]:
@@ -82,7 +110,6 @@ def record_disposition(
         raise ValueError("actor is required -- every disposition must be attributable")
 
     resolved = Path(path) if path is not None else DISPOSITIONS_PATH
-    data = _load(resolved)
     entry = {
         "proposal_id": proposal_id,
         "status": status,
@@ -91,8 +118,10 @@ def record_disposition(
         "detail": detail or {},
         "decided_at": utc_now(),
     }
-    data[proposal_id] = entry
-    _atomic_write(resolved, data)
+    with _locked(resolved):
+        data = _load(resolved)
+        data[proposal_id] = entry
+        _atomic_write(resolved, data)
     return entry
 
 

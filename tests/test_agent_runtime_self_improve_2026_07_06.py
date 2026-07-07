@@ -294,6 +294,46 @@ def test_gated_edit_reverts_and_does_not_commit_when_test_command_fails(tmp_path
     assert log_after == log_before  # no new commit
 
 
+def test_gated_edit_already_present_is_a_clean_no_op_not_a_failed_commit(tmp_path, monkeypatch):
+    """apply_fn signaling {"already_present": True} (no actual file change) must
+    short-circuit before _git_commit -- committing a clean tree fails, which
+    would previously trip _revert() and misreport an idempotent no-op action
+    as a REVERTED failure."""
+    monkeypatch.setattr(si, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(si, "ALLOWLIST", si.ALLOWLIST + ("data.json",))
+    _init_repo(tmp_path)
+    _write_stand_in_gates(tmp_path)
+    target = tmp_path / "data.json"
+    target.write_text('{"a": 1}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "data.json"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "seed data"], cwd=tmp_path, check=True)
+
+    log_before = subprocess.run(
+        ["git", "log", "--oneline"], cwd=tmp_path, capture_output=True, text=True
+    ).stdout
+
+    def _apply_no_op():
+        return {"already_present": True, "lesson_id": "L-024"}
+
+    result = si._run_gated_edit(
+        action_name="test_action",
+        target_paths=["data.json"],
+        apply_fn=_apply_no_op,
+        # A failing test_cmd proves this path never reaches test execution --
+        # if it did, the test would raise PolicyDenied instead of returning.
+        test_cmd=[sys.executable, "-c", "import sys; sys.exit(1)"],
+    )
+
+    assert result["committed"] is False
+    assert result["reverted"] is False
+    assert result["already_present"] is True
+    assert target.read_text(encoding="utf-8") == '{"a": 1}\n'  # untouched
+    log_after = subprocess.run(
+        ["git", "log", "--oneline"], cwd=tmp_path, capture_output=True, text=True
+    ).stdout
+    assert log_after == log_before  # no new commit attempted
+
+
 def test_gated_edit_commits_scoped_and_reversible_on_full_pass(tmp_path, monkeypatch):
     monkeypatch.setattr(si, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(si, "ALLOWLIST", si.ALLOWLIST + ("data.json",))

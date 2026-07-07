@@ -18,6 +18,7 @@ unittest.mock:
 from __future__ import annotations
 
 import json
+import threading
 
 import pytest
 from fastapi import FastAPI
@@ -94,6 +95,36 @@ def test_deny_records_disposition_and_never_executes(client, tmp_path):
 def test_deny_unknown_proposal_id_404s(client):
     resp = client.post("/api/axiom_proposals/does-not-exist/deny")
     assert resp.status_code == 404
+
+
+def test_concurrent_record_disposition_does_not_lose_decisions(tmp_path):
+    """Real threads writing distinct operator decisions concurrently must all
+    survive -- the old unlocked load-modify-save could let one overlapping
+    accept/deny request silently clobber another's freshly-recorded
+    disposition (a lost operator decision, not just a lost log line)."""
+    path = tmp_path / "proposal_dispositions.json"
+    n_writers = 12
+    errors = []
+
+    def _write(i: int) -> None:
+        try:
+            proposal_store.record_disposition(
+                f"proposal-{i}", status="denied", actor="test-operator",
+                reason="concurrency test", path=path,
+            )
+        except Exception as exc:  # noqa: BLE001 - collected below, not swallowed
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_write, args=(i,)) for i in range(n_writers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"unexpected exceptions from concurrent writers: {errors}"
+    dispositions = proposal_store.list_dispositions(path=path)
+    assert len(dispositions) == n_writers, "a concurrent disposition write was silently dropped"
+    assert set(dispositions) == {f"proposal-{i}" for i in range(n_writers)}
 
 
 # ---------------------------------------------------------------------------

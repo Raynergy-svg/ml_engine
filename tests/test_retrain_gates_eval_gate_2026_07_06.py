@@ -130,6 +130,20 @@ def test_verdict_refuses_nan_candidate():
     assert gate["reason"] == "candidate_mae_nan"
 
 
+def test_verdict_nan_existing_treated_as_unscorable_not_silent_pass():
+    """A degenerate incumbent score (corrupted artifact, scaler mismatch) must
+    take the explicit 'unscorable' path, not silently fall through to PASSED
+    via a NaN comparison that's always False (candidate_mae > NaN is False for
+    every candidate_mae, which would defeat the refuse-regressions contract)."""
+    gate = _cli_gate_verdict(candidate_mae=999.0, existing_mae=float("nan"), n_test=50)
+    assert gate["verdict"] == CLI_GATE_PASSED
+    assert gate["reason"] == "existing_mae_nan_treated_as_unscorable"
+    # A degenerate candidate is still refused even with a NaN incumbent.
+    gate2 = _cli_gate_verdict(candidate_mae=float("nan"), existing_mae=float("nan"), n_test=50)
+    assert gate2["verdict"] == CLI_GATE_REFUSED
+    assert gate2["reason"] == "candidate_mae_nan"
+
+
 # --------------------------------------------------------------------------
 # XGBoost gate — real trainer, real disk
 # --------------------------------------------------------------------------

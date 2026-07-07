@@ -83,8 +83,10 @@ def _accept_unhalt_lane(params: Dict[str, Any], *, actor: str) -> Dict[str, Any]
 def _accept_increase_gross_leverage(params: Dict[str, Any], *, actor: str) -> Dict[str, Any]:
     try:
         new_value = float(params.get("new_value"))
-    except (TypeError, ValueError):
-        raise cs.ControlDenied(f"increase_gross_leverage proposal has no numeric 'new_value': {params!r}")
+    except (TypeError, ValueError) as exc:
+        raise cs.ControlDenied(
+            f"increase_gross_leverage proposal has no numeric 'new_value': {params!r}"
+        ) from exc
 
     current = cs.read_overrides().get("gross_leverage")
     if current is None:
@@ -215,7 +217,7 @@ def accept_proposal(
             reason=f"accept-time guard refused: {exc}", detail={"action": action},
             path=proposal_store.DISPOSITIONS_PATH,
         )
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except HTTPException as exc:
         # _control_run (control.py's reused _run) catches cs.ControlDenied itself
         # and re-raises AS an HTTPException(403, ...) -- by the time it's out
@@ -234,7 +236,7 @@ def accept_proposal(
             )
         raise
     except Exception as exc:  # noqa: BLE001 -- guards passed but the effect failed; never crash the route
-        raise HTTPException(status_code=500, detail=f"accept effect failed: {exc!r}")
+        raise HTTPException(status_code=500, detail=f"accept effect failed: {exc!r}") from exc
 
     disposition = proposal_store.record_disposition(
         proposal_id, status="accepted", actor=actor, detail={"action": action, "result": result},

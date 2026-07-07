@@ -31,16 +31,24 @@ export function usePoll<T>(path: string, intervalMs: number): {
   const alive = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const runRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const inFlight = useRef(false);
 
   useEffect(() => {
     alive.current = true;
     const run = async () => {
+      // A reload() while a poll is already in-flight must not spawn a second
+      // concurrent chain -- both would eventually reach the finally block and
+      // each schedule their own setTimeout, but only the last one assigned to
+      // timerRef gets cleared on cleanup, silently doubling the poll rate.
+      if (inFlight.current) return;
+      inFlight.current = true;
       try {
         const d = await apiGet<T>(path);
         if (alive.current) { setData(d); setError(null); }
       } catch (e) {
         if (alive.current) setError((e as Error).message);
       } finally {
+        inFlight.current = false;
         if (alive.current) { setLoading(false); timerRef.current = setTimeout(run, intervalMs); }
       }
     };

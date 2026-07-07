@@ -217,6 +217,24 @@ def _run_gated_edit(
         _revert(f"apply_fn raised {exc!r}")
         raise
 
+    if isinstance(apply_detail, dict) and apply_detail.get("already_present"):
+        # apply_fn made no change (e.g. _apply_add_lessons_recall_row finding
+        # the row already there). The working tree is byte-identical to the
+        # snapshot, so `git commit` would fail on a clean tree and _revert()
+        # would misreport this as a FAILED edit. Treat it as a successful
+        # no-op instead -- no tests/verify_gate/risk_monitor needed either,
+        # since nothing was actually changed.
+        return {
+            "committed": False,
+            "commit_sha": None,
+            "reverted": False,
+            "already_present": True,
+            "tests_passed": None,
+            "verify_gate_passed": None,
+            "risk_monitor_green": None,
+            "apply_detail": apply_detail,
+        }
+
     ok, detail = _run_checked(list(test_cmd), cwd=repo_root, timeout=180)
     if not ok:
         _revert(f"test command failed -- {detail}")
