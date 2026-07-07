@@ -4,8 +4,46 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-07T06:45Z by Claude (P1 Headless Learning Supervisor wiring; script never
-imports state.json; `git status --porcelain .claude/state.json` clean before/after this session).
+Last touched: 2026-07-07T10:50Z by Claude (crypto_carry shadow lane committed `1eb8cfa`; verified
+`.claude/state.json` via StateEngine.set_halted only — `halted_lanes.crypto_carry=true`,
+`halted_lanes.oanda_fx=true` unchanged, global `halted` untouched by this task).
+
+## crypto_carry SHADOW lane — cash-and-carry funding harvest (2026-07-07)
+
+Stood up per operator directive (docs/ENGINEERING_BRAIN.md P3): the strongest genuinely-live retail
+lever, harness-gated, shadow-only, mirroring crypto_momentum/track_b exactly. Commit `1eb8cfa`.
+
+- Pre-registered BEFORE running the backtest: `docs/prereg-crypto-cash-and-carry-shadow-2026-07-06.md`.
+  Construction: long-spot-proxy/short-perp, positive-funding-only, delta-neutral by construction
+  (no price P&L term — disclosed simplification). Signal/universe/cost imported verbatim from the
+  existing H1 harness (`scripts/experiment_crypto_funding_carry.py`); vol-target overlay imported
+  from `scripts/experiment_crypto_h2_infra_stress.py`. New frozen backtest:
+  `scripts/experiment_crypto_cash_and_carry.py`.
+- **Backtest result (honest negative, ship gate FAILS)**: OOS net Sharpe −4.48, maxDD −0.465, DSR
+  0.00. Carry itself is real (+0.27 to +0.51/yr in every block, BTC-β≈0 confirming delta-neutrality
+  held) but a naive daily funding>0 threshold churns turnover (~0.58/day) and 20bps round-trip cost
+  eats it. `clears_ex_history=FALSE`. This is a risk premium with a real exchange-solvency/
+  liquidation tail, not free money — labeled as such everywhere (ledger, AXIOM panel, docs).
+- New: `src/crypto/carry_shadow.py` (shadow compute + JSONL ledger), `src/crypto/
+  crypto_carry_live_gate.py` (structurally unarmed/unarmable — no SHIP_GATE.json, no exchange
+  client exists in this repo), `scripts/run_crypto_carry_shadow.py` (zero-order driver).
+- Wired `crypto_carry` into `KNOWN_LANES` (state_engine.py), `risk_monitor.sh`, `running_status.py`,
+  loop-enforcement fixtures — defaults halted; regenerated `gate_manifest.json`. Fixed in passing: a
+  pre-existing stale 3-lane assertion in `test_per_lane_halt_2026_07_02.py` (already broken before
+  this session, confirmed via `git stash`).
+- AXIOM: `GET /api/crypto_carry` + `CryptoCarryPanel.tsx` (SHADOW/halted badges + explicit "RISK
+  PREMIUM · LIQUIDATION TAIL" badge/disclaimer). Also mounted the two pre-existing orphaned panels
+  `CryptoMomentumPanel`/`TrackBPanel` — they were built but never reachable from any tab since the
+  old "Risk" tab was retired; all three now live under Automation.
+- **Verification**: 18 new tests (16 unit + 2 integration, real disk, no mocks) + 2 dashboard reader
+  tests, all green; flake8 clean; tsc clean; risk_monitor.sh GREEN; loop-enforcement (9 tests) green.
+  Independent Security Engineer: SAFE, 8/8 checks PASS. Independent Code Reviewer: no correctness
+  bugs, regression math verified bit-identical to the frozen harness by direct algebra comparison
+  (not just trusting the test); 3 non-blocking nits, no action needed.
+- Real first ledger entry produced (integration test, real production ledger): asof 2026-05-31, 74
+  longs, `orders_placed=0`, `broker=null`, `gross_leverage≈3.0` (vol-target cap hit).
+- **Untouched**: oanda_fx stays halted; `oanda_environment="practice"` (config.py:742); no other
+  lane's behavior changed (additive-only diffs confirmed by the security reviewer).
 
 ## P1 Headless Learning Supervisor — RL-weight-sync folded into offline_learning_cycle.py (2026-07-06/07)
 

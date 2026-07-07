@@ -1,1 +1,2 @@
 {"ran": true, "timestamp": "2026-07-04T15:20:56.662414+00:00", "markers_drained": 0, "new_outcomes": 18, "decision": "insufficient_holdout_signal", "holdout_wins": 1, "holdout_losses": 14}
+{"ran": true, "timestamp": "2026-07-07T02:01:35.705474+00:00", "markers_drained": 9, "rl_weight_sync": {"applied": 0, "weights_updated": false, "detail": "no pending backfilled outcomes"}, "new_outcomes": 0, "decision": "no_new_data"}

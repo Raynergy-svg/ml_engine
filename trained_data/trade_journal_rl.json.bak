@@ -173,7 +173,8 @@
     "timestamp": "2026-04-03T19:40:40.071244+00:00",
     "tp_pips": 13.8,
     "tp_price": 0.87128,
-    "trade_id": "1124"
+    "trade_id": "1124",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -349,7 +350,8 @@
     "timestamp": "2026-04-06T09:20:28.396373+00:00",
     "tp_pips": 13.8,
     "tp_price": 0.5737775291597101,
-    "trade_id": "1132"
+    "trade_id": "1132",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -525,7 +527,8 @@
     "timestamp": "2026-04-06T09:20:36.285954+00:00",
     "tp_pips": 23.8,
     "tp_price": 110.74197148386149,
-    "trade_id": "1136"
+    "trade_id": "1136",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -695,7 +698,8 @@
     "timestamp": "2026-04-08T22:41:24.218857+00:00",
     "tp_pips": 28.9,
     "tp_price": 0.7940999466309818,
-    "trade_id": "1145"
+    "trade_id": "1145",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -865,7 +869,8 @@
     "timestamp": "2026-04-08T22:41:50.888144+00:00",
     "tp_pips": 36.5,
     "tp_price": 1.6513148665853006,
-    "trade_id": "1149"
+    "trade_id": "1149",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -1035,7 +1040,8 @@
     "timestamp": "2026-04-09T18:16:20.262449+00:00",
     "tp_pips": 22.3,
     "tp_price": 185.71807422631122,
-    "trade_id": "1157"
+    "trade_id": "1157",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -1184,7 +1190,8 @@
     "timestamp": "2026-04-13T22:27:54.153363+00:00",
     "tp_pips": 19.5,
     "tp_price": 113.34570250581251,
-    "trade_id": "1189"
+    "trade_id": "1189",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -1333,7 +1340,8 @@
     "timestamp": "2026-04-14T12:11:59.247276+00:00",
     "tp_pips": 13.8,
     "tp_price": 0.7822399999999999,
-    "trade_id": "1195"
+    "trade_id": "1195",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -1482,7 +1490,8 @@
     "timestamp": "2026-04-14T12:12:14.890990+00:00",
     "tp_pips": 24.0,
     "tp_price": 187.07867803416048,
-    "trade_id": "1199"
+    "trade_id": "1199",
+    "rl_weights_applied": true
   },
   {
     "agents": null,
@@ -1721,7 +1730,8 @@
     "timestamp": "2026-04-14T22:41:30.764895+00:00",
     "tp_pips": 39.1,
     "tp_price": 1.6589521085061254,
-    "trade_id": "1220"
+    "trade_id": "1220",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -1897,7 +1907,8 @@
     "timestamp": "2026-04-15T19:01:39.676699+00:00",
     "tp_pips": 45.1,
     "tp_price": 159.49114292019408,
-    "trade_id": "1232"
+    "trade_id": "1232",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -2073,7 +2084,8 @@
     "timestamp": "2026-04-15T19:23:58.887170+00:00",
     "tp_pips": 19.7,
     "tp_price": 0.86754,
-    "trade_id": "1236"
+    "trade_id": "1236",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -2249,7 +2261,8 @@
     "timestamp": "2026-04-15T21:17:07.907298+00:00",
     "tp_pips": 16.2,
     "tp_price": 0.86794,
-    "trade_id": "1243"
+    "trade_id": "1243",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -2425,7 +2438,8 @@
     "timestamp": "2026-04-15T23:08:48.518424+00:00",
     "tp_pips": 28.1,
     "tp_price": 1.3763391465765442,
-    "trade_id": "1249"
+    "trade_id": "1249",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -2601,7 +2615,8 @@
     "timestamp": "2026-04-16T02:39:58.122668+00:00",
     "tp_pips": 20.0,
     "tp_price": 0.78307,
-    "trade_id": "1255"
+    "trade_id": "1255",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -2777,7 +2792,8 @@
     "timestamp": "2026-04-16T03:03:37.339888+00:00",
     "tp_pips": 26.2,
     "tp_price": 1.374362084637315,
-    "trade_id": "1261"
+    "trade_id": "1261",
+    "rl_weights_applied": true
   },
   {
     "agents": {
@@ -2923,7 +2939,8 @@
     "timestamp": "2026-05-05T00:42:40.819222+00:00",
     "tp_pips": 20.2,
     "tp_price": 0.7866,
-    "trade_id": "1269"
+    "trade_id": "1269",
+    "rl_weights_applied": true
   },
   {
     "agents": null,
@@ -7509,7 +7526,16 @@
       "agent_votes": null,
       "note": "trend lane \u2014 no 15-agent consensus run"
     },
-    "atr_stop_distance": null,
+    "atr_stop_distance": 1.359571428571428,
+    "backfill_source": "trend_journal_sync",
+    "backfilled_at": "2026-07-06T09:49:38.365280+00:00",
+    "close_ask": 162.278,
+    "close_bid": 162.262,
+    "close_half_spread_cost": 5.9583,
+    "close_reason": "manual",
+    "close_reason_raw": "MARKET_ORDER_TRADE_CLOSE",
+    "close_spread": 0.015999999999991132,
+    "close_time": "2026-07-06T09:39:44.928489701Z",
     "confidence": null,
     "direction": "LONG",
     "entry_ask": 161.361,
@@ -7517,10 +7543,14 @@
     "entry_half_spread_cost": 5.2431,
     "entry_price": 161.361,
     "entry_spread": 0.013999999999981583,
+    "exit_price": 162.262,
+    "financing": 0.0,
     "gates": null,
     "lane": "trend",
-    "outcome": null,
+    "outcome": "win",
     "pair": "USD_JPY",
+    "realized_pl": 664.3393,
+    "realized_pl_total": 664.3393,
     "regime": {
       "note": "trend lane \u2014 no volatility-regime classification",
       "volatility_regime": null
@@ -7538,7 +7568,16 @@
       "agent_votes": null,
       "note": "trend lane \u2014 no 15-agent consensus run"
     },
-    "atr_stop_distance": null,
+    "atr_stop_distance": 0.010341428571428581,
+    "backfill_source": "trend_journal_sync",
+    "backfilled_at": "2026-07-06T09:49:38.365299+00:00",
+    "close_ask": 0.80546,
+    "close_bid": 0.80532,
+    "close_half_spread_cost": 6.8869,
+    "close_reason": "manual",
+    "close_reason_raw": "MARKET_ORDER_TRADE_CLOSE",
+    "close_spread": 0.00013999999999991797,
+    "close_time": "2026-07-06T09:39:48.873834616Z",
     "confidence": null,
     "direction": "LONG",
     "entry_ask": 0.80363,
@@ -7546,10 +7585,14 @@
     "entry_half_spread_cost": 9.3681,
     "entry_price": 0.80363,
     "entry_spread": 0.00018999999999991246,
+    "exit_price": 0.80532,
+    "financing": 0.0,
     "gates": null,
     "lane": "trend",
-    "outcome": null,
+    "outcome": "win",
     "pair": "USD_CHF",
+    "realized_pl": 164.6063,
+    "realized_pl_total": 164.6063,
     "regime": {
       "note": "trend lane \u2014 no volatility-regime classification",
       "volatility_regime": null
@@ -7567,7 +7610,16 @@
       "agent_votes": null,
       "note": "trend lane \u2014 no 15-agent consensus run"
     },
-    "atr_stop_distance": null,
+    "atr_stop_distance": 2.062714285714289,
+    "backfill_source": "trend_journal_sync",
+    "backfilled_at": "2026-07-06T09:49:38.365239+00:00",
+    "close_ask": 185.304,
+    "close_bid": 185.281,
+    "close_half_spread_cost": 5.6453,
+    "close_reason": "manual",
+    "close_reason_raw": "MARKET_ORDER_TRADE_CLOSE",
+    "close_spread": 0.022999999999996135,
+    "close_time": "2026-07-06T09:39:38.316609992Z",
     "confidence": null,
     "direction": "LONG",
     "entry_ask": 184.587,
@@ -7575,10 +7627,14 @@
     "entry_half_spread_cost": 7.1585,
     "entry_price": 184.587,
     "entry_spread": 0.028999999999996362,
+    "exit_price": 185.281,
+    "financing": 0.0,
     "gates": null,
     "lane": "trend",
-    "outcome": null,
+    "outcome": "win",
     "pair": "EUR_JPY",
+    "realized_pl": 337.2763,
+    "realized_pl_total": 337.2763,
     "regime": {
       "note": "trend lane \u2014 no volatility-regime classification",
       "volatility_regime": null
