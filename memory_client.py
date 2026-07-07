@@ -433,8 +433,17 @@ class MLEngineMemory:
         
         sessions.append(session.to_dict())
         self._save_json(self.training_file, sessions)
-        
+
         logger.info(f"📊 Logged training session for {pair}")
+
+        # Mirror to MLflow for experiment-tracking visibility. Best-effort:
+        # mirror_training_session() never raises, but this training loop must
+        # survive even if the import itself fails (e.g. mlflow uninstalled).
+        try:
+            from src.training.mlflow_mirror import mirror_training_session
+            mirror_training_session(session.to_dict())
+        except Exception as exc:  # noqa: BLE001 - mirror must never break training
+            logger.debug(f"MLflow mirror unavailable: {exc}")
     
     def get_training_history(
         self,
@@ -491,6 +500,10 @@ class MLEngineMemory:
         
         return False
     
+    def get_all_training_sessions(self) -> List[Dict[str, Any]]:
+        """Return every stored training session, raw dicts, oldest-write-order first."""
+        return self._load_json(self.training_file)
+
     def get_last_training(self, pair: str) -> Optional[TrainingSession]:
         """
         Get the most recent training session for a pair.
