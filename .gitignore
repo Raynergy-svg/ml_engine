@@ -282,4 +282,11 @@ market_data/equity_alt/
 /recon-*.png
 logs/equity_harvester_loop.out
 .playwright-mcp/
+
+# Local git-worktree scratch dirs (created ad hoc for isolated agent work) --
+# never committed. A stale gitlink to .claude/worktrees/meta-rebase (mode
+# 160000, no matching .gitmodules entry) previously broke CI's git checkout
+# cleanup step under persist-credentials:false; removed from tracking and
+# ignored here so it can't recur.
+.claude/worktrees/
 .superpowers/
