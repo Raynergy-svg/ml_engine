@@ -5,8 +5,10 @@
   <key>Label</key>
   <string>com.buddy.learning_loop</string>
   <!-- Market-closed offline continual-learning cycle (research/infra only).
-       Drains trained_data/retrain_requests/ markers and walk-forward-gates a
-       risk/calibration model update (scripts/offline_learning_cycle.py). The
+       Drains trained_data/retrain_requests/ markers, runs the headless RL
+       agent-weight sync (apply_pending_rl_weight_updates, commit 51b85bf —
+       this is the ONLY non-TUI caller), and walk-forward-gates a risk/
+       calibration model update (scripts/offline_learning_cycle.py). The
        script itself refuses to do anything while the FX market is open
        (is_fx_market_closed()) — this schedule is a coarse "roughly weekend"
        window, not the safety boundary. Never touches OANDA, halt/arm state,

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Market-closed offline learning cycle for the risk/execution/calibration
-layer — the real consumer for the Tier-7 ``retrain_rl_position_sizer``
-self-heal markers.
+"""Market-closed offline learning cycle — the single HEADLESS LEARNING
+SUPERVISOR for the risk/execution/calibration layer AND the agent-weight RL
+sync. The real consumer for the Tier-7 ``retrain_rl_position_sizer`` self-heal
+markers, and (2026-07-06) the sole headless entrypoint for
+``ExecutionManager.apply_pending_rl_weight_updates``.
 
 Root cause closed here (2026-07-04): ``self_heal.py``'s
 ``_handle_retrain_rl_position_sizer`` action wrote marker files into
@@ -11,17 +13,28 @@ Root cause closed here (2026-07-04): ``self_heal.py``'s
    never competes with the live scan loop for CPU/IO.
 2. Drains every pending marker into ``retrain_requests/_processed/``
    (atomic rename, audit trail preserved — never deleted).
-3. Incrementally fits a candidate ``RiskCalibrationLearner`` update on
+3. Runs ``ExecutionManager.apply_pending_rl_weight_updates()`` — scores any
+   journal entries whose outcome was resolved (by ``OutcomeBackfill`` or
+   ``TrendJournalSync``) but never fed into ``ScannerAgentTeam`` agent-weight
+   learning (commit 51b85bf, 2026-07-04). Before 2026-07-06 this method's ONLY
+   production caller was ``embedded_scanner.py`` (the TUI) — i.e. it was
+   welded to a process that is dormant now, the exact producer/consumer
+   dead-write asymmetry docs/ENGINEERING_BRAIN.md's P1 item names. Folding it
+   into this already-headless, already-scheduled batch job gives it a live,
+   TUI-independent caller without standing up a second daemon. Idempotent via
+   the ``rl_weights_applied`` flag, so it is safe to run from here AND the TUI
+   (if ever reopened) without double-scoring a trade.
+4. Incrementally fits a candidate ``RiskCalibrationLearner`` update on
    journal outcomes since the last processed cursor. Scope is RISK/
    EXECUTION/CALIBRATION only (regime, rr_ratio, sl/tp, mae/mfe, lane,
    existing confidence) — see risk_calibration_learner.py docstring for why
    directional/price features are explicitly excluded.
-4. Walk-forward-gates the candidate against the incumbent on a held-out,
+5. Walk-forward-gates the candidate against the incumbent on a held-out,
    chronologically-later slice (Brier score). Promotes ONLY if the
    candidate beats the incumbent by a margin AND its size multiplier never
    exceeds 1.0 (risk-decreasing-only, by construction). A worse candidate
    is rejected and logged — the incumbent is never overwritten.
-5. Logs every cycle to ``trained_data/learning_loop/history.jsonl`` and
+6. Logs every cycle to ``trained_data/learning_loop/history.jsonl`` and
    surfaces a summary to ``.claude/brain/learning_loop_status.json`` +
    ``.claude/brain/feed.jsonl`` for AXIOM / the brain loop.
 
@@ -226,6 +239,39 @@ def _write_brain_status(event: Dict[str, Any]) -> None:
         logger.debug("offline_learning_cycle: brain feed append skipped: %s", e)
 
 
+def _run_rl_weight_sync() -> Dict[str, Any]:
+    """Headless call to ``ExecutionManager.apply_pending_rl_weight_updates``
+    (the single-feedback-path anchor, commit 51b85bf). That method reads/
+    writes journal + agent-weight paths RELATIVE TO CWD, so this chdirs for
+    the duration of the call — into ``JOURNAL_PATH.parent.parent`` (read at
+    CALL TIME, not captured at import), NOT ``_DATA_ROOT`` directly. This
+    deliberately reuses whatever the module's ``JOURNAL_PATH`` constant
+    currently resolves to, so tests that sandbox via
+    ``monkeypatch.setattr(olc, "JOURNAL_PATH", tmp_path / ...)`` (the
+    existing convention in ``tests/test_offline_learning_cycle_2026_07_04.py``)
+    automatically sandbox this call too — chdir-ing off of the separate
+    ``OLC_DATA_ROOT``-derived ``_DATA_ROOT`` constant would silently operate
+    on the REAL production journal/agent_weights.json in any test that
+    reaches this call without also exporting ``OLC_DATA_ROOT`` (a real
+    safety gap, caught before shipping — see the commit message). Never
+    touches OANDA/halt/arm (see the method's own docstring); any failure is
+    caught and reported, never allowed to block the calibration cycle below.
+    """
+    from src.scanner.execution import ExecutionConfig, ExecutionManager
+
+    data_root = JOURNAL_PATH.parent.parent
+    original_cwd = os.getcwd()
+    os.chdir(data_root)
+    try:
+        mgr = ExecutionManager(config=ExecutionConfig())
+        return mgr.apply_pending_rl_weight_updates()
+    except Exception as exc:  # noqa: BLE001 — RL sync failure must never block calibration
+        logger.warning("offline_learning_cycle: rl weight sync failed: %s", exc)
+        return {"applied": 0, "weights_updated": False, "detail": f"error: {exc}"}
+    finally:
+        os.chdir(original_cwd)
+
+
 def run_cycle(*, force: bool = False, now: Optional[datetime] = None) -> Dict[str, Any]:
     from src.training.incremental.risk_calibration_learner import (
         RiskCalibrationLearner,
@@ -239,6 +285,7 @@ def run_cycle(*, force: bool = False, now: Optional[datetime] = None) -> Dict[st
         return {"ran": False, "reason": "market_open"}
 
     markers = drain_retrain_requests()
+    rl_weight_sync = _run_rl_weight_sync()
 
     journal = _load_journal()
     # Population = calibration-scoreable, resolved, strictly-after-cursor,
@@ -250,23 +297,32 @@ def run_cycle(*, force: bool = False, now: Optional[datetime] = None) -> Dict[st
         "ran": True,
         "timestamp": now.isoformat(),
         "markers_drained": len(markers),
+        "rl_weight_sync": rl_weight_sync,
         "new_outcomes": len(new_entries),
         "decision": "no_new_data",
     }
 
-    def _advance_cursor_and_return(res: Dict[str, Any], summary: str) -> Dict[str, Any]:
+    def _advance_cursor_and_return(
+        res: Dict[str, Any], summary: str, *, advance_cursor: bool = True
+    ) -> Dict[str, Any]:
         _append_history(res)
         _write_brain_status({**res, "summary": summary, "consumed_by_live_sizing": False})
-        if new_entries:
+        if advance_cursor and new_entries:
             last = new_entries[-1]
             _write_cursor_tuple(last.get("timestamp", ""), last.get("trade_id", ""))
         return res
 
     if len(new_entries) < MIN_HOLDOUT + 1:
+        # Do NOT advance the cursor here: fit_incremental() was never called on
+        # these entries (that happens further below, only once MIN_HOLDOUT+1 is
+        # reached), so marking them "processed" would permanently discard them
+        # from training instead of letting them accumulate toward the next cycle.
+        result["decision"] = "no_new_data" if not new_entries else "insufficient_new_data"
         return _advance_cursor_and_return(
             result,
             f"offline learning cycle: {len(markers)} marker(s) drained, "
             f"insufficient new data ({len(new_entries)}/{MIN_HOLDOUT + 1} needed)",
+            advance_cursor=False,
         )
 
     holdout = new_entries[-MIN_HOLDOUT:]
@@ -288,6 +344,7 @@ def run_cycle(*, force: bool = False, now: Optional[datetime] = None) -> Dict[st
             result,
             f"offline learning cycle: refused — holdout {holdout_wins}W/{holdout_losses}L "
             f"< {MIN_MINORITY_HOLDOUT} of a class; cannot validate calibration",
+            advance_cursor=False,
         )
 
     incumbent_state = _load_state()

@@ -20,6 +20,18 @@ is found by the dotenv walk — the daemons authenticate without shell env.
 |---|---|---|---|
 | `com.buddy.learning_loop` | Market-closed continual-learning batch (`scripts/offline_learning_cycle.py`) | — | scheduled only (Saturday), `RunAtLoad=false`, `KeepAlive=false` — not resident |
 
+**The Headless Learning Supervisor (2026-07-06).** As of commit closing the P1
+`docs/ENGINEERING_BRAIN.md` item, this one script is the sole headless entrypoint for
+BOTH: (1) `RiskCalibrationLearner` walk-forward-gated updates, and (2)
+`ExecutionManager.apply_pending_rl_weight_updates` — the RL agent-weight sync
+(commit 51b85bf). Before this, (2)'s only production caller was
+`src/tui/embedded_scanner.py` (the TUI) — welded to a process that is dormant
+whenever the TUI isn't open. Folding it in here means a resolved, agent-scoreable
+trade closed by ANY path (OutcomeBackfill, a future scanner run) gets scored into
+agent weights on this job's own schedule, with zero TUI dependency. Idempotent via
+the `rl_weights_applied` flag shared with the TUI path, so re-opening the TUI later
+cannot double-score a trade this job already processed.
+
 `com.buddy.learning_loop.plist` exists on disk but is deliberately **excluded** from
 `load.sh`'s `LABELS` list. It's a scheduled batch job, not a resident daemon — bundling
 it with the other four would mean every routine `load.sh` re-run (e.g. after a reboot)

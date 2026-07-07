@@ -4,9 +4,54 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-06T09:52Z by Claude (AXIOM Agent Runtime foundation built; no state.json
-write; verified `.claude/state.json` unchanged before/after via `git diff HEAD` — currently
-`halted=true` globally + all 5 lanes, confirmed fresh this session, not a stale snapshot).
+Last touched: 2026-07-07T06:45Z by Claude (P1 Headless Learning Supervisor wiring; script never
+imports state.json; `git status --porcelain .claude/state.json` clean before/after this session).
+
+## P1 Headless Learning Supervisor — RL-weight-sync folded into offline_learning_cycle.py (2026-07-06/07)
+
+Executed `docs/ENGINEERING_BRAIN.md`'s P1 item: "self-heal produces adjustments only the dead
+TUI can consume." Mapped from disk first (grep, not assumption):
+
+- `ExecutionManager.apply_pending_rl_weight_updates` (execution.py:5833, commit 51b85bf) — the
+  RL agent-weight-sync anchor — had exactly ONE production caller: `embedded_scanner.py:1271`
+  (the TUI). **Corrects the 2026-07-04 NOTES claim** that it was already wired into an offline
+  batch job — never true; `offline_learning_cycle.py` only ran the separate
+  `RiskCalibrationLearner`, never this method.
+- The brain doc's "3 divergent post-trade paths" (`sync_closed_trades_rl`, `post_trade_loop`,
+  `trend_journal_sync`) turned out, on inspection, to be **already correctly non-overlapping by
+  design** — `post_trade_loop.py` and `execution.py:4887` both say "does NOT update agent
+  weights, Parity Q5"; `trend_journal_sync.py` has a HARD RULE it must never call
+  `update_weights_from_outcome` (no agent verdicts exist for trend-lane trades — would be a
+  category error). No merge performed; forcing one would break `trend_journal_sync`'s safety
+  contract. The real gap was the missing headless caller, not path duplication.
+- `run_tier7_loop.py` (headless, alive) already consumes self-heal adjustments into
+  `config_overlay.json` every 30s (`TIER7_CONSUME_ADJUSTMENTS=1`, shipped 2026-07-03).
+  `apply_overlay` (the live-config consumer) is only called from `engine.py` (not the live
+  driver) and the TUI. `config_adjustments.json` pending queue is currently EMPTY (0/0) — not a
+  live-impacting gap today; inventing a consumer would mean resurrecting the halted FX scanner
+  (out of scope). Left as an honestly-reported residual, not force-fixed.
+
+**Fix**: `scripts/offline_learning_cycle.py` gained `_run_rl_weight_sync()` in `run_cycle()` —
+now the single headless entrypoint for BOTH the calibration learner AND the RL agent-weight
+sync. Idempotent via the shared `rl_weights_applied` flag (TUI can't double-score later).
+
+**Bug self-caught pre-ship**: first draft chdir'd via `_DATA_ROOT` (bound once at import from
+`OLC_DATA_ROOT` env). Existing tests sandbox via `monkeypatch.setattr(olc, "JOURNAL_PATH", ...)`,
+which doesn't touch `_DATA_ROOT` — would have silently mutated the REAL production journal in
+any in-process test reaching past the market-open gate. Fixed: chdir target is
+`JOURNAL_PATH.parent.parent`, read at call time.
+
+**Verification**: 5 new tests (`tests/test_headless_learning_supervisor_2026_07_06.py`) +
+40 pre-existing (offline_learning_cycle, RL-backfill, config_overlay, embedded_scanner-reload)
+= 45 green, flake8 clean. Real `--force` smoke run against production: drained 9 real pending
+retrain markers to `_processed/`, `rl_weight_sync: {applied:0}` (correct steady-state), journal
+`git status --porcelain` clean after, halt/lanes unchanged.
+
+**NOT done, operator decision needed**: `launchctl bootstrap` for `com.buddy.learning_loop`
+(the actual "runs on a schedule" step) was BLOCKED by the permission classifier ("Unauthorized
+Persistence" — installing a new standing launchd agent needs explicit activation, not just
+"daemonizable"). Plist/README updated to reflect scope; 3-line activation command unchanged,
+documented in `scripts/axiom_launchd/README.md`.
 
 ## AXIOM Agent Runtime foundation — tool registry + policy engine + audit (2026-07-06, scaffolding-only task)
 
