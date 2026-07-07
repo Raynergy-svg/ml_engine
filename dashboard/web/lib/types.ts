@@ -597,6 +597,68 @@ export interface CryptoMomentum {
   source: Record<string, string>;
 }
 
+// GET /api/crypto_carry — crypto cash-and-carry SHADOW lane (long spot proxy /
+// short perpetual, positive-funding-only, delta-neutral by construction; no
+// live path exists). This signal FAILED the ship gate on turnover cost — see
+// docs/prereg-crypto-cash-and-carry-shadow-2026-07-06.md — the panel exists to
+// show the accumulating live-forward-OOS record, not a verified edge. This is
+// a risk premium with a real exchange-solvency/liquidation tail, not free
+// money — see `risk_premium_note`.
+export interface CryptoCarryBook {
+  longs: Record<string, number>;
+  shorts: Record<string, number>;
+}
+export interface CryptoCarryCycle {
+  cycle_ts: string;
+  asof_date: string;
+  n_longs: number;
+  n_shorts: number;
+  gross_leverage: number;
+  today_net_return: number;
+  today_price_return: number;
+  today_carry_return: number;
+  today_cost: number;
+  today_turnover: number;
+  cumulative_shadow_return: number;
+  forward_cycle_seq: number;
+  orders_placed: number;
+}
+export interface CryptoCarryConstruction {
+  signal: string;
+  lookback_d: number;
+  cost_bps_roundtrip: number;
+  vol_target_ann: number;
+  vol_window_d: number;
+  max_leverage: number;
+  rebalance_days: number;
+  source_doc: string;
+  gate_verdict: string;
+  risk_premium_note: string;
+}
+export interface CryptoCarryLiveGate {
+  available: boolean;
+  armed: boolean;
+  last_event?: string | null;
+  last_event_reason?: string | null;
+}
+export interface CryptoCarry {
+  has_run: boolean;
+  n_forward_cycles: number;
+  current_book: CryptoCarryBook | null;
+  current_asof: string | null;
+  current_gross_leverage: number | null;
+  cumulative_shadow_return: number;
+  forward_sharpe_annualized: number | null;
+  first_asof_date: string | null;
+  last_asof_date: string | null;
+  recent_cycles: CryptoCarryCycle[];
+  construction: CryptoCarryConstruction | null;
+  risk_premium_note: string | null;
+  live_gate: CryptoCarryLiveGate;
+  mode: "live" | "shadow";
+  source: Record<string, string>;
+}
+
 // GET /api/track_b — SEC filing-text research-alpha SHADOW lane (no live path
 // exists; this signal is self-labeled overall_verdict=INSUFFICIENT — UNDERPOWERED,
 // not a measured NO EDGE, see docs/adversarial-review-no-edge-verdicts-2026-07-02.md

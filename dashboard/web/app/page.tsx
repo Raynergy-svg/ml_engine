@@ -16,6 +16,9 @@ import { Tier7Cockpit } from "@/components/Tier7Cockpit";
 import { ControlPanel } from "@/components/ControlPanel";
 import { BrainLoopPanel } from "@/components/BrainLoopPanel";
 import { LearningLoopPanel } from "@/components/LearningLoopPanel";
+import { CryptoMomentumPanel } from "@/components/CryptoMomentumPanel";
+import { TrackBPanel } from "@/components/TrackBPanel";
+import { CryptoCarryPanel } from "@/components/CryptoCarryPanel";
 import { ActivityPanel } from "@/components/ActivityPanel";
 import { MindWindowPanel } from "@/components/MindWindowPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
@@ -265,6 +268,13 @@ function DashboardBody() {
             <ControlPanel />
             <BrainLoopPanel />
             <LearningLoopPanel />
+            {/* Shadow research lanes — SHADOW-only, no execution path, gated by
+                the same LiveGate contract as the equity harvester. Previously
+                built but never mounted; wired here alongside the other
+                autonomous-loop panels (2026-07-07, crypto_carry addition). */}
+            <CryptoMomentumPanel />
+            <TrackBPanel />
+            <CryptoCarryPanel />
           </>
         )}
         {tab === "Settings" && <ControlPanel />}

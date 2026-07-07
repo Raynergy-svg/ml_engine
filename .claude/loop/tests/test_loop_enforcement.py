@@ -161,7 +161,8 @@ def test_risk_monitor(tmp_path: Path):
     # per-lane halt visibility (2026-07-02 hardening): status line must never be blind to halted_lanes
     lanes_ok = build_repo(tmp / "rm_lanes_ok", mode="live", extra_files={".claude/state.json": json.dumps(
         {"halted": False, "mode": "live",
-         "halted_lanes": {"oanda_fx": True, "equity": False, "brain": False, "crypto_momentum": True, "track_b": True}})})
+         "halted_lanes": {"oanda_fx": True, "equity": False, "brain": False, "crypto_momentum": True,
+                          "track_b": True, "crypto_carry": True}})})
     r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(lanes_ok)})
     check("GREEN exit 0 with well-formed halted_lanes", r.returncode == 0, f"rc={r.returncode} {r.stdout}")
     check("status line reports oanda_fx_halted=True", "oanda_fx_halted=True" in r.stdout, r.stdout)
@@ -169,6 +170,7 @@ def test_risk_monitor(tmp_path: Path):
     check("status line reports brain_halted=False", "brain_halted=False" in r.stdout, r.stdout)
     check("status line reports crypto_momentum_halted=True", "crypto_momentum_halted=True" in r.stdout, r.stdout)
     check("status line reports track_b_halted=True", "track_b_halted=True" in r.stdout, r.stdout)
+    check("status line reports crypto_carry_halted=True", "crypto_carry_halted=True" in r.stdout, r.stdout)
 
     # halted_lanes entirely absent = valid legacy/global-only state (StateEngine.get_halted() defers
     # to global) -> must NOT alarm on its own, but must show "?" rather than a cheerful "False"
@@ -189,11 +191,13 @@ def test_risk_monitor(tmp_path: Path):
     # global halted=True must force every lane to read True regardless of halted_lanes contents
     lanes_global = build_repo(tmp / "rm_lanes_global_halt", extra_files={".claude/state.json": json.dumps(
         {"halted": True, "mode": "dry_run",
-         "halted_lanes": {"oanda_fx": False, "equity": False, "brain": False, "crypto_momentum": False, "track_b": False}})})
+         "halted_lanes": {"oanda_fx": False, "equity": False, "brain": False, "crypto_momentum": False,
+                          "track_b": False, "crypto_carry": False}})})
     r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(lanes_global)})
     check("GREEN exit 0 with global halted=True", r.returncode == 0, f"rc={r.returncode} {r.stdout}")
     check("global halt forces all lanes True regardless of halted_lanes",
-          all(f"{lane}_halted=True" in r.stdout for lane in ("oanda_fx", "equity", "brain", "crypto_momentum", "track_b")), r.stdout)
+          all(f"{lane}_halted=True" in r.stdout
+              for lane in ("oanda_fx", "equity", "brain", "crypto_momentum", "track_b", "crypto_carry")), r.stdout)
 
 
 def test_verify_gate(tmp_path: Path):

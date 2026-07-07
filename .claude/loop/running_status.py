@@ -20,7 +20,8 @@ genuinely retired path.
                OANDA-based shadow harvester, `run_equity_harvester.py` — NOT the
                same thing as the retired IBKR-era path below), brain
                (`run_brain_loop.py`), crypto_momentum (`run_crypto_momentum_
-               shadow.py`), track_b (`run_track_b_shadow.py`). running:YES if the
+               shadow.py`), track_b (`run_track_b_shadow.py`), crypto_carry
+               (`run_crypto_carry_shadow.py`). running:YES if the
                process is alive OR its ledger/state artifact is fresh for its
                own cadence (each script logs its own `--interval`).
   LEGACY LANE (dormant, RETIRED IBKR-era code paths, SUPERSEDED by the lanes
@@ -62,6 +63,8 @@ _SHADOW_LANES = (
     ("crypto_momentum", "run_crypto_momentum_shadow",
      "trained_data/crypto/shadow_momentum_ledger.jsonl", 172800),
     ("track_b", "run_track_b_shadow", "trained_data/research/track_b_shadow_ledger.jsonl", 172800),
+    ("crypto_carry", "run_crypto_carry_shadow",
+     "trained_data/crypto_carry/shadow_carry_ledger.jsonl", 172800),
 )
 
 

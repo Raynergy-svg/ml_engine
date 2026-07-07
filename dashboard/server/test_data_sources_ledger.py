@@ -149,6 +149,56 @@ def test_read_crypto_momentum_populated_ledger_surfaces_last_cycle(tmp_path, mon
     assert out["forward_sharpe_annualized"] is not None
 
 
+def test_read_crypto_carry_empty_ledger_does_not_raise(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "shadow_carry_ledger.jsonl"
+    ledger_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(ds, "_CRYPTO_CARRY_LEDGER_PATH", ledger_path)
+    monkeypatch.setattr(ds, "_CRYPTO_CARRY_LIVE_GATE_STATE_PATH", tmp_path / "live_gate_state.json")
+
+    out = ds.read_crypto_carry()
+
+    assert out["has_run"] is False
+    assert out["n_forward_cycles"] == 0
+    assert out["forward_sharpe_annualized"] is None
+    assert out["current_book"] is None
+    assert out["cumulative_shadow_return"] == 0.0
+    assert out["risk_premium_note"] is not None  # always present, even on an empty ledger
+
+
+def test_read_crypto_carry_populated_ledger_surfaces_last_cycle(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "shadow_carry_ledger.jsonl"
+    _write_jsonl(ledger_path, [
+        {
+            "asof_date": "2026-06-29",
+            "book": {"longs": {"BTCUSDT": 0.05}, "shorts": {}},
+            "gross_leverage": 1.0,
+            "cumulative_shadow_return": 0.004,
+            "today_net_return": 0.004,
+            "construction": {"cost_bps_roundtrip": 20.0},
+        },
+        {
+            "asof_date": "2026-06-30",
+            "book": {"longs": {"BTCUSDT": 0.04, "ETHUSDT": 0.04}, "shorts": {}},
+            "gross_leverage": 1.0,
+            "cumulative_shadow_return": 0.006,
+            "today_net_return": 0.002,
+            "construction": {"cost_bps_roundtrip": 20.0},
+        },
+    ])
+    monkeypatch.setattr(ds, "_CRYPTO_CARRY_LEDGER_PATH", ledger_path)
+    monkeypatch.setattr(ds, "_CRYPTO_CARRY_LIVE_GATE_STATE_PATH", tmp_path / "live_gate_state.json")
+
+    out = ds.read_crypto_carry()
+
+    assert out["has_run"] is True
+    assert out["n_forward_cycles"] == 2
+    assert out["current_asof"] == "2026-06-30"
+    assert out["current_book"] == {"longs": {"BTCUSDT": 0.04, "ETHUSDT": 0.04}, "shorts": {}}
+    assert out["cumulative_shadow_return"] == 0.006
+    assert out["forward_sharpe_annualized"] is not None
+    assert out["live_gate"]["armed"] is False  # no live_gate_state.json on disk -> never armed
+
+
 def test_read_tier7_stale_snapshot_cannot_report_running(tmp_path, monkeypatch):
     state_path = tmp_path / ".claude" / "tier7_state.json"
     state_path.parent.mkdir(parents=True)

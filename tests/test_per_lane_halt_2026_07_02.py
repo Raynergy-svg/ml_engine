@@ -183,7 +183,13 @@ def test_get_lane_status_reflects_every_known_lane(tmp_path: Path):
     engine.set_halted(False)
     engine.set_halted(True, lane="oanda_fx")
     status = engine.get_lane_status()
-    assert status == {"oanda_fx": True, "equity": False, "brain": False}
+    # Pre-existing gap fixed in passing (2026-07-07): this assertion hardcoded a
+    # 3-lane dict from before crypto_momentum/track_b/crypto_carry were added to
+    # KNOWN_LANES and was already stale (failing on this line) prior to this
+    # session's crypto_carry addition -- update to the full known-lanes set
+    # rather than leaving a silently-stale assertion.
+    assert status == {"oanda_fx": True, "equity": False, "brain": False,
+                      "crypto_momentum": False, "track_b": False, "crypto_carry": False}
 
 
 # ── constructor-bound lane (used by src/scanner/execution.py so its guard

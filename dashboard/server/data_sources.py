@@ -994,6 +994,78 @@ def read_track_b() -> Dict[str, Any]:
     }
 
 
+_CRYPTO_CARRY_LEDGER_PATH = REPO_ROOT / "trained_data" / "crypto_carry" / "shadow_carry_ledger.jsonl"
+_CRYPTO_CARRY_LIVE_GATE_STATE_PATH = REPO_ROOT / "trained_data" / "crypto_carry" / "live_gate_state.json"
+
+
+def read_crypto_carry() -> Dict[str, Any]:
+    """Crypto cash-and-carry SHADOW lane: current would-be book, running
+    shadow P&L, and the accumulating live-forward-OOS track record for the
+    frozen positive-funding-only cash-and-carry construction
+    (docs/prereg-crypto-cash-and-carry-shadow-2026-07-06.md). This signal
+    FAILED the ship gate on turnover cost — it is NOT a verified edge; this
+    panel exists to show whether the forward record eventually confirms a
+    real deployment fares differently. **This is a risk premium with a real
+    exchange-solvency/liquidation tail, not free money** — see
+    `src/crypto/carry_shadow.py`'s `RISK_PREMIUM_NOTE`.
+
+    Read-only, real data, no fabrication: an empty ledger (the lane has not
+    run yet, or every cycle so far has been a halted no-op) renders as an
+    honest zero-cycle state, never a fabricated book or P&L number. The live
+    gate is read the same way every other lane's is — `armed` can only ever
+    be True via an explicit operator `LiveGate.arm()` call, which nothing in
+    this codebase currently makes (see `src/crypto/crypto_carry_live_gate.py`).
+    """
+    rows = list(_iter_jsonl(_CRYPTO_CARRY_LEDGER_PATH))
+    last = rows[-1] if rows else None
+    live_gate = _read_json(_CRYPTO_CARRY_LIVE_GATE_STATE_PATH, {})
+    armed = bool(live_gate.get("armed", False))
+
+    # Reuse the module's own summary (single source of truth for the Sharpe
+    # math) instead of reimplementing it here — a duplicated calculation is
+    # exactly how the dashboard and the ledger writer could silently disagree.
+    try:
+        from src.crypto.carry_shadow import forward_oos_summary, RISK_PREMIUM_NOTE
+        summary = forward_oos_summary(ledger_path=_CRYPTO_CARRY_LEDGER_PATH)
+    except Exception as exc:  # noqa: BLE001 — display data; never crash on import/compute failure
+        logger.warning("read_crypto_carry: carry_shadow unavailable (%s)", exc)
+        summary = {"n_cycles": len(rows), "forward_sharpe_annualized": None}
+        RISK_PREMIUM_NOTE = None
+    n = summary.get("n_cycles", len(rows))
+    # forward_oos_summary's zero-cycle state omits this key entirely (never a
+    # fabricated Sharpe on n<2) — .get() so the empty-ledger case (lane built
+    # but never run) doesn't KeyError the whole endpoint (this exact bug hit
+    # read_crypto_momentum() before it was fixed 2026-07-04 — never repeat it).
+    forward_sharpe = summary.get("forward_sharpe_annualized")
+
+    return {
+        "has_run": bool(rows),
+        "n_forward_cycles": n,
+        "current_book": last.get("book") if last else None,
+        "current_asof": last.get("asof_date") if last else None,
+        "current_gross_leverage": last.get("gross_leverage") if last else None,
+        "cumulative_shadow_return": last.get("cumulative_shadow_return", 0.0) if last else 0.0,
+        "forward_sharpe_annualized": forward_sharpe,
+        "first_asof_date": rows[0].get("asof_date") if rows else None,
+        "last_asof_date": last.get("asof_date") if last else None,
+        "recent_cycles": list(reversed(rows[-20:])),
+        "construction": last.get("construction") if last else None,
+        "risk_premium_note": RISK_PREMIUM_NOTE,
+        "live_gate": {
+            "available": bool(live_gate),
+            "armed": armed,
+            "last_event": live_gate.get("last_event"),
+            "last_event_reason": live_gate.get("last_event_reason"),
+        },
+        "mode": "live" if armed else "shadow",
+        "source": {
+            "ledger": "trained_data/crypto_carry/shadow_carry_ledger.jsonl",
+            "live_gate": "trained_data/crypto_carry/live_gate_state.json",
+            "pre_registration": "docs/prereg-crypto-cash-and-carry-shadow-2026-07-06.md",
+        },
+    }
+
+
 _LEARNING_LOOP_HISTORY_PATH = REPO_ROOT / "trained_data" / "learning_loop" / "history.jsonl"
 _LEARNING_LOOP_STATUS_PATH = CLAUDE_DIR / "brain" / "learning_loop_status.json"
 _LEARNING_LOOP_RETRAIN_REQUESTS_DIR = REPO_ROOT / "trained_data" / "retrain_requests"
