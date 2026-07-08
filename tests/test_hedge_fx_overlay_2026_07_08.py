@@ -66,6 +66,20 @@ def test_implausible_return_dropped_as_bad_tick(panel_dir):
     assert ret is None and notes == ["implausible_return:EUR_USD"]
 
 
+def test_nonpositive_price_refused(panel_dir):
+    _write_fx_csv(panel_dir, "USD_CAD", [("2026-05-01", 1.36), ("2026-05-02", 0.0)])
+    ret, notes = fx_instrument_forward_return("USD_CAD", "2026-05-01", panel_dir)
+    assert ret is None and notes == ["nonpositive_price:USD_CAD"]
+
+
+def test_insufficient_history_all_nan_close(panel_dir):
+    # A panel whose forward close is NaN -> dropna leaves <2 usable bars ->
+    # honest insufficient_history, never a fabricated number from a NaN cell.
+    _write_fx_csv(panel_dir, "NZD_USD", [("2026-05-01", 0.60), ("2026-05-02", float("nan"))])
+    ret, notes = fx_instrument_forward_return("NZD_USD", "2026-05-01", panel_dir)
+    assert ret is None and notes == ["insufficient_history:NZD_USD"]
+
+
 def test_is_fx_instrument_discriminator():
     from src.hedge.exposure_tags import CURRENCY_BUCKET_MAP_PATH, load_bucket_map
     ccy_map = load_bucket_map(CURRENCY_BUCKET_MAP_PATH)
