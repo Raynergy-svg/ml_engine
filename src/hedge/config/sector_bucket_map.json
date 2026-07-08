@@ -30,5 +30,12 @@
   "LIN": { "sector": "Materials", "market_beta": 0.95, "factor_tags": ["cyclical", "commodity_linked"], "benchmark_hedge": "XLB" },
   "FCX": { "sector": "Materials", "market_beta": 1.60, "factor_tags": ["cyclical", "commodity_linked", "high_beta"], "benchmark_hedge": "XLB" },
   "PLD": { "sector": "Real Estate", "market_beta": 1.00, "factor_tags": ["rate_sensitive"], "benchmark_hedge": "XLRE" },
-  "SPG": { "sector": "Real Estate", "market_beta": 1.20, "factor_tags": ["rate_sensitive", "cyclical"], "benchmark_hedge": "XLRE" }
+  "SPG": { "sector": "Real Estate", "market_beta": 1.20, "factor_tags": ["rate_sensitive", "cyclical"], "benchmark_hedge": "XLRE" },
+  "C": { "sector": "Financials", "market_beta": 1.35, "factor_tags": ["value", "rate_sensitive"], "benchmark_hedge": "XLF" },
+  "BRK-B": { "sector": "Financials", "market_beta": 0.85, "factor_tags": ["value", "defensive"], "benchmark_hedge": "XLF" },
+  "COST": { "sector": "Consumer Staples", "market_beta": 0.75, "factor_tags": ["defensive", "growth"], "benchmark_hedge": "XLP" },
+  "CSCO": { "sector": "Technology", "market_beta": 0.85, "factor_tags": ["value"], "benchmark_hedge": "XLK" },
+  "IBM": { "sector": "Technology", "market_beta": 0.70, "factor_tags": ["value", "defensive"], "benchmark_hedge": "XLK" },
+  "INTC": { "sector": "Technology", "market_beta": 1.05, "factor_tags": ["value", "cyclical"], "benchmark_hedge": "XLK" },
+  "ORCL": { "sector": "Technology", "market_beta": 1.05, "factor_tags": ["growth"], "benchmark_hedge": "XLK" }
 }

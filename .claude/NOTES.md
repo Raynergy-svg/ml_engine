@@ -4,9 +4,72 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-07T22:55Z by Claude (AXIOM Hedge Layer Phase 3 — hedge candidate generator —
-committed on `ralph/equity-harvester-bot`; no `.claude/state.json` touch this task, verified via
-`git diff --stat`).
+Last touched: 2026-07-08T02:45Z by Claude (AXIOM Hedge Layer Phase 4 — raw-vs-hedged shadow lane +
+scorecard — committed on `ralph/equity-harvester-bot`; no `.claude/state.json` touch this task,
+verified via `git diff --stat` + independent Security Engineer PASS on all 8 boundary checks).
+
+## AXIOM Hedge Layer Phase 4 — raw-vs-hedged shadow lane + scorecard (2026-07-08, SHADOW/ANALYSIS-ONLY)
+
+Built on Phase 1+2 (`b4698af`) + Phase 3 (`1463ce2`): `src/hedge/hedged_shadow_lane.py` reads each
+covered shadow strategy's own book (equity harvester `rebalance_state.json`, crypto momentum + track_b
+ledgers — never forked), runs it through the REAL P1-P3 pipeline (`build_exposure_report` +
+`build_hedge_report`), marks Lane A (raw) vs Lane B (raw + applied hedge) forward via the cached
+`market_data/equity/sp500_prices.parquet` panel, and logs both to `trained_data/hedge/
+raw_vs_hedged_ledger.jsonl` + `hedge_decision_log.jsonl`. `src/hedge/hedge_scorecard.py` computes
+per-strategy expectancy/Sharpe/Sortino/drawdown/hit-rate for both lanes and a 3-way decision readout
+(signal_real_but_noisy / weak_or_dead / return_was_beta_not_alpha), honestly gross-only + flagged
+`cost_unmodeled_for_venue` when the hedge instrument (SPY/sector ETF) has no OANDA fill history for
+the P2 cost model to price — never fabricates a net number.
+
+Extended `src/hedge/config/sector_bucket_map.json` with 7 tickers (C, BRK-B, COST, CSCO, IBM, INTC,
+ORCL) so the equity harvester's full 20-name book resolves (P1-P2's exposure report is all-or-nothing
+fail-closed — one unmapped ticker blocks the whole hedge). Found + fixed a real cached-panel data-
+quality bug while building the demo: one ticker (`POM`) had an unadjusted +1844% single-day print
+that dominated a naive equal-weight "market" proxy — added `MAX_SANE_DAILY_RETURN` outlier guard +
+restricted the market proxy to the curated sector-map universe instead of all 684 raw panel columns.
+
+Independent Code Reviewer pass (before commit) found 4 real correctness bugs, all fixed + regression-
+tested before commit: (1) `basket_forward_return`/`hedge_overlay_pnl` summed only resolved legs
+without renormalizing — mathematically a silent zero-fill of unresolved legs; now all-or-nothing
+fail-closed matching P1-P2's own contract. (2) scorecard's raw-lane Sharpe/Sortino paired the FULL
+unfiltered asof_date list with the FILTERED resolved-returns list, misannualizing the cadence
+(reproduced a ~5.5x distortion). (3) the "hedged" stats series wasn't restricted to
+`hedge.status=="applied"` cycles, letting trivial hedged==raw rows (no valid hedge) dilute the
+alpha-vs-beta read. (4) the `hedge_unavailable` insufficient-history gate used a different `n` than
+`decision_readout`'s own gate. Security Engineer independently verified PASS on all 8 boundary checks
+(zero broker/execution import, zero state/halt/gate touch, zero network I/O, writes scoped to
+`trained_data/hedge/` only, safety triplet hardcoded non-overridable, `.claude/state.json` unchanged,
+config diff is pure data). 27 new tests + 42 pre-existing hedge tests + 755 equity tests + 100 crypto/
+hedge regression tests all green; flake8 clean.
+
+Real production run (single cycle each, `n=1` per strategy — day 1 of this lane, honestly reports
+`insufficient_history`): equity harvester's raw return is unresolvable (cached price panel stale past
+2026-06-24, no forward bar for the 2026-07-01 book snapshot — reports `None`, not a fabricated
+number); crypto momentum + track_b both correctly report `hedge.status` as `unsupported_asset_class`
+/ `fail_closed` (crypto isn't a P1-covered asset class; track_b's research universe has large
+sector-map coverage gaps) — Lane B == Lane A by construction in both cases, honestly labeled, no
+fabricated hedge. A historical-window demo (`scripts/hedge_shadow_lane_demo.py`, real cached prices,
+2026-06-15→23, 6 cycles) shows the full pipeline populated: raw expectancy -0.29%/cycle vs hedged
+GROSS +0.08%/cycle with materially lower drawdown (0.26% vs 1.71%) — `cost_unmodeled:
+signal_real_but_noisy`, correctly caveated since equity hedge cost is genuinely unknown (no OANDA
+fills for SPY/XLK).
+
+## Evaluated 2 operator repos for memory/brain scaling + built ENGINEERING_BRAIN (2026-07-07)
+
+- Built `docs/ENGINEERING_BRAIN.md` (commit `b836075`) — sourced blueprint (current state / safety spine /
+  external best-practice+edge+data map / P0-P3 roadmap + durable facts). verify_gate PASS, risk_monitor
+  GREEN, state.json + practice pin untouched.
+- Operator pointed at 2 of their own repos to scale memory+brain: **ML_Training_book** (fork of Harvard's
+  *Machine Learning Systems* textbook — an ML-systems engineering knowledge source) and
+  **codebase-memory-mcp** (fork of `DeusData/codebase-memory-mcp` — tree-sitter+Hybrid-LSP code
+  knowledge-graph MCP, 158 langs, ~120× fewer tokens on structural queries, arXiv:2603.27277).
+- Disk-verified honest status: codebase-memory-mcp is wired **CI/dev-plane ONLY**
+  (`.github/workflows/code-graph.yml`, commit 35f430f — PR impact analysis, fail-soft, checksum-pinned,
+  never touches src/runtime/execution/halt/config). **NOT** installed as a local interactive MCP this
+  session (no `cbm` binary, not in connected servers). It is a dev-plane PR tool, **not** live runtime
+  memory — don't narrate it as one (L-017).
+- `/evolve` proposal (INTENT standing decision: sanctioned brain-source + code-memory tool with a
+  dev-plane/no-hot-path/no-safety-write guardrail) **pending operator approval** — not yet applied.
 
 ## AXIOM Hedge Layer Phase 3 — hedge candidate generator (2026-07-07, SHADOW/ANALYSIS-ONLY)
 
