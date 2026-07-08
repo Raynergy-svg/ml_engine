@@ -225,11 +225,20 @@ def compute_forward_realized_volatility(
 
     Returns the raw forward-realized-volatility value per row instead of a
     binned regime class — for a regression target (e.g. QLIKE/pinball-scored
-    vol forecasting) rather than a 4-class classification target. Reuses the
-    exact same leak-free forward-window formula (`_compute_forward_realized_vol`):
-    for row `i`, the value depends ONLY on `close[i+1 .. i+1+vol_horizon_bars]`,
-    never on row `i` or earlier — same leak-prevention guarantee as the binned
-    version (see module docstring).
+    vol forecasting) rather than a 4-class classification target.
+
+    FORMULA NOTE (2026-07-08 QA finding, HIGH severity, fixed): this is
+    `stddev(diff(log(close[i+1 : i+1+H])))` — the standard log-return
+    realized vol, NOT the binned label's `_compute_forward_realized_vol`
+    (which divides by `mean(close_window)`). The /close division is
+    harmless in the binned regime label (per-pair percentile cuts absorb
+    the scale) but WRONG for a pooled cross-pair continuous target: it
+    shrinks JPY-pair values ~150x, so any baseline computed in normal
+    log-return-vol units becomes unit-inconsistent and comparisons against
+    it are meaningless. Same leak-prevention window contract as the binned
+    version: for row `i`, the value depends ONLY on
+    `close[i+1 : i+1+vol_horizon_bars]` (exclusive end — H closes, H-1
+    log-returns), never on row `i` or earlier.
 
     Args:
         df: DataFrame with at least a `close` column.
@@ -255,10 +264,11 @@ def compute_forward_realized_volatility(
     metadata: Dict[str, Any] = {
         "vol_horizon_bars": int(vol_horizon_bars),
         "annualization_factor": annualization_factor,
-        "formula": "stddev_log_returns_over_mean_close" + (
+        "formula": "stddev_log_returns" + (
             "_annualized" if annualization_factor else ""
         ),
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": int(n),
         "n_nan_dropped": 0,
     }
@@ -273,7 +283,24 @@ def compute_forward_realized_volatility(
         metadata["n_nan_dropped"] = int(n)
         return np.full(n, np.nan, dtype=np.float64), metadata
 
-    values = _compute_forward_realized_vol(close, vol_horizon_bars)
+    # Pure log-return realized vol over the forward window [i+1, i+1+H)
+    # — deliberately NOT _compute_forward_realized_vol (see FORMULA NOTE
+    # in the docstring: its /mean(close) division is scale-dependent).
+    values = np.full(n, np.nan, dtype=np.float64)
+    safe_close = np.where(close > 0, close, np.nan)
+    log_close = np.log(safe_close)
+    last_valid_i = n - vol_horizon_bars - 1
+    for i in range(max(last_valid_i + 1, 0)):
+        window_log = log_close[i + 1: i + 1 + vol_horizon_bars]
+        if not np.all(np.isfinite(window_log)):
+            continue
+        log_rets = np.diff(window_log)
+        if log_rets.size < 1:
+            continue
+        sd = float(np.std(log_rets, ddof=0))
+        if np.isfinite(sd):
+            values[i] = sd
+
     if annualization_factor:
         values = values * float(annualization_factor)
     metadata["n_nan_dropped"] = int(np.sum(~np.isfinite(values)))
