@@ -507,6 +507,20 @@ def exposure_engine_gate(
     gap as zero exposure — matches ``ExposureReport.fail_closed``'s own
     contract in ``portfolio_exposure.py``.
     """
+    # Code reviewer finding (2026-07-08): build_exposure_report's
+    # net_currency_exposure NETS opposing directions (a long + a short of the
+    # same currency partially cancel), whereas bucket_cap_gate's
+    # bucket_risk_home accumulates UNSIGNED per-direction totals that never
+    # net against each other. The two are equivalent only because this lane
+    # is strictly long-or-flat (never shorts) — verified by construction
+    # (see module docstring; trend_targets only ever emits weight >= 0). If a
+    # short/hedge leg were ever introduced, signed netting could UNDERSTATE
+    # risk relative to bucket_cap_gate, silently weakening this "independent,
+    # at-least-as-strict" check. Fail closed instead of trusting a signed net
+    # outside the regime this equivalence was proven for.
+    all_positions = list(open_positions) + [candidate]
+    if any(p.direction == "short" for p in all_positions):
+        return False, "exposure_engine_short_leg_unsupported"
     report = build_exposure_report(open_positions, candidate, currency_bucket_map=currency_bucket_map)
     if report.fail_closed:
         return False, f"exposure_engine_fail_closed:{list(report.fail_reasons)}"

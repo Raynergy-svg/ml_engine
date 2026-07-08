@@ -517,6 +517,17 @@ def test_cost_aware_gate_refuses_on_non_finite_cost_fields():
     assert reason == "cost_non_finite_fail_closed"
 
 
+def test_cost_aware_gate_refuses_on_negative_spread():
+    """Code reviewer finding (2026-07-08): a corrupt/crossed-book negative
+    spread must be rejected directly, not masked by an offsetting slippage
+    term in the combined round_trip_cost sum."""
+    est = _cost_estimate(spread_raw=-0.0005, slippage_raw=0.001)  # sum still >= 0
+    allow, reason = cost_aware_gate(
+        instrument="EUR_USD", r_distance_quote=0.004, cost_estimate=est)
+    assert allow is False
+    assert reason == "cost_negative_spread_invalid"
+
+
 def test_cost_aware_gate_allows_cheap_cost_relative_to_r():
     """2-pip spread, zero slippage, against a realistic 40-pip (0.004) stop:
     cost_r_fraction = 0.0002/0.004 = 0.05, well under the 0.30 default cap."""

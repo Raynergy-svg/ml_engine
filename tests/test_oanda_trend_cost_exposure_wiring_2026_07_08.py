@@ -88,6 +88,35 @@ def test_exposure_engine_gate_fails_closed_on_unresolvable_currency():
     assert reason.startswith("exposure_engine_fail_closed:")
 
 
+def test_exposure_engine_gate_fails_closed_on_any_short_leg():
+    """Code reviewer finding (2026-07-08): net_currency_exposure NETS signed
+    directions while bucket_cap_gate accumulates UNSIGNED per-direction
+    totals — the two only agree because this lane is long-or-flat by
+    construction. A short leg (existing or candidate) must fail closed rather
+    than silently trust a signed-net number outside the proven-equivalent
+    regime."""
+    risk_unit_home = NAV * 0.01
+    candidate = ExposurePosition(asset_class="fx", instrument="USD_JPY", direction="long",
+                                 risk_home=0.1 * risk_unit_home, source="candidate")
+    existing_short = ExposurePosition(asset_class="fx", instrument="EUR_USD", direction="short",
+                                      risk_home=0.1 * risk_unit_home, source="oanda_open_trade")
+    allow, reason = exposure_engine_gate(
+        open_positions=[existing_short], candidate=candidate,
+        risk_unit_home=risk_unit_home, max_bucket_risk_r=2.0)
+    assert allow is False
+    assert reason == "exposure_engine_short_leg_unsupported"
+
+    # A short CANDIDATE itself must also refuse (can't happen from this
+    # long-or-flat strategy today, but the gate must not silently trust it).
+    short_candidate = ExposurePosition(asset_class="fx", instrument="USD_JPY", direction="short",
+                                       risk_home=0.1 * risk_unit_home, source="candidate")
+    allow2, reason2 = exposure_engine_gate(
+        open_positions=[], candidate=short_candidate,
+        risk_unit_home=risk_unit_home, max_bucket_risk_r=2.0)
+    assert allow2 is False
+    assert reason2 == "exposure_engine_short_leg_unsupported"
+
+
 def test_exposure_engine_gate_fails_closed_on_unresolvable_instrument():
     risk_unit_home = NAV * 0.01
     candidate = ExposurePosition(asset_class="fx", instrument="garbage", direction="long",
