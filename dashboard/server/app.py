@@ -234,6 +234,11 @@ def crypto_carry() -> Dict[str, Any]:
     return ds.read_crypto_carry()
 
 
+@app.get("/api/hedge")
+def hedge() -> Dict[str, Any]:
+    return ds.read_hedge()
+
+
 @app.get("/api/learning_loop")
 def learning_loop() -> Dict[str, Any]:
     return ds.read_learning_loop()

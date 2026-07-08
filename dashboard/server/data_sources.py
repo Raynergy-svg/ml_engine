@@ -1066,6 +1066,102 @@ def read_crypto_carry() -> Dict[str, Any]:
     }
 
 
+_HEDGE_DIR = REPO_ROOT / "trained_data" / "hedge"
+_RAW_VS_HEDGED_LEDGER_PATH = _HEDGE_DIR / "raw_vs_hedged_ledger.jsonl"
+_HEDGE_SCORECARD_PATH = _HEDGE_DIR / "hedge_scorecard_report.json"
+_EXPOSURE_HISTORY_PATH = _HEDGE_DIR / "exposure_history.jsonl"
+
+
+def _live_fx_exposure() -> Optional[Dict[str, Any]]:
+    """Compute the LIVE FX trend-lane exposure + hedge proposal right now,
+    directly from the open OANDA book — no dependency on the capture loop
+    having run. Returns None (honest empty) on a stale/flat book or any
+    compute error. Read-only: run_cycle_for_strategy is called with
+    persist=False so nothing is written and no order path is touched."""
+    try:
+        from src.hedge.hedged_shadow_lane import load_fx_trend_book, run_cycle_for_strategy
+        book = load_fx_trend_book()
+        if book is None:
+            return None
+        row = run_cycle_for_strategy("fx_trend", book=book, persist=False)
+    except Exception as exc:  # noqa: BLE001 — display data; never crash the endpoint
+        logger.warning("read_hedge: live FX exposure compute failed (%s)", exc)
+        return None
+    if not row:
+        return None
+    exposure = row.get("exposure", {})
+    hedge = row.get("hedge", {})
+    return {
+        "asof_date": row.get("asof_date"),
+        "nav": (row.get("meta") or {}).get("nav"),
+        "net_currency_exposure": exposure.get("net_currency_exposure", {}),
+        "net_correlation_bucket_exposure": exposure.get("net_correlation_bucket_exposure", {}),
+        "concentration_warnings": exposure.get("concentration_warnings", []),
+        "narrative": exposure.get("narrative", []),
+        "position_count": exposure.get("position_count"),
+        "resolved_position_count": exposure.get("resolved_position_count"),
+        "raw_net_return": (row.get("raw") or {}).get("net_return"),
+        "raw_return_basis": (row.get("meta") or {}).get("raw_return_basis"),
+        "hedge_status": hedge.get("status"),
+        "hedge_decision": hedge.get("decision"),
+        "applied_hedge": hedge.get("applied_proposal"),
+        "hedged_return_basis": (row.get("hedged") or {}).get("return_basis"),
+    }
+
+
+def read_hedge() -> Dict[str, Any]:
+    """AXIOM Hedge Layer readout — SHADOW / ANALYSIS-ONLY.
+
+    Three things the recent hedge-layer backend work now produces, none of
+    which had a dashboard surface before:
+      1. LIVE FX exposure netting — decomposes the open OANDA trend book into
+         signed currency buckets so a hidden concentration ("one USD bet
+         wearing three outfits") is visible, plus the Phase-3 hedge proposal.
+         Computed live each request (persist=False), so it works even before
+         the exposure-history capture loop is running.
+      2. Raw-vs-hedged scorecard + recent ledger cycles across every covered
+         strategy (equity_harvester / crypto_momentum / track_b / fx_trend).
+      3. Exposure-history accumulation counter — the training bridge
+         (trained_data/hedge/exposure_history.jsonl); shows how many
+         snapshots have been captured toward the P2 risk-target feature round.
+
+    Read-only, real data, honest empty states: no ledger / no history / a flat
+    book each render as an explicit empty state, never a fabricated number.
+    The hedge layer places no orders, unhalts nothing, mutates no broker —
+    every row carries paper_only / runtime_allowed flags from its writer.
+    """
+    scorecard = _read_json(_HEDGE_SCORECARD_PATH, {})
+    ledger_rows = list(_iter_jsonl(_RAW_VS_HEDGED_LEDGER_PATH))
+    exposure_history = list(_iter_jsonl(_EXPOSURE_HISTORY_PATH))
+    last_history = exposure_history[-1] if exposure_history else None
+
+    return {
+        "live_fx_exposure": _live_fx_exposure(),
+        "scorecards": scorecard.get("scorecards", {}),
+        "strategies_with_history": scorecard.get("strategies_with_history", []),
+        "recent_cycles": list(reversed(ledger_rows[-20:])),
+        "n_ledger_cycles": len(ledger_rows),
+        "exposure_history": {
+            "n_snapshots": len(exposure_history),
+            "first_captured_at": exposure_history[0].get("captured_at_utc") if exposure_history else None,
+            "last_captured_at": last_history.get("captured_at_utc") if last_history else None,
+            "last_nav": last_history.get("nav") if last_history else None,
+            "last_net_currency": last_history.get("net_currency_notional_home") if last_history else None,
+            "note": "training bridge for the P2 risk-target exposure-feature round "
+                    "(docs/experiment-risk-target-p2-exposure-features-2026-07-08.md)",
+        },
+        "paper_only": bool(scorecard.get("paper_only", True)),
+        "runtime_allowed": bool(scorecard.get("runtime_allowed", False)),
+        "human_review_required": bool(scorecard.get("human_review_required", True)),
+        "source": {
+            "ledger": "trained_data/hedge/raw_vs_hedged_ledger.jsonl",
+            "scorecard": "trained_data/hedge/hedge_scorecard_report.json",
+            "exposure_history": "trained_data/hedge/exposure_history.jsonl",
+            "roadmap": "AXIOM Hedge Layer Roadmap (docs/)",
+        },
+    }
+
+
 _LEARNING_LOOP_HISTORY_PATH = REPO_ROOT / "trained_data" / "learning_loop" / "history.jsonl"
 _LEARNING_LOOP_STATUS_PATH = CLAUDE_DIR / "brain" / "learning_loop_status.json"
 _LEARNING_LOOP_RETRAIN_REQUESTS_DIR = REPO_ROOT / "trained_data" / "retrain_requests"

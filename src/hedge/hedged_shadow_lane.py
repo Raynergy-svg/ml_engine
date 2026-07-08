@@ -150,7 +150,7 @@ class BookSnapshot:
     """One strategy's current (or ledger-latest) book, translated into a
     shape this module's exposure/hedge/price machinery can consume."""
     strategy: str
-    asset_class: str  # "equity" | "crypto"
+    asset_class: str  # "equity" | "crypto" | "fx"
     asof_date: str
     weights: Dict[str, float]  # ticker -> signed fraction-of-NAV
     raw_net_return: Optional[float]  # from the strategy's OWN ledger, if already computed there
