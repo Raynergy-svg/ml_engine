@@ -297,3 +297,14 @@ logs/track_b_shadow.out
 # ignored here so it can't recur.
 .claude/worktrees/
 .superpowers/
+
+# Live-process churn (regenerated continuously by the running bot / tick capture) --
+# committing these is whack-a-mole; recover from disk, not git.
+trained_data/ticks/
+logs/tick_capture.out
+logs/crypto_carry_shadow.out
+trained_data/.memory/
+.claude/maintenance_report.json
+.claude/self_heal_action_budget.json
+.claude/self_heal_debounce.json
+trained_data/execution_quality.json
