@@ -53,7 +53,27 @@ calendar-date split (not per-pair row index — pairs share global vol regimes).
   retrain-gates suites), flake8 clean, verify_gate PASS(28), risk_monitor GREEN. Artifact:
   `trained_data/risk_targets/models/` (own namespace — per-pair gate routing can't see it).
 - Commits: pipeline landed in `85e847e`/`032e035` (co-mingled by the concurrent session, verified
-  byte-identical); units-fix remediation commit pending QA re-verification.
+  byte-identical); units-fix remediation committed `82f13fe` (+`02c9712` label fix, `f6b5b2d`
+  LESSONS). QA RE-VERIFIED the corrected run: **TRUSTWORTHY, all 5 checks PASS, HIGH confidence**
+  (exact reproduction from raw CSVs; JPY units ratio now ~1:1; §6 retraction judged "exemplary";
+  its earlier 2.4%-counterfactual vs the 29% observed reconciled — corrected target = better-posed
+  problem; 19/19 per-pair consistency proves it isn't a pooling artifact).
+- **`/evolve` COMPLETE (operator approved "Both")**: L-025 (reused numeric helper imports the
+  donor's normalization contract — 3rd hit of the normalization-contract class) + L-026
+  (concurrent sessions co-mingle commits on a shared tree) in LESSONS.md:50-51 (index) +
+  :490/:518 (bodies), committed in `f6b5b2d`. No INTENT edit, no new skill.
+- **RALPH-WATCHER REBASE INCIDENT (2026-07-08 ~22:20Z, recovered, L-026 live demo)**: an
+  autonomous rebase onto `origin/ralph/equity-harvester-bot` rewrote the local branch, picking 1
+  of 13 local commits and stranding the other 12 (incl. the remediation + approved LESSONS) —
+  on-disk files silently reverted to the units-BROKEN v1 state mid-conversation. Recovered via
+  reflog (all objects intact); a second watcher rebase attempt then aborted itself, restoring the
+  ORIGINAL head `f6b5b2d` with every commit at its original hash. Verified from disk after: v2
+  version, units fix, L-025/L-026, readout module, v2 artifact, 21 tests green, verify_gate PASS,
+  risk_monitor GREEN. **OPEN for operator**: local and origin have diverged 12-vs-12 commits; the
+  ralph watcher appears to auto-rebase and abort on conflict repeatedly — needs a deliberate
+  integration (operator-approved merge/rebase + push), NOT another autonomous attempt; and the
+  watcher's auto-rebase-the-shared-tree behavior itself deserves review (it is the L-026
+  mechanism with history-rewrite stakes).
 
 Previous entry (concurrent session, 2026-07-08T22:05Z): trend-lane risk-gate wiring (cost model +
 portfolio exposure engine + hedge scorecard) — committed as `85e847e`/`a3c5c79`/`9c218e9`; no
