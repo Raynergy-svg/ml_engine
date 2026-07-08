@@ -103,13 +103,13 @@ export function TrackBPanel() {
               } />
               <Row label="Forward Sharpe (annualized)" value={
                 data.forward_sharpe_annualized != null ? data.forward_sharpe_annualized.toFixed(2)
-                  : "n<2 cycles — undefined"
+                  : "n/a (n<2 cycles)"
               } />
               <Row label="Current gross leverage" value={data.current_gross_leverage != null ? `${data.current_gross_leverage.toFixed(2)}x` : "—"} />
               <Row label="LiveGate armed" value={lg.armed ? "YES" : "no"} />
               {!lg.available && (
                 <div className="py-2 font-mono text-[10.5px] text-faint">
-                  No live_gate_state.json on disk — lane has never been armed; the frozen harness's own
+                  No live_gate_state.json on disk — lane has never been armed; the frozen harness&apos;s own
                   verdict for this signal is INSUFFICIENT, not REAL.
                 </div>
               )}

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.buddy.exposure_history</string>
+  <!-- Exposure-history capture: the exposure-plane counterpart of tick_capture.
+       SHADOW / ANALYSIS-ONLY. Reads trained_data/oanda/account_state.json (written
+       every cycle by the trend lane) + tick parquets, appends
+       trained_data/hedge/exposure_history.jsonl. Imports NOTHING from the trade/order
+       plane (structurally tested); cannot place orders, unhalt, or mutate the broker.
+       KeepAlive = process resilience only. Weekend gaps (stale ticks -> refuse) are
+       documented behavior, not a fault. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin/python3</string>
+    <string>scripts/run_exposure_history_capture.py</string>
+    <string>--loop</string>
+    <string>900</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/buddy/Documents/ml_engine</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/exposure_history_capture.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/exposure_history_capture.out</string>
+</dict>
+</plist>
