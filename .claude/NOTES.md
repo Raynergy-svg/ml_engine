@@ -894,6 +894,20 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
 
 ## In-flight work (from session memory, not re-verified this turn — confirm before relying)
 
+- **Exposure-history capture SHIPPED (2026-07-08, worktree branch `claude/training-infra-hedge-layers-ec7314`,
+  commits b784062+f53d72c+a72b5f0, pushed; running:NO — capture loop not started yet).** The persistence
+  bridge from the hedge layer to future risk-target training: `src/hedge/exposure_history.py` +
+  `scripts/run_exposure_history_capture.py` snapshot the live FX trend-lane book (account_state.json +
+  tick-parquet rates) into currency/correlation bucket nets → append-only
+  `trained_data/hedge/exposure_history.jsonl`. Records BOTH notional_home and the gate's R-based
+  risk_home_r per position. Rationale: the risk-target pre-reg (2026-07-08) excluded exposure/hedge/cost
+  features because no historical exposure series exists (hedge ledgers = 3 demo rows) — this starts one,
+  same play as tick_capture. Separate verifier: PASS (its G1/G2 gaps fixed in follow-up commits).
+  SHADOW/ANALYSIS-ONLY, zero execution-plane imports (structurally tested), 12 no-mock tests,
+  verify_gate exit 0. **NEXT (operator/main-session): merge the branch into `ralph/equity-harvester-bot`
+  and start the loop (`python3 scripts/run_exposure_history_capture.py --loop 900`, launchd like
+  tick_capture) — history only accumulates once it runs. Weekend gaps are documented behavior
+  (stale ticks → refuse), not a fault.**
 - **STATUS-ORACLE TRAP FIXED (2026-06-29).** `running_status.py` reported ONLY the dormant equity-harvester
   (IBKR, superseded) lane -> "running:NO" even though the LIVE OANDA-trend + Tier7 lane was running -> caused a
   false "nothing running". Rewrote it to report TWO clearly-LABELED lanes: **LIVE LANE** (OANDA trend + Tier7;
