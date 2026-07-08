@@ -9,6 +9,7 @@ is already gated and tested elsewhere.
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -45,9 +46,20 @@ def _validate_harness_cmd(harness_cmd: Sequence[str], *, cwd: Path) -> None:
     """
     if len(harness_cmd) < 2:
         raise UnsafeHarnessCommand("harness_cmd must be [python_interpreter, script_path, ...args]")
-    interpreter = Path(str(harness_cmd[0])).name
-    if interpreter not in {"python", "python3", Path(sys.executable).name}:
-        raise UnsafeHarnessCommand(f"harness_cmd[0] must be a python interpreter, got {harness_cmd[0]!r}")
+    # Resolve argv[0] to a real filesystem path (via PATH lookup if relative/bare)
+    # and require it to be the CURRENT interpreter, not merely basename-matched --
+    # `Path(x).name in {"python", "python3", ...}` would accept any binary an
+    # attacker names /tmp/evil/python3, defeating the whole allowlist.
+    interpreter_arg = str(harness_cmd[0])
+    interpreter_path = Path(interpreter_arg)
+    if not interpreter_path.is_absolute():
+        which = shutil.which(interpreter_arg)
+        interpreter_path = Path(which) if which else interpreter_path
+    if interpreter_path.resolve() != Path(sys.executable).resolve():
+        raise UnsafeHarnessCommand(
+            f"harness_cmd[0] must resolve to the current python interpreter "
+            f"({sys.executable}), got {harness_cmd[0]!r}"
+        )
     scripts_dir = (Path(cwd) / "scripts").resolve()
     script_path = (Path(cwd) / str(harness_cmd[1])).resolve()
     if script_path.suffix != ".py" or scripts_dir not in script_path.parents:

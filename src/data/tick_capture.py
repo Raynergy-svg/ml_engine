@@ -83,9 +83,11 @@ def build_practice_stream_client() -> OandaStreamClient:
     client = OandaStreamClient(
         account_id=account_id, api_token=api_token, environment="practice"
     )
-    assert client.base_url == PRACTICE_STREAM_URL, (
-        "tick capture must never target the live stream URL"
-    )
+    # Explicit check, not `assert` -- assert statements are stripped entirely
+    # under `python -O`/`PYTHONOPTIMIZE`, which would silently remove this
+    # Hard-NO practice-only guard rather than skip a debug convenience.
+    if client.base_url != PRACTICE_STREAM_URL:
+        raise RuntimeError("tick capture must never target the live stream URL")
     return client
 
 

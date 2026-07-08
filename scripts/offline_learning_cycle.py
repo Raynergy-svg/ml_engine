@@ -261,8 +261,8 @@ def _run_rl_weight_sync() -> Dict[str, Any]:
 
     data_root = JOURNAL_PATH.parent.parent
     original_cwd = os.getcwd()
-    os.chdir(data_root)
     try:
+        os.chdir(data_root)
         mgr = ExecutionManager(config=ExecutionConfig())
         return mgr.apply_pending_rl_weight_updates()
     except Exception as exc:  # noqa: BLE001 — RL sync failure must never block calibration

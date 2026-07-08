@@ -105,7 +105,13 @@ def main(argv: Optional[list] = None) -> int:
 
     n = 0
     while True:
-        result = _tick(project_root, args.refresh)
+        try:
+            result = _tick(project_root, args.refresh)
+        except Exception:  # noqa: BLE001 - shadow lane must survive transient cycle failures
+            if not args.loop:
+                raise
+            logger.exception("crypto_carry shadow cycle failed; will retry next interval")
+            result = {"ran": False, "reason": "exception", "orders": 0}
         n += 1
         if not args.loop:
             return 0 if result["ran"] else 1

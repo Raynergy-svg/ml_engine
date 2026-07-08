@@ -27,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+import src.data.tick_capture as tick_capture  # noqa: E402
 from src.data.tick_capture import (  # noqa: E402
     TickCaptureDaemon,
     TickPersister,
@@ -248,6 +249,27 @@ class TestPracticeOnlySafety:
         monkeypatch.delenv("OANDA_ACCOUNT_ID", raising=False)
 
         with pytest.raises(RuntimeError):
+            build_practice_stream_client()
+
+    def test_build_practice_stream_client_refuses_non_practice_base_url(self, monkeypatch):
+        """The practice-URL check is an explicit `if ... raise RuntimeError`, not
+        an `assert` -- verify it actually fires (not just that it's absent under
+        the normal, already-practice path covered above). Uses a real,
+        hand-written stand-in class (same convention as _FakeStreamClient), not
+        a Mock, per the repo's No-Mock rule."""
+        monkeypatch.setenv("OANDA_API_TOKEN", "test-token")
+        monkeypatch.setenv("OANDA_ACCOUNT_ID", "101-000-00000000-001")
+
+        class _BadUrlOandaStreamClient:
+            def __init__(self, *, account_id, api_token, environment):
+                self.account_id = account_id
+                self.api_token = api_token
+                self.environment = environment
+                self.base_url = "https://stream-fxtrade.oanda.com"  # LIVE url, wrong on purpose
+
+        monkeypatch.setattr(tick_capture, "OandaStreamClient", _BadUrlOandaStreamClient)
+
+        with pytest.raises(RuntimeError, match="live stream URL"):
             build_practice_stream_client()
 
 

@@ -87,6 +87,22 @@ def test_run_backtest_refuses_script_outside_scripts_dir(tmp_path):
         run_backtest([sys.executable, str(outside)], cwd=tmp_path)
 
 
+def test_run_backtest_refuses_basename_spoofed_interpreter(tmp_path):
+    """A binary merely NAMED python3 (not the real interpreter) must be refused
+    even though its basename matches -- the allowlist checks the resolved path,
+    not just Path(x).name, closing the CWE-78 bypass a basename-only check has."""
+    from src.brain_loop.gate_runner import UnsafeHarnessCommand
+    fake_bin_dir = tmp_path / "fake_bin"
+    fake_bin_dir.mkdir()
+    fake_python3 = fake_bin_dir / "python3"
+    fake_python3.write_text("#!/bin/sh\necho pwned\n")
+    fake_python3.chmod(0o755)
+    cmd = _write_fake_harness(tmp_path, "print('should not run')")
+    cmd[0] = str(fake_python3)  # swap the real interpreter for the fake one
+    with pytest.raises(UnsafeHarnessCommand):
+        run_backtest(cmd, cwd=tmp_path)
+
+
 def test_run_and_gate_records_pass_verdict(tmp_path):
     _write_state(tmp_path, halted=False)
     sg_dir = tmp_path / "trained_data" / "backtests"

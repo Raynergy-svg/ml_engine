@@ -21,6 +21,7 @@ NO MOCKS per CLAUDE.md No-Mock Rule. Real ``run_cycle``, real
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -146,6 +147,30 @@ def test_rl_weight_sync_never_blocks_calibration_on_failure(tmp_path, monkeypatc
     # error — never raises, and the calibration decision key is always present.
     assert "decision" in result
     assert result["rl_weight_sync"]["weights_updated"] is False
+
+
+def test_rl_weight_sync_survives_unreachable_data_root(tmp_path, monkeypatch):
+    """os.chdir(data_root) must be INSIDE the guarded try/except -- a missing
+    or inaccessible data_root (misconfigured OLC_DATA_ROOT, fresh deployment,
+    permissions issue) must be caught and reported, never propagate out of
+    _run_rl_weight_sync and crash the whole offline learning cycle."""
+    data_root = tmp_path
+    (data_root / "trained_data").mkdir(parents=True, exist_ok=True)
+    # JOURNAL_PATH.parent.parent must point at a path that does NOT exist on
+    # disk, so os.chdir() itself raises FileNotFoundError.
+    monkeypatch.setattr(
+        olc, "JOURNAL_PATH",
+        data_root / "does_not_exist" / "trained_data" / "trade_journal_rl.json",
+    )
+
+    before_cwd = os.getcwd()
+    result = olc._run_rl_weight_sync()
+
+    assert result["applied"] == 0
+    assert result["weights_updated"] is False
+    assert "error" in result["detail"]
+    # cwd must be restored even though chdir itself is what failed.
+    assert os.getcwd() == before_cwd
 
 
 def test_rl_weight_sync_never_touches_halt_or_arm_state(tmp_path, monkeypatch):
