@@ -66,8 +66,19 @@ Do this on your dev machine, never on the live trading host:
 
 ```bash
 CBM_VERSION=v0.8.1
+ASSET="codebase-memory-mcp-$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz"
 curl -fsSL -o cbm.tar.gz \
-  "https://github.com/DeusData/codebase-memory-mcp/releases/download/${CBM_VERSION}/codebase-memory-mcp-$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz"
+  "https://github.com/DeusData/codebase-memory-mcp/releases/download/${CBM_VERSION}/${ASSET}"
+
+# Verify against the release's checksums.txt before running an unverified
+# binary — mirror the checksum gate code-graph.yml enforces in CI. CI only
+# pins linux-amd64 (CBM_SHA256_LINUX_AMD64 in the workflow); on another
+# platform, fetch checksums.txt yourself and confirm the line for your asset
+# instead of trusting the download.
+curl -fsSL -o checksums.txt \
+  "https://github.com/DeusData/codebase-memory-mcp/releases/download/${CBM_VERSION}/checksums.txt"
+grep " ${ASSET}\$" checksums.txt | sha256sum -c -
+
 tar xzf cbm.tar.gz codebase-memory-mcp
 chmod +x codebase-memory-mcp
 

@@ -42,3 +42,14 @@ test_ignores_docstring_containing_test_word if {
 	]}
 	count(r) == 1
 }
+
+test_ignores_non_test_file_under_tests_dir if {
+	# A file under tests/ that merely CONTAINS "test_" in its path (a fixture,
+	# a notes file) but isn't itself a test_*.py must NOT satisfy the
+	# coverage requirement -- e.g. tests/fixtures/test_data.json.
+	r := deny with input as {"changed_files": [
+		"src/brokers/oanda.py",
+		"tests/fixtures/test_data.json",
+	]}
+	count(r) == 1
+}

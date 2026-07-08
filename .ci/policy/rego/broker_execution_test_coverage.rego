@@ -29,7 +29,9 @@ touches_protected(files) if count(protected_files(files)) > 0
 has_test_change(files) if {
 	some f in files
 	startswith(f, "tests/")
-	contains(f, "test_")
+	base := split(f, "/")[count(split(f, "/")) - 1]
+	startswith(base, "test_")
+	endswith(base, ".py")
 }
 
 has_test_change(files) if {

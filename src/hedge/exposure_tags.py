@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -100,7 +101,13 @@ def tag_fx_exposure(instrument: str, direction: str, risk_home: float,
     except (TypeError, ValueError):
         reasons.append(f"invalid_risk_home:{risk_home}")
         risk_home = 0.0
-    if risk_home < 0:
+    if not math.isfinite(risk_home):
+        # float("nan") / float("inf") both pass the try/except above and pass
+        # `< 0` (NaN compares False to everything) — must be checked explicitly
+        # or a NaN/Infinity risk_home silently flows into signed_home arithmetic.
+        reasons.append(f"non_finite_risk_home:{risk_home}")
+        risk_home = 0.0
+    elif risk_home < 0:
         reasons.append(f"negative_risk_home:{risk_home}")
     legs_parts = currency_legs(instrument)
     if legs_parts is None:
@@ -164,7 +171,13 @@ def tag_equity_exposure(ticker: str, direction: str, risk_home: float,
     except (TypeError, ValueError):
         reasons.append(f"invalid_risk_home:{risk_home}")
         risk_home = 0.0
-    if risk_home < 0:
+    if not math.isfinite(risk_home):
+        # float("nan") / float("inf") both pass the try/except above and pass
+        # `< 0` (NaN compares False to everything) — must be checked explicitly
+        # or a NaN/Infinity risk_home silently flows into signed_home arithmetic.
+        reasons.append(f"non_finite_risk_home:{risk_home}")
+        risk_home = 0.0
+    elif risk_home < 0:
         reasons.append(f"negative_risk_home:{risk_home}")
     if reasons:
         return EquityExposureTag(ticker=ticker, direction=direction, risk_home=risk_home,

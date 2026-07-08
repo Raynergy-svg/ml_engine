@@ -13,28 +13,32 @@ TESTDATA_DIR="${SCRIPT_DIR}/testdata"
 
 fail=0
 
+# mktemp, not a PID-based name -- /tmp/conftest_out.$$ is predictable and
+# reused across both loops, which on a shared runner is a symlink/pre-creation
+# race (CWE-377).
+conftest_out="$(mktemp)"
+trap 'rm -f "${conftest_out}"' EXIT
+
 for fixture in "${TESTDATA_DIR}"/*_allow.json; do
     [ -e "${fixture}" ] || continue
-    if conftest test --all-namespaces --policy "${POLICY_DIR}" "${fixture}" > /tmp/conftest_out.$$ 2>&1; then
+    if conftest test --all-namespaces --policy "${POLICY_DIR}" "${fixture}" > "${conftest_out}" 2>&1; then
         echo "PASS (expected allow): ${fixture}"
     else
         echo "FAIL (expected allow, but policy denied it): ${fixture}"
-        cat /tmp/conftest_out.$$
+        cat "${conftest_out}"
         fail=1
     fi
-    rm -f /tmp/conftest_out.$$
 done
 
 for fixture in "${TESTDATA_DIR}"/*_deny.json; do
     [ -e "${fixture}" ] || continue
-    if conftest test --all-namespaces --policy "${POLICY_DIR}" "${fixture}" > /tmp/conftest_out.$$ 2>&1; then
+    if conftest test --all-namespaces --policy "${POLICY_DIR}" "${fixture}" > "${conftest_out}" 2>&1; then
         echo "FAIL (expected deny, but policy allowed it): ${fixture}"
-        cat /tmp/conftest_out.$$
+        cat "${conftest_out}"
         fail=1
     else
         echo "PASS (expected deny): ${fixture}"
     fi
-    rm -f /tmp/conftest_out.$$
 done
 
 if [ "${fail}" -ne 0 ]; then

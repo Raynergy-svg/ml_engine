@@ -100,6 +100,22 @@ def test_tag_fx_exposure_negative_risk_fails_closed():
     assert any("negative_risk_home" in r for r in tag.reasons)
 
 
+def test_tag_fx_exposure_nan_risk_fails_closed_not_silently_zero():
+    # float("nan") < 0 is False, so a naive negative-only guard lets NaN
+    # through and it flows into signed_home arithmetic downstream.
+    tag = tag_fx_exposure("USD_CAD", "long", float("nan"), REAL_CURRENCY_MAP)
+    assert tag.fail_closed
+    assert tag.legs == ()
+    assert any("non_finite_risk_home" in r for r in tag.reasons)
+
+
+def test_tag_fx_exposure_infinite_risk_fails_closed_not_silently_zero():
+    tag = tag_fx_exposure("USD_CAD", "long", float("inf"), REAL_CURRENCY_MAP)
+    assert tag.fail_closed
+    assert tag.legs == ()
+    assert any("non_finite_risk_home" in r for r in tag.reasons)
+
+
 # --------------------------------------------------------------------- #
 # Equity tagging                                                        #
 # --------------------------------------------------------------------- #
@@ -131,3 +147,15 @@ def test_tag_equity_exposure_unknown_ticker_fails_closed_not_zero():
 def test_tag_equity_exposure_invalid_direction_fails_closed():
     tag = tag_equity_exposure("AAPL", "flat", 1.0, REAL_SECTOR_MAP)
     assert tag.fail_closed
+
+
+def test_tag_equity_exposure_nan_risk_fails_closed_not_silently_zero():
+    tag = tag_equity_exposure("AAPL", "long", float("nan"), REAL_SECTOR_MAP)
+    assert tag.fail_closed
+    assert any("non_finite_risk_home" in r for r in tag.reasons)
+
+
+def test_tag_equity_exposure_infinite_risk_fails_closed_not_silently_zero():
+    tag = tag_equity_exposure("AAPL", "long", float("-inf"), REAL_SECTOR_MAP)
+    assert tag.fail_closed
+    assert any("non_finite_risk_home" in r for r in tag.reasons)
