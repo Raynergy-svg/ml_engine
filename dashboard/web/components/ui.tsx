@@ -1,6 +1,22 @@
 "use client";
 import React from "react";
 
+// Contract-drift guard for EVERY panel: a disk-backed endpoint that returns an
+// object where a scalar is expected must never crash the whole cockpit
+// ("Objects are not valid as a React child"). Primitives and real React nodes
+// pass through untouched; a stray plain object is stringified as a last resort.
+// Applied in the shared primitives (Badge/SectionTitle) so no single panel can
+// take down the route. See app/error.tsx for the same "degrade, don't blank" stance.
+export function safeChild(value: React.ReactNode): React.ReactNode {
+  if (value == null || typeof value !== "object") return value;
+  if (React.isValidElement(value) || Array.isArray(value)) return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`card min-w-0 ${className}`}>{children}</div>;
 }
@@ -10,8 +26,8 @@ export function SectionTitle({
 }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-b px-4 pb-2.5 pt-3.5 hairline">
-      <span className="eyebrow min-w-[140px] flex-1 truncate">{children}</span>
-      {right && <div className="scroll-thin max-w-full overflow-x-auto">{right}</div>}
+      <span className="eyebrow min-w-[140px] flex-1 truncate">{safeChild(children)}</span>
+      {right && <div className="scroll-thin max-w-full overflow-x-auto">{safeChild(right)}</div>}
     </div>
   );
 }
@@ -35,7 +51,7 @@ export function Badge({
       style={{ color, borderColor: `${color}55`, background: `${color}1f` }}
     >
       {dot && <StatusDot color={color} pulse={pulse} />}
-      {children}
+      {safeChild(children)}
     </span>
   );
 }

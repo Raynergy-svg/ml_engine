@@ -9,7 +9,12 @@ import { Card, SectionTitle, Badge, StatusDot } from "./ui";
 import { ago, shortTime } from "@/lib/format";
 
 interface AuditEntry {
-  ts: string; action: string; allowed?: boolean; reason?: string; result?: string;
+  // `result`/`reason` are typed loosely on purpose: the audit log stores tool-call
+  // outputs here, which are frequently OBJECTS (e.g. a shadow-lane snapshot), NOT
+  // just strings. Declaring them `string` was a lie that let an object reach JSX
+  // and crash the whole cockpit ("Objects are not valid as a React child"). Keep
+  // them `unknown` so every render site is forced to coerce to a scalar.
+  ts: string; action: string; allowed?: boolean; reason?: unknown; result?: unknown;
   params?: Record<string, unknown>;
   /** Attribution (2026-07-01+): absent on entries written before the actor-attribution
    * fix — render "—" rather than a fabricated identity for those older rows. */
@@ -280,9 +285,9 @@ export function ControlPanel() {
                 <StatusDot color={e.allowed ? "#2bd17e" : "#ff4d6d"} />
                 <div className="min-w-0 flex-1">
                   <span className="text-text">{e.action}</span>
-                  <span className="text-faint"> · {e.result ?? (e.allowed ? "ok" : "denied")}</span>
+                  <span className="text-faint"> · {typeof e.result === "string" ? e.result : (e.allowed ? "ok" : "denied")}</span>
                   <span className="text-faint"> · by {e.actor ?? "—"}</span>
-                  {e.reason && e.allowed === false && <div className="truncate text-[10px] text-neg" title={e.reason}>{e.reason}</div>}
+                  {typeof e.reason === "string" && e.reason && e.allowed === false && <div className="truncate text-[10px] text-neg" title={e.reason}>{e.reason}</div>}
                 </div>
                 <span className="shrink-0 text-[10px] text-faint tnum">{shortTime(e.ts)}</span>
               </div>
