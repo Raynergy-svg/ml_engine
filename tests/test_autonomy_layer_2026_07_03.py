@@ -277,6 +277,52 @@ def test_tier7_state_maintenance_none_when_absent(tmp_path: Path) -> None:
     assert snap["maintenance"] is None
 
 
+def test_maintenance_report_hedge_scorecard_honest_when_absent(tmp_path: Path) -> None:
+    """2026-07-08 wiring: no scorecard has ever run -> honestly unavailable,
+    never a fabricated empty-but-present summary."""
+    report = build_maintenance_report(tmp_path)
+    hedge = report["hedge_scorecard"]
+    assert hedge["available"] is False
+    assert "not yet produced" in hedge["reason"]
+
+
+def test_maintenance_report_hedge_scorecard_reads_real_artifact(tmp_path: Path) -> None:
+    """2026-07-08 wiring: build_maintenance_report reads the persisted
+    hedge_scorecard_report.json directly (stdlib json, no src.hedge import) —
+    real artifact shape from src.hedge.hedge_scorecard.build_full_scorecard,
+    not a mock."""
+    path = tmp_path / "trained_data" / "hedge" / "hedge_scorecard_report.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({
+        "scorecards": {
+            "equity_harvester": {
+                "n_cycles": 6,
+                "cost_unmodeled_for_venue": True,
+                "decision": {"verdict": "cost_unmodeled:signal_real_but_noisy"},
+            }
+        },
+        "strategies_with_history": ["equity_harvester"],
+        "runtime_allowed": False,
+    }))
+    report = build_maintenance_report(tmp_path)
+    hedge = report["hedge_scorecard"]
+    assert hedge["available"] is True
+    assert hedge["runtime_allowed"] is False
+    assert hedge["strategies_with_history"] == ["equity_harvester"]
+    card = hedge["summary"]["equity_harvester"]
+    assert card["n_cycles"] == 6
+    assert card["verdict"] == "cost_unmodeled:signal_real_but_noisy"
+    assert card["cost_unmodeled_for_venue"] is True
+
+
+def test_maintenance_report_hedge_scorecard_corrupt_degrades_not_raises(tmp_path: Path) -> None:
+    path = tmp_path / "trained_data" / "hedge" / "hedge_scorecard_report.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{not valid json")
+    report = build_maintenance_report(tmp_path)   # must not raise
+    assert report["hedge_scorecard"]["available"] is False
+
+
 # ---------------------------------------------------------------------------
 # 4. Trend-runner fast code pickup (verifier finding: poll inside the sleep)
 # ---------------------------------------------------------------------------

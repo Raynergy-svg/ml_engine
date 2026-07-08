@@ -215,6 +215,71 @@ def _class_balance(
     return out
 
 
+def compute_forward_realized_volatility(
+    df: pd.DataFrame,
+    vol_horizon_bars: int,
+    *,
+    annualization_factor: Optional[float] = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """Continuous-value counterpart to `compute_realized_volatility_regime_labels`.
+
+    Returns the raw forward-realized-volatility value per row instead of a
+    binned regime class — for a regression target (e.g. QLIKE/pinball-scored
+    vol forecasting) rather than a 4-class classification target. Reuses the
+    exact same leak-free forward-window formula (`_compute_forward_realized_vol`):
+    for row `i`, the value depends ONLY on `close[i+1 .. i+1+vol_horizon_bars]`,
+    never on row `i` or earlier — same leak-prevention guarantee as the binned
+    version (see module docstring).
+
+    Args:
+        df: DataFrame with at least a `close` column.
+        vol_horizon_bars: forward window length in bars (must be >= 2).
+        annualization_factor: if provided, multiplies the raw (per-bar) stddev
+            by this factor (e.g. sqrt(252) for daily bars) before returning.
+            None leaves the value in raw per-bar units.
+
+    Returns:
+        values: np.ndarray of dtype float64, shape (len(df),). NaN for rows
+            with insufficient forward window (the trailing `vol_horizon_bars`
+            rows) — caller MUST drop NaN rows before training (unlike the
+            binned version, there is no integer sentinel; NaN is the sentinel
+            here since this is a continuous target).
+        metadata: dict with `vol_horizon_bars`, `n_total`, `n_nan_dropped`,
+            `annualization_factor`, `formula`, `leak_fix_version`.
+    """
+    if vol_horizon_bars < 2:
+        raise ValueError(
+            f"compute_forward_realized_volatility: vol_horizon_bars must be >= 2, got {vol_horizon_bars}"
+        )
+    n = len(df)
+    metadata: Dict[str, Any] = {
+        "vol_horizon_bars": int(vol_horizon_bars),
+        "annualization_factor": annualization_factor,
+        "formula": "stddev_log_returns_over_mean_close" + (
+            "_annualized" if annualization_factor else ""
+        ),
+        "leak_fix_version": "2026-05-06",
+        "n_total": int(n),
+        "n_nan_dropped": 0,
+    }
+    if n == 0:
+        return np.zeros(0, dtype=np.float64), metadata
+
+    close = _resolve_close(df)
+    if close is None:
+        logger.warning(
+            "compute_forward_realized_volatility: missing 'close' column; returning all-NaN",
+        )
+        metadata["n_nan_dropped"] = int(n)
+        return np.full(n, np.nan, dtype=np.float64), metadata
+
+    values = _compute_forward_realized_vol(close, vol_horizon_bars)
+    if annualization_factor:
+        values = values * float(annualization_factor)
+    metadata["n_nan_dropped"] = int(np.sum(~np.isfinite(values)))
+    return values, metadata
+
+
 def compute_realized_volatility_regime_labels(
     df: pd.DataFrame,
     vol_horizon_bars: int = 24,
@@ -369,5 +434,6 @@ def compute_realized_volatility_regime_labels(
 
 __all__ = [
     "compute_realized_volatility_regime_labels",
+    "compute_forward_realized_volatility",
     "NAN_SENTINEL",
 ]

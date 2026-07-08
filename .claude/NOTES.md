@@ -70,6 +70,59 @@ fills for SPY/XLK).
   memory — don't narrate it as one (L-017).
 - `/evolve` proposal (INTENT standing decision: sanctioned brain-source + code-memory tool with a
   dev-plane/no-hot-path/no-safety-write guardrail) **pending operator approval** — not yet applied.
+- **OPERATOR-DIRECTED UNHALT (2026-07-07, "switching strategies anyway"):** verified practice from disk
+  (`config.py:742`, `ScannerConfig().oanda_environment=='practice'`) BEFORE flipping, then via sanctioned
+  `StateEngine.set_halted(False, lane=...)`: unhalted **`oanda_fx`** (practice trend, paper OANDA fills)
+  and **`crypto_carry`** (shadow funding-carry). All 6 lanes now unhalted; global `halted=false`. Both
+  standard + strict readers agree. Live trend daemon (PID 41009) was `REFUSED reason=lane_halted:oanda_fx`
+  → resumes paper fills next cycle. Acked the stale 2026-07-02 `consecutive_losses` WARNING
+  (`AlertManager.acknowledge`). risk_monitor GREEN, verify_gate PASS(28), practice pin intact after write.
+- **ARM NOT DONE (held at the escalation boundary):** operator chose "try to arm harvester LiveGate" but
+  two hard blockers remain — (1) IB Gateway **closed on 7497** (arm→IBKR-paper can't fill), (2) `arm()`
+  requires the typed **"LIVE"** token (a human friction I won't fabricate). Also flagged: `SHIP_GATE.json`
+  `passed:true/0.906` is the generous curated-20 universe; the defensible wide-universe number
+  **0.740/0.355 FAILS**. To arm: operator starts IB Gateway (paper) on 7497 + types LIVE; then I run the
+  arm. Real money stays off regardless (practice pin immutable).
+- **INTENT #10 APPLIED (2026-07-07, /evolve approved "both on"):** standing decision #10 added — two
+  sanctioned external memory/brain anchors (Harvard MLSys textbook fork + codebase-memory-mcp) with the
+  dev-plane/no-hot-path/no-safety-write guardrail. `/evolve` for this task now complete (1 intent edit).
+- **tick_capture ACTIVATED — running:YES (2026-07-07, operator data-acquisition mandate):**
+  `scripts/run_tick_capture.py --pairs ALL_FX`, **PID 3655**, nohup (creds sourced from `.env.local`;
+  runner has NO `--env` flag and `build_practice_stream_client` hard-pins `stream-fxpractice.oanda.com`
+  regardless of `OANDA_ENVIRONMENT`). Log confirms "PRACTICE-ONLY, read-only pricing stream confirmed"
+  + real flushes (166/218/209/230 ticks) → `trained_data/ticks/` (15 FX majors, 180-day retention).
+  Read-only market data, zero order/hot-path contact. **Durability caveat:** nohup, NOT launchd — dies
+  on reboot, no KeepAlive. Reboot-persistence = optional follow-up (a launchd plist like the trend lane).
+  Stop with `kill 3655`. Prior 11:00Z run was a 33-tick smoke test that had stopped.
+- **"TURN EVERYTHING ON" (2026-07-08, operator):** all 6 lanes unhalted; full shadow fleet running —
+  tier7 (73646), trend/oanda_fx (11508), tick_capture (3655, dup 3222 killed), track_b_shadow (30976),
+  crypto_momentum_shadow (30975), crypto_carry_shadow (11554, newly started), brain_loop (12143,
+  `--loop --max-cycles 8760 --interval 3600` — the earlier 1-cycle exit was `--max-cycles` default=1,
+  not a crash), equity_harvester --broker shadow (96555), control API uvicorn (79016), web next-dev
+  (97993). risk_monitor GREEN, verify_gate PASS(28), practice pin intact. **Still OFF (consequential,
+  await explicit go):** (1) live ARM — `armed=False`, no `live_gate_state.json`, SHADOW; needs IB Gateway
+  + typed LIVE (escalation). (2) AXIOM resident-agent autonomy — `agent_autonomy_enabled:False`, resident
+  loop not running (bounded: even ON it can't arm/unhalt/trade-more — escalation is proposal-only).
+- **DASHBOARD CRASH — REAL ROOT CAUSE FOUND & FIXED (2026-07-08, commit d1622f7).** "Objects are not
+  valid as a React child {…n_scored_filings…}". My earlier calls were ALL WRONG (L-018 fess-up): it was
+  NOT a stale HMR chunk, NOT TrackBPanel, NOT the crypto panels. Commits 3dc666e (guard 3 panels' Row) +
+  the `rm -rf .next` rebuild were misdirected — they never touched the real bug. **Actual cause:
+  `ControlPanel` renders the control-audit trail; `<span> · {e.result ?? ...}` renders the entry's
+  `result` raw. The AXIOM resident agent's read-only tool calls log their OUTPUT into `result`, which is
+  an OBJECT for 22/25 entries (a shadow-lane snapshot — track_b-SHAPED because a track_b tool-read was
+  logged). `??` only guards null → the object hit JSX → crash → route error boundary blanked Automation
+  (and Settings, since ControlPanel is on both — matching the dev-overlay's page.tsx:280 pointer I
+  dismissed).** The `AuditEntry.result?: string` TYPE LIED, which is why static reading kept missing it.
+  **Two enabling fixes that made this findable:** (1) `next.config.ts allowedDevOrigins:["127.0.0.1",
+  "localhost"]` — Next 16 was blocking the `/_next/webpack-hmr` ws as cross-origin
+  (ERR_INVALID_HTTP_RESPONSE); this killed HMR AND blocked headless hydration. Fixing it restored
+  hot-reload and let me finally reproduce + BROWSER-BISECT (disable panels one-by-one) to prove
+  ControlPanel was the culprit. (2) The fix: `typeof e.result === "string" ? e.result : (allowed?"ok":
+  "denied")` + same for `e.reason` + retype both `unknown`; plus `safeChild()` defense on ui Badge/
+  SectionTitle. **VERIFIED IN LIVE BROWSER**: Automation tab renders all panels incl. ControlPanel audit,
+  zero render errors, hasErrorCard=false. tsc clean, risk_monitor GREEN. **LESSON candidate for /evolve:**
+  a lying `?: string` type on a field that's actually an object crashed React; when static reading fails
+  to find a render bug, fix HMR then browser-bisect (comment panels) — don't keep guessing from source.
 
 ## AXIOM Hedge Layer Phase 3 — hedge candidate generator (2026-07-07, SHADOW/ANALYSIS-ONLY)
 

@@ -31,7 +31,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -42,6 +42,7 @@ from src.equity.trend_risk_gates import (
     DEFAULT_BIAS_SHARE_THRESHOLD,
     DEFAULT_BREAKEVEN_TRIGGER_R,
     DEFAULT_MAX_BUCKET_RISK_R,
+    DEFAULT_MAX_COST_R_FRACTION,
     DEFAULT_PYRAMID_CUM_RISK_R_CAP,
     DEFAULT_PYRAMID_MAX_LAYERS,
     DEFAULT_RISK_PCT,
@@ -52,6 +53,8 @@ from src.equity.trend_risk_gates import (
     buckets_over_cap,
     clamp_risk_pct,
     compute_bucket_risk,
+    cost_aware_gate,
+    currency_legs,
     evaluate_winner_stop,
     leverage_cap_scale,
     load_risk_state,
@@ -59,9 +62,14 @@ from src.equity.trend_risk_gates import (
     quote_to_home_rate,
     risk_normalized_units,
     save_risk_state,
+    trade_risk_home,
 )
+from src.data.execution_cost_model import build_cost_model
+from src.hedge.exposure_tags import CURRENCY_BUCKET_MAP_PATH, load_bucket_map
+from src.hedge.portfolio_exposure import ExposurePosition, build_exposure_report
 
 if TYPE_CHECKING:  # pragma: no cover
+    from src.data.execution_cost_model import CostEstimate
     from src.scanner.config import ScannerConfig
     from src.utils.oanda_practice import OandaPracticeClient
 
@@ -438,6 +446,81 @@ def repair_missing_trade_brackets(
     return repaired
 
 
+def _open_trades_to_exposure_positions(
+    open_trades: List[dict],
+    r_distance_by_trade_id: Dict[str, float],
+    r_distance_fallback_by_instrument: Dict[str, float],
+    last_prices: Dict[str, float],
+) -> List[ExposurePosition]:
+    """Translate this cycle's OPEN OANDA trades into ``ExposurePosition``
+    records for the portfolio exposure engine (``src.hedge.portfolio_exposure``)
+    — an ADDITIONAL, independently-computed correlation check that runs
+    ALONGSIDE (never instead of) ``bucket_cap_gate``. Direction is read from
+    each trade's actual signed units (not assumed long-only) so a book that
+    somehow carries a short is still represented correctly. Mirrors
+    ``compute_bucket_risk``'s entry-anchored-R-over-current-ATR-fallback
+    discipline exactly, so both engines see the SAME risk_home per trade.
+    A trade whose risk can't be resolved (missing R, unresolvable quote rate)
+    is SKIPPED here (not fabricated as zero) — the same trade is equally
+    skipped by ``compute_bucket_risk``, so neither engine silently under-
+    counts relative to the other."""
+    positions: List[ExposurePosition] = []
+    for trade in open_trades or []:
+        inst = trade.get("instrument")
+        trade_id = str(trade.get("id") or "")
+        if not inst:
+            continue
+        try:
+            units = float(trade.get("currentUnits") or trade.get("initialUnits") or 0)
+        except (ValueError, TypeError):
+            units = 0.0
+        if units == 0:
+            continue
+        direction = "long" if units > 0 else "short"
+        r_dist = r_distance_by_trade_id.get(trade_id) or r_distance_fallback_by_instrument.get(inst)
+        if not r_dist or r_dist <= 0:
+            continue
+        q2h = quote_to_home_rate(inst, last_prices)
+        if q2h is None or q2h <= 0:
+            continue
+        risk_home = trade_risk_home(trade, r_dist, q2h)
+        positions.append(ExposurePosition(asset_class="fx", instrument=inst,
+                                          direction=direction, risk_home=risk_home,
+                                          source="oanda_open_trade"))
+    return positions
+
+
+def exposure_engine_gate(
+    *, open_positions: List[ExposurePosition], candidate: ExposurePosition,
+    risk_unit_home: float, max_bucket_risk_r: float,
+    currency_bucket_map: Optional[Dict[str, dict]] = None,
+) -> Tuple[bool, str]:
+    """ADDITIONAL portfolio-exposure check (``src.hedge.portfolio_exposure``),
+    run ALONGSIDE ``trend_risk_gates.bucket_cap_gate`` — never instead of it.
+    ``bucket_cap_gate`` is called unchanged at its existing call site in
+    ``run_oanda_trend_cycle``; this is a second, independently-implemented AND
+    condition, so the combined result can only be MORE restrictive than
+    ``bucket_cap_gate`` alone, never less (an approval requires BOTH to pass).
+
+    Fail-closed: any exposure-engine failure (unresolvable instrument/currency,
+    non-finite risk) refuses the candidate rather than silently treating the
+    gap as zero exposure — matches ``ExposureReport.fail_closed``'s own
+    contract in ``portfolio_exposure.py``.
+    """
+    report = build_exposure_report(open_positions, candidate, currency_bucket_map=currency_bucket_map)
+    if report.fail_closed:
+        return False, f"exposure_engine_fail_closed:{list(report.fail_reasons)}"
+    legs = currency_legs(candidate.instrument)
+    if legs is None:
+        return False, "exposure_engine_unresolvable_instrument"
+    cap = float(max_bucket_risk_r) * float(risk_unit_home)
+    for ccy in legs:
+        net = report.net_currency_exposure.get(ccy, 0.0)
+        if abs(net) > cap + 1e-9:
+            return False, f"exposure_engine_bucket_exceeded:{ccy}"
+    return True, "exposure_engine_ok"
+
+
 def run_oanda_trend_cycle(
     *,
     client: "OandaPracticeClient",
@@ -463,6 +546,9 @@ def run_oanda_trend_cycle(
     trail_start_r: float = DEFAULT_TRAIL_START_R,
     pyramid_max_layers: int = DEFAULT_PYRAMID_MAX_LAYERS,
     pyramid_cum_risk_r_cap: float = DEFAULT_PYRAMID_CUM_RISK_R_CAP,
+    max_cost_r_fraction: float = DEFAULT_MAX_COST_R_FRACTION,
+    cost_model_transactions_path: Optional[Path] = None,
+    cost_model_tick_root: Optional[Path] = None,
     dry_run: bool = False,
     now: Optional[datetime] = None,
 ) -> OandaTrendResult:
@@ -476,8 +562,12 @@ def run_oanda_trend_cycle(
     2026-07-01, replacing the old leverage-based ``target_units``). ``gross_leverage``
     is now a CEILING on total exposure only (``leverage_cap_scale``), not the sizing
     basis. A RISK GATE (one-position-per-instrument, correlation-bucket caps,
-    pyramid rules) runs before every size-increase order; decreases/closes are
-    never blocked (risk-reducing orders always pass).
+    pyramid rules, cost-awareness, an independent portfolio-exposure-engine
+    correlation check) runs before every size-increase order; decreases/closes
+    are never blocked (risk-reducing orders always pass). The cost-awareness
+    and exposure-engine checks (2026-07-08) are purely ADDITIVE — they can
+    only refuse a candidate the prior rules already approved, never approve
+    one they blocked.
     """
     gross_leverage = clamp_leverage(gross_leverage)
     assert getattr(config, "oanda_environment", "practice") == "practice", \
@@ -642,6 +732,29 @@ def run_oanda_trend_cycle(
                                  min_instruments=bias_min_instruments):
         logger.warning(warning)
 
+    # RULE 7 (2026-07-08, ADDITIVE) — realistic execution-cost estimates for
+    # every instrument this cycle might trade, built ONCE (real OANDA fills +
+    # captured ticks; never fabricated — an instrument with no history reports
+    # source="insufficient_data" and the gate below refuses it, never assumes
+    # free). Paths default to this project_root's real artifacts (matches the
+    # risk_state_path pattern above); overridable for tests via tmp_path.
+    cost_estimates: Dict[str, "CostEstimate"] = build_cost_model(
+        instruments,
+        transactions_path=cost_model_transactions_path
+        or (root / "trained_data" / "oanda" / "transactions.jsonl"),
+        tick_root=cost_model_tick_root or (root / "trained_data" / "ticks"),
+    )
+
+    # ADDITIONAL portfolio-exposure-engine correlation check (2026-07-08),
+    # ALONGSIDE (never instead of) the bucket_cap_gate rule 2 cap below. Seeded
+    # from the SAME pre-cycle open book as compute_bucket_risk (same r_distance/
+    # quote-rate discipline), then accumulated in-loop on each approval exactly
+    # like bucket_risk_home — closes the same-cycle-bypass class for this
+    # second, independently-implemented check too.
+    currency_bucket_map = load_bucket_map(CURRENCY_BUCKET_MAP_PATH)
+    exposure_open_positions = _open_trades_to_exposure_positions(
+        open_trades, r_distance_by_trade_id, r_dist_by_instrument, last_px)
+
     # RULE 5 — winner management: move stop to breakeven after +1R, then trail,
     # for every open long trade (uses the SAME risk_state loaded above).
     for trade in open_trades:
@@ -694,6 +807,34 @@ def run_oanda_trend_cycle(
             if not allow:
                 logger.warning("RISK GATE BLOCKED %s units=%+d — %s", inst, delta, reason)
                 continue
+
+            # RULE 7 (ADDITIVE, 2026-07-08) — cost-awareness: refuse a candidate
+            # whose modeled round-trip execution cost eats too much of its own
+            # 1R stop budget. Can only refuse, never approve something the
+            # prior rules already blocked.
+            allow, reason = cost_aware_gate(
+                instrument=inst, r_distance_quote=sl_dist_gate,
+                cost_estimate=cost_estimates.get(inst),
+                max_cost_r_fraction=max_cost_r_fraction)
+            if not allow:
+                logger.warning("RISK GATE BLOCKED %s units=%+d — %s", inst, delta, reason)
+                continue
+
+            # ADDITIONAL portfolio-exposure-engine check (2026-07-08) — runs
+            # ALONGSIDE bucket_cap_gate below (an independent AND condition,
+            # never a replacement); see exposure_engine_gate's docstring.
+            candidate_risk_home = abs(delta) * sl_dist_gate * q2h
+            candidate_position = ExposurePosition(
+                asset_class="fx", instrument=inst, direction="long",
+                risk_home=candidate_risk_home, source="candidate")
+            allow, reason = exposure_engine_gate(
+                open_positions=exposure_open_positions, candidate=candidate_position,
+                risk_unit_home=risk_unit_home, max_bucket_risk_r=max_bucket_risk_r,
+                currency_bucket_map=currency_bucket_map)
+            if not allow:
+                logger.warning("RISK GATE BLOCKED %s units=%+d — %s", inst, delta, reason)
+                continue
+
             # RULE 2 — correlation-bucket cap, checked against a RUNNING total
             # (fix, verifier 2026-07-01): bucket_risk_home is mutated in-loop via
             # accumulate_bucket_risk() immediately below on approval, so the Nth
@@ -710,6 +851,7 @@ def run_oanda_trend_cycle(
                 logger.warning("RISK GATE BLOCKED %s units=%+d — %s", inst, delta, reason)
                 continue
             accumulate_bucket_risk(bucket_risk_home, inst, abs(delta) * sl_dist_gate * q2h)
+            exposure_open_positions.append(candidate_position)
         sl_dist = tp_dist = None
         if delta > 0:   # opening/increasing a long -> attach protective brackets
             # Size brackets as DISTANCES (sl_mult*ATR / tp_mult*ATR) and attach via

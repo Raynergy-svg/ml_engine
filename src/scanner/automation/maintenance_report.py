@@ -205,6 +205,42 @@ def _self_heal_section(root: Path) -> Dict[str, Any]:
         return {"error": str(exc)}
 
 
+def _hedge_scorecard_section(root: Path, now: float) -> Dict[str, Any]:
+    """Strategy evaluation readout (AXIOM Hedge Layer Phase 4, ANALYSIS-ONLY):
+    raw-vs-hedged after-cost expectancy per strategy. Reads the persisted
+    ``hedge_scorecard_report.json`` artifact directly via ``_read_json``
+    (stdlib json) rather than importing ``src.hedge.hedge_scorecard`` and
+    computing it here — keeps this module's contract exactly as documented
+    above ("stdlib-only reads, no scanner-subsystem imports"; every other
+    section here is a direct artifact read, not a live recompute). An absent
+    artifact (nothing has produced it yet) is reported honestly as
+    unavailable, never as an error — this is reporting-path wiring only, no
+    execution/order path touch."""
+    path = root / "trained_data" / "hedge" / "hedge_scorecard_report.json"
+    raw = _read_json(path)
+    if not isinstance(raw, dict):
+        return {"available": False, "reason": "hedge_scorecard_report.json not yet produced"}
+    scorecards = raw.get("scorecards")
+    summary: Dict[str, Any] = {}
+    if isinstance(scorecards, dict):
+        for strategy, card in scorecards.items():
+            if not isinstance(card, dict):
+                continue
+            decision = card.get("decision") if isinstance(card.get("decision"), dict) else {}
+            summary[str(strategy)] = {
+                "n_cycles": card.get("n_cycles"),
+                "verdict": decision.get("verdict"),
+                "cost_unmodeled_for_venue": card.get("cost_unmodeled_for_venue"),
+            }
+    return {
+        "available": True,
+        "report_age_s": _age_s(path, now),
+        "strategies_with_history": sorted(summary.keys()),
+        "summary": summary,
+        "runtime_allowed": raw.get("runtime_allowed"),
+    }
+
+
 def _overlay_section(root: Path) -> Optional[Dict[str, Any]]:
     """Durable config-overlay summary (P1). None until an overlay exists."""
     try:
@@ -239,6 +275,7 @@ def build_maintenance_report(
         "self_heal": _self_heal_section(root),
         "recommendations": [str(r) for r in (recommendations or []) if r][:10],
         "config_overlay": _overlay_section(root),
+        "hedge_scorecard": _hedge_scorecard_section(root, now_epoch),
     }
     if code:
         report["code"] = code
