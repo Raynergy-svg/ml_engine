@@ -370,6 +370,12 @@ def cost_aware_gate(*, instrument: str, r_distance_quote: float,
     import math
     if not (math.isfinite(spread) and math.isfinite(slippage)):
         return False, "cost_non_finite_fail_closed"
+    if spread < 0:
+        # A real OANDA fill always has ask >= bid; a negative spread can only
+        # come from corrupt/crossed cached data. Reject it directly rather
+        # than let it be masked by an offsetting slippage term below (code
+        # reviewer finding, 2026-07-08).
+        return False, "cost_negative_spread_invalid"
     round_trip_cost = spread + 2.0 * abs(slippage)
     if round_trip_cost < 0:
         return False, "cost_negative_invalid"
