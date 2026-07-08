@@ -1,5 +1,5 @@
 {
-  "run_at_utc": "2026-07-08T12:56:37.717832+00:00",
+  "run_at_utc": "2026-07-08T22:06:30.962065+00:00",
   "pre_registration": "docs/prereg-risk-target-vol-drawdown-2026-07-08.md",
   "universe": [
     "AUD_JPY",
@@ -24,33 +24,171 @@
   ],
   "horizon_bars": 20,
   "oos_start": "2024-01-01",
-  "risk_target_feature_pipeline_version": "2026-07-08-v1",
+  "risk_target_feature_pipeline_version": "2026-07-08-v2",
   "n_train": 38036,
   "n_val": 9526,
   "n_test": 11685,
   "validation_metrics": {
-    "val_qlike": 0.047715351555279034,
-    "val_pinball_median": 0.005610299819040113,
-    "val_r2": 0.8452687208099232,
-    "val_mae": 0.011220599638080225,
+    "val_qlike": 0.03889634056796403,
+    "val_pinball_median": 0.009105664115032207,
+    "val_r2": 0.3629248622985266,
+    "val_mae": 0.018211328230064414,
     "val_auc_drawdown": 0.5864014681426948,
     "val_brier_drawdown": 0.249232739454953,
     "n_train": 38036,
     "n_val": 9526,
-    "instrument": "pooled_18_fx_pairs",
+    "instrument": "pooled_19_fx_pairs",
     "fold_id": null
   },
   "target_forward_volatility": {
     "metric": "QLIKE (lower=better) + pinball@median + R2 + MAE",
-    "oos_model_qlike": 0.07035886366722012,
-    "oos_naive_persistence_qlike": 1.536864589909614,
-    "oos_model_pinball_median": 0.005199201179128557,
-    "oos_naive_persistence_pinball_median": 0.023777308379745045,
-    "oos_model_r2": 0.7748869164871134,
-    "oos_naive_persistence_r2": -0.8029668567764285,
-    "oos_model_mae": 0.010398402358257114,
+    "oos_model_qlike": 0.050527933200788,
+    "oos_naive_persistence_qlike": 0.07121976543337732,
+    "oos_model_pinball_median": 0.00837219320220871,
+    "oos_naive_persistence_pinball_median": 0.010080120034243405,
+    "oos_model_r2": 0.3536152153982456,
+    "oos_naive_persistence_r2": 0.041380660640488065,
+    "oos_model_mae": 0.01674438640441742,
     "learnable_bar": "model_qlike < naive_qlike AND model_r2 > 0",
-    "learnable": true
+    "learnable": true,
+    "per_pair_oos": {
+      "AUD_JPY": {
+        "n": 615,
+        "model_qlike": 0.06204048390266384,
+        "naive_qlike": 0.0972771488106602,
+        "model_r2": 0.07779649966484414,
+        "naive_r2": -0.44656392270081136
+      },
+      "AUD_NZD": {
+        "n": 615,
+        "model_qlike": 0.05623913753712623,
+        "naive_qlike": 0.07058129427712521,
+        "model_r2": -0.2756929261166694,
+        "naive_r2": -0.5673939721704244
+      },
+      "AUD_USD": {
+        "n": 615,
+        "model_qlike": 0.047279788839228246,
+        "naive_qlike": 0.06941930205534533,
+        "model_r2": -0.0052788492697699585,
+        "naive_r2": -0.59002559679428
+      },
+      "CAD_JPY": {
+        "n": 615,
+        "model_qlike": 0.047751473311967364,
+        "naive_qlike": 0.07889807063683606,
+        "model_r2": 0.10530966658556651,
+        "naive_r2": -0.3341345816874526
+      },
+      "CHF_JPY": {
+        "n": 615,
+        "model_qlike": 0.047150294233010294,
+        "naive_qlike": 0.06785705430523838,
+        "model_r2": -0.2964888897763367,
+        "naive_r2": -0.969883343038511
+      },
+      "EUR_AUD": {
+        "n": 615,
+        "model_qlike": 0.06034964086873586,
+        "naive_qlike": 0.09064806132274898,
+        "model_r2": -0.021800277315522143,
+        "naive_r2": -0.6721738290639125
+      },
+      "EUR_CAD": {
+        "n": 615,
+        "model_qlike": 0.04575037597993481,
+        "naive_qlike": 0.05323674939050996,
+        "model_r2": 0.06732609148822077,
+        "naive_r2": 0.05173931563216572
+      },
+      "EUR_CHF": {
+        "n": 615,
+        "model_qlike": 0.05740022215246692,
+        "naive_qlike": 0.06579991535359532,
+        "model_r2": 0.03556511350521996,
+        "naive_r2": -0.12186330497255904
+      },
+      "EUR_GBP": {
+        "n": 615,
+        "model_qlike": 0.06785565896732042,
+        "naive_qlike": 0.06990920233164778,
+        "model_r2": -0.4488763977504928,
+        "naive_r2": -0.5485144816531315
+      },
+      "EUR_JPY": {
+        "n": 615,
+        "model_qlike": 0.04571460695976462,
+        "naive_qlike": 0.07142207582832304,
+        "model_r2": 0.17482177509746077,
+        "naive_r2": -0.33208693881853657
+      },
+      "EUR_USD": {
+        "n": 615,
+        "model_qlike": 0.05404207489166535,
+        "naive_qlike": 0.07982261746567428,
+        "model_r2": 0.10926632763309696,
+        "naive_r2": -0.19895970764987259
+      },
+      "GBP_AUD": {
+        "n": 615,
+        "model_qlike": 0.05180081709457999,
+        "naive_qlike": 0.0721622048244738,
+        "model_r2": -0.14234831539188741,
+        "naive_r2": -0.7220188550677547
+      },
+      "GBP_JPY": {
+        "n": 615,
+        "model_qlike": 0.04684640117932347,
+        "naive_qlike": 0.0834428587873705,
+        "model_r2": 0.08125932563925742,
+        "naive_r2": -0.4819893323767277
+      },
+      "GBP_USD": {
+        "n": 615,
+        "model_qlike": 0.03055336413939179,
+        "naive_qlike": 0.04334626700938862,
+        "model_r2": -0.23927158272440474,
+        "naive_r2": -0.6423427842134739
+      },
+      "NZD_JPY": {
+        "n": 615,
+        "model_qlike": 0.042821366119020744,
+        "naive_qlike": 0.06975350633923369,
+        "model_r2": 0.06890198977743389,
+        "naive_r2": -0.47771949207707953
+      },
+      "NZD_USD": {
+        "n": 615,
+        "model_qlike": 0.032520565222943644,
+        "naive_qlike": 0.04363251214330709,
+        "model_r2": -0.022059638119209746,
+        "naive_r2": -0.406588452114621
+      },
+      "USD_CAD": {
+        "n": 615,
+        "model_qlike": 0.03276328297748088,
+        "naive_qlike": 0.04142976035358218,
+        "model_r2": -0.019077939369557928,
+        "naive_r2": -0.2163910385413932
+      },
+      "USD_CHF": {
+        "n": 615,
+        "model_qlike": 0.061023821664261714,
+        "naive_qlike": 0.08090322266554423,
+        "model_r2": -0.13551454946312091,
+        "naive_r2": -0.6400955449089725
+      },
+      "USD_JPY": {
+        "n": 615,
+        "model_qlike": 0.07012735477408585,
+        "naive_qlike": 0.10363371933356444,
+        "model_r2": -0.08175701188590279,
+        "naive_r2": -0.6590684047801785
+      }
+    },
+    "n_pairs_model_beats_naive_qlike": 19,
+    "n_pairs_model_r2_positive": 8,
+    "n_pairs_evaluated": 19
   },
   "target_drawdown_state": {
     "metric": "AUC-ROC + Brier (lower=better)",
@@ -67,8 +205,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3236,
         "n_nan_dropped": 20
       },
@@ -104,8 +243,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3232,
         "n_nan_dropped": 20
       },
@@ -141,8 +281,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3229,
         "n_nan_dropped": 20
       },
@@ -178,8 +319,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3231,
         "n_nan_dropped": 20
       },
@@ -215,8 +357,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3232,
         "n_nan_dropped": 20
       },
@@ -252,8 +395,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3231,
         "n_nan_dropped": 20
       },
@@ -289,8 +433,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3230,
         "n_nan_dropped": 20
       },
@@ -326,8 +471,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3231,
         "n_nan_dropped": 20
       },
@@ -363,8 +509,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3232,
         "n_nan_dropped": 20
       },
@@ -400,8 +547,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3231,
         "n_nan_dropped": 20
       },
@@ -437,8 +585,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3230,
         "n_nan_dropped": 20
       },
@@ -474,8 +623,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3229,
         "n_nan_dropped": 20
       },
@@ -511,8 +661,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3235,
         "n_nan_dropped": 20
       },
@@ -548,8 +699,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3234,
         "n_nan_dropped": 20
       },
@@ -585,8 +737,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3249,
         "n_nan_dropped": 20
       },
@@ -622,8 +775,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3245,
         "n_nan_dropped": 20
       },
@@ -659,8 +813,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3255,
         "n_nan_dropped": 20
       },
@@ -696,8 +851,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3238,
         "n_nan_dropped": 20
       },
@@ -733,8 +889,9 @@
       "vol_meta": {
         "vol_horizon_bars": 20,
         "annualization_factor": 15.874507866387544,
-        "formula": "stddev_log_returns_over_mean_close_annualized",
+        "formula": "stddev_log_returns_annualized",
         "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
         "n_total": 3247,
         "n_nan_dropped": 20
       },
@@ -765,6 +922,24 @@
         },
         "n_total": 3247
       }
+    }
+  },
+  "artifact_gate": {
+    "verdict": "PASSED",
+    "written": true,
+    "vol_gate": {
+      "n_test": 9526,
+      "candidate_mae": 0.03889634056796403,
+      "existing_mae": null,
+      "verdict": "PASSED",
+      "reason": "no_scorable_existing_model_candidate_sane"
+    },
+    "drawdown_gate": {
+      "n_test": 9526,
+      "candidate_mae": 0.249232739454953,
+      "existing_mae": null,
+      "verdict": "PASSED",
+      "reason": "no_scorable_existing_model_candidate_sane"
     }
   }
 }

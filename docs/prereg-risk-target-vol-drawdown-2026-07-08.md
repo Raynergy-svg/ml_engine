@@ -43,12 +43,14 @@ frequency.
 **Targets (2, both pre-registered before any run):**
 
 1. **Forward realized volatility (regression).** For row `i`: `realized_vol[i] =
-   stddev(diff(log(close[i+1 .. i+1+H]))) * sqrt(252)` (annualized), `H = 20` trading days. Reuses
-   the leak-free forward-window formula already proven in
-   `src/training/labels/realized_volatility_regime_label.py` (`_compute_forward_realized_vol`,
-   B1 leak-fix 2026-05-06) — exposed as a new public continuous-value function
-   `compute_forward_realized_volatility()` added to that same module (extends, does not fork).
-   Label depends ONLY on `close[i+1 .. i+1+H]` — never on row `i` or earlier.
+   stddev(diff(log(close[i+1 : i+1+H]))) * sqrt(252)` (annualized; the window is the H closes
+   `i+1 .. i+H` inclusive → H−1 log-returns), `H = 20` trading days. Pure log-return realized vol —
+   deliberately NOT the binned regime label's `_compute_forward_realized_vol` helper (whose
+   `/mean(close)` normalization is scale-dependent and unit-inconsistent with the naive baseline
+   below on a pooled cross-pair panel; see §6's "second correction note" for how this was caught).
+   Exposed as a new public continuous-value function `compute_forward_realized_volatility()` in
+   the same label module (extends, does not fork), sharing the B1 leak-fix window contract:
+   label depends ONLY on `close[i+1 : i+1+H]` — never on row `i` or earlier.
 2. **Forward drawdown-state (binary classification).** For row `i`: within the forward window
    `close[i+1 .. i+1+H]` (same `H=20`), compute the running-peak-relative max drawdown
    `max_dd[i] = max_t‰[i+1,i+1+H]( (running_peak_t - close_t) / running_peak_t )`. Label = 1
@@ -71,8 +73,8 @@ honestly deferred as a future P-item, not silently dropped.
 `FEATURE_PIPELINE_VERSION`):** `realized_vol_5/10/20/60` (rolling annualized stdev of daily log
 returns, trailing window), `atr_14` (true-range rolling mean / close), `hl_range_pct_14` (rolling
 mean of `(high-low)/close`), `return_mean_5/20` (rolling mean daily log return), `vol_of_vol_20`
-(rolling stdev of `realized_vol_5`), `volume_zscore_20` (rolling z-score of volume vs. trailing
-60-day mean/std), `day_of_week` (0–4, categorical), `pair` (18-level categorical). All windows are
+(rolling stdev of `realized_vol_5`), `volume_zscore_60` (rolling z-score of volume vs. trailing
+60-day mean/std), `day_of_week` (0–4, categorical), `pair` (19-level categorical). All windows are
 trailing/rolling (never cumulative-from-dataset-start) — window-invariance is a mandatory test
 (mirrors `tests/test_feature_window_invariance.py`'s canary, per L-001: a feature whose value
 depends on where the analysis window starts is exactly the leak class that produced the false 56–
@@ -84,7 +86,7 @@ not a historical time series joinable on timestamp. Including either would mean 
 too thin to walk-forward validate honestly, or fabricating a historical join that doesn't exist.
 Both are named as P2 follow-ups once tick history accumulates for months, not fabricated now.
 
-**Split**: expanding walk-forward by CALENDAR DATE (not per-pair row index, since all 18 pairs
+**Split**: expanding walk-forward by CALENDAR DATE (not per-pair row index, since all 19 pairs
 share correlated global vol regimes — a per-pair row-index split could let one pair's 2020 COVID
 train fold overlap in calendar time with another pair's test fold). IS = 2014-01-01 →
 2023-12-31, used internally as an 80/20 date-ordered train/validation split for LightGBM early
@@ -191,17 +193,51 @@ Run: `scripts/experiment_risk_target_vol_drawdown.py` →
 `trained_data/backtests/risk_target_vol_drawdown_result.json`. Pooled 19-pair universe, n_train=
 38,036, n_val=9,526, n_test (OOS, 2024-01-01→2026-06-11)=11,685 rows.
 
-### Target 1 — forward realized volatility (regression): **LEARNABLE (bar cleared)**
+### SECOND CORRECTION NOTE — independent QA verifier caught a HIGH-severity units bug; the first reported Target-1 verdict was retracted and re-run
 
-| | OOS QLIKE (↓ better) | OOS pinball@median (↓) | OOS R² (↑) | OOS MAE |
-|---|---|---|---|---|
-| **Model** | **0.0704** | **0.0052** | **0.775** | 0.0104 |
-| Naive persistence (trailing realized_vol_20) | 1.537 | 0.0238 | −0.803 | — |
+The FIRST run of §6 (recorded in commit `85e847e`'s message and an earlier revision of this
+section) claimed "LEARNABLE — beats naive persistence by ~22× on QLIKE (0.0704 vs 1.537), model
+R² 0.775 vs naive −0.803". **That claim was wrong and is retracted.** The independent Model QA
+verifier found the implemented target reused the binned regime label's
+`_compute_forward_realized_vol` helper, which divides by `mean(close_window)` — deviating from
+this document's own §1 frozen formula (`stddev(diff(log(close)))·√252`, no close division). The
+/close division is harmless in the binned donor (per-pair percentile cuts absorb scale) but on a
+pooled cross-pair panel it shrank JPY-pair targets ~150×, putting the pre-registered naive
+baseline (trailing `realized_vol_20`, proper log-return units) in DIFFERENT UNITS: the 22× QLIKE
+"win" was ~95% units artifact, and the pooled R² 0.775 was mostly cross-pair scale separation
+(within-pair R² was negative on 18/19 pairs). The verifier reproduced every artifact number
+exactly (the record was honest; the construction was buggy) and quantified the counterfactual.
+Remediation: target fixed to the §1 pre-registered formula (pure log-return realized vol),
+`RISK_TARGET_FEATURE_PIPELINE_VERSION` bumped v1→v2 (v1 artifacts refuse to load), stale v1
+artifact deleted, per-pair metrics added to the report (the verifier's third required fix), and
+the experiment re-run. The numbers below are from the corrected run.
 
-Model beats the naive-persistence baseline by ~22× on QLIKE and clears OOS R² > 0 comfortably
-(the naive baseline is actually NEGATIVE R² OOS — trailing-20-day persistence alone does not
-track 2024-2026 forward vol well; the model does). **Both frozen bar conditions hold. Verdict:
-LEARNABLE.**
+### Target 1 — forward realized volatility (regression): **LEARNABLE (bar cleared, corrected run; honest magnitude = moderate, not spectacular)**
+
+Pooled OOS (11,685 rows, 2024-01-01→2026-06-11), units-consistent (both model target and naive
+baseline are annualized log-return realized vol):
+
+| | OOS QLIKE (↓ better) | OOS pinball@median (↓) | OOS R² (↑) |
+|---|---|---|---|
+| **Model** | **0.0505** | **0.0084** | **0.354** |
+| Naive persistence (trailing realized_vol_20) | 0.0712 | 0.0101 | 0.041 |
+
+**Both frozen bar conditions hold** (model QLIKE 0.0505 < naive 0.0712; model R² 0.354 > 0).
+**Verdict: LEARNABLE** — but characterized honestly: a ~29% relative QLIKE improvement over a
+strong persistence baseline, not the retracted 22×.
+
+Per-pair OOS breakdown (the robustness check the pooled number can't provide):
+- **Model beats naive on QLIKE on 19/19 pairs** (min margin EUR_GBP 0.0679 vs 0.0699; typical
+  margin 25–45%) — the QLIKE skill is consistent across the whole universe, not a pooling
+  artifact.
+- Within-pair R² is positive on only **8/19 pairs** (best EUR_JPY +0.175; worst EUR_GBP −0.449).
+  Honest read: the model reliably improves the *distributional* vol forecast everywhere (QLIKE —
+  the metric that matters for sizing), while its within-pair point-forecast variance-explained is
+  modest — much of the pooled R² 0.354 comes from cross-pair/cross-regime level differences the
+  `pair` categorical hands it. Consumers should treat the output as a well-ranked, persistent-
+  or-better vol estimate, not a high-precision point forecast. Full per-pair table:
+  `trained_data/backtests/risk_target_vol_drawdown_result.json` →
+  `target_forward_volatility.per_pair_oos`.
 
 ### Target 2 — forward drawdown-state (binary classification): **NOT LEARNABLE (bar not cleared)**
 
@@ -223,17 +259,29 @@ the ranking skill — but doing that now, having already seen this result, would
 post-hoc bar-gaming this pre-registration exists to prevent. It is named here as a legitimate
 next-round hypothesis, not applied.
 
-### Correction note reference
+### Correction note references
 
-The reported numbers above are from the log-space vol-regression fix described in §1's
-"Correction note" (fit `log(annualized_vol)`, exponentiate predictions) — the first raw-level run
-produced a nonsensical QLIKE (~3.9×10⁷) due to unconstrained-regression non-positive predictions,
-disclosed and fixed before this reported run, not after seeing these final numbers.
+Two corrections were applied across the runs, both disclosed:
+1. **Log-space fit** (§1 correction note): the very first raw-level run produced non-positive
+   predictions on ~7.6% of OOS rows, blowing QLIKE up to ~3.9×10⁷ — fixed by fitting
+   `log(annualized_vol)` and exponentiating (standard practice), before reading that run's
+   corrected numbers.
+2. **Units fix** (second correction note above): verifier-caught target-formula deviation,
+   retraction of the first Target-1 verdict, re-run with the pre-registered formula. Target 2's
+   numbers are IDENTICAL across both runs (its label never touched the vol formula), so its
+   NOT-LEARNABLE verdict carries over unchanged — the QA verifier independently confirmed it
+   trustworthy as originally reported.
 
 ### What shipped
 
-Per §5: since Target 1 cleared its bar, `trained_data/risk_targets/models/risk_target_model.{pkl,
-meta.json}` was written (both heads are saved together as one `RiskTargetTrainer` artifact —
-Target 2's non-clearance is recorded honestly in the artifact's `metrics` block, not hidden; the
-artifact should currently be consumed for its VOLATILITY output only, per the honest verdict
-above, until a recalibrated drawdown-state candidate clears the bar).
+Per §5: since Target 1 cleared its bar on the corrected run,
+`trained_data/risk_targets/models/risk_target_model.{pkl,meta.json}` was written — through the
+gated write path (`cli/risk_target_training.py::train_risk_targets`, security-review remediation:
+the experiment script no longer calls `trainer.save()` directly, so a future re-run cannot
+silently overwrite a better incumbent). The artifact is stamped
+`RISK_TARGET_FEATURE_PIPELINE_VERSION = 2026-07-08-v2`; the v1 (units-broken) artifact was
+deleted and v1 loads are refused by `predict_risk_state`'s version check. Both heads are saved
+together — Target 2's non-clearance is recorded honestly in the artifact's `metrics` block and
+hard-flagged `DRAWDOWN_HEAD_TRUSTWORTHY = False` in `src/training/risk_target_readout.py`; the
+artifact should be consumed for its VOLATILITY output only until a recalibrated drawdown-state
+candidate clears the bar through the gated path.

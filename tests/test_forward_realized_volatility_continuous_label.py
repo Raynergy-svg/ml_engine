@@ -19,7 +19,6 @@ import pytest
 
 from src.training.labels.realized_volatility_regime_label import (
     compute_forward_realized_volatility,
-    compute_realized_volatility_regime_labels,
 )
 
 
@@ -51,24 +50,32 @@ def test_value_depends_only_on_future_bars():
     assert not np.isclose(values[50], values3[50])
 
 
-def test_consistent_with_binned_label_cut_boundaries():
-    """The continuous value, when binned with the SAME percentile cuts the
-    classification label fits internally, must reproduce the same class
-    assignment — proves both share the same underlying formula."""
-    n = 2000
+def test_formula_is_pure_log_return_stddev():
+    """Re-derive the value independently: for row i, it must equal
+    stddev(diff(log(close[i+1 : i+1+H]))) with ddof=0, NO division by the
+    window's mean close (the 2026-07-08 QA units finding: the binned
+    regime label's /mean(close) normalization is scale-dependent and must
+    NOT leak into the pooled continuous target)."""
+    n = 500
     horizon = 24
     close = _random_walk_close(n, seed=3)
     df = pd.DataFrame({"close": close})
 
-    cont_values, _ = compute_forward_realized_volatility(df, horizon)
-    binned_labels, meta = compute_realized_volatility_regime_labels(
-        df, vol_horizon_bars=horizon, n_classes=4,
-    )
+    cont_values, meta = compute_forward_realized_volatility(df, horizon)
+    assert meta["formula"] == "stddev_log_returns"
 
+    log_close = np.log(close)
+    for i in (0, 100, 250, n - horizon - 1):
+        expected = float(np.std(np.diff(log_close[i + 1: i + 1 + horizon]), ddof=0))
+        assert np.isclose(cont_values[i], expected, rtol=1e-12)
+
+    # Scale invariance: multiplying the whole price series by 150 (a
+    # JPY-pair-like level shift) must leave the value IDENTICAL — the
+    # exact property the /mean(close) variant violates.
+    df_scaled = pd.DataFrame({"close": close * 150.0})
+    scaled_values, _ = compute_forward_realized_volatility(df_scaled, horizon)
     finite = np.isfinite(cont_values)
-    cuts = np.asarray(meta["cut_values"])
-    rebinned = np.clip(np.searchsorted(cuts, cont_values[finite], side="right"), 0, 3)
-    assert np.array_equal(rebinned, binned_labels[finite])
+    assert np.allclose(cont_values[finite], scaled_values[finite], rtol=1e-10)
 
 
 def test_annualization_factor_scales_linearly():

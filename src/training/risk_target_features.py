@@ -31,7 +31,16 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-RISK_TARGET_FEATURE_PIPELINE_VERSION = "2026-07-08-v1"
+# Version history:
+#   v1 (2026-07-08): initial. Vol target inherited the binned regime
+#      label's /mean(close) normalization — units-inconsistent with the
+#      pre-registered naive baseline on a pooled cross-pair panel (QA
+#      finding, HIGH). Feature `volume_zscore_20` misnamed (window is 60).
+#   v2 (2026-07-08): target fixed to pure log-return realized vol
+#      (stddev(diff(log(close)))*sqrt(252)); volume_zscore_20 renamed
+#      volume_zscore_60. v1 artifacts refuse to load via the version check
+#      in risk_target_readout.predict_risk_state.
+RISK_TARGET_FEATURE_PIPELINE_VERSION = "2026-07-08-v2"
 
 # Trading-day annualization factor for daily-bar realized vol.
 _ANNUALIZATION_FACTOR = float(np.sqrt(252.0))
@@ -46,7 +55,7 @@ FEATURE_COLUMNS: List[str] = [
     "return_mean_5",
     "return_mean_20",
     "vol_of_vol_20",
-    "volume_zscore_20",
+    "volume_zscore_60",
     "day_of_week",
 ]
 # `pair` is added by the caller (pooling step) as a separate categorical
@@ -112,7 +121,7 @@ def compute_risk_target_features(df: pd.DataFrame) -> pd.DataFrame:
     # Rolling z-score of volume vs its own trailing 60-day mean/std.
     vol_roll_mean = volume.rolling(window=60, min_periods=60).mean()
     vol_roll_std = volume.rolling(window=60, min_periods=60).std(ddof=0)
-    out["volume_zscore_20"] = (volume - vol_roll_mean) / vol_roll_std.replace(0.0, np.nan)
+    out["volume_zscore_60"] = (volume - vol_roll_mean) / vol_roll_std.replace(0.0, np.nan)
 
     out["day_of_week"] = pd.to_datetime(out["date"], utc=True, errors="coerce").dt.dayofweek.fillna(0).astype(np.int32)
 

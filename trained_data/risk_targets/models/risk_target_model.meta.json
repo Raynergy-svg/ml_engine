@@ -10,22 +10,22 @@
     "return_mean_5",
     "return_mean_20",
     "vol_of_vol_20",
-    "volume_zscore_20",
+    "volume_zscore_60",
     "day_of_week",
     "pair"
   ],
   "metrics": {
     "fold_id": null,
-    "instrument": "pooled_18_fx_pairs",
+    "instrument": "pooled_fx_pairs",
     "n_train": 38036,
     "n_val": 9526,
     "val_auc_drawdown": 0.5864014681426948,
     "val_brier_drawdown": 0.249232739454953,
-    "val_mae": 0.011220599638080225,
-    "val_pinball_median": 0.005610299819040113,
-    "val_qlike": 0.047715351555279034,
-    "val_r2": 0.8452687208099232
+    "val_mae": 0.018211328230064414,
+    "val_pinball_median": 0.009105664115032207,
+    "val_qlike": 0.03889634056796403,
+    "val_r2": 0.3629248622985266
   },
-  "risk_target_feature_pipeline_version": "2026-07-08-v1",
+  "risk_target_feature_pipeline_version": "2026-07-08-v2",
   "scaler": "not_applicable_tree_based_model"
 }

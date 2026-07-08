@@ -4,10 +4,60 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-08T22:05Z by Claude (trend-lane risk-gate wiring: cost model + portfolio
-exposure engine + hedge scorecard — committed on `ralph/equity-harvester-bot` as `85e847e`/`a3c5c79`/
-`9c218e9`; no `.claude/state.json`/halt/practice-pin touch, verified via independent Security Engineer
-SAFE (7/7) + Code Reviewer SHIP (99/99, then 101/101 after 2 follow-up fixes)).
+Last touched: 2026-07-08T22:25Z by Claude (risk-target ML redirect: QA-verifier-caught units bug
+REMEDIATED + corrected re-run + retraction of the first LEARNABLE magnitude claim — see the
+risk-target section below).
+
+## Risk-target ML redirect — forward-vol LEARNABLE (corrected), drawdown-state honest FAIL (2026-07-08, OFFLINE/RESEARCH-ONLY)
+
+Executed ENGINEERING_BRAIN P3 "redirect ML from the dead 52% direction target to RISK targets".
+NEW decoupled model family (NOT an FX direction retrain — L-016 untouched; NOT a duplicate of the
+live TCN vol-regime head, which is 4-class dispersion for the direction ensemble's filter):
+pre-registered `docs/prereg-risk-target-vol-drawdown-2026-07-08.md` BEFORE any OOS read, 19-pair
+daily FX panel (`market_data/factor/*_D.csv`, 2014→2026-06), OOS=2024+ read once, 20-bar embargo,
+calendar-date split (not per-pair row index — pairs share global vol regimes).
+
+- **New modules**: `src/training/labels/forward_drawdown_state_label.py` (greenfield path-dependent
+  forward max-DD label), `compute_forward_realized_volatility` added additively to the existing
+  leak-free label module, `src/training/risk_target_features.py` (trailing-only, own
+  `RISK_TARGET_FEATURE_PIPELINE_VERSION=2026-07-08-v2`, L-001 window-invariance canary),
+  `risk_target_splits.py`, `trainers/risk_target_trainer.py` (dual LightGBM, log-space vol fit),
+  `cli/risk_target_training.py` (gated write reusing `training_ops._cli_gate_verdict` — refuses
+  regression, incumbent byte-untouched), `src/training/risk_target_readout.py`
+  (`predict_risk_state()` — fail-closed read-only seam; wiring into live sizing = ESCALATION,
+  not done). First real caller of `mlflow_mirror` (was zero-call-site). Tick/cost-model features
+  EXCLUDED honestly (tick capture has ~1-2 days of data; cost model persists a snapshot, not a
+  joinable time series) — named P2 follow-ups, not fabricated.
+- **L-018 EVENT (units bug, caught by the independent verifier — this is the system working)**: my
+  first reported verdict "vol LEARNABLE, beats naive 22×, R² 0.775" (also baked into commit
+  `85e847e`'s message by the concurrent session) was WRONG — the target had inherited the binned
+  label's `/mean(close)` normalization, making JPY targets ~150× smaller than the pre-registered
+  baseline's units; the 22× was ~95% units artifact, pooled R² mostly cross-pair scale separation
+  (within-pair R² negative 18/19). Model QA Specialist verifier reproduced every number exactly
+  (record honest, construction buggy), quantified the counterfactual, and BLOCKED the claim.
+  Remediated: formula fixed to the §1 pre-registered spec (pure `stddev(diff(log(close)))·√252`,
+  scale-invariance regression test), version bumped v1→v2 (v1 refuses to load), stale artifact
+  deleted, per-pair metrics added, §6 rewritten with explicit retraction.
+- **CORRECTED HONEST RESULT — vol target LEARNABLE at moderate magnitude**: pooled OOS QLIKE
+  **0.0505 vs naive persistence 0.0712** (~29% relative), model beats naive QLIKE on **19/19
+  pairs**; pooled R² 0.354 (naive 0.041) but within-pair R²>0 on only 8/19 — good distributional
+  vol forecast (what sizing needs), modest point-forecast precision. Bar (QLIKE<naive AND R²>0)
+  cleared. **Drawdown-state target: honest FAIL** — AUC 0.625 passed but Brier 0.232 vs base-rate
+  0.143 failed calibration; pre-registered bar needs both → NOT LEARNABLE, `DRAWDOWN_HEAD_
+  TRUSTWORTHY=False` hard-flagged in the readout. Recalibration (isotonic/drop class_weight) is a
+  named next-round hypothesis, deliberately NOT run post-hoc.
+- **Verification**: Security Engineer SAFE (8/8 incl. 3-method import-boundary check, write-scope,
+  gate-reality; 2 findings remediated: experiment now saves via the gated path only, AST test bans
+  whole `src.scanner` package). Model QA: Target-2 verdict TRUSTWORTHY as-is; Target-1 corrected
+  re-run re-verification IN FLIGHT at last touch. 74 tests green (7 new files + shared-module +
+  retrain-gates suites), flake8 clean, verify_gate PASS(28), risk_monitor GREEN. Artifact:
+  `trained_data/risk_targets/models/` (own namespace — per-pair gate routing can't see it).
+- Commits: pipeline landed in `85e847e`/`032e035` (co-mingled by the concurrent session, verified
+  byte-identical); units-fix remediation commit pending QA re-verification.
+
+Previous entry (concurrent session, 2026-07-08T22:05Z): trend-lane risk-gate wiring (cost model +
+portfolio exposure engine + hedge scorecard) — committed as `85e847e`/`a3c5c79`/`9c218e9`; no
+`.claude/state.json`/halt/practice-pin touch; Security Engineer SAFE (7/7) + Code Reviewer SHIP.
 
 ## Trend-lane risk-gate wiring — cost model + exposure engine + hedge scorecard (2026-07-08, ADDITIVE)
 

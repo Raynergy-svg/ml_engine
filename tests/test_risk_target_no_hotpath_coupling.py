@@ -29,13 +29,19 @@ RISK_TARGET_MODULES = [
 ]
 
 FORBIDDEN_IMPORT_SUBSTRINGS = [
+    # Whole-package bans (security-review 2026-07-08: ban the package, not
+    # just enumerated modules — scanner.engine/scanner.config would have
+    # slipped an enumerate-only list).
+    "src.scanner",
+    "src.brokers",
+    # Specific high-risk names kept for defense-in-depth and for relative
+    # import forms that don't carry the src. prefix.
     "scanner.execution",
     "scanner.gates",
     "scanner.state_engine",
     "brokers.factory",
     "oanda_practice",
     "oanda.client",
-    "src.brokers",
 ]
 
 

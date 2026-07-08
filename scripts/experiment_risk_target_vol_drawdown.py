@@ -21,6 +21,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -174,7 +175,7 @@ def main() -> dict:
         X_all[train_mask], y_vol_all[train_mask],
         X_all[val_mask], y_vol_all[val_mask],
         feature_names=model_feature_cols,
-        instrument="pooled_18_fx_pairs",
+        instrument=f"pooled_{len(PAIRS)}_fx_pairs",
         y_train_drawdown=y_dd_all[train_mask],
         y_val_drawdown=y_dd_all[val_mask],
     )
@@ -197,6 +198,29 @@ def main() -> dict:
     naive_qlike = qlike_loss(y_vol_test, naive_pred_test)
     naive_pinball = pinball_loss(y_vol_test, naive_pred_test, quantile=0.5)
     naive_r2 = float(1.0 - np.sum((y_vol_test - naive_pred_test) ** 2) / max(np.sum((y_vol_test - np.mean(y_vol_test)) ** 2), 1e-12))
+
+    # --- Per-pair OOS breakdown (QA remediation 2026-07-08: pooled R² on a
+    # cross-pair panel is structurally inflated by cross-pair scale
+    # separation; the honest read requires within-pair numbers too) ---
+    per_pair_oos: Dict[str, Dict[str, float]] = {}
+    test_pairs = pooled.loc[test_mask, "pair"].values
+    for p in PAIRS:
+        pm = test_pairs == p
+        if pm.sum() < 30:
+            continue
+        yv, pv, nv = y_vol_test[pm], vol_pred_test[pm], naive_pred_test[pm]
+        denom = max(float(np.sum((yv - np.mean(yv)) ** 2)), 1e-12)
+        per_pair_oos[p] = {
+            "n": int(pm.sum()),
+            "model_qlike": qlike_loss(yv, pv),
+            "naive_qlike": qlike_loss(yv, nv),
+            "model_r2": float(1.0 - np.sum((yv - pv) ** 2) / denom),
+            "naive_r2": float(1.0 - np.sum((yv - nv) ** 2) / denom),
+        }
+    n_pairs_model_beats_naive_qlike = sum(
+        1 for v in per_pair_oos.values() if v["model_qlike"] < v["naive_qlike"]
+    )
+    n_pairs_model_r2_positive = sum(1 for v in per_pair_oos.values() if v["model_r2"] > 0)
 
     model_auc = _safe_auc(y_dd_test, dd_prob_test)
     model_brier = brier_score(y_dd_test, dd_prob_test)
@@ -230,6 +254,10 @@ def main() -> dict:
             "oos_model_mae": model_mae,
             "learnable_bar": "model_qlike < naive_qlike AND model_r2 > 0",
             "learnable": vol_learnable,
+            "per_pair_oos": per_pair_oos,
+            "n_pairs_model_beats_naive_qlike": n_pairs_model_beats_naive_qlike,
+            "n_pairs_model_r2_positive": n_pairs_model_r2_positive,
+            "n_pairs_evaluated": len(per_pair_oos),
         },
         "target_drawdown_state": {
             "metric": "AUC-ROC + Brier (lower=better)",
@@ -271,9 +299,27 @@ def main() -> dict:
     )
 
     if vol_learnable or dd_learnable:
-        MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        trainer.save(str(MODEL_DIR / "risk_target_model"))
-        logger.info("Saved trained artifact to %s (at least one target cleared its bar)", MODEL_DIR)
+        # Security-review finding (2026-07-08): never save() directly over a
+        # possible incumbent — route through the gated retrain path so a
+        # re-run cannot silently overwrite a better existing artifact.
+        from cli.risk_target_training import train_risk_targets
+        gate_result = train_risk_targets(
+            X_all[train_mask], y_vol_all[train_mask], y_dd_all[train_mask],
+            X_all[val_mask], y_vol_all[val_mask], y_dd_all[val_mask],
+            feature_names=model_feature_cols,
+            model_dir=MODEL_DIR,
+        )
+        results["artifact_gate"] = {
+            "verdict": gate_result["verdict"],
+            "written": gate_result["written"],
+            "vol_gate": gate_result["vol_gate"],
+            "drawdown_gate": gate_result["drawdown_gate"],
+        }
+        with open(out_path, "w") as f:
+            json.dump(results, f, indent=2, default=str)
+        logger.info(
+            "Artifact gate: %s (written=%s)", gate_result["verdict"], gate_result["written"],
+        )
     else:
         logger.info("Neither target cleared its pre-registered bar — no artifact written.")
 
