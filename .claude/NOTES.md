@@ -4,9 +4,59 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-08T02:45Z by Claude (AXIOM Hedge Layer Phase 4 — raw-vs-hedged shadow lane +
-scorecard — committed on `ralph/equity-harvester-bot`; no `.claude/state.json` touch this task,
-verified via `git diff --stat` + independent Security Engineer PASS on all 8 boundary checks).
+Last touched: 2026-07-08T22:05Z by Claude (trend-lane risk-gate wiring: cost model + portfolio
+exposure engine + hedge scorecard — committed on `ralph/equity-harvester-bot` as `85e847e`/`a3c5c79`/
+`9c218e9`; no `.claude/state.json`/halt/practice-pin touch, verified via independent Security Engineer
+SAFE (7/7) + Code Reviewer SHIP (99/99, then 101/101 after 2 follow-up fixes)).
+
+## Trend-lane risk-gate wiring — cost model + exposure engine + hedge scorecard (2026-07-08, ADDITIVE)
+
+Operator-directed wiring pass: made the gated decision/evaluation path CONSUME 3 previously-built-but-
+unwired tools, additively (extend-never-weaken), on the LIVE oanda_fx trend lane
+(`src/equity/oanda_trend.py::run_oanda_trend_cycle` — confirmed running as a real PID against practice
+throughout this session, contrary to the task brief's "gate is halted" assumption — flagged to operator).
+
+- **Cost model** (`src/data/execution_cost_model.py`, unmodified) → new `cost_aware_gate()` (Rule 7,
+  `src/equity/trend_risk_gates.py`) → wired into the order-approval loop. Fail-closed on missing/
+  partial/non-finite/negative-spread cost data (never assumes free); refuses when modeled round-trip
+  cost exceeds 30% of the candidate's own 1R stop budget (`DEFAULT_MAX_COST_R_FRACTION`).
+- **Exposure engine** (`src/hedge/portfolio_exposure.py`, unmodified) → new `exposure_engine_gate()` +
+  `_open_trades_to_exposure_positions()` in `oanda_trend.py`, run ALONGSIDE (never replacing) the
+  pre-existing `bucket_cap_gate` — an AND-combination, so the combined check can only be MORE
+  restrictive. Fails closed on any unresolvable leg AND (code-reviewer-driven follow-up) on any short
+  leg, since the engine's signed-net semantics only match `bucket_cap_gate`'s unsigned per-direction
+  semantics in the long-or-flat regime this lane is built for.
+- **Hedge scorecard** (`src/hedge/hedge_scorecard.py`, unmodified) → new read-only
+  `_hedge_scorecard_section()` in `src/scanner/automation/maintenance_report.py` (stdlib-json read of
+  the persisted artifact, matching that module's existing no-live-import contract) — evaluation/
+  reporting path only, zero order-path touch.
+- `decision_gate.py` (equity harvester) deliberately NOT touched for cost-model wiring: it has no
+  per-ticker universe param and execution_cost_model is OANDA-FX-only by construction (no equity fill/
+  tick source exists) — forcing a per-ticker equity cost check would be fabrication. Documented
+  scope-cut, not a silent skip.
+- **Reproduce-then-resolve**: re-ran ALL pre-existing bucket_cap_gate/one_position_gate reproduce-cases
+  unchanged (USD-pileup, same-cycle bypass close, red-trade average-down block) — all still green,
+  proving nothing loosened. Added a new full-cycle reproduce case showing the exposure engine
+  independently enforces the same same-cycle USD-pileup cap. 101 total tests across every touched
+  module, 0 failures; flake8 clean; `risk_monitor.sh` GREEN; `verify_gate.py` PASS (28/28).
+- **Independent verification**: Security Engineer SAFE (7/7 checks: nothing loosened, genuinely
+  fail-closed, no new trade/arm/live/unhalt surface, practice pin + halt position unchanged, no
+  injection surface, no circular import). Code Reviewer SHIP, found 2 real-but-low-severity issues
+  (negative spread not independently validated; exposure engine's signed-net vs bucket_cap_gate's
+  unsigned semantics only equivalent because the lane is long-only) — both fixed same session
+  (`cost_negative_spread_invalid` guard; `exposure_engine_short_leg_unsupported` fail-closed guard),
+  with regression tests, then re-verified green.
+- **Process anomaly (for `/evolve`)**: a CONCURRENT autonomous session (co-authored "Claude Fable 5",
+  same git identity "Buddy Bug Exterminator") was committing its own unrelated risk-target ML pipeline
+  work to this SAME branch/working-tree throughout this session — with no session isolation, `git
+  add -A && git commit` on their side repeatedly swept my concurrently-edited working-tree files into
+  THEIR commits (`85e847e`, `a3c5c79`, `9c218e9`). Verified byte-identical each time (nothing lost/
+  altered) via `git diff HEAD --stat` before/after and direct content diff. Also hit L-024 directly: an
+  exploratory `git stash` to A/B-test an unrelated pre-existing test failure conflicted on live-daemon-
+  written files; recovered cleanly via targeted `git checkout stash@{0} -- <path>` per file (skipping
+  the 4 live-fresher paths), never dropped/lost. New lesson candidate: concurrent uncoordinated
+  autonomous sessions on one working tree can co-mingle commits — check `git log` for foreign commits
+  mid-session before assuming your own diff is what's on disk.
 
 ## AXIOM Hedge Layer Phase 4 — raw-vs-hedged shadow lane + scorecard (2026-07-08, SHADOW/ANALYSIS-ONLY)
 
