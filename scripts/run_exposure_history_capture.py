@@ -2,8 +2,8 @@
 """Standalone exposure-history capture loop — the exposure-plane counterpart
 of tick capture. SHADOW / ANALYSIS-ONLY: reads ``account_state.json`` + tick
 parquets, appends ``trained_data/hedge/exposure_history.jsonl``. Imports
-nothing from the execution path (no broker client, no execution.py, no
-state_engine writes) — verified by tests/test_hedge_exposure_history_2026_07_08.py.
+nothing from the trade/order plane — enforced structurally by
+tests/test_hedge_exposure_history_2026_07_08.py.
 
 Usage:
     python3 scripts/run_exposure_history_capture.py            # one capture
