@@ -123,6 +123,10 @@ CRYPTO_MOMENTUM_LEDGER_PATH = REPO_ROOT / "trained_data" / "crypto" / "shadow_mo
 TRACK_B_LEDGER_PATH = REPO_ROOT / "trained_data" / "research" / "track_b_shadow_ledger.jsonl"
 FX_TREND_ACCOUNT_STATE_PATH = REPO_ROOT / "trained_data" / "oanda" / "account_state.json"
 EQUITY_PRICE_PANEL_PATH = REPO_ROOT / "market_data" / "equity" / "sp500_prices.parquet"
+# Per-instrument daily OHLCV CSVs (OANDA-sourced, cached): {PAIR}_D.csv. The FX
+# forward-price source for marking an FX hedge leg's overlay P&L — the FX
+# counterpart of the equity price panel. 19 majors/crosses, 2014-01-01 onward.
+FX_PRICE_PANEL_DIR = REPO_ROOT / "market_data" / "factor"
 
 # Weight-fraction-of-NAV -> dollar risk_home conversion constant. See module
 # docstring "Notional is a modeling constant, not a real account."
@@ -342,7 +346,7 @@ def load_fx_trend_book(account_state_path: Path = FX_TREND_ACCOUNT_STATE_PATH,
               "raw_return_basis": "open_book_unrealized_pl_over_nav_point_in_time_mark",
               "notional_home_total": sum(abs(r.notional_home) for r in resolved),
               "skipped_instruments": skipped,
-              "hedged_overlay": "unresolved_no_fx_forward_price_source"},
+              "hedged_overlay": "resolves_via_daily_fx_panel_when_forward_bar_available"},
     )
 
 
@@ -472,6 +476,87 @@ def basket_forward_return(panel: pd.DataFrame, weights: Dict[str, float],
     return total, notes
 
 
+def load_fx_price_panel(instrument: str,
+                        panel_dir: Path = FX_PRICE_PANEL_DIR) -> pd.DataFrame:
+    """One FX instrument's cached daily OHLCV (``{PAIR}_D.csv``), date-indexed
+    UTC. Missing/unreadable file -> empty DataFrame (fail soft; the caller then
+    honestly reports no forward price for this leg). No module-level cache: a
+    cycle applies at most one hedge (1-2 legs), and caching would break test
+    isolation (tmp CSVs) for no real gain."""
+    path = panel_dir / f"{instrument}_D.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(path, parse_dates=["date"], index_col="date")
+    except (OSError, ValueError, KeyError) as exc:
+        logger.warning("hedged_shadow_lane: FX panel unreadable for %s (%s)", instrument, exc)
+        return pd.DataFrame()
+    if df.empty or "close" not in df.columns:
+        return pd.DataFrame()
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC")
+    return df.sort_index()
+
+
+def fx_instrument_forward_return(instrument: str, asof_date: str,
+                                 panel_dir: Path = FX_PRICE_PANEL_DIR
+                                 ) -> Tuple[Optional[float], List[str]]:
+    """Forward one-bar close-to-close return of an FX hedge leg, marked from
+    the cached daily panel with the SAME leak-safety as
+    ``_ticker_forward_return``: the forward bar is strictly AFTER ``asof_date``
+    (never reads the asof bar's own future), and an implausible daily move is
+    dropped as a bad tick rather than fed through.
+
+    The cache stores ONE canonical direction per pair (e.g. ``CHF_JPY``, not
+    ``JPY_CHF``); an FX hedge generator may name either. If the direct pair
+    isn't cached, the INVERSE pair is used and its return exactly inverted
+    (``BASE_QUOTE`` return = ``prev/fwd - 1`` on the ``QUOTE_BASE`` closes) --
+    never left unresolved just because the naming direction differs.
+
+    ``None`` (with a reason) when NEITHER direction is cached or the panel has
+    no bar past asof (stale cache -- expected for a live 'today' book, not a
+    bug)."""
+    invert = False
+    panel = load_fx_price_panel(instrument, panel_dir)
+    if panel.empty:
+        parts = str(instrument).split("_")
+        if len(parts) == 2:
+            panel = load_fx_price_panel(f"{parts[1]}_{parts[0]}", panel_dir)
+            invert = True
+        if panel.empty:
+            return None, [f"no_fx_panel:{instrument}"]
+    fwd_date = _forward_bar_date(panel, asof_date)
+    if fwd_date is None:
+        return None, [f"no_forward_bar:{instrument}"]
+    prior = panel["close"][panel.index <= fwd_date].dropna()
+    if len(prior) < 2:
+        return None, [f"insufficient_history:{instrument}"]
+    prev_price, fwd_price = float(prior.iloc[-2]), float(prior.iloc[-1])
+    if prev_price <= 0 or fwd_price <= 0:
+        return None, [f"nonpositive_price:{instrument}"]
+    # Direct: fwd/prev - 1. Inverse (BASE_QUOTE from cached QUOTE_BASE closes):
+    # (1/fwd)/(1/prev) - 1 == prev/fwd - 1.
+    ret = (prev_price / fwd_price - 1.0) if invert else (fwd_price / prev_price - 1.0)
+    if abs(ret) > MAX_SANE_DAILY_RETURN:
+        logger.warning("hedged_shadow_lane: implausible FX forward return for %s (%.4f) on %s "
+                       "— treating as a bad tick", instrument, ret, asof_date)
+        return None, [f"implausible_return:{instrument}"]
+    return ret, []
+
+
+def _is_fx_instrument(instrument: str,
+                      currency_bucket_map: Optional[Dict[str, dict]]) -> bool:
+    """True iff ``instrument`` is an FX pair ``BASE_QUOTE`` with both legs in
+    the currency bucket map. Distinguishes an FX hedge leg (e.g. ``GBP_USD``)
+    from an equity market/sector hedge (``SPY``/``XLK`` -> no underscore)."""
+    if not currency_bucket_map:
+        return False
+    parts = str(instrument).split("_")
+    if len(parts) != 2:
+        return False
+    return all(p in currency_bucket_map for p in parts)
+
+
 def market_proxy_return(panel: pd.DataFrame, asof_date: str,
                         sector_bucket_map: Dict[str, dict]) -> Tuple[Optional[float], List[str]]:
     """Cross-sectional equal-weight mean forward return of AXIOM's OWN
@@ -533,10 +618,18 @@ def select_applied_hedge(hedge_action: List[Dict[str, Any]]) -> Optional[Dict[st
 
 def hedge_overlay_pnl(applied_hedge: Optional[Dict[str, Any]], notional: float,
                       asof_date: str, panel: pd.DataFrame,
-                      sector_bucket_map: Dict[str, dict]) -> Dict[str, Any]:
+                      sector_bucket_map: Dict[str, dict], *,
+                      currency_bucket_map: Optional[Dict[str, dict]] = None,
+                      fx_panel_dir: Path = FX_PRICE_PANEL_DIR) -> Dict[str, Any]:
     """Dollar P&L of the applied hedge's legs, marked forward via the cached
     proxy price data. Returns gross overlay P&L always; cost only when the
-    P2 model actually knows it (see module docstring)."""
+    P2 model actually knows it (see module docstring).
+
+    An FX hedge leg (``BASE_QUOTE`` with both currencies in
+    ``currency_bucket_map``) is marked from the cached daily FX panel via
+    ``fx_instrument_forward_return``; equity legs keep the market/sector proxy
+    path. Same ALL-OR-NOTHING contract for both: any unresolved leg -> the
+    whole overlay is ``None`` (never a silent partial)."""
     if applied_hedge is None:
         return {"gross_pnl_dollars": 0.0, "cost_known": True, "cost_dollars": 0.0,
                 "net_pnl_dollars": 0.0, "notes": ["no_hedge_applied"]}
@@ -547,7 +640,9 @@ def hedge_overlay_pnl(applied_hedge: Optional[Dict[str, Any]], notional: float,
     for leg in applied_hedge.get("legs", []):
         instrument = leg["instrument"]
         sign = 1.0 if leg["direction"] == "long" else -1.0
-        if instrument == MARKET_HEDGE_INSTRUMENT:
+        if _is_fx_instrument(instrument, currency_bucket_map):
+            ret, leg_notes = fx_instrument_forward_return(instrument, asof_date, fx_panel_dir)
+        elif instrument == MARKET_HEDGE_INSTRUMENT:
             ret, leg_notes = market_proxy_return(panel, asof_date, sector_bucket_map)
         else:
             # Any other equity leg is a sector-benchmark ticker (e.g. XLK) —
@@ -664,7 +759,8 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
         raw_net_return, raw_notes = basket_forward_return(price_panel, book.weights, book.asof_date)
 
     # --- Lane B: raw + applied hedge --------------------------------------
-    overlay = hedge_overlay_pnl(applied, notional, book.asof_date, price_panel, sector_bucket_map)
+    overlay = hedge_overlay_pnl(applied, notional, book.asof_date, price_panel, sector_bucket_map,
+                                currency_bucket_map=currency_bucket_map)
     hedged_gross_return = None
     hedged_net_return = None
     if raw_net_return is not None and overlay["gross_pnl_dollars"] is not None:

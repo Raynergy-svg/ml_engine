@@ -92,7 +92,7 @@ def test_usd_pileup_decomposed_and_hedge_proposed(env):
     # Hedged overlay is honestly unresolved for FX (no forward-price source).
     assert row["hedged"]["return_basis"] == "unresolved"
     assert row["hedged"]["net_return"] is None
-    assert book.meta["hedged_overlay"] == "unresolved_no_fx_forward_price_source"
+    assert book.meta["hedged_overlay"] == "resolves_via_daily_fx_panel_when_forward_bar_available"
 
 
 def test_short_position_gives_negative_weight(env):
