@@ -234,6 +234,64 @@ def _last_recorded_mtime(out_path: Path) -> Optional[str]:
     return None
 
 
+@dataclass(frozen=True)
+class ResolvedBook:
+    """The live FX book after freshness-checking + rate-resolution, BEFORE
+    dedup/persistence. Shared by ``capture_exposure_snapshot`` (persists a
+    history row) and ``hedged_shadow_lane.load_fx_trend_book`` (scores it
+    raw-vs-hedged) so both consume ONE rate-resolution path — no drift."""
+    state: dict
+    mtime: datetime
+    records: Tuple[PositionExposureRecord, ...]
+    last_prices: Dict[str, float]
+
+    @property
+    def resolved(self) -> Tuple[PositionExposureRecord, ...]:
+        return tuple(r for r in self.records if r.notional_home is not None)
+
+
+def resolve_current_book(
+    *,
+    account_state_path: Path = ACCOUNT_STATE_PATH,
+    ticks_root: Path = TICKS_ROOT,
+    max_state_age_s: float = DEFAULT_MAX_STATE_AGE_S,
+    max_tick_age_s: float = DEFAULT_MAX_TICK_AGE_S,
+    now: Optional[datetime] = None,
+) -> Optional[ResolvedBook]:
+    """Read + freshness-check the live OANDA account state and resolve every
+    open position's home-currency exposure from fresh tick rates. Returns None
+    (refuse) on a stale/corrupt state OR a non-flat book in which not a single
+    position resolved a rate. A genuinely FLAT book returns a valid empty
+    ``ResolvedBook`` (zero exposure is real information; the caller decides
+    whether to record it). No dedup, no persistence, no side effects."""
+    now = now or datetime.now(timezone.utc)
+
+    loaded = _load_account_state(account_state_path, max_age_s=max_state_age_s, now=now)
+    if loaded is None:
+        return None
+    state, mtime = loaded
+
+    last_prices = _build_last_prices(ticks_root, max_age_s=max_tick_age_s, now=now)
+
+    records: List[PositionExposureRecord] = []
+    for pos in state.get("positions") or []:
+        if not isinstance(pos, dict):
+            continue
+        rec = _decompose_position(pos, last_prices)
+        if rec is not None:
+            records.append(rec)
+
+    resolved = [r for r in records if r.notional_home is not None]
+    if records and not resolved:
+        logger.warning("exposure_history: %d open positions, 0 resolved a home rate "
+                       "(reasons: %s) — refusing an all-fail book",
+                       len(records), [r.fail_reasons for r in records])
+        return None
+
+    return ResolvedBook(state=state, mtime=mtime, records=tuple(records),
+                        last_prices=last_prices)
+
+
 def capture_exposure_snapshot(
     *,
     account_state_path: Path = ACCOUNT_STATE_PATH,
@@ -248,32 +306,19 @@ def capture_exposure_snapshot(
     non-flat book in which not a single position resolved)."""
     now = now or datetime.now(timezone.utc)
 
-    loaded = _load_account_state(account_state_path, max_age_s=max_state_age_s, now=now)
-    if loaded is None:
+    book = resolve_current_book(account_state_path=account_state_path, ticks_root=ticks_root,
+                                max_state_age_s=max_state_age_s, max_tick_age_s=max_tick_age_s,
+                                now=now)
+    if book is None:
         return None
-    state, mtime = loaded
+    state, mtime = book.state, book.mtime
+    last_prices = book.last_prices
+    records = list(book.records)
+    resolved = list(book.resolved)
     mtime_iso = mtime.isoformat()
 
     if _last_recorded_mtime(out_path) == mtime_iso:
         logger.debug("exposure_history: snapshot %s already recorded — skipping", mtime_iso)
-        return None
-
-    last_prices = _build_last_prices(ticks_root, max_age_s=max_tick_age_s, now=now)
-
-    raw_positions = state.get("positions") or []
-    records: List[PositionExposureRecord] = []
-    for pos in raw_positions:
-        if not isinstance(pos, dict):
-            continue
-        rec = _decompose_position(pos, last_prices)
-        if rec is not None:
-            records.append(rec)
-
-    resolved = [r for r in records if r.notional_home is not None]
-    if records and not resolved:
-        logger.warning("exposure_history: %d open positions, 0 resolved a home rate "
-                       "(reasons: %s) — refusing an all-fail row",
-                       len(records), [r.fail_reasons for r in records])
         return None
 
     exposure_positions = [

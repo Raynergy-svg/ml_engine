@@ -121,6 +121,7 @@ HEDGE_DECISION_LOG_PATH = HEDGE_LEDGER_DIR / "hedge_decision_log.jsonl"
 EQUITY_HARVESTER_STATE_PATH = REPO_ROOT / "trained_data" / "equity" / "rebalance_state.json"
 CRYPTO_MOMENTUM_LEDGER_PATH = REPO_ROOT / "trained_data" / "crypto" / "shadow_momentum_ledger.jsonl"
 TRACK_B_LEDGER_PATH = REPO_ROOT / "trained_data" / "research" / "track_b_shadow_ledger.jsonl"
+FX_TREND_ACCOUNT_STATE_PATH = REPO_ROOT / "trained_data" / "oanda" / "account_state.json"
 EQUITY_PRICE_PANEL_PATH = REPO_ROOT / "market_data" / "equity" / "sp500_prices.parquet"
 
 # Weight-fraction-of-NAV -> dollar risk_home conversion constant. See module
@@ -138,7 +139,7 @@ MIN_SECTOR_PROXY_TICKERS = 3
 # +1844% in a day).
 MAX_SANE_DAILY_RETURN = 0.50
 
-STRATEGIES = ("equity_harvester", "crypto_momentum", "track_b")
+STRATEGIES = ("equity_harvester", "crypto_momentum", "track_b", "fx_trend")
 
 
 # --------------------------------------------------------------------- #
@@ -279,10 +280,77 @@ def load_track_b_book(ledger_path: Path = TRACK_B_LEDGER_PATH) -> Optional[BookS
     )
 
 
+def load_fx_trend_book(account_state_path: Path = FX_TREND_ACCOUNT_STATE_PATH,
+                       ticks_root: Optional[Path] = None) -> Optional[BookSnapshot]:
+    """The FX trend lane — the ONE lane actually placing (practice) trades.
+
+    Unlike the equity/crypto loaders (which read a strategy-owned rebalance
+    ledger of fraction-of-NAV weights), the FX lane's live book is the real
+    OANDA open positions in ``account_state.json``, denominated in UNITS. We
+    translate units -> signed home-currency notional as a fraction of NAV,
+    reusing ``exposure_history.resolve_current_book`` (the SAME
+    freshness-check + tick-rate resolution the exposure-history capture uses —
+    one rate path, no drift). The imported call is function-local to break the
+    import cycle (``exposure_history`` imports ``_append_jsonl`` from here).
+
+    Raw return: the lane's OWN live P&L — total unrealized P&L / NAV, a
+    point-in-time open-book MARK (not a period return; difference consecutive
+    ledger rows for a period P&L). ``return_source="own_ledger"`` because it
+    comes from the lane's real account, never a marked-forward proxy.
+
+    Hedged overlay marking is honestly UNRESOLVED for FX right now: the
+    Phase-3 ``generate_fx_hedges`` proposal is logged, but
+    ``hedge_overlay_pnl`` can only mark forward through the equity price panel,
+    so an FX hedge leg resolves to ``None`` (documented, never fabricated).
+    Wiring an FX forward-price source into ``hedge_overlay_pnl`` is the next
+    lever. Returns ``None`` (never a fabricated book) on a stale/missing/flat
+    account state or one with no NAV.
+    """
+    from src.hedge.exposure_history import TICKS_ROOT, resolve_current_book
+
+    book = resolve_current_book(account_state_path=account_state_path,
+                                ticks_root=ticks_root or TICKS_ROOT)
+    if book is None:
+        return None
+    resolved = book.resolved
+    if not resolved:
+        logger.warning("hedged_shadow_lane: fx_trend book is flat / no positions resolved "
+                       "a rate — nothing to score")
+        return None
+    nav = _safe_float(book.state.get("nav"))
+    if not nav or nav <= 0:
+        logger.warning("hedged_shadow_lane: fx_trend account has no positive NAV — cannot "
+                       "express fraction-of-NAV weights")
+        return None
+
+    weights: Dict[str, float] = {}
+    for rec in resolved:
+        signed_notional = rec.notional_home if rec.direction == "long" else -rec.notional_home
+        weights[rec.instrument] = signed_notional / nav
+
+    unrealized = _safe_float(book.state.get("unrealized_pl"))
+    raw_net = (unrealized / nav) if unrealized is not None else None
+    skipped = sorted(r.instrument for r in book.records if r.notional_home is None)
+    return BookSnapshot(
+        strategy="fx_trend", asset_class="fx",
+        asof_date=str(book.mtime.date()),
+        weights=weights,
+        raw_net_return=raw_net, raw_gross_return=raw_net, raw_cost=None,
+        return_source="own_ledger",
+        meta={"source_path": str(account_state_path), "nav": nav,
+              "open_trade_count": book.state.get("open_trade_count"),
+              "raw_return_basis": "open_book_unrealized_pl_over_nav_point_in_time_mark",
+              "notional_home_total": sum(abs(r.notional_home) for r in resolved),
+              "skipped_instruments": skipped,
+              "hedged_overlay": "unresolved_no_fx_forward_price_source"},
+    )
+
+
 _LOADERS = {
     "equity_harvester": load_equity_harvester_book,
     "crypto_momentum": load_crypto_momentum_book,
     "track_b": load_track_b_book,
+    "fx_trend": load_fx_trend_book,
 }
 
 
