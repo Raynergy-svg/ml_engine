@@ -63,7 +63,6 @@ def test_leak_detection_probe_macro_f1_below_threshold():
 
     n = 4000
     horizon = 20
-    rng = np.random.default_rng(21)
     close = _random_walk_close(n, seed=21)
     df = pd.DataFrame({"close": close})
 

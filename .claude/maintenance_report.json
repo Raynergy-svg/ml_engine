@@ -20,9 +20,36 @@
     "unacknowledged": 1
   },
   "config_overlay": null,
+  "hedge_scorecard": {
+    "available": true,
+    "report_age_s": 69769.51366782188,
+    "runtime_allowed": false,
+    "strategies_with_history": [
+      "crypto_momentum",
+      "equity_harvester",
+      "track_b"
+    ],
+    "summary": {
+      "crypto_momentum": {
+        "cost_unmodeled_for_venue": false,
+        "n_cycles": 1,
+        "verdict": "insufficient_history"
+      },
+      "equity_harvester": {
+        "cost_unmodeled_for_venue": true,
+        "n_cycles": 1,
+        "verdict": "insufficient_history"
+      },
+      "track_b": {
+        "cost_unmodeled_for_venue": false,
+        "n_cycles": 1,
+        "verdict": "insufficient_history"
+      }
+    }
+  },
   "lanes": {
     "equity_artifact_stale": false,
-    "equity_ledger_age_s": 730.6862483024597,
+    "equity_ledger_age_s": 824.6928634643555,
     "global_halted": false,
     "halted_lanes": {
       "brain": false,
@@ -36,9 +63,9 @@
       "fresh": true,
       "pid_alive": true,
       "scanner_alive": false,
-      "writer": null
+      "writer": "tier7_supervisor"
     },
-    "trend_account_state_age_s": 196.67336893081665,
+    "trend_account_state_age_s": 38.61792063713074,
     "trend_artifact_stale": false
   },
   "needs_attention": [
@@ -54,6 +81,6 @@
     "last_action_label": null
   },
   "supervisor_pid": 73646,
-  "ts_iso": "2026-07-08T21:53:54.366397+00:00",
+  "ts_iso": "2026-07-08T21:55:28.373012+00:00",
   "writer": "tier7_supervisor"
 }

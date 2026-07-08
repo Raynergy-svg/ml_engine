@@ -15,7 +15,6 @@ import json
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from cli.risk_target_training import train_risk_targets
 from cli.training_ops import CLI_GATE_PASSED, CLI_GATE_REFUSED

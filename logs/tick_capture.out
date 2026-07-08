@@ -2233,3 +2233,6 @@
 2026-07-08 17:52:56,623 INFO     src.data.tick_capture Flushed 236 ticks to trained_data/ticks
 2026-07-08 17:53:27,280 INFO     src.data.tick_capture Flushed 197 ticks to trained_data/ticks
 2026-07-08 17:54:00,513 INFO     src.data.tick_capture Flushed 358 ticks to trained_data/ticks
+2026-07-08 17:54:31,139 INFO     src.data.tick_capture Flushed 277 ticks to trained_data/ticks
+2026-07-08 17:55:01,832 INFO     src.data.tick_capture Flushed 309 ticks to trained_data/ticks
+2026-07-08 17:55:32,445 INFO     src.data.tick_capture Flushed 309 ticks to trained_data/ticks
