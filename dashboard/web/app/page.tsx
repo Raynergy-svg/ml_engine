@@ -19,6 +19,7 @@ import { LearningLoopPanel } from "@/components/LearningLoopPanel";
 import { CryptoMomentumPanel } from "@/components/CryptoMomentumPanel";
 import { TrackBPanel } from "@/components/TrackBPanel";
 import { CryptoCarryPanel } from "@/components/CryptoCarryPanel";
+import { HedgePanel } from "@/components/HedgePanel";
 import { ActivityPanel } from "@/components/ActivityPanel";
 import { MindWindowPanel } from "@/components/MindWindowPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
@@ -275,6 +276,11 @@ function DashboardBody() {
             <CryptoMomentumPanel />
             <TrackBPanel />
             <CryptoCarryPanel />
+            {/* AXIOM Hedge Layer — SHADOW / ANALYSIS-ONLY (read_hedge / GET
+                /api/hedge): live FX exposure netting, the exposure-history
+                training bridge, and the raw-vs-hedged ledger. No order path,
+                nothing armed — mounted alongside the other shadow lanes. */}
+            <HedgePanel />
           </>
         )}
         {tab === "Settings" && <ControlPanel />}

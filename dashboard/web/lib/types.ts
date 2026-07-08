@@ -728,6 +728,93 @@ export interface TrackB {
   source: Record<string, string>;
 }
 
+// GET /api/hedge — AXIOM Hedge Layer readout, SHADOW / ANALYSIS-ONLY (places no
+// orders, unhalts nothing, mutates no broker; every row carries paper_only /
+// runtime_allowed flags from its writer). Backed by data_sources.read_hedge():
+//   - live_fx_exposure: computed live each request from the open OANDA trend
+//     book (persist=False) — the "one USD bet wearing three outfits" detector;
+//     null when the book is flat / stale / uncomputable (honest empty state).
+//   - exposure_history: the training bridge counter (0 until the capture loop
+//     starts — an explicit "not started" state, not an error).
+//   - recent_cycles: raw-vs-hedged ledger rows; FX hedged return_basis is often
+//     "unresolved" (no FX forward-price source yet — surfaced, not hidden).
+// Every nested value below that is an object/array is rendered field-extracted
+// or .map()ed, NEVER dropped into JSX directly ("Objects are not valid as a
+// React child" has crashed this dashboard before — see HedgePanel guards).
+export interface HedgeLeg {
+  instrument: string;
+  direction: string; // "long" | "short"
+  risk_home: number;
+}
+export interface HedgeProposal {
+  style: string; // "direct_offset" | "relative_value" | "market" | "sector"
+  legs: HedgeLeg[];
+  neutralizes: string; // which exposure bucket this targets, e.g. "currency:USD"
+  isolates: string; // one-line narrative: what view survives the hedge
+  exposure_reduction: number; // dollar risk_home removed from the flagged bucket
+  exposure_reduction_pct: number | null;
+  correlation_to_target: number | null;
+  cost_known: boolean;
+  cost_estimate_dollars: number | null;
+  cost_to_reduction_ratio: number | null;
+  cost_source: string;
+  cost_confidence: number;
+  fail_closed: boolean;
+  reasons: string[];
+}
+export interface HedgeLiveFxExposure {
+  asof_date: string | null;
+  nav: number | null;
+  net_currency_exposure: Record<string, number>; // signed home-$ notional per currency
+  net_correlation_bucket_exposure: Record<string, number>;
+  concentration_warnings: string[];
+  narrative: string[];
+  position_count: number | null;
+  resolved_position_count: number | null;
+  raw_net_return: number | null;
+  raw_return_basis: string | null;
+  hedge_status: string | null; // "applied" | "no_valid_hedge" | "fail_closed" | "unsupported_asset_class"
+  hedge_decision: string | null;
+  applied_hedge: HedgeProposal | null; // OBJECT — never render raw; extract named fields
+  hedged_return_basis: string; // often "unresolved" for FX (no forward-price source yet)
+}
+export interface HedgeExposureHistory {
+  n_snapshots: number;
+  first_captured_at: string | null;
+  last_captured_at: string | null;
+  last_nav: number | null;
+  last_net_currency: Record<string, number> | null; // OBJECT — never render raw
+  note: string;
+}
+// One raw-vs-hedged ledger row. raw/hedge/hedged/exposure are OBJECTS — only the
+// named scalar fields below get rendered; the rest stay opaque on purpose.
+export interface HedgeLedgerCycle {
+  cycle_ts: string;
+  strategy: string;
+  asset_class: string;
+  asof_date: string;
+  notional: number;
+  raw: { net_return: number | null; gross_return?: number | null };
+  hedge: { status: string | null; decision: string | null };
+  hedged: { return_basis: string; net_return: number | null; gross_return: number | null };
+  exposure: Record<string, unknown>;
+  paper_only?: boolean;
+  runtime_allowed?: boolean;
+  human_review_required?: boolean;
+}
+export interface Hedge {
+  live_fx_exposure: HedgeLiveFxExposure | null;
+  scorecards: Record<string, unknown>; // per-strategy objects — not rendered raw
+  strategies_with_history: string[];
+  recent_cycles: HedgeLedgerCycle[];
+  n_ledger_cycles: number;
+  exposure_history: HedgeExposureHistory;
+  paper_only: boolean;
+  runtime_allowed: boolean;
+  human_review_required: boolean;
+  source: Record<string, string>;
+}
+
 // GET /api/mind_window — resident reasoning loop (src/agent_runtime/loop.py)
 // "mind-window": what the loop NOTICED (observations), BELIEVES (diagnosis),
 // DID-OR-WOULD-DO (outcomes), and NEEDS FROM THE OPERATOR (pending_operator_
