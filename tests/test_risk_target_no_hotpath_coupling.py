@@ -21,6 +21,7 @@ RISK_TARGET_MODULES = [
     "src/training/labels/forward_drawdown_state_label.py",
     "src/training/labels/realized_volatility_regime_label.py",
     "src/training/risk_target_features.py",
+    "src/training/risk_target_readout.py",
     "src/training/risk_target_splits.py",
     "src/training/trainers/risk_target_trainer.py",
     "cli/risk_target_training.py",
