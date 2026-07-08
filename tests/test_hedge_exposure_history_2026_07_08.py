@@ -184,8 +184,23 @@ def test_missing_stop_loss_records_reason_but_keeps_notional(env):
 def test_no_execution_path_imports():
     """Structural: the capture module must never import the execution plane
     (same import-boundary discipline as the risk-target pre-registration)."""
-    src = (Path(__file__).resolve().parents[1] / "src" / "hedge"
-           / "exposure_history.py").read_text(encoding="utf-8")
-    for banned in ("scanner.execution", "state_engine", "oanda_practice",
-                   "brokers", "execute_trade", "place_order"):
-        assert banned not in src, f"execution-plane reference found: {banned}"
+    root = Path(__file__).resolve().parents[1]
+    for rel in ("src/hedge/exposure_history.py",
+                "scripts/run_exposure_history_capture.py"):
+        src = (root / rel).read_text(encoding="utf-8")
+        for banned in ("scanner.execution", "state_engine", "oanda_practice",
+                       "brokers", "execute_trade", "place_order"):
+            assert banned not in src, f"execution-plane reference in {rel}: {banned}"
+
+
+def test_append_failure_reported_as_refusal(env):
+    """G1: if the JSONL append cannot persist (out_path's parent is an
+    unwritable location — here: a FILE where the dir should be), the capture
+    must return None, not a phantom row."""
+    state, ticks, out_dirfile = env
+    _write_account_state(state, [])
+    blocked_parent = state.parent / "blocked"
+    blocked_parent.write_text("a file, not a directory", encoding="utf-8")
+    out = blocked_parent / "exposure_history.jsonl"  # mkdir will fail
+    assert capture_exposure_snapshot(account_state_path=state, ticks_root=ticks,
+                                     out_path=out, now=NOW) is None

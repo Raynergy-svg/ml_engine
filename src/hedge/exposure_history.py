@@ -313,7 +313,18 @@ def capture_exposure_snapshot(
         "paper_only": True,
         "runtime_allowed": False,
     }
-    _append_jsonl(out_path, row)
+    # _append_jsonl logs-and-swallows write OSErrors (but its mkdir can still
+    # raise); catch here and verify the row actually landed, so a failed write
+    # is reported as a refusal, not a phantom success (verifier gap G1).
+    try:
+        _append_jsonl(out_path, row)
+    except OSError as exc:
+        logger.error("exposure_history: cannot create/append %s: %s", out_path, exc)
+        return None
+    if _last_recorded_mtime(out_path) != mtime_iso:
+        logger.error("exposure_history: append did NOT persist to %s — "
+                     "reporting capture failure", out_path)
+        return None
     logger.info("exposure_history: captured %d positions (%d resolved) -> %s "
                 "[nav=%s, buckets=%d, fails=%d]",
                 len(records), len(resolved), out_path, row["nav"],
