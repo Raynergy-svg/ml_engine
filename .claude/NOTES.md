@@ -908,6 +908,21 @@ Source: `.claude/state.json` read 2026-06-24T18:52Z (`last_actor: operator-direc
   and start the loop (`python3 scripts/run_exposure_history_capture.py --loop 900`, launchd like
   tick_capture) — history only accumulates once it runs. Weekend gaps are documented behavior
   (stale ticks → refuse), not a fault.**
+- **FX trend-lane raw-vs-hedged SCOREBOARD + FORWARD MARKING SHIPPED (2026-07-08, same branch,
+  commits 9e96bd4 + 42ee927; verifier PASS on the loader).** `load_fx_trend_book` registers `fx_trend`
+  in the hedge shadow lane (`STRATEGIES`/`_LOADERS`): live OANDA book (units) → signed fraction-of-NAV
+  weights via the shared `exposure_history.resolve_current_book`. Then `hedge_overlay_pnl` gained FX
+  forward-marking: an FX hedge leg is marked from the cached daily panel `market_data/factor/{PAIR}_D.csv`
+  (`fx_instrument_forward_return`, same leak-safety as `_ticker_forward_return`, inverse-pair handling so
+  JPY_CHF marks via cached CHF_JPY). Smoke (historical asof): JPY_CHF hedge → overlay +$308, hedged
+  basis `gross_cost_unknown`. Live "today" books stay `unresolved` until the daily panel has tomorrow's
+  bar (inherent, same as equity lane). 101-test hedge suite green.
+- **DASHBOARD updated to match (2026-07-08, commits bf9cafd + 5d583d3, pushed).** New read-only
+  `GET /api/hedge` (`dashboard/server/data_sources.read_hedge`) surfaces live FX exposure netting +
+  hedge proposal (computed each request, persist=False), raw-vs-hedged scorecard/ledger, and the
+  exposure-history counter. `HedgePanel.tsx` in the Automation tab renders it — object-as-React-child
+  hardened (the recurring crash class), honest empty states, tsc/build/scoped-lint clean. GET proxy is
+  passthrough (no allowlist change). Read-only, no control/POST path.
 - **STATUS-ORACLE TRAP FIXED (2026-06-29).** `running_status.py` reported ONLY the dormant equity-harvester
   (IBKR, superseded) lane -> "running:NO" even though the LIVE OANDA-trend + Tier7 lane was running -> caused a
   false "nothing running". Rewrote it to report TWO clearly-LABELED lanes: **LIVE LANE** (OANDA trend + Tier7;
