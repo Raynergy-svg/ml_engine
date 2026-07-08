@@ -308,3 +308,9 @@ trained_data/.memory/
 .claude/self_heal_action_budget.json
 .claude/self_heal_debounce.json
 trained_data/execution_quality.json
+.claude/ralph/.watcher_state.json
+.claude/ralph/event_log.jsonl
+.claude/ralph/.last-branch
+trained_data/position_management_log.json
+trained_data/module_dispatcher_log.json
+trained_data/scan_diagnostics_state.json
