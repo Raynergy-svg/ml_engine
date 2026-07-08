@@ -1,15 +1,29 @@
 "use client";
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import { usePoll } from "@/lib/api";
 import type { TrackB, LaneStatus } from "@/lib/types";
 import { Card, SectionTitle, NotConnected, Loading, Badge, StatusDot } from "./ui";
 import { shortTime, fmtPct, fmtSigned, pnlClass } from "@/lib/format";
 
+// Contract-drift guard: a disk-backed endpoint that returns an object where a
+// scalar is expected must NOT crash the cockpit ("Objects are not valid as a
+// React child"). Primitives and real React nodes pass through untouched; a
+// stray plain object is stringified as a last resort instead of throwing.
+function safeChild(value: ReactNode): ReactNode {
+  if (value == null || typeof value !== "object") return value;
+  if (isValidElement(value) || Array.isArray(value)) return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function Row({ label, value, mono = true }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between border-t py-1.5 hairline first:border-t-0">
       <span className="font-mono text-[11px] text-faint">{label}</span>
-      <span className={`text-[12px] text-text ${mono ? "font-mono tnum" : ""}`}>{value}</span>
+      <span className={`text-[12px] text-text ${mono ? "font-mono tnum" : ""}`}>{safeChild(value)}</span>
     </div>
   );
 }
