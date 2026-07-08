@@ -4,7 +4,7 @@
   "description": "Hot-state memory for the PRD improvement loop. Written by Ralph/user as stories complete. Read by scheduled sweep and chain agents.",
   "current_prd": {
     "file": ".claude/ralph/prd.json",
-    "phase": "ralph/buddy-gap-resolution-phase3",
+    "phase": "ralph/buddy-gap-resolution-phase22",
     "total_stories": 29,
     "passed_stories": 0,
     "story_status": {
@@ -91,76 +91,76 @@
       "US-017": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: state_reconciler, supervision_polic"
+        "title": "Register modules in dispatcher/orchestrator: execution_quality_optimizer, advers"
       },
       "US-018": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: hermes_digest, regime_reward, train"
+        "title": "Register modules in dispatcher/orchestrator: supervision_core, model_manager, he"
       },
       "US-019": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: event_queue, model_bandit, ensemble"
+        "title": "Register modules in dispatcher/orchestrator: causal_counterfactual, trade_slots,"
       },
       "US-020": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: position_manager, briefing_snapshot"
+        "title": "Register modules in dispatcher/orchestrator: regime_tracker, affinity_portfolio,"
       },
       "US-021": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, c"
+        "title": "Register modules in dispatcher/orchestrator: smart_execution, accuracy_gate, tem"
       },
       "US-022": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: supervision_tick, validation_stats,"
+        "title": "Register modules in dispatcher/orchestrator: dynamic_risk_allocator, hermes_stat"
       },
       "US-023": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: pair_affinity, seasonality, trading"
+        "title": "Register modules in dispatcher/orchestrator: continuous, market_impact, parallel"
       },
       "US-024": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: deterministic_surgeon, feature_atte"
+        "title": "Register modules in dispatcher/orchestrator: trading_control_plane, learnings_ou"
       },
       "US-025": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: attention_feedback, brain_caps, obs"
+        "title": "Register modules in dispatcher/orchestrator: supervision_runtime, hierarchical_r"
       },
       "US-026": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, t"
+        "title": "Register modules in dispatcher/orchestrator: observational_learning, model_route"
       },
       "US-027": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: drift_projector, event_history, pha"
+        "title": "Register modules in dispatcher/orchestrator: trigger_registry, drift_monitor, cr"
       },
       "US-028": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: api_retry, meta_types"
+        "title": "Register modules in dispatcher/orchestrator: phase_manager, session_registry, pa"
       },
       "US-029": {
         "passed": false,
         "completed_at": null,
-        "title": "Connect feedback consumers for: confidence_calibrator"
+        "title": "Connect feedback consumers for: trend_journal_sync, state_reconciler, briefing_s"
       }
     },
     "last_story_completed": null,
-    "last_updated": "2026-07-02T13:33:48.361805+00:00",
+    "last_updated": "2026-07-08T13:53:26.319425+00:00",
     "all_complete": false
   },
   "loop_history": {
     "total_phases_completed": 29,
-    "total_chain_runs": 363,
+    "total_chain_runs": 1023,
     "total_stories_implemented": 0,
     "phases": [
       "phase8",
@@ -187,7 +187,7 @@
       "phase29"
     ],
     "last_chain_result": {
-      "timestamp": "2026-07-02T13:33:48.357383+00:00",
+      "timestamp": "2026-07-08T13:53:26.276584+00:00",
       "review_passed": true,
       "blockers": 0,
       "review_cycles_used": 0

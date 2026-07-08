@@ -1,13 +1,17 @@
 {
-  "flushes": 3,
-  "gaps_detected": 0,
-  "idle_seconds": 2.6,
-  "last_gap": null,
-  "last_tick_time": 1783422078.237199,
+  "flushes": 2166,
+  "gaps_detected": 2,
+  "idle_seconds": 0.7,
+  "last_gap": {
+    "duration_sec": 349.9,
+    "gap_end": "2026-07-08T21:04:55.342074+00:00",
+    "gap_start": "2026-07-08T20:59:05.397159+00:00"
+  },
+  "last_tick_time": 1783547639.839298,
   "retention_days": 180,
-  "started_at": "2026-07-07T11:00:55.291689+00:00",
+  "started_at": "2026-07-08T03:28:08.397536+00:00",
   "stream_status": "running",
-  "ticks_per_minute": 33,
-  "ticks_received_total": 33,
-  "ticks_written": 33
+  "ticks_per_minute": 204,
+  "ticks_received_total": 988171,
+  "ticks_written": 988133
 }

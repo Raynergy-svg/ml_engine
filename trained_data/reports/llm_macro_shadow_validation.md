@@ -1,6 +1,6 @@
 # LLM Macro Agent — Historical Shadow Validation Report
 
-**Generated:** 2026-07-02T09:38:59.266402
+**Generated:** 2026-07-08T09:57:20.904068
 **Method:** Pre-event transcripts fed to LLM Macro Agent + CB Audio Processor (tone analysis)
 
 ## Summary

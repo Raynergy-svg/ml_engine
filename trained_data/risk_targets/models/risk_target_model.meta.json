@@ -1,0 +1,31 @@
+{
+  "categorical_features": [],
+  "feature_names": [
+    "realized_vol_5",
+    "realized_vol_10",
+    "realized_vol_20",
+    "realized_vol_60",
+    "atr_14",
+    "hl_range_pct_14",
+    "return_mean_5",
+    "return_mean_20",
+    "vol_of_vol_20",
+    "volume_zscore_20",
+    "day_of_week",
+    "pair"
+  ],
+  "metrics": {
+    "fold_id": null,
+    "instrument": "pooled_18_fx_pairs",
+    "n_train": 38036,
+    "n_val": 9526,
+    "val_auc_drawdown": 0.5864014681426948,
+    "val_brier_drawdown": 0.249232739454953,
+    "val_mae": 0.011220599638080225,
+    "val_pinball_median": 0.005610299819040113,
+    "val_qlike": 0.047715351555279034,
+    "val_r2": 0.8452687208099232
+  },
+  "risk_target_feature_pipeline_version": "2026-07-08-v1",
+  "scaler": "not_applicable_tree_based_model"
+}

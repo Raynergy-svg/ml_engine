@@ -1,1 +1,1 @@
-{"total_timesteps": 256, "final_equity": 9994.256126643884, "total_trades": 216, "win_rate": 0.5231481481481481, "model_path": "trained_data/models/rl_position_sizer.zip", "scaler_path": "trained_data/models/rl_scaler.pkl"}
+{"total_timesteps": 256, "final_equity": 9984.317158215545, "total_trades": 210, "win_rate": 0.5190476190476191, "model_path": "trained_data/models/rl_position_sizer.zip", "scaler_path": "trained_data/models/rl_scaler.pkl"}

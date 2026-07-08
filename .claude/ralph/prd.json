@@ -1,6 +1,6 @@
 {
-  "branchName": "ralph/buddy-gap-resolution-phase3",
-  "description": "Auto-generated gap resolution PRD. Source: prd_aura_phase2.json. Detected 138 integration gaps across 4 categories. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "branchName": "ralph/buddy-gap-resolution-phase22",
+  "description": "Auto-generated gap resolution PRD. Source: prd_phase21.json. Detected 143 integration gaps across 4 categories. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
   "project": "ML_Engine",
   "userStories": [
     {
@@ -263,8 +263,8 @@
         "Register 'chain_memory' in module_dispatcher or orchestrator._init_modules()",
         "Register 'model_calibration' in module_dispatcher or orchestrator._init_modules()",
         "Register 'execution_router' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'execution_quality_optimizer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'adversarial_trainer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trend_journal_sync' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'code_freshness' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -273,15 +273,15 @@
       "notes": "",
       "passes": false,
       "priority": 16,
-      "title": "Register modules in dispatcher/orchestrator: chain_memory, model_calibration, execution_router, execution_quality_optimizer, adversarial_trainer"
+      "title": "Register modules in dispatcher/orchestrator: chain_memory, model_calibration, execution_router, trend_journal_sync, code_freshness"
     },
     {
       "acceptanceCriteria": [
+        "Register 'execution_quality_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'adversarial_trainer' in module_dispatcher or orchestrator._init_modules()",
         "Register 'state_reconciler' in module_dispatcher or orchestrator._init_modules()",
         "Register 'supervision_policy_engine' in module_dispatcher or orchestrator._init_modules()",
         "Register 'autonomous_trainer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'supervision_core' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_manager' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -290,15 +290,15 @@
       "notes": "",
       "passes": false,
       "priority": 17,
-      "title": "Register modules in dispatcher/orchestrator: state_reconciler, supervision_policy_engine, autonomous_trainer, supervision_core, model_manager"
+      "title": "Register modules in dispatcher/orchestrator: execution_quality_optimizer, adversarial_trainer, state_reconciler, supervision_policy_engine, autonomous_trainer"
     },
     {
       "acceptanceCriteria": [
+        "Register 'supervision_core' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_manager' in module_dispatcher or orchestrator._init_modules()",
         "Register 'hermes_digest' in module_dispatcher or orchestrator._init_modules()",
         "Register 'regime_reward' in module_dispatcher or orchestrator._init_modules()",
         "Register 'training_augmenter' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'causal_counterfactual' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trade_slots' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -307,15 +307,15 @@
       "notes": "",
       "passes": false,
       "priority": 18,
-      "title": "Register modules in dispatcher/orchestrator: hermes_digest, regime_reward, training_augmenter, causal_counterfactual, trade_slots"
+      "title": "Register modules in dispatcher/orchestrator: supervision_core, model_manager, hermes_digest, regime_reward, training_augmenter"
     },
     {
       "acceptanceCriteria": [
+        "Register 'causal_counterfactual' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_slots' in module_dispatcher or orchestrator._init_modules()",
         "Register 'event_queue' in module_dispatcher or orchestrator._init_modules()",
         "Register 'model_bandit' in module_dispatcher or orchestrator._init_modules()",
         "Register 'ensemble_disagreement' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'regime_tracker' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'affinity_portfolio' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -324,15 +324,15 @@
       "notes": "",
       "passes": false,
       "priority": 19,
-      "title": "Register modules in dispatcher/orchestrator: event_queue, model_bandit, ensemble_disagreement, regime_tracker, affinity_portfolio"
+      "title": "Register modules in dispatcher/orchestrator: causal_counterfactual, trade_slots, event_queue, model_bandit, ensemble_disagreement"
     },
     {
       "acceptanceCriteria": [
+        "Register 'regime_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'affinity_portfolio' in module_dispatcher or orchestrator._init_modules()",
         "Register 'position_manager' in module_dispatcher or orchestrator._init_modules()",
         "Register 'briefing_snapshot' in module_dispatcher or orchestrator._init_modules()",
         "Register 'cycle_autonomy' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'smart_execution' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'accuracy_gate' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -341,15 +341,15 @@
       "notes": "",
       "passes": false,
       "priority": 20,
-      "title": "Register modules in dispatcher/orchestrator: position_manager, briefing_snapshot, cycle_autonomy, smart_execution, accuracy_gate"
+      "title": "Register modules in dispatcher/orchestrator: regime_tracker, affinity_portfolio, position_manager, briefing_snapshot, cycle_autonomy"
     },
     {
       "acceptanceCriteria": [
+        "Register 'smart_execution' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'accuracy_gate' in module_dispatcher or orchestrator._init_modules()",
         "Register 'temporal_attention' in module_dispatcher or orchestrator._init_modules()",
         "Register 'orchestrator' in module_dispatcher or orchestrator._init_modules()",
         "Register 'constitution' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'dynamic_risk_allocator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'hermes_state' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -358,15 +358,15 @@
       "notes": "",
       "passes": false,
       "priority": 21,
-      "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, constitution, dynamic_risk_allocator, hermes_state"
+      "title": "Register modules in dispatcher/orchestrator: smart_execution, accuracy_gate, temporal_attention, orchestrator, constitution"
     },
     {
       "acceptanceCriteria": [
+        "Register 'dynamic_risk_allocator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hermes_state' in module_dispatcher or orchestrator._init_modules()",
         "Register 'supervision_tick' in module_dispatcher or orchestrator._init_modules()",
         "Register 'validation_stats' in module_dispatcher or orchestrator._init_modules()",
         "Register 'lead_lag_detector' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'continuous' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'market_impact' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -375,15 +375,15 @@
       "notes": "",
       "passes": false,
       "priority": 22,
-      "title": "Register modules in dispatcher/orchestrator: supervision_tick, validation_stats, lead_lag_detector, continuous, market_impact"
+      "title": "Register modules in dispatcher/orchestrator: dynamic_risk_allocator, hermes_state, supervision_tick, validation_stats, lead_lag_detector"
     },
     {
       "acceptanceCriteria": [
+        "Register 'continuous' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'market_impact' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'parallel_scan' in module_dispatcher or orchestrator._init_modules()",
         "Register 'pair_affinity' in module_dispatcher or orchestrator._init_modules()",
         "Register 'seasonality' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trading_control_plane' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'learnings_outcomes' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'close_diagnostician' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -392,15 +392,15 @@
       "notes": "",
       "passes": false,
       "priority": 23,
-      "title": "Register modules in dispatcher/orchestrator: pair_affinity, seasonality, trading_control_plane, learnings_outcomes, close_diagnostician"
+      "title": "Register modules in dispatcher/orchestrator: continuous, market_impact, parallel_scan, pair_affinity, seasonality"
     },
     {
       "acceptanceCriteria": [
+        "Register 'trading_control_plane' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'learnings_outcomes' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'close_diagnostician' in module_dispatcher or orchestrator._init_modules()",
         "Register 'deterministic_surgeon' in module_dispatcher or orchestrator._init_modules()",
         "Register 'feature_attention' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'supervision_runtime' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'hierarchical_risk_parity' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'execution_quality_tracker' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -409,15 +409,15 @@
       "notes": "",
       "passes": false,
       "priority": 24,
-      "title": "Register modules in dispatcher/orchestrator: deterministic_surgeon, feature_attention, supervision_runtime, hierarchical_risk_parity, execution_quality_tracker"
+      "title": "Register modules in dispatcher/orchestrator: trading_control_plane, learnings_outcomes, close_diagnostician, deterministic_surgeon, feature_attention"
     },
     {
       "acceptanceCriteria": [
+        "Register 'supervision_runtime' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hierarchical_risk_parity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_tracker' in module_dispatcher or orchestrator._init_modules()",
         "Register 'attention_feedback' in module_dispatcher or orchestrator._init_modules()",
         "Register 'brain_caps' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'observational_learning' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_router' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'causal_filter' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -426,15 +426,15 @@
       "notes": "",
       "passes": false,
       "priority": 25,
-      "title": "Register modules in dispatcher/orchestrator: attention_feedback, brain_caps, observational_learning, model_router, causal_filter"
+      "title": "Register modules in dispatcher/orchestrator: supervision_runtime, hierarchical_risk_parity, execution_quality_tracker, attention_feedback, brain_caps"
     },
     {
       "acceptanceCriteria": [
+        "Register 'observational_learning' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'causal_filter' in module_dispatcher or orchestrator._init_modules()",
         "Register 'module_activation' in module_dispatcher or orchestrator._init_modules()",
         "Register 'concept_drift' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trigger_registry' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'drift_monitor' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'crisis_generator' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -443,15 +443,15 @@
       "notes": "",
       "passes": false,
       "priority": 26,
-      "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, trigger_registry, drift_monitor, crisis_generator"
+      "title": "Register modules in dispatcher/orchestrator: observational_learning, model_router, causal_filter, module_activation, concept_drift"
     },
     {
       "acceptanceCriteria": [
+        "Register 'trigger_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'drift_monitor' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'crisis_generator' in module_dispatcher or orchestrator._init_modules()",
         "Register 'drift_projector' in module_dispatcher or orchestrator._init_modules()",
         "Register 'event_history' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'phase_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'session_registry' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'pair_regime_agent_matrix' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -460,10 +460,13 @@
       "notes": "",
       "passes": false,
       "priority": 27,
-      "title": "Register modules in dispatcher/orchestrator: drift_projector, event_history, phase_manager, session_registry, pair_regime_agent_matrix"
+      "title": "Register modules in dispatcher/orchestrator: trigger_registry, drift_monitor, crisis_generator, drift_projector, event_history"
     },
     {
       "acceptanceCriteria": [
+        "Register 'phase_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'session_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_regime_agent_matrix' in module_dispatcher or orchestrator._init_modules()",
         "Register 'api_retry' in module_dispatcher or orchestrator._init_modules()",
         "Register 'meta_types' in module_dispatcher or orchestrator._init_modules()",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
@@ -474,11 +477,13 @@
       "notes": "",
       "passes": false,
       "priority": 28,
-      "title": "Register modules in dispatcher/orchestrator: api_retry, meta_types"
+      "title": "Register modules in dispatcher/orchestrator: phase_manager, session_registry, pair_regime_agent_matrix, api_retry, meta_types"
     },
     {
       "acceptanceCriteria": [
-        "Wire 'confidence_calibrator' output into observation_consumer or learning_engine",
+        "Wire 'trend_journal_sync' output into observation_consumer or learning_engine",
+        "Wire 'state_reconciler' output into observation_consumer or learning_engine",
+        "Wire 'briefing_snapshot' output into observation_consumer or learning_engine",
         "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
         "Syntax validation passes"
       ],
@@ -487,7 +492,7 @@
       "notes": "",
       "passes": false,
       "priority": 29,
-      "title": "Connect feedback consumers for: confidence_calibrator"
+      "title": "Connect feedback consumers for: trend_journal_sync, state_reconciler, briefing_snapshot"
     }
   ]
 }

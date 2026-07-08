@@ -13,7 +13,7 @@
         "message": "7 consecutive losses (threshold: 3)",
         "route": "self_heal reduce_risk (evidence-anchored, auto) + auto-halt circuit breaker at threshold (engine); operator ack via AXIOM",
         "severity": "WARNING",
-        "ts": "2026-07-02T12:58:07.588699",
+        "ts": "2026-07-08T13:27:30.074371",
         "type": "consecutive_losses"
       }
     ],
@@ -22,38 +22,38 @@
   "config_overlay": null,
   "lanes": {
     "equity_artifact_stale": false,
-    "equity_ledger_age_s": 2319.037018299103,
+    "equity_ledger_age_s": 730.6862483024597,
     "global_halted": false,
     "halted_lanes": {
       "brain": false,
-      "crypto_carry": true,
+      "crypto_carry": false,
       "crypto_momentum": false,
       "equity": false,
-      "oanda_fx": true,
+      "oanda_fx": false,
       "track_b": false
     },
     "heartbeat": {
       "fresh": true,
       "pid_alive": true,
       "scanner_alive": false,
-      "writer": "tier7_supervisor"
+      "writer": null
     },
-    "trend_account_state_age_s": 216.88401794433594,
+    "trend_account_state_age_s": 196.67336893081665,
     "trend_artifact_stale": false
   },
   "needs_attention": [
     "1 unacknowledged alert(s)"
   ],
   "recommendations": [
-    "Model freshness CRITICAL (per_pair_models (49d)). NOTE: FX direction staleness is by-design (L-016 retired; ship-gate quarantined) \u2014 do NOT retrain FX direction and never via deprecated train-joint. If a stale NON-retired head matters, escalate to the operator for scripts/run_full_training.sh (per-pair path)."
+    "Model freshness CRITICAL (per_pair_models (50d)). NOTE: FX direction staleness is by-design (L-016 retired; ship-gate quarantined) \u2014 do NOT retrain FX direction and never via deprecated train-joint. If a stale NON-retired head matters, escalate to the operator for scripts/run_full_training.sh (per-pair path)."
   ],
   "self_heal": {
-    "actions_today": 4,
+    "actions_today": 1,
     "available": true,
-    "last_action_at": "2026-07-07T19:16:22.904678+00:00",
-    "last_action_label": "retrain_rl_position_sizer"
+    "last_action_at": null,
+    "last_action_label": null
   },
-  "supervisor_pid": 39778,
-  "ts_iso": "2026-07-07T21:20:21.726882+00:00",
+  "supervisor_pid": 73646,
+  "ts_iso": "2026-07-08T21:53:54.366397+00:00",
   "writer": "tier7_supervisor"
 }

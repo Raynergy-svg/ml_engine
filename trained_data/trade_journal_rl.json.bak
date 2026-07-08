@@ -164,6 +164,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.23,
+    "rl_weights_applied": true,
     "rr_ratio": 1.23,
     "sl_pips": 11.2,
     "sl_price": 0.87378,
@@ -173,8 +174,7 @@
     "timestamp": "2026-04-03T19:40:40.071244+00:00",
     "tp_pips": 13.8,
     "tp_price": 0.87128,
-    "trade_id": "1124",
-    "rl_weights_applied": true
+    "trade_id": "1124"
   },
   {
     "agents": {
@@ -341,6 +341,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.2,
+    "rl_weights_applied": true,
     "rr_ratio": 1.2,
     "sl_pips": 11.5,
     "sl_price": 0.5712483138935265,
@@ -350,8 +351,7 @@
     "timestamp": "2026-04-06T09:20:28.396373+00:00",
     "tp_pips": 13.8,
     "tp_price": 0.5737775291597101,
-    "trade_id": "1132",
-    "rl_weights_applied": true
+    "trade_id": "1132"
   },
   {
     "agents": {
@@ -518,6 +518,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.37,
+    "rl_weights_applied": true,
     "rr_ratio": 1.37,
     "sl_pips": 17.4,
     "sl_price": 110.33035234409235,
@@ -527,8 +528,7 @@
     "timestamp": "2026-04-06T09:20:36.285954+00:00",
     "tp_pips": 23.8,
     "tp_price": 110.74197148386149,
-    "trade_id": "1136",
-    "rl_weights_applied": true
+    "trade_id": "1136"
   },
   {
     "agents": {
@@ -689,6 +689,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.73,
+    "rl_weights_applied": true,
     "rr_ratio": 1.73,
     "sl_pips": 16.7,
     "sl_price": 0.78954302935296,
@@ -698,8 +699,7 @@
     "timestamp": "2026-04-08T22:41:24.218857+00:00",
     "tp_pips": 28.9,
     "tp_price": 0.7940999466309818,
-    "trade_id": "1145",
-    "rl_weights_applied": true
+    "trade_id": "1145"
   },
   {
     "agents": {
@@ -860,6 +860,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.32,
+    "rl_weights_applied": true,
     "rr_ratio": 1.32,
     "sl_pips": 27.6,
     "sl_price": 1.6577234222764663,
@@ -869,8 +870,7 @@
     "timestamp": "2026-04-08T22:41:50.888144+00:00",
     "tp_pips": 36.5,
     "tp_price": 1.6513148665853006,
-    "trade_id": "1149",
-    "rl_weights_applied": true
+    "trade_id": "1149"
   },
   {
     "agents": {
@@ -1031,6 +1031,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.08,
+    "rl_weights_applied": true,
     "rr_ratio": 1.08,
     "sl_pips": 20.7,
     "sl_price": 186.14795051579253,
@@ -1040,8 +1041,7 @@
     "timestamp": "2026-04-09T18:16:20.262449+00:00",
     "tp_pips": 22.3,
     "tp_price": 185.71807422631122,
-    "trade_id": "1157",
-    "rl_weights_applied": true
+    "trade_id": "1157"
   },
   {
     "agents": {
@@ -1181,6 +1181,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.26,
+    "rl_weights_applied": true,
     "rr_ratio": 1.26,
     "sl_pips": 15.5,
     "sl_price": 112.99619832945832,
@@ -1190,8 +1191,7 @@
     "timestamp": "2026-04-13T22:27:54.153363+00:00",
     "tp_pips": 19.5,
     "tp_price": 113.34570250581251,
-    "trade_id": "1189",
-    "rl_weights_applied": true
+    "trade_id": "1189"
   },
   {
     "agents": {
@@ -1331,6 +1331,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.23,
+    "rl_weights_applied": true,
     "rr_ratio": 1.23,
     "sl_pips": 11.2,
     "sl_price": 0.77974,
@@ -1340,8 +1341,7 @@
     "timestamp": "2026-04-14T12:11:59.247276+00:00",
     "tp_pips": 13.8,
     "tp_price": 0.7822399999999999,
-    "trade_id": "1195",
-    "rl_weights_applied": true
+    "trade_id": "1195"
   },
   {
     "agents": {
@@ -1481,6 +1481,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.45,
+    "rl_weights_applied": true,
     "rr_ratio": 1.45,
     "sl_pips": 16.5,
     "sl_price": 187.484214643893,
@@ -1490,8 +1491,7 @@
     "timestamp": "2026-04-14T12:12:14.890990+00:00",
     "tp_pips": 24.0,
     "tp_price": 187.07867803416048,
-    "trade_id": "1199",
-    "rl_weights_applied": true
+    "trade_id": "1199"
   },
   {
     "agents": null,
@@ -1721,6 +1721,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.99,
+    "rl_weights_applied": true,
     "rr_ratio": 1.99,
     "sl_pips": 19.6,
     "sl_price": 1.65308315659755,
@@ -1730,8 +1731,7 @@
     "timestamp": "2026-04-14T22:41:30.764895+00:00",
     "tp_pips": 39.1,
     "tp_price": 1.6589521085061254,
-    "trade_id": "1220",
-    "rl_weights_applied": true
+    "trade_id": "1220"
   },
   {
     "agents": {
@@ -1898,6 +1898,7 @@
     },
     "ridge_features": null,
     "risk_reward": 2.53,
+    "rl_weights_applied": true,
     "rr_ratio": 2.53,
     "sl_pips": 17.8,
     "sl_price": 158.86234283192238,
@@ -1907,8 +1908,7 @@
     "timestamp": "2026-04-15T19:01:39.676699+00:00",
     "tp_pips": 45.1,
     "tp_price": 159.49114292019408,
-    "trade_id": "1232",
-    "rl_weights_applied": true
+    "trade_id": "1232"
   },
   {
     "agents": {
@@ -2075,6 +2075,7 @@
     },
     "ridge_features": null,
     "risk_reward": 2.37,
+    "rl_weights_applied": true,
     "rr_ratio": 2.37,
     "sl_pips": 8.3,
     "sl_price": 0.87034,
@@ -2084,8 +2085,7 @@
     "timestamp": "2026-04-15T19:23:58.887170+00:00",
     "tp_pips": 19.7,
     "tp_price": 0.86754,
-    "trade_id": "1236",
-    "rl_weights_applied": true
+    "trade_id": "1236"
   },
   {
     "agents": {
@@ -2252,6 +2252,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.37,
+    "rl_weights_applied": true,
     "rr_ratio": 1.37,
     "sl_pips": 11.8,
     "sl_price": 0.8707400000000001,
@@ -2261,8 +2262,7 @@
     "timestamp": "2026-04-15T21:17:07.907298+00:00",
     "tp_pips": 16.2,
     "tp_price": 0.86794,
-    "trade_id": "1243",
-    "rl_weights_applied": true
+    "trade_id": "1243"
   },
   {
     "agents": {
@@ -2429,6 +2429,7 @@
     },
     "ridge_features": null,
     "risk_reward": 2.23,
+    "rl_weights_applied": true,
     "rr_ratio": 2.23,
     "sl_pips": 12.6,
     "sl_price": 1.3722663413693823,
@@ -2438,8 +2439,7 @@
     "timestamp": "2026-04-15T23:08:48.518424+00:00",
     "tp_pips": 28.1,
     "tp_price": 1.3763391465765442,
-    "trade_id": "1249",
-    "rl_weights_applied": true
+    "trade_id": "1249"
   },
   {
     "agents": {
@@ -2606,6 +2606,7 @@
     },
     "ridge_features": null,
     "risk_reward": 2.5,
+    "rl_weights_applied": true,
     "rr_ratio": 2.5,
     "sl_pips": 8.0,
     "sl_price": 0.78027,
@@ -2615,8 +2616,7 @@
     "timestamp": "2026-04-16T02:39:58.122668+00:00",
     "tp_pips": 20.0,
     "tp_price": 0.78307,
-    "trade_id": "1255",
-    "rl_weights_applied": true
+    "trade_id": "1255"
   },
   {
     "agents": {
@@ -2783,6 +2783,7 @@
     },
     "ridge_features": null,
     "risk_reward": 3.59,
+    "rl_weights_applied": true,
     "rr_ratio": 3.59,
     "sl_pips": 7.3,
     "sl_price": 1.3710131661450737,
@@ -2792,8 +2793,7 @@
     "timestamp": "2026-04-16T03:03:37.339888+00:00",
     "tp_pips": 26.2,
     "tp_price": 1.374362084637315,
-    "trade_id": "1261",
-    "rl_weights_applied": true
+    "trade_id": "1261"
   },
   {
     "agents": {
@@ -2930,6 +2930,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.46,
+    "rl_weights_applied": true,
     "rr_ratio": 1.46,
     "sl_pips": 13.8,
     "sl_price": 0.7832,
@@ -2939,8 +2940,7 @@
     "timestamp": "2026-05-05T00:42:40.819222+00:00",
     "tp_pips": 20.2,
     "tp_price": 0.7866,
-    "trade_id": "1269",
-    "rl_weights_applied": true
+    "trade_id": "1269"
   },
   {
     "agents": null,
@@ -3158,6 +3158,7 @@
     },
     "ridge_features": null,
     "risk_reward": 1.86,
+    "rl_weights_applied": true,
     "rr_ratio": 1.86,
     "sl_pips": 11.9,
     "sl_price": 0.77946,
@@ -3167,63 +3168,7 @@
     "timestamp": "2026-05-13T00:39:55.903116+00:00",
     "tp_pips": 22.1,
     "tp_price": 0.78286,
-    "trade_id": "1306",
-    "rl_weights_applied": true
-  },
-  {
-    "agents": {
-      "agent_passed": true,
-      "agent_reasons": [],
-      "agent_total": null,
-      "agent_votes": null,
-      "weighted_vote_score": null
-    },
-    "asset_class": "FX",
-    "broker": "oanda",
-    "confidence": 0.75,
-    "contract_month": null,
-    "direction": "LONG",
-    "entry_price": 1.085,
-    "episode_id": "f891da00-c18c-4f3a-9090-a41116c9c71c",
-    "expected_price": 1.085,
-    "fill_price": 1.085,
-    "gate_details": {
-      "core_score": null,
-      "final_score": null,
-      "scores": {}
-    },
-    "gates": {
-      "confidence_passed": null,
-      "gate_summary": null,
-      "momentum_passed": null,
-      "risk_passed": null
-    },
-    "group_momentum": null,
-    "lots": 1.0,
-    "multiplier": null,
-    "outcome": null,
-    "pair": "EUR_USD",
-    "regime": {
-      "atr_pips": null,
-      "model_disagreement": 0.1,
-      "predictive_size_modifier": null,
-      "regime_atr_multipliers": null,
-      "regime_risk_modifier": null,
-      "uncertainty_score": null,
-      "volatility_regime": "NORMAL"
-    },
-    "ridge_features": null,
-    "risk_reward": 1.67,
-    "rr_ratio": 1.67,
-    "sl_pips": 15.0,
-    "sl_price": 1.0835,
-    "slippage_pips": 0.0,
-    "spread_pips": 3.0,
-    "tick_value": null,
-    "timestamp": "2026-06-30T11:18:07.982687+00:00",
-    "tp_pips": 25.0,
-    "tp_price": 1.0875,
-    "trade_id": "test_1"
+    "trade_id": "1306"
   },
   {
     "agents": {
@@ -7646,5 +7591,273 @@
     "timestamp": "2026-07-03T19:10:31.529313134Z",
     "trade_id": "1761",
     "units": 79658.0
+  },
+  {
+    "account_balance": 103160.4501,
+    "agents": {
+      "agent_votes": null,
+      "note": "trend lane \u2014 no 15-agent consensus run"
+    },
+    "atr_stop_distance": 1.4927142857142834,
+    "backfill_source": "trend_journal_sync",
+    "backfilled_at": "2026-07-08T14:50:12.407611+00:00",
+    "close_ask": 162.534,
+    "close_bid": 162.52,
+    "close_half_spread_cost": 4.8255,
+    "close_reason": "manual",
+    "close_reason_raw": "MARKET_ORDER_TRADE_CLOSE",
+    "close_spread": 0.013999999999981583,
+    "close_time": "2026-07-08T14:05:51.730171742Z",
+    "confidence": null,
+    "direction": "LONG",
+    "entry_ask": 162.33,
+    "entry_bid": 162.312,
+    "entry_half_spread_cost": 6.212,
+    "entry_price": 162.33,
+    "entry_spread": 0.018000000000000682,
+    "exit_price": 162.52,
+    "financing": 0.0,
+    "gates": null,
+    "lane": "trend",
+    "outcome": "win",
+    "pair": "USD_JPY",
+    "realized_pl": 129.6667,
+    "realized_pl_total": 129.6667,
+    "regime": {
+      "note": "trend lane \u2014 no volatility-regime classification",
+      "volatility_regime": null
+    },
+    "requested_units": 112038.0,
+    "rl_eligible": false,
+    "source": "trend_journal_sync",
+    "timestamp": "2026-07-08T03:14:15.934954072Z",
+    "trade_id": "1858",
+    "units": 112038.0
+  },
+  {
+    "account_balance": 103160.4501,
+    "agents": {
+      "agent_votes": null,
+      "note": "trend lane \u2014 no 15-agent consensus run"
+    },
+    "atr_stop_distance": 0.009258571428571434,
+    "backfill_source": "trend_journal_sync",
+    "backfilled_at": "2026-07-08T14:50:12.407557+00:00",
+    "close_ask": 0.80907,
+    "close_bid": 0.8089,
+    "close_half_spread_cost": 9.4647,
+    "close_reason": "manual",
+    "close_reason_raw": "MARKET_ORDER_TRADE_CLOSE",
+    "close_spread": 0.00017000000000000348,
+    "close_time": "2026-07-08T13:57:53.607922617Z",
+    "confidence": null,
+    "direction": "LONG",
+    "entry_ask": 0.80844,
+    "entry_bid": 0.80829,
+    "entry_half_spread_cost": 8.3576,
+    "entry_price": 0.80844,
+    "entry_spread": 0.0001500000000000945,
+    "exit_price": 0.8089,
+    "financing": 0.0,
+    "gates": null,
+    "lane": "trend",
+    "outcome": "win",
+    "pair": "USD_CHF",
+    "realized_pl": 50.7083,
+    "realized_pl_total": 50.7083,
+    "regime": {
+      "note": "trend lane \u2014 no volatility-regime classification",
+      "volatility_regime": null
+    },
+    "requested_units": 90079.0,
+    "rl_eligible": false,
+    "source": "trend_journal_sync",
+    "timestamp": "2026-07-08T03:14:16.023449016Z",
+    "trade_id": "1862",
+    "units": 90079.0
+  },
+  {
+    "account_balance": 103160.4501,
+    "agents": {
+      "agent_votes": null,
+      "note": "trend lane \u2014 no 15-agent consensus run"
+    },
+    "atr_stop_distance": 1.9327142857142812,
+    "backfill_source": "trend_journal_sync",
+    "backfilled_at": "2026-07-08T14:50:12.407596+00:00",
+    "close_ask": 185.467,
+    "close_bid": 185.441,
+    "close_half_spread_cost": 6.9214,
+    "close_reason": "manual",
+    "close_reason_raw": "MARKET_ORDER_TRADE_CLOSE",
+    "close_spread": 0.02600000000001046,
+    "close_time": "2026-07-08T14:05:45.695929613Z",
+    "confidence": null,
+    "direction": "LONG",
+    "entry_ask": 185.305,
+    "entry_bid": 185.278,
+    "entry_half_spread_cost": 7.1967,
+    "entry_price": 185.305,
+    "entry_spread": 0.027000000000015234,
+    "exit_price": 185.441,
+    "financing": 0.0,
+    "gates": null,
+    "lane": "trend",
+    "outcome": "win",
+    "pair": "EUR_JPY",
+    "realized_pl": 71.6847,
+    "realized_pl_total": 71.6847,
+    "regime": {
+      "note": "trend lane \u2014 no volatility-regime classification",
+      "volatility_regime": null
+    },
+    "requested_units": 86532.0,
+    "rl_eligible": false,
+    "source": "trend_journal_sync",
+    "timestamp": "2026-07-08T03:14:16.118424308Z",
+    "trade_id": "1866",
+    "units": 86532.0
+  },
+  {
+    "agents": {
+      "agent_passed": true,
+      "agent_reasons": [],
+      "agent_total": null,
+      "agent_votes": null,
+      "weighted_vote_score": null
+    },
+    "asset_class": "FX",
+    "broker": "oanda",
+    "confidence": 0.75,
+    "contract_month": null,
+    "direction": "LONG",
+    "entry_price": 1.085,
+    "episode_id": "e1c6ac5b-75ce-43fd-9003-e660f418cbe3",
+    "expected_price": 1.085,
+    "fill_price": 1.085,
+    "gate_details": {
+      "core_score": null,
+      "final_score": null,
+      "scores": {}
+    },
+    "gates": {
+      "confidence_passed": null,
+      "gate_summary": null,
+      "momentum_passed": null,
+      "risk_passed": null
+    },
+    "group_momentum": null,
+    "lots": 0.5,
+    "multiplier": null,
+    "outcome": null,
+    "pair": "EUR_USD",
+    "regime": {
+      "atr_pips": null,
+      "model_disagreement": 0.1,
+      "predictive_size_modifier": null,
+      "regime_atr_multipliers": null,
+      "regime_risk_modifier": null,
+      "uncertainty_score": null,
+      "volatility_regime": "NORMAL"
+    },
+    "ridge_features": null,
+    "risk_reward": 1.67,
+    "rr_ratio": 1.67,
+    "sl_pips": 15.0,
+    "sl_price": 1.0835,
+    "slippage_pips": 0.0,
+    "spread_pips": 0.0,
+    "tick_value": null,
+    "timestamp": "2026-07-08T13:05:21.388109+00:00",
+    "tp_pips": 25.0,
+    "tp_price": 1.0875,
+    "trade_id": "test_1"
+  },
+  {
+    "account_balance": 103412.5098,
+    "agents": {
+      "agent_votes": null,
+      "note": "trend lane \u2014 no 15-agent consensus run"
+    },
+    "atr_stop_distance": null,
+    "confidence": null,
+    "direction": "LONG",
+    "entry_ask": 162.6,
+    "entry_bid": 162.585,
+    "entry_half_spread_cost": 5.1807,
+    "entry_price": 162.6,
+    "entry_spread": 0.014999999999986358,
+    "gates": null,
+    "lane": "trend",
+    "outcome": null,
+    "pair": "USD_JPY",
+    "regime": {
+      "note": "trend lane \u2014 no volatility-regime classification",
+      "volatility_regime": null
+    },
+    "requested_units": 112312.0,
+    "rl_eligible": false,
+    "source": "trend_journal_sync",
+    "timestamp": "2026-07-08T14:50:11.384371146Z",
+    "trade_id": "1882",
+    "units": 112312.0
+  },
+  {
+    "account_balance": 103412.5098,
+    "agents": {
+      "agent_votes": null,
+      "note": "trend lane \u2014 no 15-agent consensus run"
+    },
+    "atr_stop_distance": null,
+    "confidence": null,
+    "direction": "LONG",
+    "entry_ask": 0.80916,
+    "entry_bid": 0.80903,
+    "entry_half_spread_cost": 7.2544,
+    "entry_price": 0.80916,
+    "entry_spread": 0.00012999999999996348,
+    "gates": null,
+    "lane": "trend",
+    "outcome": null,
+    "pair": "USD_CHF",
+    "regime": {
+      "note": "trend lane \u2014 no volatility-regime classification",
+      "volatility_regime": null
+    },
+    "requested_units": 90299.0,
+    "rl_eligible": false,
+    "source": "trend_journal_sync",
+    "timestamp": "2026-07-08T14:50:11.488082628Z",
+    "trade_id": "1886",
+    "units": 90299.0
+  },
+  {
+    "account_balance": 103412.5098,
+    "agents": {
+      "agent_votes": null,
+      "note": "trend lane \u2014 no 15-agent consensus run"
+    },
+    "atr_stop_distance": null,
+    "confidence": null,
+    "direction": "LONG",
+    "entry_ask": 185.456,
+    "entry_bid": 185.429,
+    "entry_half_spread_cost": 7.2022,
+    "entry_price": 185.456,
+    "entry_spread": 0.026999999999986812,
+    "gates": null,
+    "lane": "trend",
+    "outcome": null,
+    "pair": "EUR_JPY",
+    "regime": {
+      "note": "trend lane \u2014 no volatility-regime classification",
+      "volatility_regime": null
+    },
+    "requested_units": 86743.0,
+    "rl_eligible": false,
+    "source": "trend_journal_sync",
+    "timestamp": "2026-07-08T14:50:11.594138595Z",
+    "trade_id": "1890",
+    "units": 86743.0
   }
 ]
