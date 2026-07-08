@@ -47,6 +47,8 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | ANY free-data daily-bar return/direction alpha hunt ("test signal X", "more data/news/sentiment/a new model will find edge", a fresh edge-hunt without a materially new input) | **L-022** no free-data small-operator-accessible return-ALPHA exists (whole campaign + 5-source literature sweep) — don't re-run the exhausted hunt without a MATERIALLY new input |
 | changing the shape of guarded code (halt guard / env pin / gap constant), or a gate that false-FAILs on stronger code or passes via a comment | **L-023** co-update enforcement matchers in the same change |
 | about to run `git stash` / `git stash pop` just to A/B-test whether something (a test failure, a behavior) predates your current uncommitted changes. | **L-024** never `git stash` for exploratory checks on a repo with live daemons |
+| reusing a numeric transform/label/feature helper from one model family in another ("reuse, don't fork"), or any model-vs-baseline comparison where target and baseline come from different code paths | **L-025** a reused numeric helper imports the donor's normalization contract — assert the borrower's invariances as a test; units-consistency check before any verdict |
+| more than one autonomous session (or session + Ralph/daemon) on the same checkout; about to `git add -A`/`commit -a`; your uncommitted diff "disappears" mid-session | **L-026** concurrent sessions co-mingle commits — stage explicit paths, check `git log` for foreign commits, no unverified claims in commit messages |
 
 ---
 
@@ -484,3 +486,57 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
   live daemons touching tracked files does not have this trap.
 - Source: 1 near-miss, 2026-07-04 session (recovered without loss) — RL feedback-loop fix commit
   51b85bf; see NOTES.md "Near-miss during the session".
+
+## L-025 — a reused numeric helper imports the donor's normalization contract   [ACTIVE]
+- Trigger: reusing a numeric transform/label/feature helper from one model family in another
+  ("reuse, don't fork"), OR any model-vs-baseline comparison where the target and the baseline are
+  computed by different code paths.
+- Root cause: numeric helpers carry IMPLICIT normalizations calibrated to the donor's invariances.
+  The binned vol-regime label's `/mean(close)` division is harmless where per-pair percentile cuts
+  absorb scale, but reused as a pooled cross-pair regression target it shrank JPY-pair targets
+  ~150x vs the pre-registered baseline's units — the reported "22x QLIKE win" was a units
+  artifact, and pooled R² 0.775 was mostly cross-pair scale separation. The consistency-with-donor
+  test ENFORCED the bug rather than catching it; only the independent verifier's numeric
+  re-derivation caught it, after the wrong verdict had already been reported. This is the THIRD
+  hit of the normalization-contract class in this repo (L-001 anchored features, C1 scaler
+  double-fit, now cross-family units) — the CLASS meets the 3-observation bar even though this
+  specific form is 1 observation.
+- Rule: when reusing a numeric helper across model families: (1) enumerate the donor's implicit
+  normalizations (divisions, anchorings, scalings) and assert the BORROWER's invariance
+  requirements as a test (e.g. scale-invariance under a 150x price-level shift); (2) any
+  model-vs-baseline verdict requires a units-consistency check FIRST (per-group target mean vs
+  baseline mean must be ~O(1) ratio) before reading the result; (3) a consistency-with-donor test
+  is NOT a correctness test — it pins the donor's contract in, bug included (L-009 cousin:
+  structural ≠ semantic).
+- Scope: all training/label/feature code reuse across model families; every pre-registered
+  model-vs-baseline claim.
+- Source: 2026-07-08 risk-target session — Model QA verifier BLOCK + retraction
+  (`docs/prereg-risk-target-vol-drawdown-2026-07-08.md` §6 "SECOND CORRECTION NOTE"); fix commits
+  02c9712 + 82f13fe; scale-invariance regression test in
+  `tests/test_forward_realized_volatility_continuous_label.py` (test_formula_is_pure_log_return_stddev).
+
+## L-026 — concurrent sessions on one working tree co-mingle commits (`git add -A` sweeps foreign work)   [ACTIVE]
+- Trigger: more than one autonomous session (or session + Ralph/daemon) working the same checkout;
+  OR about to run `git add -A` / `git commit -a`; OR your uncommitted diff "disappears"
+  mid-session.
+- Root cause: git has no session isolation. On 2026-07-08 a concurrent session's
+  `git add -A && commit` swept this session's in-flight files into ITS commits
+  (85e847e..032e035) — including an UNVERIFIED results claim ("LEARNABLE, 22x") into a durable
+  commit message the committing session had no way to know was wrong (later retracted in
+  82f13fe). Nothing was lost (byte-identical, verified), but commit scope/attribution was
+  polluted and a false number entered git history. Both sessions observed the mechanism
+  independently the same day (2 observations). Builds on L-024 (live daemons write tracked files —
+  same shared-tree root cause, commit-time variant).
+- Rule: on a shared working tree: (1) NEVER `git add -A` / `git commit -a` — stage explicit paths
+  you touched this session; (2) before claiming "my diff is what's on disk" or committing, check
+  `git log` for foreign mid-session commits (`git status` alone lies by omission — your work may
+  already be inside someone else's commit); (3) commit early and small to shrink the exposure
+  window; (4) results claims go into commit messages only AFTER independent verification — an
+  unverified number in a commit message is a false record you cannot amend after a push; (5)
+  prefer worktree isolation (`EnterWorktree` / `git worktree`) for parallel sessions when the
+  operator can arrange it.
+- Scope: this repo whenever >1 writer is active (interactive sessions, Ralph, resident loops,
+  daemons).
+- Source: 2 independent observations, 2026-07-08 — both sessions' NOTES.md entries ("Process
+  anomaly" in the trend-lane session's entry; the risk-target session's L-018 event entry);
+  commits 85e847e (co-mingled, wrong claim in message) and 82f13fe (retraction).
