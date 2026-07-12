@@ -4,9 +4,143 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-08T22:25Z by Claude (risk-target ML redirect: QA-verifier-caught units bug
-REMEDIATED + corrected re-run + retraction of the first LEARNABLE magnitude claim — see the
-risk-target section below).
+Last touched: 2026-07-12 by Claude (QA review of `docs/architecture/AXIOM_PROFESSIONAL_TRAINING_ROADMAP.md` vs implementation).
+
+## Roadmap QA: Phase A-D genuinely built but disconnected from producers; risk-target gate bug fixed (2026-07-12)
+
+Audited the 21-section AXIOM training roadmap against disk (4 parallel Explore agents,
+citing file:line, no trust in docstrings). Reconciliation (full table in session
+transcript / roadmap doc's own new "QA correction"/"QA status note" callouts):
+- **Phase A/B (`src/evidence/`) — code genuinely correct** (36/36 tests: real Ed25519,
+  real `fcntl` CAS, real fork-detection, real tamper/reconstruction tests) **but zero
+  production callers** except `DatasetManifest`+canonical/hashing/signing via
+  `data_platform`. `EvidenceStore`/`event_store`/`indexes`/`importer`/`transition_policy`
+  and 7 of 8 contracts are unused outside their own tests.
+- **Phase C (`src/data_platform/`) — solid** (15/15 tests). **Phase D — overstated**: 5 of 7
+  capture families still have a legacy write path that's the true source of record; worst
+  is `execution.py`'s `trade_journal_rl.json` full-JSON-array rewrite (the exact anti-pattern
+  §7 forbids) — NOT migrated this pass (live trading-state format, too high blast-radius for
+  a QA fix). `com.buddy.exposure_history` launchd agent is now bootstrapped (doc said none were).
+- **Phase I (risk-target vertical slice) — not started at the evidence-layer level**, but the
+  underlying trainer is real (forward-vol LEARNABLE, drawdown-state honest FAIL, matches
+  `docs/prereg-risk-target-vol-drawdown-2026-07-08.md`). **Found+fixed a real gate bug**: the
+  drawdown gate only checked regression-vs-incumbent, so a not-learnable head could be (and
+  was — `trained_data/risk_targets/models/risk_target_model.meta.json` on disk) written and
+  marked PASSED on first deploy. Fixed in `risk_target_trainer.py`+`cli/risk_target_training.py`
+  to also enforce the pre-registered absolute bar independently (AUC>=0.55 AND Brier beats
+  baseline), evaluated on the retrain's own val split (a proxy for the frozen OOS verdict, not
+  a re-derivation — documented explicitly per Code Reviewer finding). Reproduce-then-resolve
+  test: `test_first_deploy_refuses_drawdown_head_that_fails_absolute_prereg_bar`. Zero
+  production consumers of risk-target predictions today, so this was latent, not live.
+- **Phase E/G/H/K/M — thin-to-missing** (no CPCV/purging harness beyond factor-backtest+DSR
+  module; no per-lane containers; no job graph; portfolio allocator exists as HRP but not under
+  a unifying umbrella; dashboard has zero evidence/disposition/champion-pointer surface).
+  **Phase L (champion pointer) — fully implemented, zero callers**: `gates.py` still loads
+  models by direct file path, not through `src.evidence`. **J4/J6 crypto-exclusion claim
+  confirmed accurate** (`VALID_ASSET_CLASSES=("fx","equity")`, structural, not a stub).
+- Verification: Security Engineer PASS (7/7: no hot-path coupling, halt/practice-pin untouched,
+  fix is monotonic/fail-closed-only); Code Reviewer found+I fixed a real precision gap (my
+  first-pass comments overclaimed "frozen OOS bar" when it's a val-split proxy) + thin test
+  margin (widened `dd_flip_frac` 0.35→0.20) + stale module docstring. 95 tests green
+  (risk_target+evidence+data_platform+forward_capture), flake8 clean.
+- Also found+removed a stale `.git/index.lock` (dated Jul 10 17:43, no live process) that was
+  blocking `git stash`; a leftover `.git/sequencer/` cherry-pick artifact was found harmless
+  (both listed commits already ancestors of HEAD) and left alone.
+
+## LIVE e2e suite (port 51999) — read-only against the real dashboard (2026-07-11, uncommitted)
+
+Operator request: full e2e suite against the live AXIOM dashboard on :51999. Built
+`cypress/e2e/live/` (5 specs) + `cypress/live-run.sh` + `npm run e2e:live`.
+- **Read-only by construction**: every spec installs `blockApiWrites()`
+  (`cypress/support/commands.ts`) — POST/PUT/PATCH/DELETE to `/api/**` are 403'd inside the
+  browser, so a live run can NEVER produce a real control write; no spec confirms any action.
+  GETs pass through to the real backend. `/auth/login` is exercised for real (password from
+  env or `.env.local`, never echoed).
+- **Safety assertion baked in**: `live-data-contract.cy.ts` FAILS the suite if
+  `/api/control/state` ever reports `environment != "practice"` (Hard NO #1 as a test).
+  Also: lanes readable + 6 known lanes, core read endpoints answer JSON (never HTML-500),
+  control-gated endpoints (`operator_queue`/`axiom_proposals`, app.py:126-134) may 404 only
+  as the honest control-disabled state.
+- Default `npm run e2e` stays hermetic — `excludeSpecPattern: cypress/e2e/live/**` in
+  cypress.config.ts; `live-run.sh` flips the pattern and targets
+  `AXIOM_LIVE_URL` (default `http://127.0.0.1:51999`).
+- **Sandbox validation (real FastAPI `dashboard.server.app` on :8888 reading the real mounted
+  repo state + next dev on :51999)**: live-auth **3/3 PASS**, live-data-contract **8/8 PASS**
+  (source: /tmp/cylive.log per run). live-activity-deck's queue+switchboard render assertions
+  passed in an earlier 3-test variant (2 tests seen green) before consolidation to one visit.
+  **Unverified in sandbox** (45s call ceiling vs ~10s/visit live page loads): the consolidated
+  deck spec end-to-end, live-tabs-smoke, live-audit-regression — their selectors are the same
+  ones proven in the stubbed suite and in a live DOM dump ("Automation & controls" etc.);
+  expected to pass on the Mac where no ceiling exists. Operator runs `npm run e2e:live`.
+
+## Cypress e2e suite for AXIOM dashboard + ActivityPanel resilience fix (2026-07-11, UI/dev-plane only, uncommitted)
+
+Operator request: "use cypress to debug axiom dashboard, e2e". Built `dashboard/web/cypress/`
+(config, 4 specs, fixtures, sandbox runner) — **15/15 tests green** in one headless run
+(verified: /tmp/cyfull.log in the Cowork sandbox; specs: auth 4, activity-deck 8,
+control-audit-regression 2, tabs-smoke 1).
+- **Safety contract**: every `/api/*` request (reads AND writes) is `cy.intercept`ed at the
+  browser boundary (`cypress/support/commands.ts stubAxiomApis()`); GET catch-all mimics the
+  real "FastAPI down" 502; POST catch-all guarantees no write can escape. Only `/auth/*` is
+  exercised for real, against test-only env (AXIOM_PASSWORD/SECRET set by the runner). Specs
+  additionally assert zero write attempts during passive rendering.
+- **REAL BUG FOUND & FIXED (ActivityPanel.tsx:389)**: when `/api/activity` is down, the early
+  `NotConnected` return hid the ENTIRE Activity tab — including ApprovalsQueue and
+  OperatorSwitchboard, which poll their own endpoints and have their own degraded modes. That
+  hid the halt/containment write path exactly when reads fail. Fix: error path now renders the
+  NotConnected card PLUS the operator deck. tsc --noEmit exit 0; the activity-deck spec (8
+  tests incl. 2-step confirms, ARM-lockdown disabled states, header contracts) passes against
+  the fixed path.
+- d1622f7 regression is now pinned by `control-audit-regression.cy.ts` — fixture reproduces
+  object-shaped `result`/`reason` audit entries (agent_runtime tool output); asserts no error
+  boundary, no "[object Object]", no "AXIOM panel error" console output.
+- `next.config.ts`: added env-gated `experimental.turbopackFileSystemCacheForDev:false`
+  (AXIOM_E2E_DISABLE_FS_CACHE=1; sandbox support — Mac dev unaffected; flag currently unused
+  by the final runner but kept for mounts where deletion is blocked).
+- Sandbox mechanics (for future sessions): Cowork bash calls are 45s-capped fresh PID
+  namespaces — `cypress/sandbox-run.sh` boots next-dev + Cypress in parallel per call, dist at
+  `tmp/e2e-dist` (Next resolves distDir relative to app root; absolute paths silently rewrite
+  to relative). Repo-mount file DELETION requires the allow_cowork_file_delete grant, else
+  turbopack's FS-cache DB compaction dies ("Failed to open database", EPERM) and Cypress
+  screenshot-trashing aborts runs. Cypress 15.18.1 linux-arm64 binary + user-extracted
+  libgtk-3/libXdamage (no root) live in the sandbox only. On the Mac: `npm run e2e` /
+  `npm run e2e:open` with the dev server's env.
+- Repo diff from this session: NEW `cypress/**`, `cypress.config.ts`; MODIFIED
+  `ActivityPanel.tsx` (fix above), `next.config.ts`, `package.json` (+cypress devDep, +e2e
+  scripts), `package-lock.json`. tsconfig.json churn reverted via `git show HEAD:` (git index
+  was locked by another process — NOT force-removed, L-026 caution). All uncommitted on
+  `ralph/equity-harvester-bot` alongside the pre-existing WIP. `dashboard/web/tmp/e2e-dist`
+  is sandbox scratch (untracked, safe to delete).
+
+## Dashboard Activity tab revamp — operator deck (2026-07-11, UI-ONLY, uncommitted)
+
+Operator request: restructure Activity tab with approvals + working switches. UI-only; zero
+backend changes; all writes go through the pre-existing safeguarded endpoints.
+- NEW `dashboard/web/components/ApprovalsQueue.tsx` — unified "Awaiting operator approval"
+  (config adjustments → `/api/operator_queue/adjustments/{id}/{approve|reject}`, resident-loop
+  proposals → `/api/axiom_proposals/{id}/{accept|deny}`, alerts → `.../alerts/{type}/acknowledge`).
+  Two-step confirm on every action; null-value adjustments still unapprovable.
+- NEW `dashboard/web/components/OperatorSwitchboard.tsx` — toggle switches for ARM/DISARM, global
+  halt/unhalt, 6 lane halt/unhalts (KNOWN_LANES via lib/lanes), trend+tier7 loop start/stop. All
+  via `lib/control.control()` → `/api/control/*`; ON-transitions (unhalt/start_loop) disabled in
+  UI unless armed, mirroring the server's ARM lockdown (server still re-enforces).
+- `ActivityPanel.tsx` — inserted 2-col deck (queue | switchboard) between ops tiles and AXIOM
+  operator panel. `MindWindowPanel` gained `showPending` prop (default true; Activity passes
+  false — pending block deduped into ApprovalsQueue, pointer line shown instead).
+- `page.tsx` Activity tab: ActivityPanel + MindWindowPanel(showPending=false).
+  DELETED `OperatorQueuePanel.tsx` (fully superseded; zero remaining references).
+- Pass 2 (same day, operator flagged the rest of the tab untouched): IncidentCard → compact
+  collapsible `<details>` (critical + first card default-open; action-label duplication fixed);
+  incident queue sorted critical>watch>info with per-severity count chips; OperatorPanel →
+  context-usage meter bar + Last/Next stat chips + Holds badge + tools section; drawers title
+  shows held count; MindWindowPanel groups consecutive degraded no-op cycles ("claude exited 1")
+  into single range rows. Re-verified: `tsc --noEmit` exit 0, eslint clean.
+- Verified this session: `tsc --noEmit` PASS, eslint PASS on all 5 touched files, all 13 server
+  routes exist (grep control.py/operator_queue.py/axiom_proposals.py). NOT verified: `next build`
+  — fails pre-existing in sandbox (node_modules installed on macOS; lightningcss Linux binary
+  absent — dies in globals.css before reaching any component) and browser render. Operator should
+  run `next build`/dev on the Mac. Changes uncommitted on `ralph/equity-harvester-bot` alongside
+  pre-existing WIP.
 
 ## Risk-target ML redirect — forward-vol LEARNABLE (corrected), drawdown-state honest FAIL (2026-07-08, OFFLINE/RESEARCH-ONLY)
 

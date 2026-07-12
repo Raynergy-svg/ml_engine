@@ -16,8 +16,16 @@ the incumbent artifact if it does not regress (beyond a 5% relative
 tolerance, same as every other CLI-gated head) on EITHER head's OOS/val
 metric (QLIKE for volatility, Brier for drawdown-state — both natively
 lower-is-better, so they plug directly into the shared MAE-style gate
-primitive). Missing/unscorable incumbent = first deploy = PASSED, same
-convention as `_apply_rf_gate`/`_apply_xgb_gate`/`_apply_ridge_gate`.
+primitive). Missing/unscorable incumbent = first deploy = PASSED for the
+volatility head, same convention as `_apply_rf_gate`/`_apply_xgb_gate`/
+`_apply_ridge_gate` — but NOT unconditionally for the drawdown head: it
+must ALSO independently clear its own absolute learnability-bar proxy
+(`RiskTargetTrainer.DRAWDOWN_LEARNABLE_MIN_AUC` + beat-baseline-Brier, the
+same formula/threshold pre-registered in
+docs/prereg-risk-target-vol-drawdown-2026-07-08.md, evaluated on this
+retrain's own val split) even on first deploy, so a known-not-learnable
+head can never be silently written and marked PASSED just because there
+was no incumbent to compare against.
 """
 
 from __future__ import annotations
@@ -34,7 +42,10 @@ from cli.training_ops import (
     _log_cli_gate,
 )
 from src.training.trainers.config import TrainerConfig
-from src.training.trainers.risk_target_trainer import RiskTargetTrainer
+from src.training.trainers.risk_target_trainer import (
+    DRAWDOWN_LEARNABLE_MIN_AUC,
+    RiskTargetTrainer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +118,29 @@ def train_risk_targets(
         existing_mae=(existing_metrics or {}).get("val_brier_drawdown"),
         n_test=n_val,
     )
+    # The relative-regression check above only compares the candidate to
+    # whatever incumbent happens to be on disk (or auto-PASSES on first
+    # deploy, when there is no incumbent to compare against). That alone
+    # cannot catch a head that has never cleared its own learnability-bar
+    # proxy (same formula/threshold as docs/prereg-risk-target-vol-drawdown-
+    # 2026-07-08.md's pre-registered bar, but evaluated on THIS retrain's
+    # own val split — see the "IMPORTANT" note on DRAWDOWN_LEARNABLE_MIN_AUC
+    # in risk_target_trainer.py) — a not-learnable candidate that merely
+    # doesn't regress vs. an equally not-learnable (or absent) incumbent
+    # would still pass. Enforce the absolute bar independently of the
+    # incumbent comparison so a known-failed drawdown head can never be
+    # silently written and marked PASSED (see
+    # tests/test_risk_target_training_gate.py::test_first_deploy_refuses_drawdown_head_that_fails_absolute_prereg_bar).
+    if drawdown_gate["verdict"] == CLI_GATE_PASSED and not metrics.get("drawdown_learnable", False):
+        drawdown_gate["verdict"] = CLI_GATE_REFUSED
+        auc_ok = metrics["val_auc_drawdown"] >= DRAWDOWN_LEARNABLE_MIN_AUC
+        brier_ok = metrics["val_brier_drawdown"] < metrics["val_brier_drawdown_baseline"]
+        drawdown_gate["reason"] = (
+            "failed_prereg_absolute_bar:auc={:.4f}{}{:.2f}(ok={}),brier={:.4f}{}baseline={:.4f}(ok={})".format(
+                metrics["val_auc_drawdown"], ">=" if auc_ok else "<", DRAWDOWN_LEARNABLE_MIN_AUC, auc_ok,
+                metrics["val_brier_drawdown"], "<" if brier_ok else ">=", metrics["val_brier_drawdown_baseline"], brier_ok,
+            )
+        )
     _log_cli_gate("risk_target_drawdown", drawdown_gate)
 
     both_pass = (

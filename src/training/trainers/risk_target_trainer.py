@@ -80,6 +80,41 @@ def brier_score(y_true: np.ndarray, y_prob: np.ndarray) -> float:
     return float(np.mean((p - y) ** 2))
 
 
+# Same threshold/formula as the drawdown-state learnability bar
+# pre-registered in docs/prereg-risk-target-vol-drawdown-2026-07-08.md:
+# "OOS AUC >= 0.55 AND OOS Brier beats the base-rate baseline" (baseline
+# Brier = p(1-p) at the observed base rate). IMPORTANT: applied here to
+# whatever validation split the caller passes to `train()` — this is a
+# per-retrain PROXY check using the same formula, not a re-derivation of
+# the pre-reg doc's one-time frozen verdict (which was computed on the
+# untouched 2024-01-01->2026-06-11 OOS test slice by
+# scripts/experiment_risk_target_vol_drawdown.py, a different split). Both
+# currently agree the head is not learnable, but they are not the same
+# measurement and could diverge on a future retrain. This is an ABSOLUTE
+# bar (independent of any incumbent) — the relative-regression gate in
+# cli/risk_target_training.py alone cannot catch a head that never clears
+# this bar, since a candidate that merely doesn't regress vs. a similarly-
+# bad incumbent (or vs. no incumbent at all, on first deploy) would still
+# pass a regression-only
+# check. See tests/test_risk_target_training_gate.py.
+DRAWDOWN_LEARNABLE_MIN_AUC = 0.55
+
+
+def brier_baseline(y_true: np.ndarray) -> float:
+    """Base-rate Brier score p(1-p) — the naive "always predict the base
+    rate" baseline the drawdown head's pre-registered bar must beat.
+
+    On a degenerate one-class `y_true` this returns exactly 0.0 (p=0 or
+    p=1), which a strict `<` comparison can never beat — but that case is
+    moot in practice: `_safe_auc` already returns 0.5 (< the 0.55 bar) on a
+    one-class holdout, so `drawdown_learnable` is refused by the AUC guard
+    before this baseline's edge value is ever load-bearing.
+    """
+    y = np.asarray(y_true, dtype=np.float64)
+    p = float(np.mean(y)) if len(y) else 0.0
+    return p * (1.0 - p)
+
+
 def _safe_auc(y_true: np.ndarray, y_prob: np.ndarray) -> float:
     """AUC-ROC without a hard sklearn dependency at import time; returns
     0.5 (uninformative) if the holdout has only one class present."""
@@ -189,13 +224,22 @@ class RiskTargetTrainer(BaseTrainer):
         )
         dd_prob_val = self.drawdown_model.predict_proba(x_val)[:, 1]
 
+        val_auc_drawdown = _safe_auc(y_val_dd, dd_prob_val)
+        val_brier_drawdown = brier_score(y_val_dd, dd_prob_val)
+        val_brier_drawdown_baseline = brier_baseline(y_val_dd)
+        drawdown_learnable = bool(
+            val_auc_drawdown >= DRAWDOWN_LEARNABLE_MIN_AUC
+            and val_brier_drawdown < val_brier_drawdown_baseline
+        )
         self.metrics = {
             "val_qlike": qlike_loss(y_val, vol_pred_val),
             "val_pinball_median": pinball_loss(y_val, vol_pred_val, quantile=0.5),
             "val_r2": float(1.0 - np.sum((y_val - vol_pred_val) ** 2) / max(np.sum((y_val - np.mean(y_val)) ** 2), _EPS)),
             "val_mae": float(np.mean(np.abs(y_val - vol_pred_val))),
-            "val_auc_drawdown": _safe_auc(y_val_dd, dd_prob_val),
-            "val_brier_drawdown": brier_score(y_val_dd, dd_prob_val),
+            "val_auc_drawdown": val_auc_drawdown,
+            "val_brier_drawdown": val_brier_drawdown,
+            "val_brier_drawdown_baseline": val_brier_drawdown_baseline,
+            "drawdown_learnable": drawdown_learnable,
             "n_train": int(len(X_train)),
             "n_val": int(len(x_val)),
             "instrument": instrument,
