@@ -8,6 +8,7 @@
 
 <br/>
 
+![Version](https://img.shields.io/badge/version-2.1.0-00f5ff?style=for-the-badge&labelColor=0d0221)
 ![Status](https://img.shields.io/badge/runtime-HALTED%20%2F%20demo-ff3158?style=for-the-badge&labelColor=0d0221)
 ![Mode](https://img.shields.io/badge/edge-research--grade-b84dff?style=for-the-badge&labelColor=0d0221)
 ![Python](https://img.shields.io/badge/python-3.11-00f5ff?style=for-the-badge&labelColor=0d0221)
@@ -164,6 +165,49 @@ python scripts/train_single_model_m1.py --instrument EUR_USD --model transformer
   pattern to a rule after 3+ observations.
 - **Ralph** — a build-time autonomous dev loop that implements PRD stories iteratively
   (`scripts/ralph.sh`, `.claude/ralph/prd.json`). Never part of the trading runtime.
+
+---
+
+## ◈ Governed Evidence Lifecycle
+
+Model claims are only as good as the process that produced them. The `src/evidence/` package is a
+**tamper-evident, signature-governed evidence spine** that turns "a model scored well" into an
+independently reproducible, disposable artifact — so a result can never be narrated around.
+
+Every claim flows through one immutable chain:
+
+```text
+one exact dataset ─▶ one signed job ─▶ one isolated run ─▶ one immutable package
+                        ─▶ one independently reproduced verdict ─▶ one governed disposition
+```
+
+**Foundation (Phases A–F) — shipped & self-contained:**
+
+| Layer | Module | Guarantee |
+|-------|--------|-----------|
+| Contracts | `evidence/contracts/` | Pydantic strict contracts — manifests, gate results, envelopes |
+| Canonical + hash | `evidence/{canonical,hashing}.py` | Deterministic JSON v1 + content digests |
+| Signing | `evidence/signing.py` | Ed25519 signed envelopes + trust store |
+| Store + events | `evidence/{store,event_store}.py` | Content-addressed store + append-only ledger |
+| Indexes + import | `evidence/{indexes,importer}.py` | Current-state projection + independent import verdict |
+| Transition policy | `evidence/transition_policy.py` | Authority registry — who may sign what, never the runtime |
+| Data platform | `src/data_platform/` | Signed dataset manifests + forward-capture (Parquet/Arrow) |
+| Gated harness | `src/research/gated_harness/` | Pre-registration, purged CPCV, cost/stress, significance |
+
+**Phase I — risk-target vertical slice (shipped):** the first end-to-end lane through the whole
+lifecycle. A producer trains the risk-target heads, packages signed evidence, and a **no-authority
+worker** hands it to a local import authority that *independently replays the metrics* before
+assigning a disposition. It fails closed — the slice stops at `QUARANTINED` / `REJECTED` and
+**never promotes a champion, never touches `.claude/state.json`, never calls a broker.**
+
+```bash
+# Run the Phase I slice end-to-end on the cached daily FX panel (offline, research-only)
+python scripts/run_risk_target_evidence_slice.py
+python scripts/run_risk_target_evidence_slice.py --pairs EUR_USD USD_JPY --out /tmp/ev
+```
+
+Evidence is written under `trained_data/evidence/`; the dashboard exposes a read-only
+`GET /api/risk_target_evidence` projection of the committed disposition state.
 
 ---
 

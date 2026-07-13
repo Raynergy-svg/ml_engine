@@ -48,7 +48,7 @@ Leak-prevention guarantee:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -215,6 +215,98 @@ def _class_balance(
     return out
 
 
+def compute_forward_realized_volatility(
+    df: pd.DataFrame,
+    vol_horizon_bars: int,
+    *,
+    annualization_factor: Optional[float] = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """Continuous-value counterpart to `compute_realized_volatility_regime_labels`.
+
+    Returns the raw forward-realized-volatility value per row instead of a
+    binned regime class — for a regression target (e.g. QLIKE/pinball-scored
+    vol forecasting) rather than a 4-class classification target.
+
+    FORMULA NOTE (2026-07-08 QA finding, HIGH severity, fixed): this is
+    `stddev(diff(log(close[i+1 : i+1+H])))` — the standard log-return
+    realized vol, NOT the binned label's `_compute_forward_realized_vol`
+    (which divides by `mean(close_window)`). The /close division is
+    harmless in the binned regime label (per-pair percentile cuts absorb
+    the scale) but WRONG for a pooled cross-pair continuous target: it
+    shrinks JPY-pair values ~150x, so any baseline computed in normal
+    log-return-vol units becomes unit-inconsistent and comparisons against
+    it are meaningless. Same leak-prevention window contract as the binned
+    version: for row `i`, the value depends ONLY on
+    `close[i+1 : i+1+vol_horizon_bars]` (exclusive end — H closes, H-1
+    log-returns), never on row `i` or earlier.
+
+    Args:
+        df: DataFrame with at least a `close` column.
+        vol_horizon_bars: forward window length in bars (must be >= 2).
+        annualization_factor: if provided, multiplies the raw (per-bar) stddev
+            by this factor (e.g. sqrt(252) for daily bars) before returning.
+            None leaves the value in raw per-bar units.
+
+    Returns:
+        values: np.ndarray of dtype float64, shape (len(df),). NaN for rows
+            with insufficient forward window (the trailing `vol_horizon_bars`
+            rows) — caller MUST drop NaN rows before training (unlike the
+            binned version, there is no integer sentinel; NaN is the sentinel
+            here since this is a continuous target).
+        metadata: dict with `vol_horizon_bars`, `n_total`, `n_nan_dropped`,
+            `annualization_factor`, `formula`, `leak_fix_version`.
+    """
+    if vol_horizon_bars < 2:
+        raise ValueError(
+            f"compute_forward_realized_volatility: vol_horizon_bars must be >= 2, got {vol_horizon_bars}"
+        )
+    n = len(df)
+    metadata: Dict[str, Any] = {
+        "vol_horizon_bars": int(vol_horizon_bars),
+        "annualization_factor": annualization_factor,
+        "formula": "stddev_log_returns" + (
+            "_annualized" if annualization_factor else ""
+        ),
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": int(n),
+        "n_nan_dropped": 0,
+    }
+    if n == 0:
+        return np.zeros(0, dtype=np.float64), metadata
+
+    close = _resolve_close(df)
+    if close is None:
+        logger.warning(
+            "compute_forward_realized_volatility: missing 'close' column; returning all-NaN",
+        )
+        metadata["n_nan_dropped"] = int(n)
+        return np.full(n, np.nan, dtype=np.float64), metadata
+
+    # Pure log-return realized vol over the forward window [i+1, i+1+H)
+    # — deliberately NOT _compute_forward_realized_vol (see FORMULA NOTE
+    # in the docstring: its /mean(close) division is scale-dependent).
+    values = np.full(n, np.nan, dtype=np.float64)
+    safe_close = np.where(close > 0, close, np.nan)
+    log_close = np.log(safe_close)
+    last_valid_i = n - vol_horizon_bars - 1
+    for i in range(max(last_valid_i + 1, 0)):
+        window_log = log_close[i + 1: i + 1 + vol_horizon_bars]
+        if not np.all(np.isfinite(window_log)):
+            continue
+        log_rets = np.diff(window_log)
+        if log_rets.size < 1:
+            continue
+        sd = float(np.std(log_rets, ddof=0))
+        if np.isfinite(sd):
+            values[i] = sd
+
+    if annualization_factor:
+        values = values * float(annualization_factor)
+    metadata["n_nan_dropped"] = int(np.sum(~np.isfinite(values)))
+    return values, metadata
+
+
 def compute_realized_volatility_regime_labels(
     df: pd.DataFrame,
     vol_horizon_bars: int = 24,
@@ -369,5 +461,6 @@ def compute_realized_volatility_regime_labels(
 
 __all__ = [
     "compute_realized_volatility_regime_labels",
+    "compute_forward_realized_volatility",
     "NAN_SENTINEL",
 ]

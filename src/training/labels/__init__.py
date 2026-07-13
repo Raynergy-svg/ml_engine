@@ -18,6 +18,11 @@ from src.training.labels.realized_confidence_label import (
 from src.training.labels.realized_volatility_regime_label import (
     NAN_SENTINEL,
     compute_realized_volatility_regime_labels,
+    compute_forward_realized_volatility,
+)
+from src.training.labels.forward_drawdown_state_label import (
+    DRAWDOWN_NAN_SENTINEL,
+    compute_forward_drawdown_state_labels,
 )
 from src.training.labels.journal_loader import (
     load_all_journal_trades,
@@ -27,7 +32,10 @@ from src.training.labels.journal_loader import (
 __all__ = [
     "compute_realized_confidence_labels",
     "compute_realized_volatility_regime_labels",
+    "compute_forward_realized_volatility",
     "NAN_SENTINEL",
+    "compute_forward_drawdown_state_labels",
+    "DRAWDOWN_NAN_SENTINEL",
     "load_all_journal_trades",
     "salvage_corrupt_journal",
 ]

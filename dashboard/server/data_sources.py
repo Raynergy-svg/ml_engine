@@ -20,6 +20,7 @@ logger = logging.getLogger("axiom.data")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OANDA_DIR = REPO_ROOT / "trained_data" / "oanda"
 EQUITY_DIR = REPO_ROOT / "trained_data" / "equity"
+EVIDENCE_DIR = REPO_ROOT / "trained_data" / "evidence"
 CLAUDE_DIR = REPO_ROOT / ".claude"
 
 # The validated trend lane's FX-major universe (mirrors run_oanda_trend candidates).
@@ -504,6 +505,31 @@ def read_equity_sleeve() -> Dict[str, Any]:
         "actual_weights": data.get("current_actual_weights", {}),
         "source": "trained_data/equity/rebalance_state.json",
     }
+
+
+def read_risk_target_evidence() -> Dict[str, Any]:
+    """Read-only Phase-I risk-target evidence cockpit view.
+
+    Surfaces the local evidence authority's committed disposition state for the
+    risk-target vertical slice (per-lane package state + import verdict), read
+    from ``trained_data/evidence/indexes/current.json``. Purely a display
+    projection — it never signs, promotes, or mutates evidence, and imports
+    only the dependency-free view helper (no training stack).
+    """
+    try:
+        from src.evidence.risk_target.dashboard import risk_target_evidence_view
+
+        view = risk_target_evidence_view(EVIDENCE_DIR)
+        view["connected"] = bool(view.get("available"))
+        return view
+    except Exception as exc:  # noqa: BLE001 - dashboard reads must never 500
+        return {
+            "available": False,
+            "connected": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+            "lanes": [],
+            "champions": {},
+        }
 
 
 def read_tier7() -> Dict[str, Any]:
