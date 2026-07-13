@@ -60,4 +60,3 @@ def stress_matrix(
             name: summarize_returns(series) for name, series in sorted(parameter_returns.items())
         },
     }
-

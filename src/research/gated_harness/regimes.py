@@ -16,4 +16,3 @@ def stratify_returns(returns: pd.Series, regimes: pd.Series) -> dict[str, dict[s
         for regime in sorted(aligned_regimes.unique(), key=str)
         if bool((aligned_regimes == regime).any())
     }
-

@@ -45,4 +45,3 @@ def purged_kfold(
         yield purge_train_indices(
             train, test, purge_gap=purge_gap, embargo_gap=embargo_gap
         ), test
-

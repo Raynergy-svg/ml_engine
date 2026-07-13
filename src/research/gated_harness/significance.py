@@ -115,4 +115,3 @@ def corrected_significance(
         "detail": {"dsr": dsr_block, "bootstrap": boot_block},
         "insufficient_data": dsr_block is None or boot_block is None,
     }
-

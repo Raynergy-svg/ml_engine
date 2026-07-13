@@ -53,4 +53,3 @@ def hard_gate(
         "minimum_sharpe": float(metrics["sharpe"]) >= minimum_sharpe,
     }
     return {**checks, "passed": all(checks.values())}
-

@@ -48,4 +48,3 @@ def evaluate_cost_scenarios(
         )
         for cost in scenarios_bps
     }
-
