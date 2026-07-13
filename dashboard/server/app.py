@@ -244,6 +244,11 @@ def learning_loop() -> Dict[str, Any]:
     return ds.read_learning_loop()
 
 
+@app.get("/api/risk_target_evidence")
+def risk_target_evidence() -> Dict[str, Any]:
+    return ds.read_risk_target_evidence()
+
+
 @app.get("/api/activity")
 @app.get("/api/background_activity")
 @app.get("/api/background-activity")
