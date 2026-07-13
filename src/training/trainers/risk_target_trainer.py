@@ -175,6 +175,18 @@ class RiskTargetTrainer(BaseTrainer):
         colsample_bytree = float(kwargs.get("colsample_bytree", 0.8))
         early_stopping_rounds = int(kwargs.get("early_stopping_rounds", 50))
 
+        # Optional LightGBM determinism controls, forwarded verbatim to the
+        # generic factory helpers when present. Absent = current behavior
+        # (factory defaults n_jobs=-1, random_state=42). The evidence-slice
+        # producer/verifier set these so an independent local metric replay
+        # reproduces the producer's numbers bit-for-bit (roadmap §12
+        # "Local replay reproduces metrics within declared tolerance").
+        _lgbm_determinism = {
+            key: kwargs[key]
+            for key in ("n_jobs", "num_threads", "deterministic", "force_row_wise", "random_state", "seed")
+            if key in kwargs
+        }
+
         import lightgbm as lgb
 
         # --- Vol regression head — fit in LOG-space ---
@@ -201,6 +213,7 @@ class RiskTargetTrainer(BaseTrainer):
             subsample=subsample,
             colsample_bytree=colsample_bytree,
             objective="regression",
+            **_lgbm_determinism,
         )
         self.vol_model.fit(
             X_train, y_train_log,
@@ -216,6 +229,7 @@ class RiskTargetTrainer(BaseTrainer):
             learning_rate=learning_rate,
             subsample=subsample,
             colsample_bytree=colsample_bytree,
+            **_lgbm_determinism,
         )
         self.drawdown_model.fit(
             X_train, y_train_dd,
