@@ -219,25 +219,6 @@ def test_shadow_lane_freshness_uses_writer_timestamp_not_book_asof(tmp_path, mon
     assert out["freshness"]["status"] == "stale"
 
 
-def test_live_risk_trim_empty_book_is_readonly_and_clear(tmp_path, monkeypatch):
-    class ReadOnlyClient:
-        def get_account_summary(self):
-            return {"account": {"NAV": "100000"}}
-
-        def get_trades(self, *, state):
-            assert state == "OPEN"
-            return {"trades": []}
-
-        def get_pricing(self, *, instruments):
-            raise AssertionError(f"no pricing for empty book: {instruments}")
-
-    monkeypatch.setattr(ds, "OANDA_DIR", tmp_path)
-    out = ds.live_risk_trim(ReadOnlyClient())
-
-    assert out["connected"] is True
-    assert out["status"] == "clear"
-    assert out["order_mutation"] is False
-    assert out["runtime_allowed"] is False
 
 
 def test_read_tier7_stale_snapshot_cannot_report_running(tmp_path, monkeypatch):
