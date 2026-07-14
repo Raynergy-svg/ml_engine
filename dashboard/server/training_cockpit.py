@@ -7,6 +7,7 @@ It owns no signing key and exposes no mutation function.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import os
@@ -83,6 +84,142 @@ def _timestamp_age_seconds(value: object, now: datetime) -> float | None:
         return max(0.0, (now - parsed.astimezone(timezone.utc)).total_seconds())
     except ValueError:
         return None
+
+
+def _capture_stream_summary(
+    data_root: Path,
+    domain: str,
+    family: str,
+    source_key: str,
+) -> dict[str, Any]:
+    """Read a bounded summary from one canonical append-only history stream."""
+    stream_id = f"forward-capture:{family}:{source_key}"
+    component = hashlib.sha256(stream_id.encode("utf-8")).hexdigest()[:32]
+    root = data_root / domain / "history" / component
+    try:
+        segments = sorted(root.glob("*.jsonl"))
+    except OSError:
+        segments = []
+    if not segments:
+        return {
+            "source_key": source_key,
+            "canonical_batches": 0,
+            "last_canonical_at": None,
+        }
+    last = _json(segments[-1], {})
+    if not isinstance(last, Mapping):
+        last = {}
+    return {
+        "source_key": source_key,
+        "canonical_batches": len(segments),
+        "last_canonical_at": last.get("captured_at_utc") or last.get("observed_at_utc"),
+    }
+
+
+def read_live_capture_status(
+    repo_root: str | Path,
+    *,
+    data_root: str | Path,
+    required_pairs: list[str] | tuple[str, ...],
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Project current writer and canonical-accrual truth independently of P2."""
+    repo_root = Path(repo_root)
+    data_root = Path(data_root)
+    now = (now or _utc_now()).astimezone(timezone.utc)
+    pair_rows = [
+        _capture_stream_summary(data_root, "fx", "tick_spread", str(pair))
+        for pair in required_pairs
+    ]
+    latest_tick = max(
+        (str(row["last_canonical_at"]) for row in pair_rows if row.get("last_canonical_at")),
+        default=None,
+    )
+    latest_tick_age = _timestamp_age_seconds(latest_tick, now)
+    pairs_with_records = sum(row["canonical_batches"] > 0 for row in pair_rows)
+    current_pairs = sum(
+        (age := _timestamp_age_seconds(row.get("last_canonical_at"), now)) is not None
+        and age <= 900
+        for row in pair_rows
+    )
+
+    health_path = repo_root / "trained_data" / "ticks" / "_health.json"
+    health = _json(health_path, {})
+    if not isinstance(health, Mapping):
+        health = {}
+    health_age = _age_seconds(health_path, now)
+    try:
+        health_updated_at = _iso(
+            datetime.fromtimestamp(health_path.stat().st_mtime, timezone.utc)
+        )
+    except OSError:
+        health_updated_at = None
+    writer_status = str(health.get("stream_status") or "unavailable")
+    if health_age is None or health_age > 120:
+        writer_status = "health_stale"
+
+    writer_current = writer_status in {"running", "slow"}
+    if not pair_rows or pairs_with_records == 0:
+        tick_status = "unavailable"
+    elif (
+        latest_tick_age is not None
+        and latest_tick_age <= 120
+        and current_pairs == len(pair_rows)
+        and writer_current
+    ):
+        tick_status = "accruing"
+    elif latest_tick_age is not None and latest_tick_age <= 900 and writer_status != "dead":
+        tick_status = "delayed"
+    else:
+        tick_status = "stalled"
+
+    exposure = _capture_stream_summary(
+        data_root,
+        "portfolio",
+        "exposure",
+        "oanda_fx_trend_lane",
+    )
+    exposure_age = _timestamp_age_seconds(exposure.get("last_canonical_at"), now)
+    if exposure["canonical_batches"] == 0:
+        exposure_status = "unavailable"
+    # The resident writer checks every 15 minutes, while the source account
+    # snapshot normally advances about hourly. Dedupe is expected between
+    # source updates and must not be presented as a stopped writer.
+    elif exposure_age is not None and exposure_age <= 4_500:
+        exposure_status = "accruing"
+    elif exposure_age is not None and exposure_age <= 9_000:
+        exposure_status = "delayed"
+    else:
+        exposure_status = "stalled"
+
+    return {
+        "tick": {
+            "status": tick_status,
+            "writer_status": writer_status,
+            "canonical_batches": sum(int(row["canonical_batches"]) for row in pair_rows),
+            "pairs_with_records": pairs_with_records,
+            "pairs_current": current_pairs,
+            "required_pairs": len(pair_rows),
+            "last_canonical_at": latest_tick,
+            "last_canonical_age_seconds": latest_tick_age,
+            "health_updated_at": health_updated_at,
+            "health_age_seconds": health_age,
+            "ticks_received_session": health.get("ticks_received_total"),
+            "ticks_written_session": health.get("ticks_written"),
+            "buffered_ticks": health.get("buffered_ticks"),
+            "ticks_per_minute": health.get("ticks_per_minute"),
+            "flushes": health.get("flushes"),
+            "flush_errors": health.get("flush_errors"),
+            "last_flush_at": health.get("last_flush_at"),
+            "last_flush_error": health.get("last_flush_error"),
+        },
+        "exposure": {
+            "status": exposure_status,
+            "canonical_snapshots": exposure["canonical_batches"],
+            "last_canonical_at": exposure.get("last_canonical_at"),
+            "last_canonical_age_seconds": exposure_age,
+        },
+    }
 
 
 def _resolve_axiom_uri(data_root: Path, uri: object) -> Path | None:
@@ -465,6 +602,19 @@ def read_training_cockpit(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
         data = read_data_status(repo_root, data_root=data_root, control_root=control_root)
         with _DATA_CACHE_LOCK:
             _DATA_CACHE[cache_key] = (time.monotonic(), data)
+    # Canonical live accrual is deliberately outside the 30-second manifest
+    # cache so a page refresh cannot report a dead or advancing writer from an
+    # old data-inventory snapshot.
+    readiness = data.get("p2_readiness", {})
+    required_pairs = readiness.get("required_pairs", []) if isinstance(readiness, Mapping) else []
+    data = {
+        **data,
+        "capture": read_live_capture_status(
+            repo_root,
+            data_root=data_root,
+            required_pairs=[str(pair) for pair in required_pairs],
+        ),
+    }
     evidence = read_evidence_status(evidence_root)
     return {
         "connected": True,
@@ -480,6 +630,7 @@ def read_training_cockpit(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
 __all__ = [
     "READER_SPECS",
     "read_data_status",
+    "read_live_capture_status",
     "read_evidence_status",
     "read_jobs",
     "read_forward_monitoring",

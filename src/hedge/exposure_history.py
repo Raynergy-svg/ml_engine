@@ -300,6 +300,7 @@ def capture_exposure_snapshot(
     max_state_age_s: float = DEFAULT_MAX_STATE_AGE_S,
     max_tick_age_s: float = DEFAULT_MAX_TICK_AGE_S,
     now: Optional[datetime] = None,
+    forward_capture: object | None = None,
 ) -> Optional[dict]:
     """Capture one exposure-history row. Returns the appended row, or None
     when the capture refused (stale/corrupt state, duplicate snapshot, or a
@@ -358,6 +359,14 @@ def capture_exposure_snapshot(
         "paper_only": True,
         "runtime_allowed": False,
     }
+    # Canonical forward history is the training-data authority. The legacy
+    # JSONL is a compatibility projection and lands only after publication.
+    if forward_capture is not None:
+        try:
+            forward_capture.capture_exposure_snapshot(row)  # type: ignore[attr-defined]
+        except Exception as exc:
+            logger.error("exposure_history: canonical publication failed: %s", exc)
+            return None
     # _append_jsonl logs-and-swallows write OSErrors (but its mkdir can still
     # raise); catch here and verify the row actually landed, so a failed write
     # is reported as a refusal, not a phantom success (verifier gap G1).

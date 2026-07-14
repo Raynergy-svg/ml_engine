@@ -1001,11 +1001,40 @@ export interface P2Readiness {
   ready: boolean;
   minimum_trading_days?: number;
   exposure_trading_days?: number;
+  required_pairs?: string[];
   tick_trading_days_by_pair?: Record<string, number>;
   generated_at_utc?: string;
   age_seconds?: number | null;
   blocking_reasons?: string[];
   error?: string;
+}
+export interface TrainingCaptureStatus {
+  tick: {
+    status: string;
+    writer_status: string;
+    canonical_batches: number;
+    pairs_with_records: number;
+    pairs_current: number;
+    required_pairs: number;
+    last_canonical_at?: string | null;
+    last_canonical_age_seconds?: number | null;
+    health_updated_at?: string | null;
+    health_age_seconds?: number | null;
+    ticks_received_session?: number | null;
+    ticks_written_session?: number | null;
+    buffered_ticks?: number | null;
+    ticks_per_minute?: number | null;
+    flushes?: number | null;
+    flush_errors?: number | null;
+    last_flush_at?: string | null;
+    last_flush_error?: { at_utc?: string; type?: string; message?: string } | null;
+  };
+  exposure: {
+    status: string;
+    canonical_snapshots: number;
+    last_canonical_at?: string | null;
+    last_canonical_age_seconds?: number | null;
+  };
 }
 export interface EvidenceCheck {
   check_id?: string;
@@ -1096,6 +1125,7 @@ export interface AxiomTrainingCockpit {
     quality_failures: { kind: string; path: string }[];
     quality_failures_truncated: boolean;
     p2_readiness: P2Readiness;
+    capture: TrainingCaptureStatus;
   };
   jobs: {
     jobs: TrainingJobView[];

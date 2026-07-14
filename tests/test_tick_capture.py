@@ -230,6 +230,45 @@ class TestHealthSidecar:
         assert health["gaps_detected"] == 1
         assert health["last_gap"]["duration_sec"] == pytest.approx(30.0)
 
+    def test_periodic_writer_retries_retained_batch_after_flush_error(self, tmp_path):
+        class FailOncePersister(TickPersister):
+            def __init__(self, root):
+                super().__init__(root=root)
+                self.attempts = 0
+
+            def flush(self, ticks):
+                self.attempts += 1
+                if self.attempts == 1:
+                    raise RuntimeError("temporary canonical-store failure")
+                return super().flush(ticks)
+
+        persister = FailOncePersister(tmp_path)
+        client = _FakeStreamClient([])
+        daemon = TickCaptureDaemon(
+            client=client,
+            persister=persister,
+            flush_interval_sec=0.01,
+            retention_days=None,
+        )
+        daemon.buffer.append(_tick("EUR_USD", datetime.now(timezone.utc)))
+        worker = tick_capture.threading.Thread(target=daemon._flush_loop, daemon=True)
+        worker.start()
+
+        deadline = time.time() + 2.0
+        while daemon._stats["ticks_written"] < 1 and time.time() < deadline:
+            time.sleep(0.01)
+
+        daemon._shutdown = True
+        daemon._flush_event.set()
+        worker.join(timeout=1.0)
+
+        assert not worker.is_alive()
+        assert persister.attempts == 2
+        assert daemon._stats["flush_errors"] == 1
+        assert daemon._stats["ticks_written"] == 1
+        assert daemon._stats["last_flush_error"] is None
+        assert (tmp_path / "EUR_USD").is_dir()
+
 
 class TestPracticeOnlySafety:
     def test_build_practice_stream_client_pins_practice_url(self, monkeypatch):

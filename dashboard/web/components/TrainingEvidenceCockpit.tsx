@@ -26,9 +26,9 @@ function number(value?: number | null, digits = 2): string {
 }
 
 function stateColor(state?: string | null): string {
-  if (state === "CHAMPION" || state === "OPERATOR_APPROVED" || state === "QUARANTINED" || state === "completed") return POS;
-  if (state === "REJECTED" || state === "RETIRED" || state === "failed") return NEG;
-  if (state === "SHADOW" || state === "running" || state === "submitted") return WARN;
+  if (state === "CHAMPION" || state === "OPERATOR_APPROVED" || state === "QUARANTINED" || state === "completed" || state === "accruing" || state === "running") return POS;
+  if (state === "REJECTED" || state === "RETIRED" || state === "failed" || state === "stalled" || state === "dead" || state === "health_stale") return NEG;
+  if (state === "SHADOW" || state === "submitted" || state === "delayed") return WARN;
   return MUTE;
 }
 
@@ -49,21 +49,64 @@ function tier(domain: { tiers: TrainingDataTier[] }, name: string): TrainingData
 
 function DataPanel({ data }: { data: AxiomTrainingCockpit["data"] }) {
   const p2 = data.p2_readiness;
+  const capture = data.capture;
+  const tick = capture.tick;
+  const exposureCapture = capture.exposure;
   const ticks = Object.values(p2.tick_trading_days_by_pair ?? {});
   const minTick = ticks.length ? Math.min(...ticks) : 0;
+  const readyTickPairs = ticks.filter((days) => days >= (p2.minimum_trading_days ?? 60)).length;
   const target = p2.minimum_trading_days ?? 60;
   const exposure = p2.exposure_trading_days ?? 0;
   const progress = Math.min(100, (Math.min(exposure, minTick) / Math.max(target, 1)) * 100);
+  const captureAccruing = tick.status === "accruing" && exposureCapture.status === "accruing";
   const activeDomains = data.domains.filter((domain) => domain.available || domain.tiers.some((item) => item.manifest_count));
   return (
     <Card>
       <SectionTitle right={
-        <span className="flex gap-2">
+        <span className="flex flex-wrap gap-2">
+          <Badge color={captureAccruing ? POS : stateColor(tick.status)} dot>{captureAccruing ? "CAPTURE ACCRUING" : "CAPTURE DEGRADED"}</Badge>
           <Badge color={data.quality_failure_count ? NEG : POS} dot>{data.quality_failure_count} QUALITY FAILURE{data.quality_failure_count === 1 ? "" : "S"}</Badge>
           <Badge color={p2.ready ? POS : WARN} dot>{p2.ready ? "P2 READY" : "P2 BLOCKED"}</Badge>
         </span>
-      }>Data · freshness, snapshots, quality, P2 accumulation</SectionTitle>
-      <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,2fr)_minmax(320px,0.8fr)]">
+      }>Data · live accrual, quality, and eligibility</SectionTitle>
+      <div className="grid gap-3 p-3 lg:grid-cols-3">
+        <div className="rounded-md border p-3 hairline">
+          <div className="mb-2 flex items-center justify-between gap-2"><div className="eyebrow">Live tick and spread accrual</div><Badge color={stateColor(tick.status)} dot>{tick.status.toUpperCase()}</Badge></div>
+          <div className="space-y-1.5 font-mono text-[10.5px]">
+            <div className="flex justify-between gap-3"><span className="text-faint">required pairs current</span><span>{tick.pairs_current} / {tick.required_pairs}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-faint">canonical batches</span><span>{tick.canonical_batches.toLocaleString()}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-faint">last canonical commit</span><span>{shortTime(tick.last_canonical_at)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-faint">writer heartbeat</span><span className={tick.writer_status === "running" ? "text-pos" : "text-warn"}>{tick.writer_status} · {shortTime(tick.health_updated_at)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-faint">daemon session</span><span>{tick.ticks_received_session?.toLocaleString() ?? "—"} received · {tick.ticks_per_minute ?? "—"}/min</span></div>
+            <div className="flex justify-between gap-3"><span className="text-faint">buffered</span><span>{tick.buffered_ticks?.toLocaleString() ?? "—"}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-faint">flush errors this session</span><span className={tick.flush_errors ? "text-neg" : "text-pos"}>{tick.flush_errors ?? 0}</span></div>
+          </div>
+          {tick.last_flush_error && <div className="mt-2 rounded border border-neg/30 bg-neg/5 p-2 font-mono text-[10px] text-neg">{tick.last_flush_error.type}: {tick.last_flush_error.message}</div>}
+        </div>
+        <div className="rounded-md border p-3 hairline">
+          <div className="mb-2 flex items-center justify-between gap-2"><div className="eyebrow">Portfolio exposure accrual</div><Badge color={stateColor(exposureCapture.status)} dot>{exposureCapture.status.toUpperCase()}</Badge></div>
+          <div className="space-y-1.5 font-mono text-[10.5px]">
+            <div className="flex justify-between gap-3"><span className="text-faint">canonical snapshots</span><span>{exposureCapture.canonical_snapshots.toLocaleString()}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-faint">last canonical snapshot</span><span>{shortTime(exposureCapture.last_canonical_at)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-faint">writer cadence</span><span>checks 15m</span></div>
+          </div>
+          <div className="mt-3 font-mono text-[10px] leading-relaxed text-faint">A new immutable row is appended only when the upstream account snapshot changes, normally about hourly. Expected dedupe between checks is not a stalled writer.</div>
+        </div>
+        <div className="rounded-md border p-3 hairline">
+          <div className="mb-2 flex items-center justify-between gap-2"><div className="eyebrow">Risk-target P2 duration gate</div><Badge color={p2.ready ? POS : WARN}>{p2.ready ? "READY" : "BLOCKED"}</Badge></div>
+          <div className="space-y-1.5 font-mono text-[10.5px]">
+            <div className="flex justify-between"><span className="text-faint">exposure weekdays</span><span>{exposure} / {target}</span></div>
+            <div className="flex justify-between"><span className="text-faint">minimum tick weekdays</span><span>{minTick} / {target}</span></div>
+            <div className="flex justify-between"><span className="text-faint">pairs at minimum</span><span>{readyTickPairs} / {ticks.length}</span></div>
+            <div className="h-2 overflow-hidden rounded bg-surface2"><div className="h-full bg-warn" style={{ width: `${progress}%` }} /></div>
+            <div className="text-[10px] text-faint">{p2.available ? `gate evaluated ${ago(p2.age_seconds)}` : p2.error ?? "readiness report absent"}</div>
+            {(p2.blocking_reasons ?? []).slice(0, 2).map((reason) => <div key={reason} className="truncate text-[10px] text-warn" title={reason}>{reason}</div>)}
+          </div>
+          <div className="mt-3 font-mono text-[10px] leading-relaxed text-faint">Live rows accrue continuously. This eligibility gate advances once per distinct valid weekday—not once per tick—so active capture and P2 blocked can both be true.</div>
+        </div>
+      </div>
+      <div className="border-t p-3 hairline">
+        <div className="eyebrow mb-2">Canonical domain inventory · signed manifests, snapshots, and partitions</div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {activeDomains.length ? activeDomains.map((domain) => {
             const normalized = tier(domain, "normalized");
@@ -84,16 +127,6 @@ function DataPanel({ data }: { data: AxiomTrainingCockpit["data"] }) {
               </div>
             );
           }) : <NotConnected label="No canonical data domains found" />}
-        </div>
-        <div className="rounded-md border p-3 hairline">
-          <div className="eyebrow mb-2">Risk-target P2 forward-only gate</div>
-          <div className="space-y-1.5 font-mono text-[11px]">
-            <div className="flex justify-between"><span className="text-faint">exposure weekdays</span><span>{exposure} / {target}</span></div>
-            <div className="flex justify-between"><span className="text-faint">minimum tick weekdays</span><span>{minTick} / {target}</span></div>
-            <div className="h-2 overflow-hidden rounded bg-surface2"><div className="h-full bg-warn" style={{ width: `${progress}%` }} /></div>
-            <div className="text-[10px] text-faint">{p2.available ? `report ${ago(p2.age_seconds)}` : p2.error ?? "readiness report absent"}</div>
-            {(p2.blocking_reasons ?? []).slice(0, 3).map((reason) => <div key={reason} className="truncate text-[10px] text-warn" title={reason}>{reason}</div>)}
-          </div>
         </div>
       </div>
       {data.quality_failure_count > 0 && (

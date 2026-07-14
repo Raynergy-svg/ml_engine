@@ -30,6 +30,7 @@ from typing import List
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.tick_capture import TickCaptureDaemon, TickPersister, build_practice_stream_client
+from src.data_platform.forward_capture import get_default_forward_capture
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,6 +43,7 @@ ALL_MAJOR_PAIRS = [
     "AUD_USD", "USD_CAD", "NZD_USD",
     "EUR_GBP", "EUR_JPY", "GBP_JPY",
     "EUR_CHF", "GBP_CHF", "AUD_JPY", "EUR_AUD", "GBP_AUD",
+    "AUD_NZD", "CAD_JPY", "CHF_JPY", "EUR_CAD", "NZD_JPY",
 ]
 
 
@@ -116,7 +118,10 @@ def main(argv: List[str] | None = None) -> None:
         buffer_size=args.buffer,
         flush_interval_sec=args.flush_interval,
         retention_days=args.retention_days or None,
-        persister=TickPersister(root=args.output),
+        persister=TickPersister(
+            root=args.output,
+            forward_capture=get_default_forward_capture(),
+        ),
     )
 
     # Graceful shutdown on SIGINT/SIGTERM

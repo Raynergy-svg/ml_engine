@@ -17,9 +17,11 @@ Usage:
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -73,6 +75,13 @@ def build_practice_stream_client() -> OandaStreamClient:
     because this factory must never become a path that could stream (or
     later be repurposed to trade) against the live account.
     """
+    # launchd does not source shell files merely because WorkingDirectory is
+    # set. Apply AXIOM's shared bootstrap to resident capture, while keeping
+    # injected test environments isolated from developer credentials.
+    if "pytest" not in sys.modules:
+        from src.bootstrap.env import ensure_runtime_env
+
+        ensure_runtime_env(enforce_session_id=False)
     api_token = os.getenv("OANDA_API_TOKEN") or os.getenv("OANDA_API_KEY")
     account_id = os.getenv("OANDA_ACCOUNT_ID")
     if not api_token or not account_id:
@@ -94,9 +103,15 @@ def build_practice_stream_client() -> OandaStreamClient:
 class TickPersister:
     """Flush buffered ticks to partitioned Parquet."""
 
-    def __init__(self, root: Path = TICK_ROOT, on_flush: Any = None):
+    def __init__(
+        self,
+        root: Path = TICK_ROOT,
+        on_flush: Any = None,
+        forward_capture: Any = None,
+    ):
         self.root = root
         self.on_flush = on_flush  # US-002: optional post-flush callback
+        self.forward_capture = forward_capture
 
     def flush(self, ticks: List[TickQuote]) -> int:
         """Persist ticks; return count written."""
@@ -138,6 +153,31 @@ class TickPersister:
 
             pq_path = self.root / inst / f"{yr}" / f"{mo:02d}" / f"{day:02d}.parquet"
             pq_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Canonical immutable capture is the training-data authority. The
+            # day parquet remains a compatibility projection and is written
+            # only after canonical publication succeeds.
+            if self.forward_capture is not None:
+                capture_frame = group.reset_index()
+                buffer = io.BytesIO()
+                capture_frame.to_parquet(buffer, compression="zstd", index=False)
+                observations = [
+                    {
+                        "instrument": str(row.instrument),
+                        "time": row.time.isoformat(),
+                        "bid": float(row.bid),
+                        "ask": float(row.ask),
+                        "mid": float(row.mid),
+                        "bid_liq": None if pd.isna(row.bid_liq) else float(row.bid_liq),
+                        "ask_liq": None if pd.isna(row.ask_liq) else float(row.ask_liq),
+                        "status": str(row.status),
+                        "source": str(row.source),
+                    }
+                    for row in capture_frame.itertuples(index=False)
+                ]
+                self.forward_capture.capture_tick_partition(
+                    str(inst), observations, buffer.getvalue()
+                )
 
             # Append or create
             if pq_path.exists():
@@ -217,10 +257,16 @@ class TickCaptureDaemon:
         self._shutdown = False
         self._flush_thread: Optional[threading.Thread] = None
         self._stream_thread: Optional[threading.Thread] = None
+        self._buffer_lock = threading.Lock()
+        self._persist_lock = threading.Lock()
+        self._flush_event = threading.Event()
         self._stats: Dict[str, Any] = {
             "ticks_received": 0,
             "ticks_written": 0,
             "flushes": 0,
+            "flush_errors": 0,
+            "last_flush_at": None,
+            "last_flush_error": None,
             "started_at": None,
         }
         # US-011: Health tracking
@@ -272,6 +318,7 @@ class TickCaptureDaemon:
         logger.info("TickCaptureDaemon shutting down...")
         self._shutdown = True
         self._stream_status = "dead"
+        self._flush_event.set()
         self.client.shutdown()
         time.sleep(0.5)
         self._do_flush()
@@ -301,7 +348,14 @@ class TickCaptureDaemon:
             "idle_seconds": round(idle_seconds, 1),
             "last_tick_time": self._last_tick_time,
             "flushes": self._stats["flushes"],
+            "flush_errors": self._stats["flush_errors"],
+            "last_flush_at": self._stats["last_flush_at"],
+            "last_flush_error": self._stats["last_flush_error"],
             "ticks_written": self._stats["ticks_written"],
+            "buffered_ticks": max(
+                0,
+                self._stats["ticks_received"] - self._stats["ticks_written"],
+            ),
             "started_at": self._stats["started_at"],
             "gaps_detected": len(self._gaps),
             "last_gap": self._gaps[-1] if self._gaps else None,
@@ -346,31 +400,62 @@ class TickCaptureDaemon:
                 self._ticks_this_minute = 1
             else:
                 self._ticks_this_minute += 1
-            should_flush = self.buffer.append(tick)
+            with self._buffer_lock:
+                should_flush = self.buffer.append(tick)
             if should_flush:
-                self._do_flush()
+                self._flush_event.set()
 
     def _flush_loop(self) -> None:
         """Periodic flush thread."""
         while not self._shutdown:
-            time.sleep(self.flush_interval)
-            self._do_flush()
+            self._flush_event.wait(self.flush_interval)
+            self._flush_event.clear()
+            if self._shutdown:
+                break
+            try:
+                self._do_flush()
+            except Exception as flush_err:
+                self._stats["flush_errors"] += 1
+                self._stats["last_flush_error"] = {
+                    "at_utc": datetime.now(timezone.utc).isoformat(),
+                    "type": type(flush_err).__name__,
+                    "message": str(flush_err),
+                }
+                logger.exception(
+                    "Tick flush failed; batch retained and periodic writer will retry"
+                )
+                self._write_health()
 
     def _do_flush(self) -> None:
-        ticks = self.buffer.flush()
-        if ticks:
-            n = self.persister.flush(ticks)
-            self._stats["ticks_written"] += n
-            self._stats["flushes"] += 1
-        # Bounded storage: prune at most once per hour, decoupled from the
-        # (possibly frequent) tick-flush cadence.
-        now = time.time()
-        if self.retention_days and (now - self._last_prune_ts) >= _PRUNE_MIN_INTERVAL_SEC:
-            self._last_prune_ts = now
-            try:
-                self.persister.prune_older_than(self.retention_days)
-            except Exception as prune_err:
-                logger.warning("Tick partition pruning failed: %s", prune_err)
+        with self._persist_lock:
+            with self._buffer_lock:
+                ticks = self.buffer.flush()
+            if ticks:
+                try:
+                    n = self.persister.flush(ticks)
+                except Exception:
+                    # Canonical publication is idempotent, so retrying the
+                    # whole retained batch cannot forge a second history row.
+                    with self._buffer_lock:
+                        self.buffer.ticks = ticks + self.buffer.ticks
+                    raise
+                self._stats["ticks_written"] += n
+                self._stats["flushes"] += 1
+                self._stats["last_flush_at"] = datetime.now(timezone.utc).isoformat()
+                self._stats["last_flush_error"] = None
+            # Bounded storage: prune at most once per hour, decoupled from the
+            # (possibly frequent) tick-flush cadence.
+            now = time.time()
+            if self.retention_days and (now - self._last_prune_ts) >= _PRUNE_MIN_INTERVAL_SEC:
+                self._last_prune_ts = now
+                try:
+                    self.persister.prune_older_than(self.retention_days)
+                except Exception as prune_err:
+                    logger.warning("Tick partition pruning failed: %s", prune_err)
+        self._write_health()
+
+    def _write_health(self) -> None:
+        """Persist a current health heartbeat without changing capture state."""
         try:
             _atomic_write_json(self._health_path, self.get_health())
         except OSError as health_write_err:

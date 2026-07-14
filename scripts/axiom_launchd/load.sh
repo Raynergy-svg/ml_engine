@@ -10,6 +10,10 @@
 #   com.axiom.operator — AXIOM resident reasoning loop      (respects halt + practice pin;
 #                        starts in whatever autonomy state loop_autonomy.json says;
 #                        ESCALATION always proposal-only regardless of that flag)
+#   com.buddy.tick_capture
+#                      — PRACTICE-only read-only quotes for all 19 P2 pairs
+#   com.buddy.exposure_history
+#                      — analysis-only canonical portfolio-exposure snapshots
 #
 # NOTE: com.buddy.learning_loop.plist (market-closed continual-learning batch,
 # scripts/offline_learning_cycle.py) is deliberately NOT in this script's
@@ -28,10 +32,11 @@ set -euo pipefail
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="$HOME/Library/LaunchAgents"
 UID_NUM="$(id -u)"
-LABELS=(com.axiom.api com.axiom.web com.buddy.trend com.buddy.tier7 com.axiom.operator)
+LABELS=(com.axiom.api com.axiom.web com.buddy.trend com.buddy.tier7 com.axiom.operator com.buddy.tick_capture com.buddy.exposure_history)
 
 mkdir -p "$DEST"
 mkdir -p "$(cd "$SRC_DIR/../.." && pwd)/trained_data/axiom"
+failed=0
 
 for label in "${LABELS[@]}"; do
   plist="$SRC_DIR/$label.plist"
@@ -39,18 +44,45 @@ for label in "${LABELS[@]}"; do
   cp "$plist" "$dest"
   # Tear down any prior copy (ignore errors if not loaded), then bootstrap fresh.
   launchctl bootout "gui/$UID_NUM/$label" 2>/dev/null || true
-  if launchctl bootstrap "gui/$UID_NUM" "$dest" 2>/dev/null; then
-    echo "bootstrapped $label"
-  else
-    # Fallback for older launchctl semantics.
-    launchctl load -w "$dest" && echo "loaded $label (legacy)"
+  sleep 0.25
+  bootstrapped=0
+  for delay in 0 1 3; do
+    if [[ "$delay" != "0" ]]; then
+      sleep "$delay"
+    fi
+    if launchctl bootstrap "gui/$UID_NUM" "$dest" 2>/dev/null; then
+      if [[ "$delay" == "0" ]]; then
+        echo "bootstrapped $label"
+      else
+        echo "bootstrapped $label (retry after ${delay}s)"
+      fi
+      bootstrapped=1
+      break
+    fi
+  done
+  if [[ "$bootstrapped" != "1" ]]; then
+    # One stubborn service must not prevent later capture services from being
+    # installed. Preserve a failing exit status after attempting every label.
+    if launchctl load -w "$dest" 2>/dev/null; then
+      echo "loaded $label (legacy)"
+    else
+      echo "FAILED to load $label — retry manually: launchctl bootstrap gui/$UID_NUM $dest" >&2
+      failed=1
+    fi
   fi
   launchctl enable "gui/$UID_NUM/$label" 2>/dev/null || true
 done
 
 echo "---"
 echo "Loaded. Status:"
+missing=0
 for label in "${LABELS[@]}"; do
   printf '  %-18s ' "$label"
-  launchctl print "gui/$UID_NUM/$label" 2>/dev/null | awk -F'= ' '/state =/{print "state="$2; f=1} END{if(!f)print "(not found)"}'
+  if status="$(launchctl print "gui/$UID_NUM/$label" 2>/dev/null)"; then
+    awk -F'= ' 'BEGIN{f=0} /^[[:space:]]*state =/{print "state="$2; f=1; exit} END{if(!f)print "(not found)"}' <<<"$status"
+  else
+    echo "(not found)"
+    missing=1
+  fi
 done
+exit "$(( missing || failed ))"

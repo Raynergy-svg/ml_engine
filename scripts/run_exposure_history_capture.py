@@ -26,6 +26,7 @@ from src.hedge.exposure_history import (  # noqa: E402
     TICKS_ROOT,
     capture_exposure_snapshot,
 )
+from src.data_platform.forward_capture import ForwardCaptureService  # noqa: E402
 
 logger = logging.getLogger("exposure_history_capture")
 
@@ -41,11 +42,13 @@ def main() -> int:
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    forward_capture = ForwardCaptureService.default()
 
     while True:
         row = capture_exposure_snapshot(account_state_path=args.account_state,
                                         ticks_root=args.ticks_root,
-                                        out_path=args.out)
+                                        out_path=args.out,
+                                        forward_capture=forward_capture)
         if row is None:
             logger.info("no row appended (stale/duplicate/unresolvable — see warnings)")
         if args.loop <= 0:

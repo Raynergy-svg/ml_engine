@@ -6,8 +6,10 @@ forward-capture contract is mocked.
 
 from __future__ import annotations
 
+import hashlib
 import json
-from datetime import date, datetime, timezone
+import os
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -16,6 +18,7 @@ from dashboard.server.training_cockpit import (
     read_evidence_status,
     read_forward_monitoring,
     read_jobs,
+    read_live_capture_status,
 )
 from dashboard.server.training_jobs import TrainingJobJournal
 from src.data_platform.forward_capture import P2ReadinessReport
@@ -80,6 +83,66 @@ def test_data_status_reports_missing_partition_as_quality_failure(tmp_path):
     assert result["quality_failure_count"] == 1
     assert result["quality_failures"][0]["kind"] == "missing_partition"
     assert result["p2_readiness"]["available"] is False
+
+
+def test_live_capture_status_separates_accrual_from_p2_duration(tmp_path):
+    data_root = tmp_path / "axiom-data"
+
+    def write_stream(domain, family, source_key):
+        stream_id = f"forward-capture:{family}:{source_key}"
+        component = hashlib.sha256(stream_id.encode("utf-8")).hexdigest()[:32]
+        history = data_root / domain / "history" / component
+        _write_json(
+            history / "00000000000000000000-record.jsonl",
+            {
+                "captured_at_utc": NOW.isoformat(),
+                "observed_at_utc": NOW.isoformat(),
+                "source_event_time_utc": NOW.isoformat(),
+                "payload": {},
+            },
+        )
+
+    write_stream("fx", "tick_spread", "EUR_USD")
+    write_stream("portfolio", "exposure", "oanda_fx_trend_lane")
+    health_path = tmp_path / "trained_data" / "ticks" / "_health.json"
+    _write_json(
+        health_path,
+        {
+            "stream_status": "running",
+            "ticks_received_total": 125,
+            "ticks_written": 100,
+            "buffered_ticks": 25,
+            "ticks_per_minute": 40,
+            "flushes": 4,
+            "flush_errors": 0,
+        },
+    )
+
+    result = read_live_capture_status(
+        tmp_path,
+        data_root=data_root,
+        required_pairs=["EUR_USD"],
+        now=NOW,
+    )
+
+    assert result["tick"]["status"] == "accruing"
+    assert result["tick"]["writer_status"] == "running"
+    assert result["tick"]["canonical_batches"] == 1
+    assert result["tick"]["pairs_current"] == 1
+    assert result["tick"]["buffered_ticks"] == 25
+    assert result["exposure"]["status"] == "accruing"
+    assert result["exposure"]["canonical_snapshots"] == 1
+
+    stale = (NOW - timedelta(minutes=5)).timestamp()
+    os.utime(health_path, (stale, stale))
+    degraded = read_live_capture_status(
+        tmp_path,
+        data_root=data_root,
+        required_pairs=["EUR_USD"],
+        now=NOW,
+    )
+    assert degraded["tick"]["writer_status"] == "health_stale"
+    assert degraded["tick"]["status"] == "delayed"
 
 
 def test_evidence_status_preserves_negative_results_and_lineage(tmp_path):
