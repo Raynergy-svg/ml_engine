@@ -374,6 +374,54 @@ def test_gated_edit_commits_scoped_and_reversible_on_full_pass(tmp_path, monkeyp
     assert "README.md" in status  # concurrent write is still there, uncommitted, untouched
 
 
+def test_gated_edit_persists_designated_runtime_state_after_all_gates(tmp_path, monkeypatch):
+    """A verified agent-weight correction is runtime state, not a source commit.
+
+    This uses a real temporary Git repository and real stand-in safety scripts:
+    it proves the designated runtime target survives the full test + gate
+    lifecycle without becoming tracked or sweeping unrelated files into Git.
+    """
+    monkeypatch.setattr(si, "_repo_root", lambda: tmp_path)
+    _init_repo(tmp_path)
+    _write_stand_in_gates(tmp_path)
+    target = tmp_path / "trained_data" / "models" / "agent_weights.json"
+    target.parent.mkdir(parents=True)
+    target.write_text('{"invalid_agent_xyz": 0.15}\n', encoding="utf-8")
+
+    log_before = subprocess.run(
+        ["git", "log", "--oneline"], cwd=tmp_path, capture_output=True, text=True,
+    ).stdout
+
+    def _apply():
+        target.write_text('{"canonical": 1.0}\n', encoding="utf-8")
+        return {"purged": {"_meta": ["weight_history_invalid_agent_xyz"]}}
+
+    result = si._run_gated_edit(
+        action_name="test_runtime_state_action",
+        target_paths=["trained_data/models/agent_weights.json"],
+        apply_fn=_apply,
+        test_cmd=[sys.executable, "-c", "pass"],
+    )
+
+    assert result["committed"] is False
+    assert result["persisted_runtime_state"] is True
+    assert result["reverted"] is False
+    assert result["tests_passed"] is True
+    assert result["verify_gate_passed"] is True
+    assert result["risk_monitor_green"] is True
+    assert target.read_text(encoding="utf-8") == '{"canonical": 1.0}\n'
+
+    log_after = subprocess.run(
+        ["git", "log", "--oneline"], cwd=tmp_path, capture_output=True, text=True,
+    ).stdout
+    assert log_after == log_before
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "trained_data/models/agent_weights.json"],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert tracked.returncode != 0
+
+
 def test_gated_edit_reverts_when_verify_gate_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(si, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(si, "ALLOWLIST", si.ALLOWLIST + ("data.json",))

@@ -33,8 +33,11 @@ failure mode) -> apply the one registered operation -> run its test command
 -> run the universal safety gate (`.claude/loop/verify_gate.py` +
 `.claude/tools/risk_monitor.sh`) -> on ANY failure, restore the snapshot and
 raise `PolicyDenied` (no commit, audited as `denied_by_action`) -> on success,
-a SCOPED `git commit -- <path>` (never `git add -A`) so a concurrent daemon
-writing an unrelated tracked file cannot be swept into this commit.
+either a SCOPED `git commit -- <path>` (never `git add -A`) for source/doctrine
+or retention of an explicitly-designated runtime-state file. Runtime state is
+already durably audited by the policy gateway; forcing it into Git would both
+violate the repository's runtime-data boundary and turn a verified edit into a
+perpetual revert.
 """
 from __future__ import annotations
 
@@ -90,6 +93,16 @@ ALLOWLIST: Tuple[str, ...] = (
     ".claude/LESSONS.md",
     ".claude/NOTES.md",
 )
+
+# These files are deliberately runtime state, not source-controlled doctrine.
+# They may be changed only through the same apply -> test -> universal-gate
+# lifecycle as every other SELF_IMPROVE action, but must never be staged just
+# to satisfy a commit requirement. Keep this an exact, small set: a future
+# target is commit-required by default until an operator deliberately reviews
+# and adds it here.
+RUNTIME_STATE_TARGETS = frozenset({
+    "trained_data/models/agent_weights.json",
+})
 
 
 def _normalize(raw: str) -> str:
@@ -181,6 +194,15 @@ def _git_commit(repo_root: Path, rel_paths: Sequence[str], action_name: str) -> 
     return {"committed": False, "sha": None, "reason": last_error[-500:]}
 
 
+def _is_runtime_state_edit(target_paths: Sequence[str]) -> bool:
+    """True only when every hardcoded target is designated runtime state.
+
+    Mixed edits must remain commit-required; otherwise a future action could
+    smuggle source or doctrine changes through the runtime-state exception.
+    """
+    return bool(target_paths) and all(path in RUNTIME_STATE_TARGETS for path in target_paths)
+
+
 def _run_gated_edit(
     *,
     action_name: str,
@@ -251,6 +273,18 @@ def _run_gated_edit(
     )
     if not ok:
         _revert(f"risk_monitor.sh ALARM -- {detail}")
+
+    if _is_runtime_state_edit(target_paths):
+        return {
+            "committed": False,
+            "commit_sha": None,
+            "persisted_runtime_state": True,
+            "reverted": False,
+            "tests_passed": True,
+            "verify_gate_passed": True,
+            "risk_monitor_green": True,
+            "apply_detail": apply_detail,
+        }
 
     commit = _git_commit(repo_root, list(target_paths), action_name)
     if not commit["committed"]:
