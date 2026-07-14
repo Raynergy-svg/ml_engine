@@ -1,0 +1,28 @@
+{
+  "coverage_end": "2026-06-11",
+  "coverage_start": "2014-01-01",
+  "dataset_id": "fx-factor-daily-2014-2026",
+  "git_commit": "c62935f5caf7e62c5b2e8a8498a9cbf5b0b64a26",
+  "job_id": "dashboard-risk-target-fx-daily",
+  "partitions": {
+    "AUD_JPY": "AUD_JPY_D.csv",
+    "AUD_NZD": "AUD_NZD_D.csv",
+    "AUD_USD": "AUD_USD_D.csv",
+    "CAD_JPY": "CAD_JPY_D.csv",
+    "CHF_JPY": "CHF_JPY_D.csv",
+    "EUR_AUD": "EUR_AUD_D.csv",
+    "EUR_CAD": "EUR_CAD_D.csv",
+    "EUR_CHF": "EUR_CHF_D.csv",
+    "EUR_GBP": "EUR_GBP_D.csv",
+    "EUR_JPY": "EUR_JPY_D.csv",
+    "EUR_USD": "EUR_USD_D.csv",
+    "GBP_AUD": "GBP_AUD_D.csv",
+    "GBP_JPY": "GBP_JPY_D.csv",
+    "GBP_USD": "GBP_USD_D.csv",
+    "NZD_JPY": "NZD_JPY_D.csv",
+    "NZD_USD": "NZD_USD_D.csv",
+    "USD_CAD": "USD_CAD_D.csv",
+    "USD_CHF": "USD_CHF_D.csv",
+    "USD_JPY": "USD_JPY_D.csv"
+  }
+}
