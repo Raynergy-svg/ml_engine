@@ -33,10 +33,11 @@ function Field({
 
 export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => void }) {
   const { payload } = useStream();
-  const { data: controlState } = usePoll<ControlState>("/api/control/state", 5000);
+  const { data: controlState, error: controlStateError } = usePoll<ControlState>("/api/control/state", 5000);
   const halted = payload?.status?.halted ?? null;
   const loops = controlState?.loops;
-  const automationOn = !!(loops?.trend?.running || loops?.tier7?.running);
+  const automationKnown = !controlStateError && controlState != null;
+  const automationOn = automationKnown && !!(loops?.trend?.running || loops?.tier7?.running);
   const [openMenu, setOpenMenu] = useState<"main" | "strategy" | "risk" | "automation" | "more" | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -163,17 +164,17 @@ export function GlobalStatusStrip({ onOpenPalette }: { onOpenPalette?: () => voi
       <div className="relative">
         <Field label="Automation" onClick={() => setOpenMenu(openMenu === "automation" ? null : "automation")}>
           <span className="flex items-center gap-2">
-            <StatusDot color={automationOn ? "#2bd17e" : "#5a6677"} />
-            {automationOn ? "Enabled" : "Paused"}
+            <StatusDot color={!automationKnown ? "#ff4d6d" : automationOn ? "#2bd17e" : "#5a6677"} />
+            {!automationKnown ? "Unknown" : automationOn ? "Enabled" : "Paused"}
           </span>
         </Field>
         {openMenu === "automation" && (
           <div className="card absolute left-0 top-[64px] z-20 min-w-[220px] p-1.5">
-            <button onClick={toggleAutomation} className="w-full rounded px-2.5 py-1.5 text-left font-mono text-[12px] text-dim hover:bg-surface2 hover:text-text">
+            <button onClick={toggleAutomation} disabled={!automationKnown} className="w-full rounded px-2.5 py-1.5 text-left font-mono text-[12px] text-dim hover:bg-surface2 hover:text-text disabled:opacity-40">
               {automationOn ? "Stop trend + Tier 7 loops" : "Start trend + Tier 7 loops"}
             </button>
             <div className="px-2.5 py-1 font-mono text-[10px] text-faint">
-              trend: {loops?.trend?.running ? "running" : "offline"} · tier7: {loops?.tier7?.running ? "running" : "offline"}
+              {!automationKnown ? "backend control state unavailable" : `trend: ${loops?.trend?.running ? "running" : "offline"} · tier7: ${loops?.tier7?.running ? "running" : "offline"}`}
             </div>
           </div>
         )}

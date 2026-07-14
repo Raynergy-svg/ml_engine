@@ -5,7 +5,7 @@ import { useStream } from "@/lib/stream";
 import { control, type ControlResult } from "@/lib/control";
 import type { ControlState, SystemHealth, Tier7 } from "@/lib/types";
 import { LANE_META } from "@/lib/lanes";
-import { Card, SectionTitle, Badge, StatusDot } from "./ui";
+import { Card, SectionTitle, Badge, Loading, NotConnected, StatusDot } from "./ui";
 import { ago, shortTime } from "@/lib/format";
 
 interface AuditEntry {
@@ -42,7 +42,7 @@ function ConfirmButton({
   if (armed) {
     return (
       <span className="inline-flex items-center gap-1">
-        <button onClick={go} disabled={busy}
+        <button onClick={go} disabled={disabled || busy}
           className="rounded-md px-2.5 py-1 font-mono text-[11px] font-semibold text-base"
           style={{ background: color }}>
           {busy ? "…" : "Confirm"}
@@ -71,23 +71,25 @@ function ConfirmButton({
 
 export function ControlPanel() {
   const { data: audit } = usePoll<AuditResp>("/api/control/audit?limit=25", 4000);
-  const { data: polledControlState, error: stateError } = usePoll<ControlState>("/api/control/state", 3000);
+  const { data: controlState, error: stateError, loading: stateLoading, reload: reloadControlState } = usePoll<ControlState>("/api/control/state", 3000);
   const { data: tier7 } = usePoll<Tier7>("/api/tier7", 4000);
   const { data: health } = usePoll<SystemHealth>("/api/system_health", 5000);
   const { payload } = useStream();
-  const [actionControlState, setActionControlState] = useState<ControlState | null>(null);
   const [pendingLev, setPendingLev] = useState<number | null>(null);
 
   async function runControl(action: string, params: Record<string, unknown> = {}) {
     const result = await control(action, params);
-    if (result.data.state) {
-      setActionControlState(result.data.state);
-      if (typeof result.data.state.gross_leverage === "number") setPendingLev(null);
-    }
+    // An action response is a receipt, not the long-lived source of truth. Always
+    // re-read the persisted control state so the page and a browser refresh agree.
+    if (result.ok && typeof result.data.state?.gross_leverage === "number") setPendingLev(null);
+    reloadControlState();
     return result;
   }
 
-  const controlState = polledControlState ?? actionControlState;
+  // Never keep a successful action response as a fallback when state polling later
+  // fails: that turns an old receipt into a misleading live claim. Settings fails
+  // closed until the backend's current persisted state is readable again.
+  const controlUnavailable = Boolean(stateError) || !controlState;
   const halted = controlState?.halted ?? payload?.status?.halted ?? null;
   const laneRunning = controlState?.loops?.trend?.running ?? health?.lanes?.running === true;
   const tier7Proc = controlState?.loops?.tier7;
@@ -98,20 +100,28 @@ export function ControlPanel() {
   const tier7Mismatch = tier7SnapshotConnected && tier7ProcRunning !== (tier7?.running === true);
   const tier7LatestHeal = [...(tier7?.self_heal?.recent_events ?? [])].reverse()[0];
   const tier7StatusColor = tier7Mismatch ? "#f5b14c" : tier7Running ? "#2bd17e" : "#ff4d6d";
-  const disabled = !!stateError && /404/.test(stateError);
   const leverageCap = controlState?.leverage_cap ?? 15;
   const persistedLeverage = typeof controlState?.gross_leverage === "number" ? controlState.gross_leverage : null;
   const lev = pendingLev ?? persistedLeverage ?? 3;
   const armed = controlState?.armed === true;
 
-  if (disabled) {
+  if (stateLoading && !controlState) {
     return (
       <Card className="p-5">
-        <SectionTitle right={<Badge color="#5a6677" dot>CONTROL DISABLED</Badge>}>Operator Control</SectionTitle>
-        <div className="py-6 text-center font-mono text-[12px] text-dim">
-          The control layer is built but <span className="text-warn">disabled</span> (AXIOM_CONTROL_ENABLED off).
-          <div className="mt-1 text-[11px] text-faint">Start the data layer with AXIOM_CONTROL_ENABLED=1 to operate the bot.</div>
-        </div>
+        <SectionTitle right={<Badge color="#5a6677" dot>READING BACKEND STATE</Badge>}>Operator Control</SectionTitle>
+        <Loading label="Reading persisted control state…" />
+      </Card>
+    );
+  }
+
+  if (controlUnavailable) {
+    return (
+      <Card className="p-5">
+        <SectionTitle right={<Badge color="#ff4d6d" dot>CONTROL STATE UNAVAILABLE</Badge>}>Operator Control</SectionTitle>
+        <NotConnected
+          label="Settings actions are disabled until persisted control state is readable"
+          hint={stateError ?? "No authoritative control-state response received."}
+        />
       </Card>
     );
   }
@@ -124,14 +134,16 @@ export function ControlPanel() {
         </SectionTitle>
 
         {/* ARM lockdown (2026-07-01): the server REFUSES flatten / leverage-change /
-            start_loop / unhalt as a structural no-op unless armed — this banner
+            start_loop / unhalt unless armed — this banner
             reflects that, it doesn't itself enforce anything. Default DISARMED. */}
         <div className="mb-3 flex items-center justify-between rounded-md border p-2.5 hairline"
              style={{ borderColor: armed ? "#ff4d6d55" : undefined }}>
           <div className="flex items-center gap-2 font-mono text-[11px]">
             <StatusDot color={armed ? "#ff4d6d" : "#5a6677"} pulse={armed} />
             <span className={armed ? "text-warn font-semibold" : "text-dim"}>
-              {armed ? "ARMED — live-order actions enabled" : "DISARMED — flatten/leverage/start/unhalt are no-ops"}
+              {armed
+                ? "ARMED — guarded dashboard requests enabled (unhalt, start, leverage, flatten)"
+                : "DISARMED — guarded dashboard requests are refused server-side"}
             </span>
             {armed && controlState?.arm_expires_at && (
               <span className="text-faint">· expires {shortTime(controlState.arm_expires_at)}</span>
