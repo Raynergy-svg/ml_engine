@@ -14,7 +14,7 @@ from src.evidence.signing import Ed25519Signer, TrustStore
 from src.evidence.store import EvidenceStore
 from src.evidence.transition_policy import AuthorityRegistry
 
-from .evaluation import EvaluationParams, evaluate_partitions
+from .evaluation import EvaluationParams
 from .local_import import import_model
 from .manifests import build_capability_profile, build_dataset_manifest, build_job_manifest
 from .models import ImportOutcome, WorkerOutput
