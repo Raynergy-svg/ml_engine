@@ -551,7 +551,10 @@ def read_forward_monitoring(evidence: Mapping[str, Any], monitor_root: str | Pat
 
 def read_control_readiness(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
     repo_root = Path(repo_root)
-    descriptor_path = Path(os.getenv("AXIOM_RISK_TARGET_DATASET", "")) if os.getenv("AXIOM_RISK_TARGET_DATASET") else None
+    descriptor_path = Path(os.getenv(
+        "AXIOM_RISK_TARGET_DATASET",
+        repo_root / "market_data" / "factor" / "axiom_risk_target_dataset.json",
+    ))
     trust_path = Path(os.getenv("AXIOM_OPERATOR_TRUST", repo_root / "trained_data" / "axiom" / "operator_trust.json"))
     descriptor_digest = None
     request_template = None
@@ -568,7 +571,7 @@ def read_control_readiness(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
         "enabled": enabled,
         "operator_trust_configured": trust_path.is_file(),
         "dataset_configured": bool(descriptor_digest),
-        "dataset_descriptor": str(descriptor_path) if descriptor_path else None,
+        "dataset_descriptor": str(descriptor_path),
         "dataset_sha256": descriptor_digest,
         "run_request_template": request_template,
         "run_subject_digest": request_subject_digest,

@@ -79,10 +79,10 @@ def _safe_partition(base: Path, relative: object) -> Path:
 
 
 def _load_run_dataset(request: RunRequestBody) -> tuple[dict[str, bytes], dict[str, Any], str]:
-    descriptor_name = os.getenv("AXIOM_RISK_TARGET_DATASET")
-    if not descriptor_name:
-        raise HTTPException(status_code=503, detail="risk-target run dataset is not configured")
-    descriptor_path = Path(descriptor_name)
+    descriptor_path = Path(os.getenv(
+        "AXIOM_RISK_TARGET_DATASET",
+        REPO_ROOT / "market_data" / "factor" / "axiom_risk_target_dataset.json",
+    ))
     if not descriptor_path.is_file():
         raise HTTPException(status_code=503, detail="risk-target run dataset descriptor is absent")
     try:
