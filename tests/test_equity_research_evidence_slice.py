@@ -619,28 +619,71 @@ def test_stricter_signed_bar_end_to_end_rejects(tmp_path):
     assert result.outcomes[WIDE].final_state == DispositionState.REJECTED
 
 
-def test_import_rejects_strategy_manifest_declaring_a_fold_the_dataset_lacks(tmp_path):
-    # Adversarial producer: sign a strategy manifest declaring an extra fold the
-    # dataset never carried. The local authority must catch the strategy-vs-dataset
-    # fold inconsistency, not silently accept the smaller dataset fold set.
-    identities, store = _fresh(tmp_path)
-    partitions = _tier_partitions("curated", 25, _W_PERSIST)
-    produced = produce_worker_output(identities, partitions, registry_publish=_noop_registry, **SLICE_KW)
-    head = produced.worker_output.heads[0]
-    # Strategy manifest declares curated with an extra fold5 the dataset lacks.
-    declared = tuple(sorted(partitions)) + (fold_partition_id("curated", 5),)
-    bad_sm = build_research_strategy_manifest(
-        HYP, {"curated": declared}, frozen_at=NOW,
-        min_oos_folds=3, ic_bar=0.03, ic_tstat_bar=2.0,
+def test_strategy_declared_folds_match_dataset_rail_is_isolated_and_load_bearing(tmp_path):
+    # Adversarial producer: build a job that digest-binds BOTH an honest dataset
+    # manifest (folds 0-4) AND a strategy manifest that DECLARES an extra fold5 the
+    # dataset never carried, then package a head honestly scored over the real
+    # folds. Because the job binds the inconsistent strategy manifest, the digest
+    # rail (strategy_manifest_bound_to_job) PASSES — so this isolates the NEW
+    # strategy_declared_folds_match_dataset rail as the load-bearing failure. A
+    # loose OR-assertion would let this rail be silently deleted (the F1/F4
+    # dead-check-test class); assert the specific check with AND semantics.
+    from src.evidence.equity_research.manifests import (
+        build_research_evaluation_job_manifest,
+        build_research_fold_dataset_manifest,
     )
-    bad_env = identities.producer.sign(bad_sm, created_at=NOW)
-    outcome = _import_one(identities, store, produced, head, partitions,
-                          strategy_manifest_envelope=bad_env)
+    from src.evidence.equity_research.slice import EQUITY_RESEARCH_SCORECARD_VERSION
+    from src.evidence.hashing import sha256_bytes
+
+    identities, store = _fresh(tmp_path)
+    producer = identities.producer
+    partitions = _tier_partitions("curated", 25, _W_PERSIST)  # real folds 0-4
+
+    dataset = build_research_fold_dataset_manifest(
+        partitions, dataset_id="er-forge", retrieved_at=NOW,
+        coverage_start=date(2015, 1, 1), coverage_end=date(2020, 1, 1),
+    )
+    declared = tuple(sorted(partitions)) + (fold_partition_id("curated", 5),)  # lies: adds fold5
+    sm = build_research_strategy_manifest(
+        HYP, {"curated": declared}, frozen_at=NOW, min_oos_folds=3, ic_bar=0.03, ic_tstat_bar=2.0,
+    )
+    cap = build_capability_profile()
+    job = build_research_evaluation_job_manifest(
+        job_id="er-forge-job", dataset_manifest=dataset, strategy_manifest=sm,
+        capability_profile=cap, git_commit="0" * 40, container_digest=sha256_bytes(b"forge"),
+        configuration_digest=sha256_bytes(b"cfg"), scorecard_version=EQUITY_RESEARCH_SCORECARD_VERSION,
+        created_at=NOW, expected_tier_lanes=[CURATED],
+    )
+    # Worker scores honestly over the real partitions (empty params -> folds 0-4),
+    # packaging a head bound to the fold-inconsistent job.
+    wout = run_worker(
+        hypothesis_id=HYP,
+        job_envelope=producer.sign(job, created_at=NOW),
+        dataset_manifest_envelope=producer.sign(dataset, created_at=NOW),
+        strategy_manifest_envelope=producer.sign(sm, created_at=NOW),
+        capability_profile_envelope=producer.sign(cap, created_at=NOW),
+        partitions=partitions, producer=producer,
+        producer_id=identities.actors[AuthorityRole.PRODUCER],
+        trust_store=identities.trust_store, created_at=NOW,
+        params=EvaluationParams(), registry_publish=_noop_registry,
+    )
+    head = wout.heads[0]
+    outcome = import_head(
+        store, head, hypothesis_id=HYP, job=job,
+        capability_profile_envelope=wout.capability_profile_envelope,
+        dataset_manifest_envelope=wout.dataset_manifest_envelope,
+        strategy_manifest_envelope=wout.strategy_manifest_envelope,
+        partitions=partitions, trust_store=identities.trust_store,
+        importer=identities.importer, importer_id=identities.actors[AuthorityRole.LOCAL_IMPORTER],
+        verifier=identities.verifier, verifier_id=identities.actors[AuthorityRole.INDEPENDENT_VERIFIER],
+        created_at=NOW,
+    )
+    checks = {c.check_id: c.passed for c in outcome.verdict.checks}
     assert outcome.final_state == DispositionState.REJECTED
-    # Either the digest binding or the fold-consistency rail fires (both are honest).
-    reason = outcome.verdict.rejection_reason or ""
-    assert ("strategy_declared_folds_match_dataset" in reason
-            or "strategy_manifest_bound_to_job" in reason)
+    # Digest binding is intact — isolates the new rail from strategy_manifest_bound_to_job.
+    assert checks["strategy_manifest_bound_to_job"] is True
+    # The new rail is the load-bearing failure (dies if the check is ever removed).
+    assert checks["strategy_declared_folds_match_dataset"] is False
 
 
 def test_import_rejects_doctored_scorecard_artifact(tmp_path):

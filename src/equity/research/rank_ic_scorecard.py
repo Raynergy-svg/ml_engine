@@ -283,6 +283,13 @@ def aggregate_tier_scorecard(
     constants but are accepted as arguments so the caller's SIGNED, digest-bound
     bars are the ones actually enforced — a value that is signed into the job
     manifest but not enforced here would be a dishonest attestation.
+
+    Note (deliberate): ``pooled_oos_rank_ic`` is breadth-weighted by ``n_names``
+    while the significance ``oos_ic_tstat`` is computed on the UNWEIGHTED per-fold
+    IC list — the effect-size bar and the significance bar describe slightly
+    different central tendencies. This is intentional (equal-fold significance,
+    breadth-aware effect size); it only diverges materially if per-fold breadth
+    within one tier varies wildly, in which case revisit before relying on it.
     """
     expected = list(expected_fold_ids)
     if len(set(expected)) != len(expected):
