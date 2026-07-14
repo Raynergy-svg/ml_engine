@@ -266,6 +266,11 @@ def tier7() -> Dict[str, Any]:
     return ds.read_tier7()
 
 
+@app.get("/api/risk_target_evidence")
+def risk_target_evidence() -> Dict[str, Any]:
+    return ds.read_risk_target_evidence()
+
+
 @app.get("/api/tier7_diagnostics")
 def tier7_diagnostics() -> Dict[str, Any]:
     # read_tier7_diagnostics self-caches its one live network ping (30s TTL);
