@@ -74,3 +74,26 @@ export async function denyProposal(proposalId: string): Promise<ControlResult> {
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { status: res.status, ok: res.ok, data };
 }
+
+/**
+ * Relay an operator-signed evidence request. Unlike legacy dashboard controls,
+ * this sends no constant confirmation header: authorization is the Ed25519
+ * credential in the JSON body and is re-verified by axiom_evidence_control.
+ */
+export async function evidenceTrainingAction(
+  action: "run" | "promote",
+  body: Record<string, unknown>,
+): Promise<ControlResult> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/axiom_training/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return { status: 0, ok: false, data: { error: "network_error" } };
+  }
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return { status: res.status, ok: res.ok, data };
+}

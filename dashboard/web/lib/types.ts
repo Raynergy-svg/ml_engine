@@ -896,3 +896,142 @@ export interface StreamPayload {
   status: Status;
   prices: Prices;
 }
+
+// GET /api/axiom_training — Phase-M evidence cockpit. All fields are factual
+// projections; nullable monitoring metrics mean the lane is not reporting.
+export interface TrainingDataTier {
+  tier: string;
+  manifest_count: number;
+  partition_count: number;
+  latest_manifest: string | null;
+  latest_manifest_at: string | null;
+  freshness_age_seconds: number | null;
+}
+export interface TrainingDataDomain {
+  domain: string;
+  available: boolean;
+  tiers: TrainingDataTier[];
+}
+export interface P2Readiness {
+  available: boolean;
+  ready: boolean;
+  minimum_trading_days?: number;
+  exposure_trading_days?: number;
+  tick_trading_days_by_pair?: Record<string, number>;
+  generated_at_utc?: string;
+  age_seconds?: number | null;
+  blocking_reasons?: string[];
+  error?: string;
+}
+export interface EvidenceCheck {
+  check_id?: string;
+  passed?: boolean;
+  details?: string | null;
+}
+export interface EvidencePackageView {
+  family: string;
+  lane_id: string;
+  package_id?: string | null;
+  package_digest: string;
+  state?: string | null;
+  sequence?: number | null;
+  disposition_head_digest?: string | null;
+  job_manifest_digest?: string | null;
+  derived_from_package_digests?: string[];
+  created_at?: string | null;
+  negative_result?: boolean;
+  is_champion?: boolean;
+  gate_results?: EvidenceCheck[];
+  verification?: {
+    decision?: string | null;
+    rejection_reason?: string | null;
+    failed_checks?: string[];
+  };
+}
+export interface EvidenceLaneView {
+  lane_id: string;
+  family: string;
+  current: EvidencePackageView;
+  champion?: Record<string, unknown> | null;
+  prior_champion?: EvidencePackageView | null;
+  package_count: number;
+  negative_count: number;
+}
+export interface TrainingJobView {
+  job_id: string;
+  status: string;
+  source?: string;
+  lane?: string;
+  lanes?: string[];
+  manifest_digest?: string | null;
+  container_digest?: string | null;
+  resource_class?: string | null;
+  resource_usage?: { wall_seconds?: number | null } | null;
+  cost?: number | null;
+  submitted_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error?: string | null;
+}
+export interface ForwardLaneMonitor {
+  lane_id: string;
+  package_digest?: string | null;
+  state?: string | null;
+  available: boolean;
+  status?: string;
+  shadow_started_at?: string | null;
+  shadow_age_seconds?: number | null;
+  updated_at?: string | null;
+  forward_sharpe?: number | null;
+  drawdown?: number | null;
+  turnover?: number | null;
+  cost?: number | null;
+  exposure?: number | null;
+  baseline_deviation?: number | null;
+  retirement_warnings?: string[];
+}
+export interface TrainingControlReadiness {
+  enabled: boolean;
+  operator_trust_configured: boolean;
+  dataset_configured: boolean;
+  dataset_sha256?: string | null;
+  run_request_template?: Record<string, unknown> | null;
+  run_subject_digest?: string | null;
+  operator_private_key_on_server: boolean;
+  actions: string[];
+  invariants: string[];
+}
+export interface AxiomTrainingCockpit {
+  connected: boolean;
+  generated_at?: string;
+  error?: string;
+  data: {
+    data_root: string;
+    domains: TrainingDataDomain[];
+    quality_failure_count: number;
+    quality_failures: { kind: string; path: string }[];
+    quality_failures_truncated: boolean;
+    p2_readiness: P2Readiness;
+  };
+  jobs: {
+    jobs: TrainingJobView[];
+    counts: Record<string, number>;
+    total: number;
+    source: string;
+  };
+  evidence: {
+    available: boolean;
+    readers: { family: string; available: boolean; reason?: string | null }[];
+    packages: EvidencePackageView[];
+    lanes: EvidenceLaneView[];
+    state_counts: Record<string, number>;
+    negative_result_count: number;
+    champions: Record<string, Record<string, unknown>>;
+  };
+  forward_monitoring: {
+    lanes: ForwardLaneMonitor[];
+    reporting_count: number;
+    total: number;
+  };
+  controls: TrainingControlReadiness;
+}

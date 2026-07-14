@@ -446,10 +446,13 @@ class EvidenceControlPlane:
         slice_kwargs: Mapping[str, Any],
         params: EvaluationParams | None = None,
         evaluator: Callable[..., Any] = evaluate_partitions,
+        on_authorized: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         """Authorize, then run the evidence slice to QUARANTINED / REJECTED."""
         subject = sha256_bytes(canonical_bytes(dict(request_body)))
         self._authorizer.authorize(credential, action="run", subject_digest=subject)
+        if on_authorized is not None:
+            on_authorized(subject)
         result = run_risk_target_evidence_slice(
             self._store,
             self._identities,
@@ -460,6 +463,17 @@ class EvidenceControlPlane:
         )
         return {
             "action": "run",
+            "job_manifest_digest": result.job_envelope.payload_digest,
+            "job_manifest": {
+                key: result.job_envelope.payload[key]
+                for key in (
+                    "job_id",
+                    "container_digest",
+                    "resource_class",
+                    "assigned_unit",
+                    "trial_budget",
+                )
+            },
             "outcomes": {
                 lane: {
                     "state": outcome.final_state.value,

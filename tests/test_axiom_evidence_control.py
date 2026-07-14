@@ -208,6 +208,37 @@ def test_run_authorizes_and_reaches_quarantine(tmp_path):
     assert outcomes["risk_target_drawdown"]["state"] == "REJECTED"
 
 
+def test_run_callback_occurs_only_after_authorization(tmp_path):
+    operator = _Operator()
+    plane, _ = _build_plane(tmp_path, operator=operator)
+    body = {"job": "risk-target"}
+    observed = []
+    forged = OperatorCredential(
+        action="run", subject=_run_subject(body), nonce="forged-callback",
+        issued_at=NOW, expires_at=NOW + timedelta(seconds=60),
+        key_id=operator.anchor.key_id,
+        signature_b64=base64.b64encode(b"not a real signature" * 4).decode("ascii"),
+    )
+    with pytest.raises(AuthorizationError):
+        plane.run(
+            forged, request_body=body, partitions=_partitions(), slice_kwargs=SLICE_KW,
+            evaluator=_fixed_evaluator(), on_authorized=observed.append,
+        )
+    assert observed == []
+
+    credential = operator.credential(
+        action="run", subject=_run_subject(body), nonce="valid-callback",
+    )
+    result = plane.run(
+        credential, request_body=body, partitions=_partitions(), slice_kwargs=SLICE_KW,
+        evaluator=_fixed_evaluator(), on_authorized=observed.append,
+    )
+    assert observed == [_run_subject(body)]
+    assert len(result["job_manifest_digest"]) == 64
+    assert result["job_manifest"]["container_digest"]
+    assert result["job_manifest"]["resource_class"] == "cpu-small"
+
+
 def test_run_rejects_unsigned_credential(tmp_path):
     operator = _Operator()
     plane, _ = _build_plane(tmp_path, operator=operator)

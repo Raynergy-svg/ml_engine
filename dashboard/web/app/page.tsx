@@ -20,6 +20,7 @@ import { CryptoMomentumPanel } from "@/components/CryptoMomentumPanel";
 import { TrackBPanel } from "@/components/TrackBPanel";
 import { CryptoCarryPanel } from "@/components/CryptoCarryPanel";
 import { HedgePanel } from "@/components/HedgePanel";
+import { TrainingEvidenceCockpit } from "@/components/TrainingEvidenceCockpit";
 import { ActivityPanel } from "@/components/ActivityPanel";
 import { MindWindowPanel } from "@/components/MindWindowPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
@@ -33,7 +34,7 @@ const GRANS = [
   { label: "1W", code: "W" }, { label: "1M", code: "M" },
 ];
 
-const TABS = ["Overview", "Markets", "Positions", "Orders", "Executions", "Activity", "Automation", "Journal", "Analytics", "Settings"] as const;
+const TABS = ["Overview", "Markets", "Positions", "Orders", "Executions", "Activity", "Training", "Automation", "Journal", "Analytics", "Settings"] as const;
 type Tab = (typeof TABS)[number];
 const MAJORS = ["EUR_USD", "USD_JPY", "GBP_USD", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "EUR_JPY", "GBP_JPY", "EUR_GBP"];
 
@@ -264,6 +265,7 @@ function DashboardBody() {
             <ActivityPanel />
           </>
         )}
+        {tab === "Training" && <TrainingEvidenceCockpit />}
         {tab === "Automation" && (
           <>
             <ControlPanel />

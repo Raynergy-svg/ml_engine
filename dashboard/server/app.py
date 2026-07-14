@@ -36,6 +36,7 @@ from fastapi.responses import StreamingResponse  # noqa: E402
 
 from dashboard.server import data_sources as ds  # noqa: E402
 from dashboard.server.safety import build_readonly_client  # noqa: E402
+from dashboard.server.training_api import router as training_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("axiom.app")
@@ -52,6 +53,7 @@ async def lifespan(app_: FastAPI):
 
 app = FastAPI(title="AXIOM data layer", version="1.0",
               description="Read-only terminal API for the Buddy trading engine", lifespan=lifespan)
+app.include_router(training_router)
 app.add_middleware(
     CORSMiddleware,
     # No cross-origin browser access: the browser talks ONLY to the authed Next origin,
@@ -110,7 +112,7 @@ def root() -> Dict[str, Any]:
                           "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream",
                           "/api/equity_sleeve", "/api/lanes", "/api/brain_loop",
                           "/api/crypto_momentum", "/api/track_b", "/api/crypto_carry", "/api/learning_loop",
-                          "/api/activity", "/api/axiom_operator", "/api/mind_window"]}
+                          "/api/activity", "/api/axiom_operator", "/api/axiom_training", "/api/mind_window"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -264,11 +266,6 @@ def mind_window() -> Dict[str, Any]:
 @app.get("/api/tier7")
 def tier7() -> Dict[str, Any]:
     return ds.read_tier7()
-
-
-@app.get("/api/risk_target_evidence")
-def risk_target_evidence() -> Dict[str, Any]:
-    return ds.read_risk_target_evidence()
 
 
 @app.get("/api/tier7_diagnostics")
