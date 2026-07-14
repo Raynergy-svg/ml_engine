@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
-import time
 from datetime import date, datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Literal
 
@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from dashboard.server.training_cockpit import REPO_ROOT, read_training_cockpit
-from dashboard.server.training_jobs import TrainingJobJournal
+from dashboard.server.training_jobs import LocalTrainingJobRunner, TrainingJobJournal
 from src.evidence.hashing import sha256_bytes
 
 router = APIRouter(prefix="/api/axiom_training", tags=["axiom_training"])
@@ -126,6 +126,23 @@ def _journal() -> TrainingJobJournal:
     return TrainingJobJournal(os.getenv("AXIOM_JOB_JOURNAL", evidence_root / "dashboard_jobs"))
 
 
+@lru_cache(maxsize=8)
+def _runner(journal_root: str) -> LocalTrainingJobRunner:
+    return LocalTrainingJobRunner(TrainingJobJournal(journal_root))
+
+
+def _completion_fields(result: Dict[str, Any], elapsed: float) -> Dict[str, Any]:
+    manifest = result.get("job_manifest", {})
+    return {
+        "manifest_digest": result.get("job_manifest_digest"),
+        "container_digest": manifest.get("container_digest"),
+        "resource_class": manifest.get("resource_class"),
+        "resource_usage": {"wall_seconds": elapsed},
+        "cost": None,
+        "outcomes": result.get("outcomes", {}),
+    }
+
+
 @router.get("")
 def training_cockpit() -> Dict[str, Any]:
     try:
@@ -134,74 +151,51 @@ def training_cockpit() -> Dict[str, Any]:
         return {"connected": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
-@router.post("/run")
+@router.post("/run", status_code=202)
 def run_training(body: AxiomTrainingRunRequest) -> Dict[str, Any]:
     from dashboard.server.axiom_evidence_control import AuthorizationError, OperatorCredential
-    from src.evidence.store import EvidenceStoreError
 
-    # Keep the local action synchronous: the control plane authorizes the
-    # exact request before any work begins, and this service does not become a
-    # background/distributed job orchestrator merely to return an early 202.
+    # Authorization and nonce consumption happen before the 202 response.  The
+    # queued work item has evidence-production authority only and is executed
+    # by one bounded local worker; there is no distributed orchestrator here.
     _require_enabled()
     control = _control()
     request = body.request.model_dump(mode="json")
-    partitions, slice_kwargs, job_id = _load_run_dataset(body.request)
-    started_monotonic = time.monotonic()
+    partitions, slice_kwargs, base_job_id = _load_run_dataset(body.request)
+    job_id = f"{base_job_id}-{sha256_bytes(body.credential.nonce.encode('utf-8'))[:12]}"
+    slice_kwargs = {**slice_kwargs, "job_id": job_id}
     try:
         credential = OperatorCredential.from_mapping(body.credential.model_dump(mode="json"))
         journal = _journal()
-
-        def authorized(_subject: str) -> None:
-            journal.transition(job_id, "submitted", fields={"lane": "risk_target", "source": "dashboard"})
-            journal.transition(job_id, "running")
-
-        result = control.run(
+        work_item = control.prepare_run(
             credential,
             request_body=request,
             partitions=partitions,
             slice_kwargs=slice_kwargs,
-            on_authorized=authorized,
         )
         journal.transition(
-            job_id,
-            "completed",
-            fields={
-                "manifest_digest": result.get("job_manifest_digest"),
-                "container_digest": result.get("job_manifest", {}).get("container_digest"),
-                "resource_class": result.get("job_manifest", {}).get("resource_class"),
-                "resource_usage": {"wall_seconds": max(0.0, time.monotonic() - started_monotonic)},
-                "cost": None,
-                "outcomes": result.get("outcomes", {}),
-            },
+            job_id, "submitted", fields={"lane": "risk_target", "source": "dashboard"}
+        )
+        _runner(str(journal.root.resolve())).submit(
+            job_id, work_item, completion_fields=_completion_fields
         )
     except AuthorizationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
-    except (EvidenceStoreError, ValueError) as exc:
-        try:
-            _journal().transition(
-                job_id,
-                "failed",
-                fields={"error": str(exc), "resource_usage": {"wall_seconds": max(0.0, time.monotonic() - started_monotonic)}},
-            )
-        except ValueError:
-            pass
+    except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001 - persist failure and return bounded error
+    except Exception as exc:  # noqa: BLE001 - persist queue failure and fail closed
         try:
             _journal().transition(
                 job_id,
                 "failed",
-                fields={
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "resource_usage": {"wall_seconds": max(0.0, time.monotonic() - started_monotonic)},
-                },
+                fields={"error": f"{type(exc).__name__}: {exc}"},
             )
         except ValueError:
             pass
-        raise HTTPException(status_code=500, detail="authorized training job failed; see cockpit job status") from exc
-    return {"ok": True, "job_id": job_id, "result": result}
+        raise HTTPException(status_code=503, detail="authorized training job could not be queued") from exc
+    return {"ok": True, "job_id": job_id, "status": "submitted"}
 
 
 @router.post("/promote")

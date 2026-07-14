@@ -50,6 +50,11 @@ def test_run_requires_structured_signed_body_not_legacy_confirm_header():
     assert any(error["loc"][-1] == "credential" for error in response.json()["detail"])
 
 
+def test_run_route_declares_accepted_status_for_queued_work():
+    route = next(route for route in router.routes if route.path == "/api/axiom_training/run")
+    assert route.status_code == 202
+
+
 def test_run_is_fail_closed_when_governed_controls_are_disabled(monkeypatch):
     monkeypatch.delenv("AXIOM_CONTROL_ENABLED", raising=False)
     response = _client().post(

@@ -238,19 +238,33 @@ function ControlsPanel({ data, reload }: { data: AxiomTrainingCockpit; reload: (
   const [promotionCredential, setPromotionCredential] = useState("");
   const [disposition, setDisposition] = useState("");
   const [busy, setBusy] = useState<"run" | "promote" | null>(null);
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const runCredentialObject = useMemo(() => parseObject(runCredential), [runCredential]);
   const promotionCredentialObject = useMemo(() => parseObject(promotionCredential), [promotionCredential]);
   const dispositionObject = useMemo(() => parseObject(disposition), [disposition]);
   const ready = controls.enabled && controls.operator_trust_configured;
+  const observedActiveRun = data.jobs.jobs.find((job) =>
+    job.lane === "risk_target" && (job.status === "submitted" || job.status === "running")
+  );
+  const observedPendingJob = pendingJobId
+    ? data.jobs.jobs.find((job) => job.job_id === pendingJobId)
+    : undefined;
+  const pendingTerminal = observedPendingJob?.status === "completed" || observedPendingJob?.status === "failed";
+  const optimisticJobId = pendingTerminal ? null : pendingJobId;
+  const runLocked = Boolean(observedActiveRun || optimisticJobId);
+  const runStatus = observedActiveRun?.status ?? (optimisticJobId ? observedPendingJob?.status ?? "submitted" : null);
+  const runJobId = observedActiveRun?.job_id ?? optimisticJobId;
 
   async function run() {
     if (!runCredentialObject || !controls.run_request_template) return;
-    if (!window.confirm("Relay this signed risk-target run request? The evidence result can only end at QUARANTINED or REJECTED.")) return;
+    if (!window.confirm("Train the risk-target volatility and drawdown models from the displayed dataset? The signed evidence result can only end at QUARANTINED or REJECTED.")) return;
     setBusy("run"); setMessage(null);
     const result = await evidenceTrainingAction("run", { credential: runCredentialObject, request: controls.run_request_template });
+    const jobId = typeof result.data.job_id === "string" ? result.data.job_id : "accepted job";
+    if (result.ok && typeof result.data.job_id === "string") setPendingJobId(result.data.job_id);
     setBusy(null);
-    setMessage({ ok: result.ok, text: result.ok ? "Authorized evidence job completed; cockpit refreshed." : String(result.data.detail ?? result.data.error ?? "Run request failed") });
+    setMessage({ ok: result.ok, text: result.ok ? `Training submitted as ${jobId}. Job status and artifacts will update automatically.` : String(result.data.detail ?? result.data.error ?? "Run request failed") });
     reload();
   }
 
@@ -269,11 +283,13 @@ function ControlsPanel({ data, reload }: { data: AxiomTrainingCockpit; reload: (
       <SectionTitle right={<span className="flex gap-2"><Badge color={controls.enabled ? POS : MUTE} dot>CONTROL {controls.enabled ? "ENABLED" : "DISABLED"}</Badge><Badge color={controls.operator_trust_configured ? POS : NEG}>OPERATOR TRUST {controls.operator_trust_configured ? "READY" : "ABSENT"}</Badge></span>}>Governed controls · request only</SectionTitle>
       <div className="grid gap-3 p-3 xl:grid-cols-2">
         <div className="rounded-md border p-3 hairline">
-          <div className="eyebrow mb-2">Run risk-target evidence slice</div>
+          <div className="eyebrow mb-2">Train risk-target model</div>
+          <div className="mb-2 font-mono text-[10px] leading-relaxed text-faint">Fits the volatility and drawdown heads, evaluates their gates, signs the immutable artifacts, and queues them for review. Training never promotes a package or changes live sizing.</div>
           <div className="mb-2 font-mono text-[10px] text-faint">Subject {shortDigest(controls.run_subject_digest)} · dataset {shortDigest(controls.dataset_sha256)} · exact request:</div>
           <pre className="scroll-thin max-h-28 overflow-auto rounded bg-surface2 p-2 font-mono text-[10px] text-dim">{JSON.stringify(controls.run_request_template, null, 2)}</pre>
           <textarea value={runCredential} onChange={(event) => setRunCredential(event.target.value)} placeholder="Paste operator-signed run credential JSON" className="mt-2 h-32 w-full rounded-md border bg-transparent p-2 font-mono text-[10px] text-text outline-none hairline" />
-          <button onClick={run} disabled={!ready || !controls.dataset_configured || !controls.run_request_template || !runCredentialObject || busy !== null} className="mt-2 w-full rounded-md border px-3 py-2 font-mono text-[11px] font-semibold text-pos hairline disabled:cursor-not-allowed disabled:opacity-40">{busy === "run" ? "VERIFYING + RUNNING…" : "RELAY SIGNED RUN REQUEST"}</button>
+          <button onClick={run} disabled={!ready || !controls.dataset_configured || !controls.run_request_template || !runCredentialObject || busy !== null || runLocked} className="mt-2 w-full rounded-md border px-3 py-2 font-mono text-[11px] font-semibold text-pos hairline disabled:cursor-not-allowed disabled:opacity-40">{busy === "run" ? "AUTHORIZING + QUEUING…" : runLocked ? `TRAINING ${runStatus?.toUpperCase()}` : "TRAIN RISK-TARGET MODEL"}</button>
+          {runJobId && <div className="mt-2 truncate font-mono text-[10px] text-warn" title={runJobId}>Active job {runJobId}</div>}
         </div>
         <div className="rounded-md border p-3 hairline">
           <div className="eyebrow mb-2">Relay signed disposition transition</div>
@@ -296,6 +312,7 @@ export function TrainingEvidenceCockpit() {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <DataPanel data={data.data} />
+      <ControlsPanel data={data} reload={reload} />
       <JobsPanel jobs={data.jobs} />
       <EvidencePanel evidence={data.evidence} />
       <Card>
@@ -303,7 +320,6 @@ export function TrainingEvidenceCockpit() {
         {data.forward_monitoring.lanes.map((row) => <ForwardRow key={row.lane_id} row={row} />)}
         {!data.forward_monitoring.lanes.length && <NotConnected label="No evidence lanes available for forward monitoring" />}
       </Card>
-      <ControlsPanel data={data} reload={reload} />
     </div>
   );
 }

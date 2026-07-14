@@ -6,9 +6,11 @@ import fcntl
 import json
 import os
 import tempfile
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from src.evidence.hashing import sha256_bytes
 
@@ -93,4 +95,81 @@ class TrainingJobJournal:
                 os.unlink(temporary)
 
 
-__all__ = ["TrainingJobJournal"]
+class LocalTrainingJobRunner:
+    """A bounded, process-local executor backed by the durable job journal.
+
+    Authorization is deliberately outside this class.  It accepts only a
+    single-use callable returned by the governed control plane, executes one
+    job at a time, and persists every lifecycle transition for dashboard
+    readback.  It has no orchestration, promotion, or trading authority.
+    """
+
+    def __init__(self, journal: TrainingJobJournal) -> None:
+        self._journal = journal
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="axiom-evidence")
+
+    def submit(
+        self,
+        job_id: str,
+        work_item: Callable[[], Mapping[str, Any]],
+        *,
+        completion_fields: Callable[[Mapping[str, Any], float], Mapping[str, Any]] | None = None,
+    ) -> Future[Mapping[str, Any]]:
+        if not callable(work_item):
+            raise TypeError("work_item must be callable")
+
+        def run() -> Mapping[str, Any]:
+            started = time.monotonic()
+            try:
+                self._journal.transition(job_id, "running")
+                result = dict(work_item())
+            except Exception as exc:
+                elapsed = max(0.0, time.monotonic() - started)
+                try:
+                    self._journal.transition(
+                        job_id,
+                        "failed",
+                        fields={
+                            "error": f"{type(exc).__name__}: {exc}",
+                            "resource_usage": {"wall_seconds": elapsed},
+                        },
+                    )
+                except Exception:
+                    pass
+                raise
+            elapsed = max(0.0, time.monotonic() - started)
+            try:
+                fields = (
+                    dict(completion_fields(result, elapsed))
+                    if completion_fields is not None
+                    else {"resource_usage": {"wall_seconds": elapsed}}
+                )
+            except Exception as exc:
+                fields = {
+                    "resource_usage": {"wall_seconds": elapsed},
+                    "metadata_warning": f"{type(exc).__name__}: {exc}",
+                }
+            try:
+                self._journal.transition(job_id, "completed", fields=fields)
+            except Exception as exc:
+                try:
+                    self._journal.transition(
+                        job_id,
+                        "failed",
+                        fields={
+                            "error": f"{type(exc).__name__}: {exc}",
+                            "resource_usage": {"wall_seconds": elapsed},
+                        },
+                    )
+                except Exception:
+                    pass
+                raise
+            return result
+
+        return self._executor.submit(run)
+
+    def shutdown(self, *, wait: bool = True) -> None:
+        self._executor.shutdown(wait=wait, cancel_futures=False)
+
+
+__all__ = ["LocalTrainingJobRunner", "TrainingJobJournal"]

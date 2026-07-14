@@ -33,6 +33,7 @@ from src.evidence.contracts import (
 from src.evidence.hashing import sha256_bytes
 from src.evidence.signing import Ed25519Signer
 from src.evidence.store import EvidenceStore, EvidenceStoreError
+from src.evidence.risk_target.evaluation import EvaluationParams
 from src.evidence.risk_target.models import (
     DRAWDOWN_HEAD_ID,
     VOLATILITY_HEAD_ID,
@@ -237,6 +238,62 @@ def test_run_callback_occurs_only_after_authorization(tmp_path):
     assert len(result["job_manifest_digest"]) == 64
     assert result["job_manifest"]["container_digest"]
     assert result["job_manifest"]["resource_class"] == "cpu-small"
+
+
+def test_prepared_run_is_single_use_and_cannot_publish_before_execution(tmp_path):
+    operator = _Operator()
+    plane, store = _build_plane(tmp_path, operator=operator)
+    body = {"job": "risk-target"}
+    credential = operator.credential(
+        action="run", subject=_run_subject(body), nonce="prepared-once",
+    )
+
+    work_item = plane.prepare_run(
+        credential,
+        request_body=body,
+        partitions=_partitions(),
+        slice_kwargs=SLICE_KW,
+        evaluator=_fixed_evaluator(vol_passed=True, dd_passed=False),
+    )
+
+    assert list((store.root / "packages").iterdir()) == []
+    assert list((store.root / "champions").iterdir()) == []
+    result = work_item()
+    assert result["outcomes"]["risk_target_vol"]["state"] == "QUARANTINED"
+    assert result["outcomes"]["risk_target_drawdown"]["state"] == "REJECTED"
+    assert list((store.root / "champions").iterdir()) == []
+    with pytest.raises(AuthorizationError, match="already been executed"):
+        work_item()
+
+
+def test_prepared_run_snapshots_inputs_before_authorization_is_consumed(tmp_path):
+    operator = _Operator()
+    plane, _ = _build_plane(tmp_path, operator=operator)
+    body = {"job": "risk-target"}
+    params = EvaluationParams(seed=101)
+    slice_kwargs = {**SLICE_KW, "job_id": "snapshot-original"}
+    observed_seeds = []
+
+    def evaluator(partitions, evaluated_params):
+        observed_seeds.append(evaluated_params.seed)
+        return _fixed_evaluator()(partitions, evaluated_params)
+
+    work_item = plane.prepare_run(
+        operator.credential(
+            action="run", subject=_run_subject(body), nonce="snapshot-inputs",
+        ),
+        request_body=body,
+        partitions=_partitions(),
+        slice_kwargs=slice_kwargs,
+        params=params,
+        evaluator=evaluator,
+    )
+    slice_kwargs["job_id"] = "caller-mutated"
+    object.__setattr__(params, "seed", 999)
+
+    result = work_item()
+    assert result["job_manifest"]["job_id"] == "snapshot-original"
+    assert observed_seeds and set(observed_seeds) == {101}
 
 
 def test_run_rejects_unsigned_credential(tmp_path):

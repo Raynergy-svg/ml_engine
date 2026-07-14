@@ -24,10 +24,12 @@ invalid credential fails closed (roadmap §16).
 from __future__ import annotations
 
 import base64
+import copy
 import fcntl
 import json
 import os
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -437,6 +439,74 @@ class EvidenceControlPlane:
     def store(self) -> EvidenceStore:
         return self._store
 
+    def prepare_run(
+        self,
+        credential: OperatorCredential,
+        *,
+        request_body: Mapping[str, Any],
+        partitions: Mapping[str, bytes],
+        slice_kwargs: Mapping[str, Any],
+        params: EvaluationParams | None = None,
+        evaluator: Callable[..., Any] = evaluate_partitions,
+        on_authorized: Callable[[str], None] | None = None,
+    ) -> Callable[[], dict[str, Any]]:
+        """Authorize now and return a single-use, authority-free work item.
+
+        The operator credential and nonce are consumed synchronously before a
+        caller can acknowledge or queue the request.  The returned callable
+        holds only the already-authorized evidence inputs; it cannot authorize
+        another action, promote a package, or be executed twice.
+        """
+        authorized_request = copy.deepcopy(dict(request_body))
+        authorized_partitions = {str(key): bytes(value) for key, value in partitions.items()}
+        authorized_kwargs = copy.deepcopy(dict(slice_kwargs))
+        authorized_params = copy.deepcopy(params)
+        subject = sha256_bytes(canonical_bytes(authorized_request))
+        self._authorizer.authorize(credential, action="run", subject_digest=subject)
+        if on_authorized is not None:
+            on_authorized(subject)
+        execution_lock = threading.Lock()
+        executed = False
+
+        def execute() -> dict[str, Any]:
+            nonlocal executed
+            with execution_lock:
+                if executed:
+                    raise AuthorizationError("authorized run work item has already been executed")
+                executed = True
+            result = run_risk_target_evidence_slice(
+                self._store,
+                self._identities,
+                authorized_partitions,
+                params=authorized_params,
+                evaluator=evaluator,
+                **authorized_kwargs,
+            )
+            return {
+                "action": "run",
+                "job_manifest_digest": result.job_envelope.payload_digest,
+                "job_manifest": {
+                    key: result.job_envelope.payload[key]
+                    for key in (
+                        "job_id",
+                        "container_digest",
+                        "resource_class",
+                        "assigned_unit",
+                        "trial_budget",
+                    )
+                },
+                "outcomes": {
+                    lane: {
+                        "state": outcome.final_state.value,
+                        "package_digest": outcome.package_digest,
+                        "decision": outcome.verdict.decision.value,
+                    }
+                    for lane, outcome in result.outcomes.items()
+                },
+            }
+
+        return execute
+
     def run(
         self,
         credential: OperatorCredential,
@@ -448,41 +518,17 @@ class EvidenceControlPlane:
         evaluator: Callable[..., Any] = evaluate_partitions,
         on_authorized: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
-        """Authorize, then run the evidence slice to QUARANTINED / REJECTED."""
-        subject = sha256_bytes(canonical_bytes(dict(request_body)))
-        self._authorizer.authorize(credential, action="run", subject_digest=subject)
-        if on_authorized is not None:
-            on_authorized(subject)
-        result = run_risk_target_evidence_slice(
-            self._store,
-            self._identities,
-            partitions,
+        """Compatibility wrapper: authorize and execute in the caller thread."""
+        work_item = self.prepare_run(
+            credential,
+            request_body=request_body,
+            partitions=partitions,
+            slice_kwargs=slice_kwargs,
             params=params,
             evaluator=evaluator,
-            **dict(slice_kwargs),
+            on_authorized=on_authorized,
         )
-        return {
-            "action": "run",
-            "job_manifest_digest": result.job_envelope.payload_digest,
-            "job_manifest": {
-                key: result.job_envelope.payload[key]
-                for key in (
-                    "job_id",
-                    "container_digest",
-                    "resource_class",
-                    "assigned_unit",
-                    "trial_budget",
-                )
-            },
-            "outcomes": {
-                lane: {
-                    "state": outcome.final_state.value,
-                    "package_digest": outcome.package_digest,
-                    "decision": outcome.verdict.decision.value,
-                }
-                for lane, outcome in result.outcomes.items()
-            },
-        }
+        return work_item()
 
     def promote(
         self, credential: OperatorCredential, *, disposition: Mapping[str, Any]

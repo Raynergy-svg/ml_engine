@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -20,7 +21,7 @@ from dashboard.server.training_cockpit import (
     read_jobs,
     read_live_capture_status,
 )
-from dashboard.server.training_jobs import TrainingJobJournal
+from dashboard.server.training_jobs import LocalTrainingJobRunner, TrainingJobJournal
 from src.data_platform.forward_capture import P2ReadinessReport
 
 
@@ -245,3 +246,79 @@ def test_job_journal_rejects_caller_supplied_audit_timestamps(tmp_path):
     assert submitted["status"] == "submitted"
     assert submitted["submitted_at"] != "forged"
     assert completed["started_at"] != "forged"
+
+
+def test_local_job_runner_persists_running_then_completed_without_blocking_submit(tmp_path):
+    root = tmp_path / "jobs"
+    journal = TrainingJobJournal(root)
+    journal.transition("job-async", "submitted", fields={"lane": "risk_target"})
+    runner = LocalTrainingJobRunner(journal)
+    started = threading.Event()
+    release = threading.Event()
+
+    def work_item():
+        started.set()
+        assert release.wait(timeout=3)
+        return {"job_manifest_digest": "a" * 64}
+
+    future = runner.submit(
+        "job-async",
+        work_item,
+        completion_fields=lambda result, elapsed: {
+            "manifest_digest": result["job_manifest_digest"],
+            "resource_usage": {"wall_seconds": elapsed},
+        },
+    )
+    assert started.wait(timeout=3)
+    running = json.loads(next(root.glob("*.json")).read_text(encoding="utf-8"))
+    assert future.done() is False
+    assert running["status"] == "running"
+    assert running["started_at"]
+
+    release.set()
+    assert future.result(timeout=3)["job_manifest_digest"] == "a" * 64
+    completed = json.loads(next(root.glob("*.json")).read_text(encoding="utf-8"))
+    assert completed["status"] == "completed"
+    assert completed["manifest_digest"] == "a" * 64
+    assert completed["resource_usage"]["wall_seconds"] >= 0
+    runner.shutdown()
+
+
+def test_local_job_runner_persists_failure(tmp_path):
+    root = tmp_path / "jobs"
+    journal = TrainingJobJournal(root)
+    journal.transition("job-failed", "submitted")
+    runner = LocalTrainingJobRunner(journal)
+
+    def fail():
+        raise RuntimeError("deterministic worker failure")
+
+    future = runner.submit("job-failed", fail)
+    with pytest.raises(RuntimeError, match="deterministic worker failure"):
+        future.result(timeout=3)
+    failed = json.loads(next(root.glob("*.json")).read_text(encoding="utf-8"))
+    assert failed["status"] == "failed"
+    assert failed["error"] == "RuntimeError: deterministic worker failure"
+    runner.shutdown()
+
+
+def test_local_job_runner_keeps_success_when_metadata_projection_fails(tmp_path):
+    root = tmp_path / "jobs"
+    journal = TrainingJobJournal(root)
+    journal.transition("job-metadata", "submitted")
+    runner = LocalTrainingJobRunner(journal)
+
+    def bad_metadata(_result, _elapsed):
+        raise ValueError("metadata formatter broke")
+
+    future = runner.submit(
+        "job-metadata",
+        lambda: {"trained": True},
+        completion_fields=bad_metadata,
+    )
+    assert future.result(timeout=3) == {"trained": True}
+    completed = json.loads(next(root.glob("*.json")).read_text(encoding="utf-8"))
+    assert completed["status"] == "completed"
+    assert completed["metadata_warning"] == "ValueError: metadata formatter broke"
+    assert completed["resource_usage"]["wall_seconds"] >= 0
+    runner.shutdown()
