@@ -199,6 +199,47 @@ def test_read_crypto_carry_populated_ledger_surfaces_last_cycle(tmp_path, monkey
     assert out["live_gate"]["armed"] is False  # no live_gate_state.json on disk -> never armed
 
 
+def test_shadow_lane_freshness_uses_writer_timestamp_not_book_asof(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "shadow_carry_ledger.jsonl"
+    _write_jsonl(ledger_path, [{
+        "asof_date": "2026-06-01",
+        "cycle_ts": "2026-07-10T00:00:00Z",
+        "book": {"longs": {}, "shorts": {}},
+        "construction": {"rebalance_days": 1},
+    }])
+    monkeypatch.setattr(ds, "_CRYPTO_CARRY_LEDGER_PATH", ledger_path)
+    monkeypatch.setattr(ds, "_CRYPTO_CARRY_LIVE_GATE_STATE_PATH", tmp_path / "live_gate_state.json")
+    monkeypatch.setattr(ds.time, "time", lambda: datetime(2026, 7, 14, tzinfo=timezone.utc).timestamp())
+
+    out = ds.read_crypto_carry()
+
+    assert out["freshness"]["last_evaluated_at"] == "2026-07-10T00:00:00Z"
+    assert out["freshness"]["age_s"] == 4 * 86_400
+    assert out["freshness"]["expected_interval_s"] == 86_400
+    assert out["freshness"]["status"] == "stale"
+
+
+def test_live_risk_trim_empty_book_is_readonly_and_clear(tmp_path, monkeypatch):
+    class ReadOnlyClient:
+        def get_account_summary(self):
+            return {"account": {"NAV": "100000"}}
+
+        def get_trades(self, *, state):
+            assert state == "OPEN"
+            return {"trades": []}
+
+        def get_pricing(self, *, instruments):
+            raise AssertionError(f"no pricing for empty book: {instruments}")
+
+    monkeypatch.setattr(ds, "OANDA_DIR", tmp_path)
+    out = ds.live_risk_trim(ReadOnlyClient())
+
+    assert out["connected"] is True
+    assert out["status"] == "clear"
+    assert out["order_mutation"] is False
+    assert out["runtime_allowed"] is False
+
+
 def test_read_tier7_stale_snapshot_cannot_report_running(tmp_path, monkeypatch):
     state_path = tmp_path / ".claude" / "tier7_state.json"
     state_path.parent.mkdir(parents=True)

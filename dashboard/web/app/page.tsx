@@ -13,30 +13,58 @@ import { TradeHistory } from "@/components/TradeHistory";
 import { SentimentPlaceholder } from "@/components/SentimentPlaceholder";
 import { Tier7Panel } from "@/components/Tier7Panel";
 import { Tier7Cockpit } from "@/components/Tier7Cockpit";
-import { ControlPanel } from "@/components/ControlPanel";
-import { BrainLoopPanel } from "@/components/BrainLoopPanel";
-import { LearningLoopPanel } from "@/components/LearningLoopPanel";
-import { CryptoMomentumPanel } from "@/components/CryptoMomentumPanel";
-import { TrackBPanel } from "@/components/TrackBPanel";
-import { CryptoCarryPanel } from "@/components/CryptoCarryPanel";
-import { HedgePanel } from "@/components/HedgePanel";
+import { SettingsWorkspace } from "@/components/SettingsWorkspace";
 import { TrainingEvidenceCockpit } from "@/components/TrainingEvidenceCockpit";
 import { ActivityPanel } from "@/components/ActivityPanel";
 import { MindWindowPanel } from "@/components/MindWindowPanel";
 import { CommandPalette, type CommandItem } from "@/components/CommandPalette";
-import { FullscreenIcon, ChartTypeIcon, PanelSplitIcon, FitArrowsIcon, ChevronDown, CheckCircleSolid } from "@/components/icons";
+import {
+  FullscreenIcon,
+  ChartTypeIcon,
+  PanelSplitIcon,
+  FitArrowsIcon,
+  ChevronDown,
+  CheckCircleSolid,
+} from "@/components/icons";
 import { usePoll } from "@/lib/api";
 import type { ControlState } from "@/lib/types";
 
 const GRANS = [
-  { label: "1m", code: "M1" }, { label: "5m", code: "M5" }, { label: "15m", code: "M15" },
-  { label: "1h", code: "H1" }, { label: "4h", code: "H4" }, { label: "1D", code: "D" },
-  { label: "1W", code: "W" }, { label: "1M", code: "M" },
+  { label: "1m", code: "M1" },
+  { label: "5m", code: "M5" },
+  { label: "15m", code: "M15" },
+  { label: "1h", code: "H1" },
+  { label: "4h", code: "H4" },
+  { label: "1D", code: "D" },
+  { label: "1W", code: "W" },
+  { label: "1M", code: "M" },
 ];
 
-const TABS = ["Overview", "Markets", "Positions", "Orders", "Executions", "Activity", "Training", "Automation", "Journal", "Analytics", "Settings"] as const;
+const TABS = [
+  "Overview",
+  "Markets",
+  "Positions",
+  "Orders",
+  "Executions",
+  "Activity",
+  "Training",
+  "Journal",
+  "Analytics",
+  "Settings",
+] as const;
 type Tab = (typeof TABS)[number];
-const MAJORS = ["EUR_USD", "USD_JPY", "GBP_USD", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "EUR_JPY", "GBP_JPY", "EUR_GBP"];
+const MAJORS = [
+  "EUR_USD",
+  "USD_JPY",
+  "GBP_USD",
+  "USD_CHF",
+  "AUD_USD",
+  "USD_CAD",
+  "NZD_USD",
+  "EUR_JPY",
+  "GBP_JPY",
+  "EUR_GBP",
+];
 
 function useStoredValue(key: string, fallback: string) {
   const [value, setValueState] = useState(fallback);
@@ -57,10 +85,13 @@ function useStoredValue(key: string, fallback: string) {
     };
   }, [key, value]);
 
-  const setValue = useCallback((next: string) => {
-    setValueState(next);
-    window.localStorage.setItem(key, next);
-  }, [key]);
+  const setValue = useCallback(
+    (next: string) => {
+      setValueState(next);
+      window.localStorage.setItem(key, next);
+    },
+    [key],
+  );
 
   return [value, setValue] as const;
 }
@@ -84,9 +115,19 @@ function DashboardBody() {
   const [chartType, setChartType] = useState<"candle" | "line">("candle");
   const [sidePanelHidden, setSidePanelHidden] = useState(false);
   const [resetZoomTick, setResetZoomTick] = useState(0);
-  const [storedTab, setStoredTab] = useStoredValue("axiom:selectedTab", "Overview");
-  const normalizedStoredTab = storedTab === "Risk" ? "Activity" : storedTab;
-  const tab: Tab = TABS.includes(normalizedStoredTab as Tab) ? (normalizedStoredTab as Tab) : "Overview";
+  const [storedTab, setStoredTab] = useStoredValue(
+    "axiom:selectedTab",
+    "Overview",
+  );
+  const normalizedStoredTab =
+    storedTab === "Risk"
+      ? "Activity"
+      : storedTab === "Automation"
+        ? "Settings"
+        : storedTab;
+  const tab: Tab = TABS.includes(normalizedStoredTab as Tab)
+    ? (normalizedStoredTab as Tab)
+    : "Overview";
   const setTab = useCallback((next: Tab) => setStoredTab(next), [setStoredTab]);
   const chartTabs = new Set<Tab>(["Overview", "Markets"]);
   const marketTabs = new Set<Tab>(["Markets"]);
@@ -109,15 +150,26 @@ function DashboardBody() {
 
   const commands: CommandItem[] = useMemo(() => {
     const nav: CommandItem[] = TABS.map((t) => ({
-      id: `nav-${t}`, group: "Navigate", label: t, run: () => setTab(t),
+      id: `nav-${t}`,
+      group: "Navigate",
+      label: t,
+      run: () => setTab(t),
     }));
     const instruments: CommandItem[] = MAJORS.map((m) => ({
-      id: `inst-${m}`, group: "Instrument", label: m.replace("_", "/"),
-      run: () => { setSelected(m); setTab("Overview"); },
+      id: `inst-${m}`,
+      group: "Instrument",
+      label: m.replace("_", "/"),
+      run: () => {
+        setSelected(m);
+        setTab("Overview");
+      },
     }));
     const actions: CommandItem[] = [
       {
-        id: "act-halt", group: "Action", label: "Halt trading", hint: halted ? "already halted" : "fail-safe",
+        id: "act-halt",
+        group: "Action",
+        label: "Halt trading",
+        hint: halted ? "already halted" : "fail-safe",
         run: async () => {
           if (halted) return;
           if (!window.confirm("Halt trading now?")) return;
@@ -125,8 +177,10 @@ function DashboardBody() {
         },
       },
       {
-        id: "act-control", group: "Action", label: "Open Control panel",
-        run: () => setTab("Automation"),
+        id: "act-control",
+        group: "Action",
+        label: "Open Control panel",
+        run: () => setTab("Settings"),
       },
     ];
     return [...nav, ...actions, ...instruments];
@@ -145,71 +199,89 @@ function DashboardBody() {
                 key={t}
                 onClick={() => setTab(t)}
                 className={`shrink-0 border-b-2 pb-1 font-mono text-[12px] tracking-wide transition-colors ${
-                  tab === t ? "border-pos font-semibold text-text" : "border-transparent text-faint hover:text-dim"
+                  tab === t
+                    ? "border-pos font-semibold text-text"
+                    : "border-transparent text-faint hover:text-dim"
                 }`}
               >
                 {t.toUpperCase()}
               </button>
             ))}
           </div>
-          {showChartControls && <div className="ml-auto hidden shrink-0 items-center gap-1 md:flex">
-            <div className="relative">
+          {showChartControls && (
+            <div className="ml-auto hidden shrink-0 items-center gap-1 md:flex">
+              <div className="relative">
+                <button
+                  onClick={() => setGranMenuOpen((v) => !v)}
+                  className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-mono text-[11px] text-dim hairline hover:text-text"
+                  title="Chart timeframe"
+                >
+                  {gran}
+                  <ChevronDown />
+                </button>
+                {granMenuOpen && (
+                  <div className="card absolute right-0 top-8 z-20 min-w-[140px] p-1.5">
+                    {GRANS.map((g) => (
+                      <button
+                        key={g.code}
+                        onClick={() => {
+                          setGran(g.code);
+                          setGranMenuOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-left font-mono text-[12px] ${gran === g.code ? "text-pos" : "text-dim hover:bg-surface2 hover:text-text"}`}
+                      >
+                        <span>{g.label}</span>
+                        <span className="text-faint">{g.code}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {granMenuOpen && (
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setGranMenuOpen(false)}
+                  />
+                )}
+              </div>
               <button
-                onClick={() => setGranMenuOpen((v) => !v)}
-                className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 font-mono text-[11px] text-dim hairline hover:text-text"
-                title="Chart timeframe"
+                onClick={() => {
+                  if (document.fullscreenElement) document.exitFullscreen();
+                  else document.documentElement.requestFullscreen();
+                }}
+                className={`grid h-8 w-8 place-items-center rounded-md border hairline ${isFullscreen ? "text-pos" : "text-faint hover:text-text"}`}
+                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
               >
-                {gran}
-                <ChevronDown />
+                <FullscreenIcon />
               </button>
-              {granMenuOpen && (
-                <div className="card absolute right-0 top-8 z-20 min-w-[140px] p-1.5">
-                  {GRANS.map((g) => (
-                    <button
-                      key={g.code}
-                      onClick={() => { setGran(g.code); setGranMenuOpen(false); }}
-                      className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-left font-mono text-[12px] ${gran === g.code ? "text-pos" : "text-dim hover:bg-surface2 hover:text-text"}`}
-                    >
-                      <span>{g.label}</span>
-                      <span className="text-faint">{g.code}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {granMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setGranMenuOpen(false)} />}
+              <button
+                onClick={() =>
+                  setChartType((t) => (t === "candle" ? "line" : "candle"))
+                }
+                className={`grid h-8 w-8 place-items-center rounded-md border hairline ${chartType === "line" ? "text-pos" : "text-faint hover:text-text"}`}
+                title="Toggle candlestick / line chart type"
+              >
+                <ChartTypeIcon />
+              </button>
+              <button
+                onClick={() => setSidePanelHidden((v) => !v)}
+                className={`grid h-8 w-8 place-items-center rounded-md border hairline ${sidePanelHidden ? "text-pos" : "text-faint hover:text-text"}`}
+                title={
+                  sidePanelHidden
+                    ? "Show side panel"
+                    : "Hide side panel (expand chart)"
+                }
+              >
+                <PanelSplitIcon />
+              </button>
+              <button
+                onClick={() => setResetZoomTick((t) => t + 1)}
+                className="grid h-8 w-8 place-items-center rounded-md border text-faint hairline hover:text-text"
+                title="Fit chart to visible data"
+              >
+                <FitArrowsIcon />
+              </button>
             </div>
-            <button
-              onClick={() => {
-                if (document.fullscreenElement) document.exitFullscreen();
-                else document.documentElement.requestFullscreen();
-              }}
-              className={`grid h-8 w-8 place-items-center rounded-md border hairline ${isFullscreen ? "text-pos" : "text-faint hover:text-text"}`}
-              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            >
-              <FullscreenIcon />
-            </button>
-            <button
-              onClick={() => setChartType((t) => (t === "candle" ? "line" : "candle"))}
-              className={`grid h-8 w-8 place-items-center rounded-md border hairline ${chartType === "line" ? "text-pos" : "text-faint hover:text-text"}`}
-              title="Toggle candlestick / line chart type"
-            >
-              <ChartTypeIcon />
-            </button>
-            <button
-              onClick={() => setSidePanelHidden((v) => !v)}
-              className={`grid h-8 w-8 place-items-center rounded-md border hairline ${sidePanelHidden ? "text-pos" : "text-faint hover:text-text"}`}
-              title={sidePanelHidden ? "Show side panel" : "Hide side panel (expand chart)"}
-            >
-              <PanelSplitIcon />
-            </button>
-            <button
-              onClick={() => setResetZoomTick((t) => t + 1)}
-              className="grid h-8 w-8 place-items-center rounded-md border text-faint hairline hover:text-text"
-              title="Fit chart to visible data"
-            >
-              <FitArrowsIcon />
-            </button>
-          </div>}
+          )}
         </nav>
       </div>
 
@@ -217,21 +289,33 @@ function DashboardBody() {
         {tab === "Overview" && (
           <>
             <PriceTiles selected={selected} onSelect={setSelected} />
-            <div className={`grid gap-3 ${sidePanelHidden ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(360px,0.95fr)]"}`}>
+            <div
+              className={`grid gap-3 ${sidePanelHidden ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(360px,0.95fr)]"}`}
+            >
               <div className="h-[395px] min-w-0">
                 <CandleChart
-                  instrument={selected} gran={gran} onGranChange={setGran} chartType={chartType}
-                  resetZoomTick={resetZoomTick} sidePanelHidden={sidePanelHidden}
+                  instrument={selected}
+                  gran={gran}
+                  onGranChange={setGran}
+                  chartType={chartType}
+                  resetZoomTick={resetZoomTick}
+                  sidePanelHidden={sidePanelHidden}
                   onToggleSidePanel={() => setSidePanelHidden((v) => !v)}
                 />
               </div>
               {!sidePanelHidden && (
-                <div className="h-[395px] min-w-0"><Tier7Panel onViewLog={() => setTab("Analytics")} /></div>
+                <div className="h-[395px] min-w-0">
+                  <Tier7Panel onViewLog={() => setTab("Analytics")} />
+                </div>
               )}
             </div>
             <div className="grid gap-3 xl:grid-cols-[minmax(520px,2fr)_minmax(360px,0.95fr)]">
-              <div className="h-[250px] min-w-0"><PositionsTable /></div>
-              <div className="h-[250px] min-w-0"><EquityCurve /></div>
+              <div className="h-[250px] min-w-0">
+                <PositionsTable />
+              </div>
+              <div className="h-[250px] min-w-0">
+                <EquityCurve />
+              </div>
             </div>
           </>
         )}
@@ -241,23 +325,37 @@ function DashboardBody() {
         {marketTabs.has(tab) && (
           <>
             <PriceTiles selected={selected} onSelect={setSelected} />
-            <div className={`grid gap-4 ${sidePanelHidden ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(340px,0.9fr)]"}`}>
+            <div
+              className={`grid gap-4 ${sidePanelHidden ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(340px,0.9fr)]"}`}
+            >
               <div className="h-[480px] min-w-0">
                 <CandleChart
-                  instrument={selected} gran={gran} onGranChange={setGran} chartType={chartType}
-                  resetZoomTick={resetZoomTick} sidePanelHidden={sidePanelHidden}
+                  instrument={selected}
+                  gran={gran}
+                  onGranChange={setGran}
+                  chartType={chartType}
+                  resetZoomTick={resetZoomTick}
+                  sidePanelHidden={sidePanelHidden}
                   onToggleSidePanel={() => setSidePanelHidden((v) => !v)}
                 />
               </div>
               {!sidePanelHidden && (
-                <div className="h-[480px] min-w-0"><StrategyPanel selected={selected} onSelect={setSelected} /></div>
+                <div className="h-[480px] min-w-0">
+                  <StrategyPanel selected={selected} onSelect={setSelected} />
+                </div>
               )}
             </div>
-            <div className="h-[320px] min-w-0"><PositionsTable /></div>
+            <div className="h-[320px] min-w-0">
+              <PositionsTable />
+            </div>
           </>
         )}
 
-        {tab === "Positions" && <div className="h-[520px] min-w-0"><PositionsTable /></div>}
+        {tab === "Positions" && (
+          <div className="h-[520px] min-w-0">
+            <PositionsTable />
+          </div>
+        )}
 
         {tab === "Activity" && (
           <>
@@ -266,41 +364,31 @@ function DashboardBody() {
           </>
         )}
         {tab === "Training" && <TrainingEvidenceCockpit />}
-        {tab === "Automation" && (
-          <>
-            <ControlPanel />
-            <BrainLoopPanel />
-            <LearningLoopPanel />
-            {/* Shadow research lanes — SHADOW-only, no execution path, gated by
-                the same LiveGate contract as the equity harvester. Previously
-                built but never mounted; wired here alongside the other
-                autonomous-loop panels (2026-07-07, crypto_carry addition). */}
-            <CryptoMomentumPanel />
-            <TrackBPanel />
-            <CryptoCarryPanel />
-            {/* AXIOM Hedge Layer — SHADOW / ANALYSIS-ONLY (read_hedge / GET
-                /api/hedge): live FX exposure netting, the exposure-history
-                training bridge, and the raw-vs-hedged ledger. No order path,
-                nothing armed — mounted alongside the other shadow lanes. */}
-            <HedgePanel />
-          </>
-        )}
-        {tab === "Settings" && <ControlPanel />}
+        {tab === "Settings" && <SettingsWorkspace />}
 
         {ledgerTabs.has(tab) && (
           <>
-            <div className="h-[300px] min-w-0"><EquityCurve /></div>
+            <div className="h-[300px] min-w-0">
+              <EquityCurve />
+            </div>
             <div className="grid gap-4 lg:grid-cols-3">
-              <div className="min-w-0 lg:col-span-2"><TradeHistory /></div>
-              <div className="min-w-0"><SentimentPlaceholder /></div>
+              <div className="min-w-0 lg:col-span-2">
+                <TradeHistory />
+              </div>
+              <div className="min-w-0">
+                <SentimentPlaceholder />
+              </div>
             </div>
           </>
         )}
-
       </main>
 
       <DashboardFooter />
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={commands} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        items={commands}
+      />
     </div>
   );
 }
@@ -319,7 +407,11 @@ function useClock(): string {
     };
   }, []);
   if (!now) return "";
-  return now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return now.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function DashboardFooter() {
@@ -330,25 +422,50 @@ function DashboardFooter() {
   const [brokerMenuOpen, setBrokerMenuOpen] = useState(false);
   return (
     <footer className="mx-auto flex max-w-[1680px] flex-wrap items-center gap-4 border-t px-4 py-3 font-mono text-[10.5px] text-faint hairline">
-      <span className={connected ? "text-pos" : "text-neg"}>● {connected ? "CONNECTED" : "OFFLINE"}</span>
+      <span className={connected ? "text-pos" : "text-neg"}>
+        ● {connected ? "CONNECTED" : "OFFLINE"}
+      </span>
       <span>LIVE DATA</span>
       <div className="relative">
-        <button onClick={() => setBrokerMenuOpen((v) => !v)} className="flex items-center gap-1 text-text hover:text-pos" title={acctId ? `Practice account …${acctId.slice(-4)}` : "Practice account"}>
+        <button
+          onClick={() => setBrokerMenuOpen((v) => !v)}
+          className="flex items-center gap-1 text-text hover:text-pos"
+          title={
+            acctId
+              ? `Practice account …${acctId.slice(-4)}`
+              : "Practice account"
+          }
+        >
           OANDA fxPractice
           <ChevronDown />
         </button>
         {brokerMenuOpen && (
           <div className="card absolute bottom-7 left-0 z-20 min-w-[200px] p-2 text-[10.5px]">
-            <div className="rounded px-2 py-1.5 text-pos">● OANDA fxPractice (connected)</div>
-            {acctId && <div className="px-2 py-1 text-faint">Acct …{acctId.slice(-4)} — only connected broker</div>}
+            <div className="rounded px-2 py-1.5 text-pos">
+              ● OANDA fxPractice (connected)
+            </div>
+            {acctId && (
+              <div className="px-2 py-1 text-faint">
+                Acct …{acctId.slice(-4)} — only connected broker
+              </div>
+            )}
           </div>
         )}
-        {brokerMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setBrokerMenuOpen(false)} />}
+        {brokerMenuOpen && (
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setBrokerMenuOpen(false)}
+          />
+        )}
       </div>
       <span className="text-pos">PRACTICE TRADING</span>
-      {control?.gross_leverage != null && <span className="text-text">{control.gross_leverage}x</span>}
+      {control?.gross_leverage != null && (
+        <span className="text-text">{control.gross_leverage}x</span>
+      )}
       <span className="ml-auto">{clock} (local)</span>
-      <span className="flex items-center gap-1 text-pos"><CheckCircleSolid size={12} /> SYNC</span>
+      <span className="flex items-center gap-1 text-pos">
+        <CheckCircleSolid size={12} /> SYNC
+      </span>
       <span>v0.1.0</span>
     </footer>
   );

@@ -72,7 +72,8 @@ export interface Trade {
   id: string;
   time: string;
   type: string;
-  status: "FILLED" | "ACTIVE" | "CANCELLED" | "REJECTED" | "POSTED" | "RECORDED";
+  status:
+    "FILLED" | "ACTIVE" | "CANCELLED" | "REJECTED" | "POSTED" | "RECORDED";
   instrument: string | null;
   units: number;
   side: "BUY" | "SELL";
@@ -100,7 +101,10 @@ export interface Trades {
   trades: Trade[];
 }
 
-export interface EquityPoint { time: string; balance: number; }
+export interface EquityPoint {
+  time: string;
+  balance: number;
+}
 export interface Equity {
   connected: boolean;
   source: string;
@@ -119,7 +123,11 @@ export interface Signal {
   distance_pct: number;
 }
 export interface Candle {
-  time: number; open: number; high: number; low: number; close: number;
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
   volume?: number | null; // real OANDA tick-count volume when reported; null if absent
 }
 export interface CandleResponse {
@@ -152,7 +160,10 @@ export interface Sentiment {
   strategy_agent?: string;
   agent_weight?: number;
   note: string;
-  books: Record<string, { price: string; longCountPercent: string; shortCountPercent: string }[]>;
+  books: Record<
+    string,
+    { price: string; longCountPercent: string; shortCountPercent: string }[]
+  >;
   features?: Record<string, Record<string, number>>;
   source: string;
 }
@@ -176,7 +187,7 @@ export interface Tier7MetaEvent {
 export interface Tier7SelfHealEvent {
   ts?: string;
   cycle?: number;
-  status?: string;        // "degraded" | "ok" | ... (bounded-autonomy state)
+  status?: string; // "degraded" | "ok" | ... (bounded-autonomy state)
   degraded?: boolean;
   halted?: boolean;
   n_actions?: number;
@@ -235,7 +246,12 @@ export interface LaneOracle {
   tier7_pid_alive?: boolean;
   error?: string;
 }
-export interface GateCheck { name: string; ok: boolean; hard_no?: boolean; detail?: string }
+export interface GateCheck {
+  name: string;
+  ok: boolean;
+  hard_no?: boolean;
+  detail?: string;
+}
 export interface Gates {
   available: boolean;
   all_ok: boolean;
@@ -261,9 +277,17 @@ export interface Alerts {
   max_severity: string | null;
   last_updated: string | null;
 }
-export interface SystemHealth { lanes: LaneOracle; gates: Gates; alerts: Alerts }
+export interface SystemHealth {
+  lanes: LaneOracle;
+  gates: Gates;
+  alerts: Alerts;
+}
 
-export interface DiagnosticCheck { label: string; ok: boolean | null; metric: string | null }
+export interface DiagnosticCheck {
+  label: string;
+  ok: boolean | null;
+  metric: string | null;
+}
 export interface Tier7Diagnostics {
   checks: DiagnosticCheck[];
   score: number | null;
@@ -474,7 +498,15 @@ export interface ActivitySnapshot {
 // GET /api/axiom_operator — subscription-backed Claude Code operator session.
 export interface AxiomOperatorSession {
   session_id?: string;
-  status: "idle" | "running" | "acted" | "held" | "waiting" | "handoff" | "unavailable" | string;
+  status:
+    | "idle"
+    | "running"
+    | "acted"
+    | "held"
+    | "waiting"
+    | "handoff"
+    | "unavailable"
+    | string;
   provider: string;
   epoch: number;
   context_budget_chars?: number;
@@ -580,6 +612,13 @@ export interface CryptoMomentumLiveGate {
   last_event?: string | null;
   last_event_reason?: string | null;
 }
+export interface ShadowLaneFreshness {
+  status: "fresh" | "stale" | "unavailable";
+  last_evaluated_at: string | null;
+  age_s: number | null;
+  expected_interval_s: number;
+  stale_after_s: number;
+}
 export interface CryptoMomentum {
   has_run: boolean;
   n_forward_cycles: number;
@@ -592,6 +631,7 @@ export interface CryptoMomentum {
   last_asof_date: string | null;
   recent_cycles: CryptoMomentumCycle[];
   construction: CryptoMomentumConstruction | null;
+  freshness: ShadowLaneFreshness;
   live_gate: CryptoMomentumLiveGate;
   mode: "live" | "shadow";
   source: Record<string, string>;
@@ -653,6 +693,7 @@ export interface CryptoCarry {
   last_asof_date: string | null;
   recent_cycles: CryptoCarryCycle[];
   construction: CryptoCarryConstruction | null;
+  freshness: ShadowLaneFreshness;
   risk_premium_note: string | null;
   live_gate: CryptoCarryLiveGate;
   mode: "live" | "shadow";
@@ -723,6 +764,7 @@ export interface TrackB {
   last_asof_date: string | null;
   recent_cycles: TrackBCycle[];
   construction: TrackBConstruction | null;
+  freshness: ShadowLaneFreshness;
   live_gate: TrackBLiveGate;
   mode: "live" | "shadow";
   source: Record<string, string>;
@@ -796,7 +838,11 @@ export interface HedgeLedgerCycle {
   notional: number;
   raw: { net_return: number | null; gross_return?: number | null };
   hedge: { status: string | null; decision: string | null };
-  hedged: { return_basis: string; net_return: number | null; gross_return: number | null };
+  hedged: {
+    return_basis: string;
+    net_return: number | null;
+    gross_return: number | null;
+  };
   exposure: Record<string, unknown>;
   paper_only?: boolean;
   runtime_allowed?: boolean;
@@ -815,12 +861,50 @@ export interface Hedge {
   source: Record<string, string>;
 }
 
+export interface RiskTrimBucket {
+  bucket: string;
+  currency: string;
+  direction: string;
+  risk_home: number;
+  cap_home: number;
+  over_home: number;
+  pct_of_cap: number | null;
+  instruments: string[];
+}
+export interface RiskTrimCandidate {
+  instrument: string;
+  trade_id: string;
+  current_units: number;
+  reduce_units: number;
+  remaining_units: number;
+  risk_home: number;
+  risk_per_unit_home: number;
+  estimated_risk_reduction_home: number;
+  covered_buckets: string[];
+  clears_buckets: string[];
+}
+export interface RiskTrim {
+  connected: boolean;
+  status: "clear" | "over_cap" | "unavailable" | "error" | string;
+  reason?: string;
+  asof?: string;
+  cap_home?: number;
+  open_trade_count?: number;
+  over_cap_buckets: RiskTrimBucket[];
+  candidates: RiskTrimCandidate[];
+  recommended?: RiskTrimCandidate | null;
+  order_mutation: boolean;
+  runtime_allowed: boolean;
+  note?: string;
+}
+
 // GET /api/mind_window — resident reasoning loop (src/agent_runtime/loop.py)
 // "mind-window": what the loop NOTICED (observations), BELIEVES (diagnosis),
 // DID-OR-WOULD-DO (outcomes), and NEEDS FROM THE OPERATOR (pending_operator_
 // proposals). Has not run in production yet (has_run=false) — render the
 // honest empty state, never fabricate a cycle.
-export type MindWindowTier = "operational" | "deescalation" | "escalation" | string;
+export type MindWindowTier =
+  "operational" | "deescalation" | "escalation" | string;
 
 export interface MindWindowObservation {
   ok: boolean;

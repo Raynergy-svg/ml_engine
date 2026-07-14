@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -846,6 +847,58 @@ _CRYPTO_LEDGER_PATH = CRYPTO_DIR / "shadow_momentum_ledger.jsonl"
 _CRYPTO_LIVE_GATE_STATE_PATH = CRYPTO_DIR / "live_gate_state.json"
 
 
+def _shadow_lane_freshness(last: Optional[Dict[str, Any]], *, expected_cadence_days: float) -> Dict[str, Any]:
+    """Describe the freshness of a shadow ledger's most recent evaluation.
+
+    ``asof_date`` is the rebalance date of the held book, not necessarily the
+    time that the forward record was last evaluated.  The dashboard needs both:
+    presenting an old book as "current" is an operational lie, while marking a
+    deliberately held 21-day Track B book stale merely because its rebalance
+    date is old is also wrong.  ``cycle_ts`` is the writer's authoritative
+    evaluation timestamp; one and a half expected cadences is the explicit
+    missed-run boundary used for display only (never an execution decision).
+    """
+    expected_interval_s = max(1, round(float(expected_cadence_days) * 86_400))
+    stale_after_s = round(expected_interval_s * 1.5)
+    cycle_ts = last.get("cycle_ts") if isinstance(last, dict) else None
+    if not isinstance(cycle_ts, str) or not cycle_ts:
+        return {
+            "status": "unavailable",
+            "last_evaluated_at": None,
+            "age_s": None,
+            "expected_interval_s": expected_interval_s,
+            "stale_after_s": stale_after_s,
+        }
+    try:
+        parsed = datetime.fromisoformat(cycle_ts.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        raw_age_s = time.time() - parsed.timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return {
+            "status": "unavailable",
+            "last_evaluated_at": cycle_ts,
+            "age_s": None,
+            "expected_interval_s": expected_interval_s,
+            "stale_after_s": stale_after_s,
+        }
+
+    # A clock-skewed future timestamp is not evidence of a fresh lane.
+    if raw_age_s < -60:
+        status = "unavailable"
+    elif raw_age_s > stale_after_s:
+        status = "stale"
+    else:
+        status = "fresh"
+    return {
+        "status": status,
+        "last_evaluated_at": cycle_ts,
+        "age_s": round(max(0.0, raw_age_s), 1),
+        "expected_interval_s": expected_interval_s,
+        "stale_after_s": stale_after_s,
+    }
+
+
 def read_crypto_momentum() -> Dict[str, Any]:
     """Crypto XS-momentum SHADOW lane: current would-be book, running shadow
     P&L, and the accumulating live-forward-OOS track record for the campaign's
@@ -864,6 +917,8 @@ def read_crypto_momentum() -> Dict[str, Any]:
     """
     rows = list(_iter_jsonl(_CRYPTO_LEDGER_PATH))
     last = rows[-1] if rows else None
+    construction = last.get("construction") if last else None
+    cadence_days = _to_float((construction or {}).get("rebalance_days")) or 7.0
     live_gate = _read_json(_CRYPTO_LIVE_GATE_STATE_PATH, {})
     armed = bool(live_gate.get("armed", False))
 
@@ -893,7 +948,8 @@ def read_crypto_momentum() -> Dict[str, Any]:
         "first_asof_date": rows[0].get("asof_date") if rows else None,
         "last_asof_date": last.get("asof_date") if last else None,
         "recent_cycles": list(reversed(rows[-20:])),
-        "construction": last.get("construction") if last else None,
+        "construction": construction,
+        "freshness": _shadow_lane_freshness(last, expected_cadence_days=cadence_days),
         "live_gate": {
             "available": bool(live_gate),
             "armed": armed,
@@ -964,6 +1020,7 @@ def read_track_b() -> Dict[str, Any]:
         last.get("construction") if last
         else (construction_manifest(n_scored_now) if construction_manifest and n_scored_now else None)
     )
+    cadence_days = _to_float((construction or {}).get("rebalance_step_days")) or 21.0
 
     return {
         "has_run": bool(rows),
@@ -978,6 +1035,7 @@ def read_track_b() -> Dict[str, Any]:
         "last_asof_date": last.get("asof_date") if last else None,
         "recent_cycles": list(reversed(rows[-20:])),
         "construction": construction,
+        "freshness": _shadow_lane_freshness(last, expected_cadence_days=cadence_days),
         "live_gate": {
             "available": bool(live_gate),
             "armed": armed,
@@ -1019,6 +1077,8 @@ def read_crypto_carry() -> Dict[str, Any]:
     """
     rows = list(_iter_jsonl(_CRYPTO_CARRY_LEDGER_PATH))
     last = rows[-1] if rows else None
+    construction = last.get("construction") if last else None
+    cadence_days = _to_float((construction or {}).get("rebalance_days")) or 1.0
     live_gate = _read_json(_CRYPTO_CARRY_LIVE_GATE_STATE_PATH, {})
     armed = bool(live_gate.get("armed", False))
 
@@ -1050,7 +1110,8 @@ def read_crypto_carry() -> Dict[str, Any]:
         "first_asof_date": rows[0].get("asof_date") if rows else None,
         "last_asof_date": last.get("asof_date") if last else None,
         "recent_cycles": list(reversed(rows[-20:])),
-        "construction": last.get("construction") if last else None,
+        "construction": construction,
+        "freshness": _shadow_lane_freshness(last, expected_cadence_days=cadence_days),
         "risk_premium_note": RISK_PREMIUM_NOTE,
         "live_gate": {
             "available": bool(live_gate),
@@ -1161,6 +1222,70 @@ def read_hedge() -> Dict[str, Any]:
             "roadmap": "AXIOM Hedge Layer Roadmap (docs/)",
         },
     }
+
+
+def _live_price_map(client: Any, instruments: List[str]) -> Dict[str, float]:
+    """Read-only bid/ask mids for the fixed open-trade instrument set."""
+    if not instruments:
+        return {}
+    payload = client.get_pricing(instruments=",".join(sorted(set(instruments)))) or {}
+    prices: Dict[str, float] = {}
+    for row in payload.get("prices", []) or []:
+        if not isinstance(row, dict):
+            continue
+        bids, asks = row.get("bids") or [], row.get("asks") or []
+        try:
+            bid = float(bids[0].get("price")) if bids else None
+            ask = float(asks[0].get("price")) if asks else None
+        except (TypeError, ValueError, IndexError, AttributeError):
+            continue
+        if row.get("instrument") and bid and ask and bid > 0 and ask > 0:
+            prices[str(row["instrument"])] = (bid + ask) / 2.0
+    return prices
+
+
+def live_risk_trim(client: Any, *, max_bucket_risk_r: float = 2.0, risk_pct: float = 0.01) -> Dict[str, Any]:
+    """Return read-only deterministic reduce candidates for over-cap FX buckets."""
+    unavailable = {"connected": False, "order_mutation": False, "runtime_allowed": False,
+                   "over_cap_buckets": [], "candidates": []}
+    if client is None:
+        return {**unavailable, "status": "unavailable", "reason": "OANDA read-only client unavailable"}
+    try:
+        from src.equity.trend_risk_gates import compute_bucket_risk, currency_legs, load_risk_state, quote_to_home_rate, trade_risk_home
+        summary = client.get_account_summary() or {}
+        nav = _to_float((summary.get("account") or {}).get("NAV")) or 0.0
+        trades = (client.get_trades(state="OPEN") or {}).get("trades", []) or []
+        prices = _live_price_map(client, [str(t["instrument"]) for t in trades if t.get("instrument")])
+        risk_state = load_risk_state(OANDA_DIR / "risk_state.json")
+        r_distance = {str(k): _to_float((v or {}).get("r_distance")) for k, v in risk_state.items() if _to_float((v or {}).get("r_distance")) is not None}
+        bucket_risk, bucket_instruments = compute_bucket_risk(trades, r_distance, prices)
+        cap_home = nav * float(risk_pct) * float(max_bucket_risk_r)
+        over_keys = [key for key, risk in bucket_risk.items() if cap_home > 0 and risk > cap_home + 1e-9]
+        over = [{"bucket": f"{key[0]}_{key[1]}", "currency": key[0], "direction": key[1], "risk_home": round(float(bucket_risk[key]), 6), "cap_home": round(cap_home, 6), "over_home": round(float(bucket_risk[key] - cap_home), 6), "pct_of_cap": round(float(bucket_risk[key] / cap_home), 6), "instruments": sorted(bucket_instruments.get(key, set()))} for key in sorted(over_keys)]
+        candidates: List[Dict[str, Any]] = []
+        for trade in trades:
+            inst, trade_id = trade.get("instrument"), str(trade.get("id") or "")
+            legs = currency_legs(inst) if inst else None
+            r_dist = r_distance.get(trade_id)
+            q2h = quote_to_home_rate(str(inst), prices) if inst else None
+            if not trade_id or not inst or not legs or not r_dist or not q2h or r_dist <= 0 or q2h <= 0:
+                continue
+            try:
+                units = abs(int(float(trade.get("currentUnits") or trade.get("initialUnits") or 0)))
+            except (TypeError, ValueError):
+                continue
+            covered = [key for key in ((legs[0], "long"), (legs[1], "short")) if key in over_keys]
+            if not covered or units <= 0:
+                continue
+            per_unit = float(r_dist) * float(q2h)
+            needed = max(math.ceil(max(0.0, float(bucket_risk[key] - cap_home)) / per_unit) for key in covered)
+            needed = max(1, min(int(needed), units))
+            candidates.append({"instrument": str(inst), "trade_id": trade_id, "current_units": units, "reduce_units": needed, "remaining_units": units - needed, "risk_home": round(float(trade_risk_home(trade, float(r_dist), float(q2h))), 6), "risk_per_unit_home": round(per_unit, 10), "estimated_risk_reduction_home": round(needed * per_unit, 6), "covered_buckets": [f"{key[0]}_{key[1]}" for key in covered], "clears_buckets": [f"{key[0]}_{key[1]}" for key in covered if needed * per_unit >= (bucket_risk[key] - cap_home) - 1e-9]})
+        candidates.sort(key=lambda c: (-len(c["covered_buckets"]), c["reduce_units"], c["instrument"]))
+        return {"connected": True, "status": "over_cap" if over else "clear", "asof": _utc_iso_from_ts(time.time()), "nav": round(nav, 6), "risk_unit_home": round(nav * float(risk_pct), 6), "max_bucket_risk_r": float(max_bucket_risk_r), "cap_home": round(cap_home, 6), "open_trade_count": len(trades), "over_cap_buckets": over, "candidates": candidates, "recommended": candidates[0] if candidates else None, "order_mutation": False, "runtime_allowed": False, "note": "Read-only proposal. AXIOM does not auto-trim broker positions; execution requires a separate explicit control path."}
+    except Exception as exc:  # noqa: BLE001 - display endpoint must fail soft
+        logger.warning("live_risk_trim failed: %s", exc)
+        return {**unavailable, "status": "error", "reason": str(exc)}
 
 
 _LEARNING_LOOP_HISTORY_PATH = REPO_ROOT / "trained_data" / "learning_loop" / "history.jsonl"

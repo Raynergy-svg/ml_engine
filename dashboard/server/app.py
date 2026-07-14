@@ -111,7 +111,7 @@ def root() -> Dict[str, Any]:
                           "/api/strategy", "/api/sentiment", "/api/tier7", "/api/system_health",
                           "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream",
                           "/api/equity_sleeve", "/api/lanes", "/api/brain_loop",
-                          "/api/crypto_momentum", "/api/track_b", "/api/crypto_carry", "/api/learning_loop",
+                          "/api/crypto_momentum", "/api/track_b", "/api/crypto_carry", "/api/risk_trim", "/api/learning_loop",
                           "/api/activity", "/api/axiom_operator", "/api/axiom_training", "/api/mind_window"]}
 
 
@@ -239,6 +239,15 @@ def crypto_carry() -> Dict[str, Any]:
 @app.get("/api/hedge")
 def hedge() -> Dict[str, Any]:
     return ds.read_hedge()
+
+
+@app.get("/api/risk_trim")
+def risk_trim() -> Dict[str, Any]:
+    key = "risk_trim"
+    cached = _cache.get(key, ttl=10.0)
+    if cached is not None:
+        return cached
+    return _cache_if_live(key, ds.live_risk_trim(_client()))
 
 
 @app.get("/api/learning_loop")
