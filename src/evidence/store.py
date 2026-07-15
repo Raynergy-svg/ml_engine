@@ -651,6 +651,15 @@ class EvidenceStore:
                     trust_store=self.trust_store,
                     authorities=self.authorities,
                 )
+                # The package directory is content-addressed, so its name must equal the
+                # digest the ledger reconstructs to. Divergence means the ledger under
+                # this directory describes a different package, and indexing it would
+                # silently attribute one package's state to another's digest.
+                if state.package_digest != package_digest:
+                    raise StoreCorruptionError(
+                        f"ledger under package directory {package_digest!r} reconstructs to "
+                        f"package {state.package_digest!r}"
+                    )
             packages[package_digest] = {
                 "artifact_digests": {
                     artifact.artifact_id: artifact.digest for artifact in package.artifacts

@@ -36,7 +36,6 @@ from src.evidence.contracts import (
 from src.evidence.event_store import EventChainError, reconstruct_disposition
 from src.evidence.hashing import content_digest
 from src.evidence.importer import build_import_verdict
-from src.evidence.indexes import rebuild_index
 from src.evidence.signing import (
     Ed25519Signer,
     SignatureVerificationError,
@@ -382,9 +381,9 @@ def test_event_chain_reconstructs_current_state_from_ledger_only() -> None:
     assert state.sequence == 9
     assert state.head_event_digest == ledger[-1].envelope.payload_digest
 
-    rebuilt_a = rebuild_index({state.package_digest: ledger}, trust_store=trust, authorities=authorities)
-    rebuilt_b = rebuild_index({state.package_digest: tuple(ledger)}, trust_store=trust, authorities=authorities)
-    assert canonical_bytes(asdict(rebuilt_a.entries[0])) == canonical_bytes(asdict(rebuilt_b.entries[0]))
+    # Reconstruction must not depend on the ledger's concrete iterable type.
+    from_tuple = reconstruct_disposition(tuple(ledger), trust_store=trust, authorities=authorities)
+    assert canonical_bytes(asdict(from_tuple)) == canonical_bytes(asdict(state))
 
 
 def test_event_chain_rejects_broken_link_duplicate_and_fork() -> None:
