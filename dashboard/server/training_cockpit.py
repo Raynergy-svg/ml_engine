@@ -13,6 +13,7 @@ import json
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,9 +27,32 @@ from dashboard.server.training_identity import read_runtime_code_identity
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DOMAINS = ("fx", "equity", "crypto", "filings", "multi_asset", "portfolio", "outcomes", "evidence")
 DATA_TIERS = ("raw", "normalized", "snapshots", "features", "history")
-_DATA_CACHE: dict[tuple[str, str, str], tuple[float, dict[str, Any]]] = {}
+TIER_MANIFEST_PATTERNS = {
+    "normalized": ("manifest.json", "*/manifest.json", "*/*/manifest.json"),
+    "snapshots": ("manifest.json", "*/manifest.json"),
+    "features": ("manifest.json", "*/manifest.json", "*/*/manifest.json"),
+}
+DOMAIN_SOURCE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "fx": ("market_data/factor/**/*",),
+    "equity": ("market_data/equity/**/*",),
+    "crypto": ("market_data/crypto/**/*",),
+    "filings": (),
+    "multi_asset": ("market_data/multi_asset/**/*",),
+    "portfolio": ("trained_data/hedge/exposure_history.jsonl",),
+    "outcomes": (
+        "trained_data/trade_journal_rl.events.jsonl",
+        "trained_data/trade_journal_rl.json",
+    ),
+    "evidence": ("trained_data/evidence/packages/*/envelope.json",),
+}
+_DATA_CACHE: dict[tuple[str, str, str, str], tuple[float, dict[str, Any]]] = {}
 _DATA_CACHE_LOCK = threading.Lock()
 _DATA_CACHE_TTL_SECONDS = 30.0
+_MANIFEST_INSPECTION_CACHE: dict[
+    str,
+    tuple[int, int, tuple[int, set[Path], list[dict[str, str]]]],
+] = {}
+_MANIFEST_INSPECTION_CACHE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -74,6 +98,54 @@ def _age_seconds(path: Path, now: datetime) -> float | None:
         return max(0.0, now.timestamp() - path.stat().st_mtime)
     except OSError:
         return None
+
+
+def _visible_files(root: Path, pattern: str = "**/*") -> list[Path]:
+    if not root.exists():
+        return []
+    return [
+        path for path in root.glob(pattern)
+        if path.is_file()
+        and not any(part.startswith(".") for part in path.relative_to(root).parts)
+    ]
+
+
+def _latest_file(paths: list[Path]) -> Path | None:
+    candidates: list[tuple[float, Path]] = []
+    for path in paths:
+        try:
+            candidates.append((path.stat().st_mtime, path))
+        except OSError:
+            continue
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def _source_inventory(source_root: Path, domain: str, now: datetime) -> dict[str, Any]:
+    files: set[Path] = set()
+    locations: list[str] = []
+    for pattern in DOMAIN_SOURCE_PATTERNS.get(domain, ()):
+        matched = {
+            path for path in source_root.glob(pattern)
+            if path.is_file()
+            and not any(part.startswith(".") for part in path.relative_to(source_root).parts)
+        }
+        if not matched:
+            continue
+        files.update(matched)
+        static_prefix = pattern.split("*", 1)[0].rstrip("/")
+        location = source_root / static_prefix
+        if not location.exists():
+            location = location.parent
+        locations.append(str(location))
+    latest = _latest_file(list(files))
+    return {
+        "source_file_count": len(files),
+        "source_locations": sorted(set(locations)),
+        "latest_source_at": _iso(datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc)) if latest else None,
+        "source_freshness_age_seconds": _age_seconds(latest, now) if latest else None,
+    }
 
 
 def _timestamp_age_seconds(value: object, now: datetime) -> float | None:
@@ -241,16 +313,70 @@ def _resolve_axiom_uri(data_root: Path, uri: object) -> Path | None:
     return candidate
 
 
+def _inspect_manifest(manifest_path: Path, data_root: Path) -> tuple[int, set[Path], list[dict[str, str]]]:
+    failures: list[dict[str, str]] = []
+    partition_files: set[Path] = set()
+    relative_manifest = str(manifest_path.relative_to(data_root))
+    payload = _json(manifest_path)
+    if not isinstance(payload, Mapping):
+        return 0, partition_files, [{"kind": "invalid_manifest", "path": relative_manifest}]
+    manifest_payload = payload.get("payload") if isinstance(payload.get("payload"), Mapping) else payload
+    partitions = manifest_payload.get("partitions", []) if isinstance(manifest_payload, Mapping) else []
+    if not isinstance(partitions, list):
+        return 0, partition_files, [{"kind": "invalid_partitions", "path": relative_manifest}]
+    for partition in partitions:
+        if not isinstance(partition, Mapping):
+            failures.append({"kind": "invalid_partition", "path": relative_manifest})
+            continue
+        resolved = _resolve_axiom_uri(data_root, partition.get("uri"))
+        if resolved is not None and not resolved.is_file():
+            failures.append({"kind": "missing_partition", "path": str(resolved.relative_to(data_root))})
+        elif resolved is not None:
+            partition_files.add(resolved)
+    return len(partitions), partition_files, failures
+
+
+def _manifest_inspections(
+    manifests: list[tuple[Path, int, int]], data_root: Path
+) -> list[tuple[int, set[Path], list[dict[str, str]]]]:
+    # Published version directories are immutable. Bind cache hits to file
+    # identity metadata anyway so same-path tampering is revalidated.
+    cache_keys = [str(path.absolute()) for path, _mtime_ns, _size in manifests]
+    results: list[tuple[int, set[Path], list[dict[str, str]]] | None]
+    with _MANIFEST_INSPECTION_CACHE_LOCK:
+        cached_rows = [_MANIFEST_INSPECTION_CACHE.get(key) for key in cache_keys]
+    results = [
+        cached[2] if cached is not None and cached[:2] == (mtime_ns, size) else None
+        for cached, (_path, mtime_ns, size) in zip(cached_rows, manifests)
+    ]
+    missing = [
+        (index, manifests[index], cache_keys[index])
+        for index, result in enumerate(results)
+        if result is None
+    ]
+    if missing:
+        workers = min(8, max(2, os.cpu_count() or 2))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="axiom-data-inventory") as executor:
+            inspected_rows = executor.map(lambda item: _inspect_manifest(item[1][0], data_root), missing)
+            for (index, (_path, mtime_ns, size), cache_key), inspected in zip(missing, inspected_rows):
+                with _MANIFEST_INSPECTION_CACHE_LOCK:
+                    _MANIFEST_INSPECTION_CACHE[cache_key] = (mtime_ns, size, inspected)
+                    results[index] = inspected
+    return [result for result in results if result is not None]
+
+
 def read_data_status(
     repo_root: str | Path = REPO_ROOT,
     *,
     data_root: str | Path | None = None,
     control_root: str | Path | None = None,
+    source_root: str | Path | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Summarize canonical data manifests and the P2 forward-only gate."""
+    """Summarize canonical tiers, upstream inputs, and the P2 forward-only gate."""
     repo_root = Path(repo_root)
     data_root = Path(data_root or os.getenv("AXIOM_DATA_ROOT", repo_root / "axiom-data"))
+    source_root = Path(source_root or os.getenv("AXIOM_SOURCE_DATA_ROOT", repo_root))
     control_root = Path(
         control_root
         or os.getenv(
@@ -265,45 +391,94 @@ def read_data_status(
     for domain in DATA_DOMAINS:
         domain_root = data_root / domain
         tier_rows: list[dict[str, Any]] = []
+        published_manifest_count = 0
+        canonical_object_count = 0
+        domain_ages: list[float] = []
         for tier in DATA_TIERS:
             tier_root = domain_root / tier
+            manifest_patterns = TIER_MANIFEST_PATTERNS.get(tier, ())
             manifests = (
                 sorted(
-                    path for path in tier_root.rglob("manifest.json")
-                    if not any(part.startswith(".") for part in path.relative_to(tier_root).parts)
+                    {
+                        path
+                        for pattern in manifest_patterns
+                        for path in tier_root.glob(pattern)
+                        if not any(part.startswith(".") for part in path.relative_to(tier_root).parts)
+                    }
                 )
-                if tier_root.is_dir()
+                if tier_root.is_dir() and manifest_patterns
                 else []
             )
-            latest = max(manifests, key=lambda path: path.stat().st_mtime) if manifests else None
+            manifest_metadata: list[tuple[Path, int, int]] = []
+            latest: Path | None = None
+            latest_mtime = -1.0
+            for manifest in manifests:
+                try:
+                    stat = manifest.stat()
+                except OSError:
+                    manifest_metadata.append((manifest, -1, -1))
+                    continue
+                manifest_metadata.append((manifest, stat.st_mtime_ns, stat.st_size))
+                if stat.st_mtime > latest_mtime:
+                    latest = manifest
+                    latest_mtime = stat.st_mtime
             partition_count = 0
-            for manifest_path in manifests:
-                payload = _json(manifest_path)
-                if not isinstance(payload, Mapping):
-                    failures.append({"kind": "invalid_manifest", "path": str(manifest_path.relative_to(data_root))})
-                    continue
-                manifest_payload = payload.get("payload") if isinstance(payload.get("payload"), Mapping) else payload
-                partitions = manifest_payload.get("partitions", []) if isinstance(manifest_payload, Mapping) else []
-                if not isinstance(partitions, list):
-                    failures.append({"kind": "invalid_partitions", "path": str(manifest_path.relative_to(data_root))})
-                    continue
-                partition_count += len(partitions)
-                for partition in partitions:
-                    if not isinstance(partition, Mapping):
-                        failures.append({"kind": "invalid_partition", "path": str(manifest_path.relative_to(data_root))})
-                        continue
-                    resolved = _resolve_axiom_uri(data_root, partition.get("uri"))
-                    if resolved is not None and not resolved.is_file():
-                        failures.append({"kind": "missing_partition", "path": str(resolved.relative_to(data_root))})
+            partition_files: set[Path] = set()
+            if manifests:
+                for inspected_count, inspected_files, inspected_failures in _manifest_inspections(
+                    manifest_metadata, data_root
+                ):
+                    partition_count += inspected_count
+                    partition_files.update(inspected_files)
+                    failures.extend(inspected_failures)
+            if tier == "raw":
+                object_files = _visible_files(tier_root / "objects")
+            elif tier == "history":
+                object_files = _visible_files(tier_root, "**/*.jsonl")
+            else:
+                object_files = sorted(partition_files)
+            latest_object = _latest_file(object_files)
+            object_age = _age_seconds(latest_object, now) if latest_object else None
+            manifest_age = _age_seconds(latest, now) if latest else None
+            if object_age is not None:
+                domain_ages.append(object_age)
+            if manifest_age is not None:
+                domain_ages.append(manifest_age)
+            published_manifest_count += len(manifests)
+            canonical_object_count += len(object_files)
             tier_rows.append({
                 "tier": tier,
                 "manifest_count": len(manifests),
                 "partition_count": partition_count,
+                "object_count": len(object_files),
                 "latest_manifest": str(latest.relative_to(data_root)) if latest else None,
                 "latest_manifest_at": _iso(datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc)) if latest else None,
-                "freshness_age_seconds": _age_seconds(latest, now) if latest else None,
+                "freshness_age_seconds": manifest_age,
+                "latest_object": str(latest_object.relative_to(data_root)) if latest_object else None,
+                "latest_object_at": _iso(datetime.fromtimestamp(latest_object.stat().st_mtime, timezone.utc)) if latest_object else None,
+                "object_freshness_age_seconds": object_age,
             })
-        domains.append({"domain": domain, "available": domain_root.is_dir(), "tiers": tier_rows})
+        source = _source_inventory(source_root, domain, now)
+        source_count = source["source_file_count"]
+        if published_manifest_count:
+            status = "versioned"
+        elif canonical_object_count:
+            status = "captured"
+        elif source_count:
+            status = "source_only"
+        else:
+            status = "empty"
+        domains.append({
+            "domain": domain,
+            "available": domain_root.is_dir(),
+            "status": status,
+            "data_present": status != "empty",
+            "published_manifest_count": published_manifest_count,
+            "canonical_object_count": canonical_object_count,
+            "latest_data_age_seconds": min(domain_ages) if domain_ages else None,
+            **source,
+            "tiers": tier_rows,
+        })
 
     readiness_path = control_root / "p2_readiness.json"
     readiness_raw = _json(readiness_path)
@@ -325,6 +500,7 @@ def read_data_status(
 
     return {
         "data_root": str(data_root),
+        "source_root": str(source_root),
         "domains": domains,
         "quality_failure_count": len(failures),
         "quality_failures": failures[:100],
@@ -702,7 +878,8 @@ def read_training_cockpit(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
         "AXIOM_FORWARD_CAPTURE_ROOT",
         Path(runtime_data_root) / "forward_capture",
     )))
-    cache_key = (str(repo_root), data_root, control_root)
+    source_root = str(Path(os.getenv("AXIOM_SOURCE_DATA_ROOT", repo_root)))
+    cache_key = (str(repo_root), data_root, control_root, source_root)
     with _DATA_CACHE_LOCK:
         cached = _DATA_CACHE.get(cache_key)
         if cached is not None and time.monotonic() - cached[0] < _DATA_CACHE_TTL_SECONDS:
@@ -710,7 +887,12 @@ def read_training_cockpit(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
         else:
             data = None
     if data is None:
-        data = read_data_status(repo_root, data_root=data_root, control_root=control_root)
+        data = read_data_status(
+            repo_root,
+            data_root=data_root,
+            control_root=control_root,
+            source_root=source_root,
+        )
         with _DATA_CACHE_LOCK:
             _DATA_CACHE[cache_key] = (time.monotonic(), data)
     # Canonical live accrual is deliberately outside the 30-second manifest

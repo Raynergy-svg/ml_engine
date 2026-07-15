@@ -8,9 +8,10 @@ import type {
   AxiomTrainingCockpit,
   EvidenceLaneView,
   ForwardLaneMonitor,
+  TrainingDataDomain,
   TrainingDataTier,
 } from "@/lib/types";
-import { Badge, Card, Loading, NotConnected, SectionTitle, StatusDot } from "./ui";
+import { Badge, Card, Loading, NotConnected, SectionTitle } from "./ui";
 
 const POS = "#2bd17e";
 const NEG = "#ff5c7a";
@@ -47,6 +48,13 @@ function tier(domain: { tiers: TrainingDataTier[] }, name: string): TrainingData
   return domain.tiers.find((item) => item.tier === name);
 }
 
+function domainState(domain: TrainingDataDomain): { color: string; label: string; detail: string } {
+  if (domain.status === "versioned") return { color: POS, label: "VERSIONED", detail: "published manifest-backed canonical datasets" };
+  if (domain.status === "captured") return { color: "#33c7de", label: "CAPTURED", detail: "canonical raw or append-only history is present; no frozen version yet" };
+  if (domain.status === "source_only") return { color: WARN, label: "SOURCE ONLY", detail: "upstream input exists but has not been published into a canonical tier" };
+  return { color: MUTE, label: "EMPTY", detail: "no canonical data or configured upstream input was found" };
+}
+
 function DataPanel({ data }: { data: AxiomTrainingCockpit["data"] }) {
   const p2 = data.p2_readiness;
   const capture = data.capture;
@@ -59,7 +67,6 @@ function DataPanel({ data }: { data: AxiomTrainingCockpit["data"] }) {
   const exposure = p2.exposure_trading_days ?? 0;
   const progress = Math.min(100, (Math.min(exposure, minTick) / Math.max(target, 1)) * 100);
   const captureAccruing = tick.status === "accruing" && exposureCapture.status === "accruing";
-  const activeDomains = data.domains.filter((domain) => domain.available || domain.tiers.some((item) => item.manifest_count));
   return (
     <Card>
       <SectionTitle right={
@@ -106,23 +113,39 @@ function DataPanel({ data }: { data: AxiomTrainingCockpit["data"] }) {
         </div>
       </div>
       <div className="border-t p-3 hairline">
-        <div className="eyebrow mb-2">Canonical domain inventory · signed manifests, snapshots, and partitions</div>
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <div className="eyebrow">Domain inventory · upstream inputs versus canonical tiers</div>
+            <div className="mt-1 font-mono text-[10px] text-faint">A source file is not counted as a canonical dataset until capture or a published manifest exists.</div>
+          </div>
+          <div className="font-mono text-[9.5px] text-faint">canonical root: {data.data_root}</div>
+        </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {activeDomains.length ? activeDomains.map((domain) => {
+          {data.domains.length ? data.domains.map((domain) => {
+            const raw = tier(domain, "raw");
             const normalized = tier(domain, "normalized");
             const snapshots = tier(domain, "snapshots");
-            const latest = [normalized, snapshots].filter(Boolean).sort((a, b) => (a?.freshness_age_seconds ?? Infinity) - (b?.freshness_age_seconds ?? Infinity))[0];
+            const features = tier(domain, "features");
+            const history = tier(domain, "history");
+            const state = domainState(domain);
+            const canonical = domain.status === "versioned" || domain.status === "captured";
+            const freshness = canonical ? domain.latest_data_age_seconds : domain.source_freshness_age_seconds;
+            const partitions = (normalized?.partition_count ?? 0) + (snapshots?.partition_count ?? 0) + (features?.partition_count ?? 0);
             return (
-              <div key={domain.domain} className="rounded-md border p-3 hairline">
+              <div key={domain.domain} className="rounded-md border p-3 hairline" title={`${state.detail}${domain.source_locations.length ? `\nsource: ${domain.source_locations.join(", ")}` : ""}`}>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="font-mono text-[11px] font-semibold uppercase text-text">{domain.domain}</span>
-                  <StatusDot color={latest ? POS : MUTE} />
+                  <Badge color={state.color} dot>{state.label}</Badge>
                 </div>
                 <div className="space-y-1 font-mono text-[10.5px] text-faint">
-                  <div className="flex justify-between"><span>normalized</span><span className="text-text">{normalized?.manifest_count ?? 0}</span></div>
-                  <div className="flex justify-between"><span>snapshots</span><span className="text-text">{snapshots?.manifest_count ?? 0}</span></div>
-                  <div className="flex justify-between"><span>partitions</span><span className="text-text">{(normalized?.partition_count ?? 0) + (snapshots?.partition_count ?? 0)}</span></div>
-                  <div className="flex justify-between"><span>freshness</span><span className="text-text">{latest ? ago(latest.freshness_age_seconds) : "not captured"}</span></div>
+                  <div className="flex justify-between"><span>upstream source files</span><span className={domain.source_file_count ? "text-text" : "text-faint"}>{domain.source_file_count.toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span>raw objects</span><span className={raw?.object_count ? "text-text" : "text-faint"}>{(raw?.object_count ?? 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span>history segments</span><span className={history?.object_count ? "text-text" : "text-faint"}>{(history?.object_count ?? 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span>normalized versions</span><span className={normalized?.manifest_count ? "text-text" : "text-faint"}>{(normalized?.manifest_count ?? 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span>snapshot versions</span><span className={snapshots?.manifest_count ? "text-text" : "text-faint"}>{(snapshots?.manifest_count ?? 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span>feature versions</span><span className={features?.manifest_count ? "text-text" : "text-faint"}>{(features?.manifest_count ?? 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span>declared partitions</span><span className={partitions ? "text-text" : "text-faint"}>{partitions.toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span>{canonical ? "canonical freshness" : domain.status === "source_only" ? "source freshness" : "freshness"}</span><span className="text-text">{freshness != null ? ago(freshness) : "no data"}</span></div>
                 </div>
               </div>
             );

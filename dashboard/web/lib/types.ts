@@ -987,13 +987,26 @@ export interface TrainingDataTier {
   tier: string;
   manifest_count: number;
   partition_count: number;
+  object_count: number;
   latest_manifest: string | null;
   latest_manifest_at: string | null;
   freshness_age_seconds: number | null;
+  latest_object: string | null;
+  latest_object_at: string | null;
+  object_freshness_age_seconds: number | null;
 }
 export interface TrainingDataDomain {
   domain: string;
   available: boolean;
+  status: "versioned" | "captured" | "source_only" | "empty";
+  data_present: boolean;
+  source_file_count: number;
+  source_locations: string[];
+  latest_source_at: string | null;
+  source_freshness_age_seconds: number | null;
+  published_manifest_count: number;
+  canonical_object_count: number;
+  latest_data_age_seconds: number | null;
   tiers: TrainingDataTier[];
 }
 export interface P2Readiness {
@@ -1162,6 +1175,7 @@ export interface AxiomTrainingCockpit {
   error?: string;
   data: {
     data_root: string;
+    source_root: string;
     domains: TrainingDataDomain[];
     quality_failure_count: number;
     quality_failures: { kind: string; path: string }[];

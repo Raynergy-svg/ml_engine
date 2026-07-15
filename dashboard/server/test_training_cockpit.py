@@ -62,12 +62,22 @@ def test_data_status_reads_real_manifests_and_p2_contract(tmp_path):
     control_root.mkdir()
     (control_root / "p2_readiness.json").write_text(report.model_dump_json(), encoding="utf-8")
 
-    result = read_data_status(tmp_path, data_root=data_root, control_root=control_root, now=NOW)
+    result = read_data_status(
+        tmp_path,
+        data_root=data_root,
+        control_root=control_root,
+        source_root=tmp_path,
+        now=NOW,
+    )
 
     fx = next(row for row in result["domains"] if row["domain"] == "fx")
     normalized = next(row for row in fx["tiers"] if row["tier"] == "normalized")
     assert normalized["manifest_count"] == 1
     assert normalized["partition_count"] == 1
+    assert normalized["object_count"] == 1
+    assert fx["status"] == "versioned"
+    assert fx["published_manifest_count"] == 1
+    assert fx["canonical_object_count"] == 1
     assert result["quality_failure_count"] == 0
     assert result["p2_readiness"]["available"] is True
     assert result["p2_readiness"]["ready"] is False
@@ -86,6 +96,67 @@ def test_data_status_reports_missing_partition_as_quality_failure(tmp_path):
     assert result["quality_failure_count"] == 1
     assert result["quality_failures"][0]["kind"] == "missing_partition"
     assert result["p2_readiness"]["available"] is False
+
+
+def test_data_status_revalidates_manifest_replaced_at_same_path(tmp_path):
+    data_root = tmp_path / "axiom-data"
+    partition = data_root / "fx" / "normalized" / "dataset" / "version" / "partitions" / "part.parquet"
+    partition.parent.mkdir(parents=True)
+    partition.write_bytes(b"published partition")
+    manifest = partition.parent.parent / "manifest.json"
+    _write_json(
+        manifest,
+        {"partitions": [{"uri": "axiom-data://fx/normalized/dataset/version/partitions/part.parquet"}]},
+    )
+
+    first = read_data_status(tmp_path, data_root=data_root, control_root=tmp_path / "capture", now=NOW)
+    assert first["quality_failure_count"] == 0
+
+    manifest.write_text("not-json-and-a-different-size", encoding="utf-8")
+    second = read_data_status(tmp_path, data_root=data_root, control_root=tmp_path / "capture", now=NOW)
+    assert second["quality_failure_count"] == 1
+    assert second["quality_failures"][0]["kind"] == "invalid_manifest"
+
+
+def test_data_status_distinguishes_captured_source_only_and_empty_domains(tmp_path):
+    data_root = tmp_path / "axiom-data"
+    raw_object = data_root / "filings" / "raw" / "objects" / "a1" / "filing"
+    raw_object.parent.mkdir(parents=True)
+    raw_object.write_bytes(b"immutable filing")
+    history = data_root / "filings" / "history" / "stream" / "000000.jsonl"
+    history.parent.mkdir(parents=True)
+    history.write_text('{"payload": {}}\n', encoding="utf-8")
+    equity_source = tmp_path / "market_data" / "equity" / "MSFT.csv"
+    equity_source.parent.mkdir(parents=True)
+    equity_source.write_text("date,close\n2026-07-14,500\n", encoding="utf-8")
+
+    result = read_data_status(
+        tmp_path,
+        data_root=data_root,
+        control_root=tmp_path / "capture",
+        source_root=tmp_path,
+        now=NOW,
+    )
+
+    filings = next(row for row in result["domains"] if row["domain"] == "filings")
+    filings_raw = next(row for row in filings["tiers"] if row["tier"] == "raw")
+    filings_history = next(row for row in filings["tiers"] if row["tier"] == "history")
+    assert filings["status"] == "captured"
+    assert filings["canonical_object_count"] == 2
+    assert filings_raw["object_count"] == 1
+    assert filings_history["object_count"] == 1
+
+    equity = next(row for row in result["domains"] if row["domain"] == "equity")
+    assert equity["status"] == "source_only"
+    assert equity["source_file_count"] == 1
+    assert equity["canonical_object_count"] == 0
+    assert equity["data_present"] is True
+
+    crypto = next(row for row in result["domains"] if row["domain"] == "crypto")
+    assert crypto["status"] == "empty"
+    assert crypto["source_file_count"] == 0
+    assert crypto["canonical_object_count"] == 0
+    assert crypto["data_present"] is False
 
 
 def test_control_readiness_separates_baseline_from_p2(tmp_path, monkeypatch):
