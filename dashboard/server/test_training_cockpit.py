@@ -86,6 +86,34 @@ def test_data_status_reports_missing_partition_as_quality_failure(tmp_path):
     assert result["p2_readiness"]["available"] is False
 
 
+def test_data_status_ignores_hidden_staging_manifests(tmp_path):
+    data_root = tmp_path / "axiom-data"
+    partition = data_root / "fx" / "normalized" / "published" / "partitions" / "batch.parquet"
+    partition.parent.mkdir(parents=True)
+    partition.write_bytes(b"published partition")
+    _write_json(
+        data_root / "fx" / "normalized" / "published" / "manifest.json",
+        {"partitions": [{"uri": "axiom-data://fx/normalized/published/partitions/batch.parquet"}]},
+    )
+    _write_json(
+        data_root / "fx" / "normalized" / ".batch.tmp-incomplete" / "manifest.json",
+        {"partitions": [{"uri": "axiom-data://fx/normalized/final/partitions/not-published.parquet"}]},
+    )
+
+    result = read_data_status(
+        tmp_path, data_root=data_root, control_root=tmp_path / "capture", now=NOW,
+    )
+
+    normalized = next(
+        tier
+        for domain in result["domains"] if domain["domain"] == "fx"
+        for tier in domain["tiers"] if tier["tier"] == "normalized"
+    )
+    assert normalized["manifest_count"] == 1
+    assert normalized["partition_count"] == 1
+    assert result["quality_failure_count"] == 0
+
+
 def test_live_capture_status_separates_accrual_from_p2_duration(tmp_path):
     data_root = tmp_path / "axiom-data"
 

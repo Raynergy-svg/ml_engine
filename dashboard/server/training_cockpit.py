@@ -254,7 +254,14 @@ def read_data_status(
         tier_rows: list[dict[str, Any]] = []
         for tier in DATA_TIERS:
             tier_root = domain_root / tier
-            manifests = sorted(tier_root.rglob("manifest.json")) if tier_root.is_dir() else []
+            manifests = (
+                sorted(
+                    path for path in tier_root.rglob("manifest.json")
+                    if not any(part.startswith(".") for part in path.relative_to(tier_root).parts)
+                )
+                if tier_root.is_dir()
+                else []
+            )
             latest = max(manifests, key=lambda path: path.stat().st_mtime) if manifests else None
             partition_count = 0
             for manifest_path in manifests:

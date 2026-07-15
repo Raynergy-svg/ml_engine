@@ -208,7 +208,7 @@ function EvidencePanel({ evidence }: { evidence: AxiomTrainingCockpit["evidence"
     <Card>
       <SectionTitle right={<span className="flex gap-2"><Badge color={evidence.negative_result_count ? WARN : POS}>{evidence.negative_result_count} NEGATIVE</Badge><Badge color={POS}>{Object.keys(evidence.champions).length} CHAMPION</Badge><Badge color={disconnected.length ? WARN : POS}>{evidence.readers.length - disconnected.length}/{evidence.readers.length} READERS</Badge></span>}>Evidence · packages, disposition, verification, champions</SectionTitle>
       {evidence.lanes.map((lane) => <LaneRow key={lane.lane_id} lane={lane} />)}
-      {!evidence.lanes.length && <NotConnected label="No evidence packages indexed" hint="Readers are connected; lanes appear when signed packages are imported." />}
+      {!evidence.lanes.length && <NotConnected label="No evidence packages indexed" hint="Lanes appear when signed packages are imported; unavailable readers are listed below." />}
       {disconnected.length > 0 && <div className="border-t px-3 py-2 font-mono text-[10px] text-warn hairline">Reader status: {disconnected.map((reader) => `${reader.family} (${reader.reason ?? "unavailable"})`).join(" · ")}</div>}
     </Card>
   );
