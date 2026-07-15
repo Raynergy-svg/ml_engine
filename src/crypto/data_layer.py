@@ -101,11 +101,36 @@ def _month_range(start: str, end: str | None = None) -> list[str]:
     return out
 
 
-def _atomic_parquet(df: pd.DataFrame, path: Path) -> None:
+def _atomic_parquet(
+    df: pd.DataFrame,
+    path: Path,
+    *,
+    capture_metadata: dict | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     df.to_parquet(tmp)
-    tmp.replace(path)  # atomic on same filesystem
+    if capture_metadata and not df.empty:
+        try:
+            from src.data_platform.forward_capture import get_default_forward_capture
+
+            get_default_forward_capture().capture_crypto_partition(
+                venue=str(capture_metadata["venue"]),
+                symbol=str(capture_metadata["symbol"]),
+                data_kind=str(capture_metadata["data_kind"]),
+                interval=str(capture_metadata["interval"]),
+                parquet_bytes=tmp.read_bytes(),
+                first_event_time=df.index.min().to_pydatetime(),
+                last_event_time=df.index.max().to_pydatetime(),
+                row_count=len(df),
+                is_initial_backfill=bool(capture_metadata["is_initial_backfill"]),
+            )
+        except Exception as capture_error:
+            tmp.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"canonical crypto publication failed before cache projection: {path}"
+            ) from capture_error
+    tmp.replace(path)  # atomic compatibility cache projection on same filesystem
 
 
 # --------------------------------------------------------------------------- #
@@ -167,8 +192,21 @@ def fetch_binance_funding(symbol: str, *, refresh: bool = False) -> pd.DataFrame
     Empty DataFrame if the symbol has no archive.
     """
     cache = CACHE_DIR / "binance" / "funding" / f"{symbol}.parquet"
-    if cache.exists() and not refresh:
-        return pd.read_parquet(cache)
+    had_cache = cache.exists()
+    if not refresh:
+        from src.crypto.research_store import load_history, partition_history
+
+        partitioned = load_history(
+            [symbol], "funding", start="2020-01-01", end="2100-01-01"
+        )
+        if not partitioned.empty:
+            return partitioned.drop(
+                columns=["entity", "year", "month"], errors="ignore"
+            ).set_index("event_time")
+        if cache.exists():
+            cached = pd.read_parquet(cache)
+            partition_history(symbol, "funding", cached)
+            return cached
 
     frames = []
     for ym in _month_range(BINANCE_FUNDING_START):
@@ -195,7 +233,20 @@ def fetch_binance_funding(symbol: str, *, refresh: bool = False) -> pd.DataFrame
             .set_index("funding_time")
             .sort_index()[["funding_rate", "interval_hours"]])
     df["funding_rate"] = df["funding_rate"].astype(float)
-    _atomic_parquet(df, cache)
+    _atomic_parquet(
+        df,
+        cache,
+        capture_metadata={
+            "venue": "binance",
+            "symbol": symbol,
+            "data_kind": "funding",
+            "interval": "funding_interval",
+            "is_initial_backfill": not had_cache,
+        },
+    )
+    from src.crypto.research_store import partition_history
+
+    partition_history(symbol, "funding", df)
     return df
 
 
@@ -206,8 +257,22 @@ def fetch_binance_klines(symbol: str, interval: str = "1d", *,
     Returns DataFrame indexed by UTC ``open_time`` with float OHLCV columns.
     """
     cache = CACHE_DIR / "binance" / "klines" / interval / f"{symbol}.parquet"
-    if cache.exists() and not refresh:
-        return pd.read_parquet(cache)
+    had_cache = cache.exists()
+    if not refresh:
+        from src.crypto.research_store import load_history, partition_history
+
+        kind = f"klines_{interval}"
+        partitioned = load_history(
+            [symbol], kind, start="2020-01-01", end="2100-01-01"
+        )
+        if not partitioned.empty:
+            return partitioned.drop(
+                columns=["entity", "year", "month"], errors="ignore"
+            ).set_index("event_time")
+        if cache.exists():
+            cached = pd.read_parquet(cache)
+            partition_history(symbol, kind, cached)
+            return cached
 
     cols = ["open_time", "open", "high", "low", "close", "volume", "close_time",
             "quote_volume", "trades", "taker_base", "taker_quote", "ignore"]
@@ -230,7 +295,20 @@ def fetch_binance_klines(symbol: str, interval: str = "1d", *,
     keep = ["open", "high", "low", "close", "volume", "quote_volume", "taker_base"]
     df = (df.drop_duplicates(subset=["open_time"]).set_index("open_time")
             .sort_index()[keep].astype(float))
-    _atomic_parquet(df, cache)
+    _atomic_parquet(
+        df,
+        cache,
+        capture_metadata={
+            "venue": "binance",
+            "symbol": symbol,
+            "data_kind": "klines",
+            "interval": interval,
+            "is_initial_backfill": not had_cache,
+        },
+    )
+    from src.crypto.research_store import partition_history
+
+    partition_history(symbol, f"klines_{interval}", df)
     return df
 
 
@@ -241,6 +319,7 @@ def fetch_okx_ohlcv(inst_id: str, bar: str = "1D", *,
                     refresh: bool = False) -> pd.DataFrame:
     """Paginated OKX history candles (back to ~2020 for BTC). For cross-check."""
     cache = CACHE_DIR / "okx" / "ohlcv" / bar / f"{inst_id}.parquet"
+    had_cache = cache.exists()
     if cache.exists() and not refresh:
         return pd.read_parquet(cache)
     rows: list[list] = []
@@ -264,7 +343,17 @@ def fetch_okx_ohlcv(inst_id: str, bar: str = "1D", *,
     df["ts"] = pd.to_datetime(df["ts"].astype("int64"), unit="ms", utc=True)
     df = (df.drop_duplicates(subset=["ts"]).set_index("ts").sort_index())
     df = df[["open", "high", "low", "close", "volume"]].astype(float)
-    _atomic_parquet(df, cache)
+    _atomic_parquet(
+        df,
+        cache,
+        capture_metadata={
+            "venue": "okx",
+            "symbol": inst_id,
+            "data_kind": "ohlcv",
+            "interval": bar,
+            "is_initial_backfill": not had_cache,
+        },
+    )
     return df
 
 
@@ -293,6 +382,7 @@ def fetch_hl_funding(coin: str, start_ms: int = 1688169600000, *,
                      refresh: bool = False) -> pd.DataFrame:
     """Hourly funding for one HL coin from 2023-07 (paginated, full retention)."""
     cache = CACHE_DIR / "hyperliquid" / "funding" / f"{coin}.parquet"
+    had_cache = cache.exists()
     if cache.exists() and not refresh:
         return pd.read_parquet(cache)
     rows: list[dict] = []
@@ -317,7 +407,17 @@ def fetch_hl_funding(coin: str, start_ms: int = 1688169600000, *,
     df["funding_rate"] = df["fundingRate"].astype(float)
     df = (df.drop_duplicates(subset=["funding_time"]).set_index("funding_time")
             .sort_index()[["funding_rate"]])
-    _atomic_parquet(df, cache)
+    _atomic_parquet(
+        df,
+        cache,
+        capture_metadata={
+            "venue": "hyperliquid",
+            "symbol": coin,
+            "data_kind": "funding",
+            "interval": "1h",
+            "is_initial_backfill": not had_cache,
+        },
+    )
     return df
 
 

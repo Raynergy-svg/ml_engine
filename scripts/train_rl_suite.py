@@ -18,6 +18,7 @@ Usage:
 """
 import argparse
 import gc
+import hashlib
 import json
 import os
 import sys
@@ -50,6 +51,7 @@ logger = logging.getLogger("rl_suite")
 CONFIG_PATH = str(PROJECT_ROOT / "config" / "config_m1_optimized.yaml")
 MODELS_DIR = PROJECT_ROOT / "trained_data" / "models"
 CACHE_DIR = PROJECT_ROOT / "trained_data" / "cache" / "training_data"
+RL_MATRIX_DIR = PROJECT_ROOT / "trained_data" / "cache" / "rl_matrices"
 
 # Master pairs for building ensemble predictions
 MASTER_PAIRS = ["GBP_JPY", "EUR_GBP", "AUD_USD", "USD_CAD", "AUD_NZD"]
@@ -133,13 +135,16 @@ def generate_ensemble_predictions(model_dir: Path, df_feat: pd.DataFrame, featur
                     X = features[:, :feat_dim]
                 else:
                     X = np.pad(features, ((0, 0), (0, feat_dim - features.shape[1])))
-                # Create sequences
-                sequences = []
-                for i in range(seq_len, len(X)):
-                    sequences.append(X[i-seq_len:i])
-                if sequences:
-                    X_seq = np.array(sequences)
-                    preds = model.predict(X_seq, verbose=0, batch_size=256).flatten()
+                if len(X) > seq_len:
+                    from src.training.performance.rl_dataset import predict_fixed_windows
+
+                    preds = predict_fixed_windows(
+                        model,
+                        X,
+                        sequence_length=seq_len,
+                        feature_dimension=feat_dim,
+                        batch_size=256,
+                    )
                     predictions[seq_len:seq_len+len(preds), 0] = preds
             tf.keras.backend.clear_session()
         except Exception as e:
@@ -164,6 +169,72 @@ def generate_ensemble_predictions(model_dir: Path, df_feat: pd.DataFrame, featur
             logger.warning(f"Could not load ridge for {model_dir.name}: {e}")
 
     return predictions
+
+
+def _rl_source_identity(pairs: list[str], candles: int) -> str:
+    """Digest every mutable input before deciding whether matrices may be reused."""
+    digest = hashlib.sha256()
+    digest.update(f"rl-suite-v2|candles={candles}".encode())
+    candidates = [Path(CONFIG_PATH), Path(__file__)]
+    for pair in sorted(pairs):
+        candidates.append(CACHE_DIR / f"{pair}_H1_{candles}.csv")
+        model_dir = MODELS_DIR / pair
+        candidates.extend(
+            [
+                model_dir / "transformer_direction.keras",
+                model_dir / "ridge_confidence.pkl",
+            ]
+        )
+    for path in candidates:
+        digest.update(str(path.relative_to(PROJECT_ROOT)).encode())
+        if path.exists():
+            file_digest = hashlib.sha256()
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    file_digest.update(chunk)
+            digest.update(file_digest.digest())
+        else:
+            digest.update(b"MISSING")
+    return digest.hexdigest()
+
+
+def prepare_rl_training_data(pairs: list[str], candles: int = 25000) -> tuple[dict, Path]:
+    """Reuse or build one immutable matrix artifact before any PPO/SAC fit begins."""
+    from src.training.performance.rl_dataset import (
+        RLMatrixBundle,
+        find_rl_matrices,
+        load_rl_matrices,
+        materialize_rl_matrices,
+    )
+
+    source_identity = _rl_source_identity(pairs, candles)
+    existing = find_rl_matrices(RL_MATRIX_DIR, source_identity=source_identity)
+    if existing is not None:
+        logger.info("Reusing immutable RL matrices at %s", existing)
+        bundle = load_rl_matrices(existing)
+        return {
+            "features": bundle.features,
+            "prices": bundle.prices,
+            "ensemble_predictions": bundle.ensemble_predictions,
+        }, existing
+
+    raw = load_ensemble_data_for_rl(pairs, candles)
+    if not raw:
+        return {}, RL_MATRIX_DIR
+    bundle = RLMatrixBundle(
+        features=raw["features"],
+        ensemble_predictions=raw["ensemble_predictions"],
+        prices=raw["prices"],
+    )
+    artifact = materialize_rl_matrices(
+        bundle, RL_MATRIX_DIR, source_identity=source_identity
+    )
+    mapped = load_rl_matrices(artifact)
+    return {
+        "features": mapped.features,
+        "prices": mapped.prices,
+        "ensemble_predictions": mapped.ensemble_predictions,
+    }, artifact
 
 
 def train_position_sizer(data: dict, timesteps: int = 50000) -> dict:
@@ -322,18 +393,27 @@ def main():
     parser.add_argument("--timesteps", type=int, default=50000,
                         help="PPO/SAC timesteps (default: 50000)")
     parser.add_argument("--candles", type=int, default=25000)
+    parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help="materialize immutable matrices and stop before fitting",
+    )
     args = parser.parse_args()
 
     t0 = time.time()
 
     # Load ensemble data from cached master pair training data
     logger.info("Loading ensemble data for RL training...")
-    data = load_ensemble_data_for_rl(MASTER_PAIRS, args.candles)
+    data, matrix_artifact = prepare_rl_training_data(MASTER_PAIRS, args.candles)
     if not data:
         logger.error("No training data available. Run core model training first.")
         sys.exit(1)
 
     logger.info(f"Loaded {len(data['features']):,} samples across {len(MASTER_PAIRS)} pairs")
+    logger.info("RL matrix artifact: %s", matrix_artifact)
+    if args.prepare_only:
+        logger.info("Preparation complete; no RL fitting requested")
+        return
 
     # Train components
     results = {}
@@ -355,6 +435,7 @@ def main():
             "results": results,
             "total_duration_s": total_time,
             "timesteps": args.timesteps,
+            "matrix_artifact": str(matrix_artifact),
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         }, f, indent=2, sort_keys=True, default=str)
 
