@@ -123,11 +123,16 @@ def read_live_capture_status(
     *,
     data_root: str | Path,
     required_pairs: list[str] | tuple[str, ...],
+    runtime_data_root: str | Path | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Project current writer and canonical-accrual truth independently of P2."""
     repo_root = Path(repo_root)
     data_root = Path(data_root)
+    runtime_data_root = Path(
+        runtime_data_root
+        or os.getenv("AXIOM_RUNTIME_DATA_ROOT", repo_root / "trained_data")
+    )
     now = (now or _utc_now()).astimezone(timezone.utc)
     pair_rows = [
         _capture_stream_summary(data_root, "fx", "tick_spread", str(pair))
@@ -145,7 +150,7 @@ def read_live_capture_status(
         for row in pair_rows
     )
 
-    health_path = repo_root / "trained_data" / "ticks" / "_health.json"
+    health_path = runtime_data_root / "ticks" / "_health.json"
     health = _json(health_path, {})
     if not isinstance(health, Mapping):
         health = {}
@@ -246,7 +251,13 @@ def read_data_status(
     """Summarize canonical data manifests and the P2 forward-only gate."""
     repo_root = Path(repo_root)
     data_root = Path(data_root or os.getenv("AXIOM_DATA_ROOT", repo_root / "axiom-data"))
-    control_root = Path(control_root or repo_root / "trained_data" / "forward_capture")
+    control_root = Path(
+        control_root
+        or os.getenv(
+            "AXIOM_FORWARD_CAPTURE_ROOT",
+            repo_root / "trained_data" / "forward_capture",
+        )
+    )
     now = (now or _utc_now()).astimezone(timezone.utc)
     failures: list[dict[str, str]] = []
     domains: list[dict[str, Any]] = []
@@ -684,7 +695,13 @@ def read_training_cockpit(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
     job_root = Path(os.getenv("AXIOM_JOB_JOURNAL", evidence_root / "dashboard_jobs"))
     monitor_root = Path(os.getenv("AXIOM_FORWARD_MONITOR_ROOT", evidence_root / "forward_monitoring"))
     data_root = str(Path(os.getenv("AXIOM_DATA_ROOT", repo_root / "axiom-data")))
-    control_root = str(repo_root / "trained_data" / "forward_capture")
+    runtime_data_root = str(Path(os.getenv(
+        "AXIOM_RUNTIME_DATA_ROOT", repo_root / "trained_data"
+    )))
+    control_root = str(Path(os.getenv(
+        "AXIOM_FORWARD_CAPTURE_ROOT",
+        Path(runtime_data_root) / "forward_capture",
+    )))
     cache_key = (str(repo_root), data_root, control_root)
     with _DATA_CACHE_LOCK:
         cached = _DATA_CACHE.get(cache_key)
@@ -707,6 +724,7 @@ def read_training_cockpit(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
             repo_root,
             data_root=data_root,
             required_pairs=[str(pair) for pair in required_pairs],
+            runtime_data_root=runtime_data_root,
         ),
     }
     evidence = read_evidence_status(evidence_root)

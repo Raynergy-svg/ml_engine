@@ -239,6 +239,24 @@ def test_live_capture_status_separates_accrual_from_p2_duration(tmp_path):
     assert degraded["tick"]["status"] == "delayed"
 
 
+def test_live_capture_status_honors_separate_runtime_data_root(tmp_path):
+    runtime_root = tmp_path / "live-runtime"
+    _write_json(
+        runtime_root / "ticks" / "_health.json",
+        {"stream_status": "running", "ticks_received_total": 321},
+    )
+
+    result = read_live_capture_status(
+        tmp_path / "clean-code",
+        data_root=tmp_path / "axiom-data",
+        required_pairs=(),
+        runtime_data_root=runtime_root,
+        now=NOW,
+    )
+
+    assert result["tick"]["writer_status"] == "running"
+    assert result["tick"]["ticks_received_session"] == 321
+
 def test_evidence_status_preserves_negative_results_and_lineage(tmp_path):
     root = tmp_path / "evidence"
     retired = "a" * 64
