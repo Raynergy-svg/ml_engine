@@ -1,6 +1,6 @@
 # AXIOM / Buddy LaunchAgents
 
-Daemonizes the four background processes so a **reboot or logout never silently
+Daemonizes the resident control processes and installs the scheduled capture jobs so a **reboot or logout never silently
 takes the whole stack down again** (root cause of the 2026-06-30 11:35 UTC outage:
 a machine reboot reaped four plain detached processes that nothing relaunched).
 
@@ -10,9 +10,23 @@ a machine reboot reaped four plain detached processes that nothing relaunched).
 | `com.axiom.web`   | Next.js operator cockpit | `:51999` | dev server |
 | `com.buddy.trend` | OANDA daily-trend trading loop | — | **PRACTICE only** |
 | `com.buddy.tier7` | Tier 7 bounded self-heal loop | — | L5-clamped |
-All four: `RunAtLoad=true` (start at login) + `KeepAlive=true` (restart on exit).
+| `com.axiom.operator` | Resident AXIOM reasoning loop | — | shadow/proposal-safe; subscription-backed |
+| `com.buddy.exposure_history` | Hedge exposure-history capture | — | SHADOW / analysis-only training bridge |
+| `com.buddy.tick_capture` | OANDA pricing-stream capture | — | **PRACTICE-only**, read-only; all 19 P2 pairs |
+| `com.buddy.forward_daily` | Track B + hedge + P2 capture graph | — | Daily, analysis-only |
+| `com.buddy.crypto_refresh` | Binance kline/funding refresh | — | Monthly, public data only |
+
+Resident services use `RunAtLoad=true` + `KeepAlive=true`. The daily/monthly
+capture jobs use `StartCalendarInterval`, `RunAtLoad=false`, and
+`KeepAlive=false`; installing them does not run an unbounded research process.
 `WorkingDirectory` is pinned to the repo root so `.env.local` (OANDA practice creds)
 is found by the dotenv walk — the daemons authenticate without shell env.
+
+`com.buddy.exposure_history` is observability/training-bridge only: it reads the
+trend lane's `account_state.json` plus local tick parquets and appends
+`trained_data/hedge/exposure_history.jsonl`. It imports nothing from the
+trade/order plane and cannot place orders, unhalt, flatten, or mutate broker
+state.
 
 ## Fifth agent: com.buddy.learning_loop (NOT installed by load.sh)
 
@@ -73,10 +87,15 @@ today.
 ## Usage
 
 ```bash
-bash scripts/axiom_launchd/load.sh        # install + (re)load all four
+bash scripts/axiom_launchd/load.sh        # install/reload resident services + capture schedules
 launchctl print gui/$(id -u)/com.axiom.api   # inspect one service
 launchctl bootout gui/$(id -u)/com.buddy.trend   # stop + unload one (e.g. to pause trading)
 ```
+
+`load.sh` is deliberately headless: none of its resident services starts the old
+Textual/TUI entrypoints (`./buddy`, `src.tui`, or `src/tui/embedded_scanner.py`).
+Historical TUI references in docs/readers are compatibility labels only; resident
+startup is limited to the LaunchAgents listed above.
 
 To **stop the bot from trading**, prefer setting `state.json halted=true` (or the
 AXIOM control panel HALT) over unloading the agent — that keeps the supervisor up

@@ -27,6 +27,11 @@
   <true/>
   <key>ThrottleInterval</key>
   <integer>30</integer>
+  <!-- Shutdown drains the tick buffer to Parquet under _persist_lock, which can
+       outlast launchd's 5s default and get the process SIGKILLed mid-flush
+       (observed 2026-07-14: SIGTERM at 18:49:14, no final flush, killed -9). -->
+  <key>ExitTimeOut</key>
+  <integer>30</integer>
   <key>StandardOutPath</key>
   <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/tick_capture.out</string>
   <key>StandardErrorPath</key>

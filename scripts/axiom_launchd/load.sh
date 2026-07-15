@@ -14,6 +14,13 @@
 #                      — PRACTICE-only read-only quotes for all 19 P2 pairs
 #   com.buddy.exposure_history
 #                      — analysis-only canonical portfolio-exposure snapshots
+#   com.buddy.forward_daily
+#                      — scheduled Track B / hedge / P2 capture graph
+#   com.buddy.crypto_refresh
+#                      — scheduled public kline/funding refresh
+#   com.axiom.safety_monitor
+#                      — Read-only safety watchdog, 60s interval, --halt-on-critical
+#                        (bounded halt endpoint only; never orders, never loosens gates)
 #
 # NOTE: com.buddy.learning_loop.plist (market-closed continual-learning batch,
 # scripts/offline_learning_cycle.py) is deliberately NOT in this script's
@@ -32,7 +39,7 @@ set -euo pipefail
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="$HOME/Library/LaunchAgents"
 UID_NUM="$(id -u)"
-LABELS=(com.axiom.api com.axiom.web com.buddy.trend com.buddy.tier7 com.axiom.operator com.buddy.tick_capture com.buddy.exposure_history)
+LABELS=(com.axiom.api com.axiom.web com.buddy.trend com.buddy.tier7 com.axiom.operator com.buddy.tick_capture com.buddy.exposure_history com.buddy.forward_daily com.buddy.crypto_refresh com.axiom.safety_monitor)
 
 mkdir -p "$DEST"
 mkdir -p "$(cd "$SRC_DIR/../.." && pwd)/trained_data/axiom"

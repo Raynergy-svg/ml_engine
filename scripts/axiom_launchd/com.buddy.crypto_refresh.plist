@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.buddy.crypto_refresh</string>
+  <!-- Monthly public-data refresh only; no exchange account or order client. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin/python3</string>
+    <string>scripts/refresh_crypto_forward_data.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/buddy/Documents/ml_engine</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Day</key><integer>2</integer>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>20</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/crypto_refresh.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/crypto_refresh.out</string>
+</dict>
+</plist>

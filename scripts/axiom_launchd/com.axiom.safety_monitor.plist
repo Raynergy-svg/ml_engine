@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.axiom.safety_monitor</string>
+  <!-- Read-only safety/rules watchdog. Previously started ad-hoc (nohup) and died
+       silently on 2026-07-07 with nothing to restart it — the ONLY loop in the
+       stack without a supervisor. Interval mode tolerates API downtime (logs a
+       fatal row and keeps polling); KeepAlive restarts it if the process itself
+       dies. It never places orders and never loosens gates; --halt-on-critical
+       may only call the bounded control halt endpoint. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin/python3</string>
+    <string>scripts/axiom_safety_monitor.py</string>
+    <string>--interval</string>
+    <string>60</string>
+    <string>--halt-on-critical</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/buddy/Documents/ml_engine</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/safety_monitor.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/safety_monitor.out</string>
+</dict>
+</plist>
