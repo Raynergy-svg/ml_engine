@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Literal
@@ -12,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from dashboard.server.training_cockpit import REPO_ROOT, read_training_cockpit
+from dashboard.server.training_identity import require_runtime_git_commit
 from dashboard.server.training_jobs import LocalTrainingJobRunner, TrainingJobJournal
 from src.evidence.hashing import sha256_bytes
 
@@ -33,6 +35,7 @@ class RunRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     dataset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     lane: Literal["risk_target"] = "risk_target"
+    program: Literal["risk_target_baseline"]
 
 
 class AxiomTrainingRunRequest(BaseModel):
@@ -78,6 +81,17 @@ def _safe_partition(base: Path, relative: object) -> Path:
     return path
 
 
+def _configured_cpu_hourly_rate() -> Decimal:
+    raw = os.getenv("AXIOM_LOCAL_CPU_USD_PER_HOUR", "0")
+    try:
+        rate = Decimal(raw)
+    except InvalidOperation as exc:
+        raise HTTPException(status_code=503, detail="invalid local training cost policy") from exc
+    if not rate.is_finite() or rate < 0:
+        raise HTTPException(status_code=503, detail="invalid local training cost policy")
+    return rate
+
+
 def _load_run_dataset(request: RunRequestBody) -> tuple[dict[str, bytes], dict[str, Any], str]:
     descriptor_path = Path(os.getenv(
         "AXIOM_RISK_TARGET_DATASET",
@@ -109,14 +123,14 @@ def _load_run_dataset(request: RunRequestBody) -> tuple[dict[str, bytes], dict[s
             "dataset_id": str(descriptor["dataset_id"]),
             "coverage_start": date.fromisoformat(str(descriptor["coverage_start"])),
             "coverage_end": date.fromisoformat(str(descriptor["coverage_end"])),
-            "git_commit": str(descriptor["git_commit"]),
+            "git_commit": require_runtime_git_commit(REPO_ROOT),
             "retrieved_at": now,
             "created_at": now,
             "job_id": job_id,
         }
     except HTTPException:
         raise
-    except (KeyError, OSError, UnicodeDecodeError, ValueError, TypeError) as exc:
+    except (KeyError, OSError, RuntimeError, UnicodeDecodeError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=503, detail=f"risk-target run dataset is unreadable: {exc}") from exc
     return partitions, kwargs, job_id
 
@@ -131,14 +145,31 @@ def _runner(journal_root: str) -> LocalTrainingJobRunner:
     return LocalTrainingJobRunner(TrainingJobJournal(journal_root))
 
 
-def _completion_fields(result: Dict[str, Any], elapsed: float) -> Dict[str, Any]:
+def _completion_fields(
+    result: Dict[str, Any], elapsed: float, cpu_hourly_rate: Decimal = Decimal("0")
+) -> Dict[str, Any]:
     manifest = result.get("job_manifest", {})
+    cost = (Decimal(str(elapsed)) * cpu_hourly_rate / Decimal("3600")).quantize(
+        Decimal("0.000001"), rounding=ROUND_HALF_UP
+    )
     return {
         "manifest_digest": result.get("job_manifest_digest"),
+        "git_commit": manifest.get("git_commit"),
         "container_digest": manifest.get("container_digest"),
+        "configuration_digest": manifest.get("configuration_digest"),
+        "feature_pipeline_version": manifest.get("feature_pipeline_version"),
+        "assigned_unit": manifest.get("assigned_unit"),
+        "trial_budget": manifest.get("trial_budget"),
         "resource_class": manifest.get("resource_class"),
         "resource_usage": {"wall_seconds": elapsed},
-        "cost": None,
+        "cost": float(cost),
+        "cost_currency": "USD",
+        "cost_basis": (
+            "local_unmetered_no_incremental_provider_charge"
+            if cpu_hourly_rate == 0
+            else "configured_local_cpu_hourly_rate"
+        ),
+        "cost_rate_per_hour": float(cpu_hourly_rate),
         "outcomes": result.get("outcomes", {}),
     }
 
@@ -159,11 +190,16 @@ def run_training(body: AxiomTrainingRunRequest) -> Dict[str, Any]:
     # queued work item has evidence-production authority only and is executed
     # by one bounded local worker; there is no distributed orchestrator here.
     _require_enabled()
+    cpu_hourly_rate = _configured_cpu_hourly_rate()
     control = _control()
     request = body.request.model_dump(mode="json")
     partitions, slice_kwargs, base_job_id = _load_run_dataset(body.request)
     job_id = f"{base_job_id}-{sha256_bytes(body.credential.nonce.encode('utf-8'))[:12]}"
-    slice_kwargs = {**slice_kwargs, "job_id": job_id}
+    slice_kwargs = {
+        **slice_kwargs,
+        "job_id": job_id,
+        "cost_rate_per_hour": float(cpu_hourly_rate),
+    }
     try:
         credential = OperatorCredential.from_mapping(body.credential.model_dump(mode="json"))
         journal = _journal()
@@ -174,10 +210,20 @@ def run_training(body: AxiomTrainingRunRequest) -> Dict[str, Any]:
             slice_kwargs=slice_kwargs,
         )
         journal.transition(
-            job_id, "submitted", fields={"lane": "risk_target", "source": "dashboard"}
+            job_id,
+            "submitted",
+            fields={
+                "lane": "risk_target",
+                "program": body.request.program,
+                "source": "dashboard",
+            },
         )
         _runner(str(journal.root.resolve())).submit(
-            job_id, work_item, completion_fields=_completion_fields
+            job_id,
+            work_item,
+            completion_fields=lambda result, elapsed: _completion_fields(
+                result, elapsed, cpu_hourly_rate
+            ),
         )
     except AuthorizationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc

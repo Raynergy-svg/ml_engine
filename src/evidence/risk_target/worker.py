@@ -19,7 +19,9 @@ promote, quarantine, or approve anything — it only *creates* evidence.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from typing import Mapping
 
@@ -41,7 +43,16 @@ from src.evidence.hashing import content_digest, sha256_bytes
 from src.evidence.signing import Ed25519Signer, TrustStore, verify_envelope
 
 from .evaluation import EvaluationParams, evaluate_partitions
-from .models import HeadResult, PackagedHead, WorkerOutput
+from .models import (
+    CAPABILITY_PROFILE_PATH,
+    DATASET_MANIFEST_PATH,
+    EVALUATION_REPORT_PATH,
+    JOB_MANIFEST_PATH,
+    SIGNED_ENVELOPE_MEDIA_TYPE,
+    HeadResult,
+    PackagedHead,
+    WorkerOutput,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +112,8 @@ def _build_evaluation_report(
     job_digest: str,
     producer_id: str,
     created_at: datetime,
+    resource_usage: Mapping[str, object],
+    cost: Mapping[str, object],
 ) -> EvaluationReport:
     metrics = {
         name: MetricValue(value=float(value), tolerance=head.metric_tolerances.get(name))
@@ -120,6 +133,8 @@ def _build_evaluation_report(
         metrics=metrics,
         gates=head.gates,
         incumbent_comparison=dict(head.incumbent_comparison),
+        resource_usage=dict(resource_usage),
+        cost=dict(cost),
         passed=head.passed,
     )
 
@@ -128,13 +143,23 @@ def _package_head(
     head: HeadResult,
     *,
     job: JobManifest,
+    job_envelope: SignedEnvelope,
+    dataset_manifest_envelope: SignedEnvelope,
+    capability_profile_envelope: SignedEnvelope,
     job_digest: str,
     producer: Ed25519Signer,
     producer_id: str,
     created_at: datetime,
+    resource_usage: Mapping[str, object],
+    cost: Mapping[str, object],
 ) -> PackagedHead:
     report = _build_evaluation_report(
-        head, job_digest=job_digest, producer_id=producer_id, created_at=created_at
+        head,
+        job_digest=job_digest,
+        producer_id=producer_id,
+        created_at=created_at,
+        resource_usage=resource_usage,
+        cost=cost,
     )
     report_envelope = producer.sign(report, created_at=created_at)
 
@@ -146,6 +171,28 @@ def _package_head(
         size_bytes=len(head.model_bytes),
         media_type=head.media_type,
     )
+    lineage_files = {
+        JOB_MANIFEST_PATH: canonical_bytes(job_envelope),
+        DATASET_MANIFEST_PATH: canonical_bytes(dataset_manifest_envelope),
+        CAPABILITY_PROFILE_PATH: canonical_bytes(capability_profile_envelope),
+        EVALUATION_REPORT_PATH: canonical_bytes(report_envelope),
+    }
+    lineage_refs = tuple(
+        ArtifactRef(
+            artifact_id={
+                JOB_MANIFEST_PATH: "signed-job-manifest",
+                DATASET_MANIFEST_PATH: "signed-dataset-manifest",
+                CAPABILITY_PROFILE_PATH: "signed-capability-profile",
+                EVALUATION_REPORT_PATH: "signed-evaluation-report",
+            }[relative_path],
+            relative_path=relative_path,
+            digest=sha256_bytes(data),
+            size_bytes=len(data),
+            media_type=SIGNED_ENVELOPE_MEDIA_TYPE,
+        )
+        for relative_path, data in lineage_files.items()
+    )
+    package_files = {artifact_path: head.model_bytes, **lineage_files}
     package = EvidencePackage(
         package_id=f"risk-target-{head.head_id}",
         lane_id=head.lane_id,
@@ -155,12 +202,16 @@ def _package_head(
         dataset_manifest_digests=job.dataset_manifest_digests,
         evaluation_report_digests=(report_envelope.payload_digest,),
         artifacts=(artifact,),
+        logs=lineage_refs,
         safety_assertions=(
             SafetyAssertion(assertion_id="remote_worker_no_broker_credentials", passed=True),
             SafetyAssertion(assertion_id="remote_worker_cannot_read_control_state", passed=True),
             SafetyAssertion(assertion_id="worker_cannot_promote_or_overwrite_incumbent", passed=True),
         ),
-        checksums={artifact_path: artifact.digest},
+        checksums={
+            artifact_path: artifact.digest,
+            **{ref.relative_path: ref.digest for ref in lineage_refs},
+        },
     )
     package_envelope = producer.sign(package, created_at=created_at)
     package_digest = package_envelope.payload_digest
@@ -186,7 +237,7 @@ def _package_head(
         package=package,
         package_digest=package_digest,
         package_envelope=package_envelope,
-        files={artifact_path: head.model_bytes},
+        files=package_files,
         evaluation_report_envelope=report_envelope,
         created_event_envelope=created_envelope,
         result_passed=head.passed,
@@ -206,6 +257,7 @@ def run_worker(
     params: EvaluationParams | None = None,
     evaluator: Evaluator = evaluate_partitions,
     registry_publish: RegistryPublish = _fail_open_registry,
+    cost_rate_per_hour: float = 0.0,
 ) -> WorkerOutput:
     """Execute one signed risk-target job and emit per-head evidence."""
     params = params or EvaluationParams()
@@ -226,7 +278,16 @@ def run_worker(
 
     _verify_partition_hashes(dataset_manifest, partitions)
 
+    try:
+        rate = Decimal(str(cost_rate_per_hour))
+    except Exception as exc:  # noqa: BLE001 - invalid policy must fail before compute
+        raise ValueError("cost_rate_per_hour must be a finite non-negative number") from exc
+    if not rate.is_finite() or rate < 0:
+        raise ValueError("cost_rate_per_hour must be a finite non-negative number")
+
+    evaluation_started = time.monotonic()
     results = evaluator(partitions, params)
+    evaluation_wall_seconds = max(0.0, time.monotonic() - evaluation_started)
     produced = {head.head_id: head for head in results}
     expected = set(job.expected_outputs)
     if set(produced) != expected:
@@ -235,14 +296,42 @@ def run_worker(
         )
 
     job_digest = job_envelope.payload_digest
+    head_count = len(produced)
+    allocated_wall_seconds = evaluation_wall_seconds / head_count
+    allocated_cost = (
+        Decimal(str(allocated_wall_seconds)) * rate / Decimal("3600")
+    ).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    resource_usage = {
+        "wall_seconds": allocated_wall_seconds,
+        "scope": "producer_evaluation",
+        "allocation": "equal_share_of_job_evaluator_wall_time",
+        "head_count": head_count,
+    }
+    cost = {
+        "amount": float(allocated_cost),
+        "currency": "USD",
+        "basis": (
+            "local_unmetered_no_incremental_provider_charge"
+            if rate == 0
+            else "configured_local_cpu_hourly_rate"
+        ),
+        "rate_per_hour": float(rate),
+        "scope": "producer_evaluation",
+        "allocation": "equal_share_of_job_evaluator_wall_time",
+    }
     packaged = tuple(
         _package_head(
             produced[head_id],
             job=job,
+            job_envelope=job_envelope,
+            dataset_manifest_envelope=dataset_manifest_envelope,
+            capability_profile_envelope=capability_profile_envelope,
             job_digest=job_digest,
             producer=producer,
             producer_id=producer_id,
             created_at=created_at,
+            resource_usage=resource_usage,
+            cost=cost,
         )
         for head_id in sorted(produced)
     )

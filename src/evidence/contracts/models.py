@@ -239,6 +239,8 @@ class EvaluationReport(StrictContract):
     regime_metrics: dict[Identifier, dict[Identifier, MetricValue]] = Field(default_factory=dict)
     gates: tuple[GateResult, ...] = Field(min_length=1)
     incumbent_comparison: dict[str, JsonValue]
+    resource_usage: dict[str, JsonValue] = Field(default_factory=dict)
+    cost: dict[str, JsonValue] = Field(default_factory=dict)
     passed: bool
 
     _utc_created = field_validator("created_at")(_require_utc)

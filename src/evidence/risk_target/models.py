@@ -26,6 +26,15 @@ from src.evidence.contracts import (
 VOLATILITY_HEAD_ID = "forward_volatility"
 DRAWDOWN_HEAD_ID = "drawdown_state"
 
+# Signed lineage objects are package members, not transient worker inputs.  The
+# fixed paths make them independently retrievable after process restart while
+# their bytes remain covered by the producer-signed EvidencePackage checksums.
+JOB_MANIFEST_PATH = "manifests/job.json"
+DATASET_MANIFEST_PATH = "manifests/dataset.json"
+CAPABILITY_PROFILE_PATH = "manifests/capability.json"
+EVALUATION_REPORT_PATH = "evaluations/report.json"
+SIGNED_ENVELOPE_MEDIA_TYPE = "application/vnd.axiom.signed-envelope+json"
+
 
 @dataclass(frozen=True)
 class HeadResult:

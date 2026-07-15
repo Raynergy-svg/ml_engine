@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import threading
 from datetime import date, datetime, timedelta, timezone
 
@@ -16,6 +17,7 @@ import pytest
 
 from dashboard.server.training_cockpit import (
     read_data_status,
+    read_control_readiness,
     read_evidence_status,
     read_forward_monitoring,
     read_jobs,
@@ -84,6 +86,69 @@ def test_data_status_reports_missing_partition_as_quality_failure(tmp_path):
     assert result["quality_failure_count"] == 1
     assert result["quality_failures"][0]["kind"] == "missing_partition"
     assert result["p2_readiness"]["available"] is False
+
+
+def test_control_readiness_separates_baseline_from_p2(tmp_path, monkeypatch):
+    descriptor = tmp_path / "market_data" / "factor" / "axiom_risk_target_dataset.json"
+    _write_json(descriptor, {"dataset_id": "frozen-baseline"})
+    monkeypatch.setenv("AXIOM_RISK_TARGET_DATASET", str(descriptor))
+    result = read_control_readiness(
+        tmp_path,
+        p2_readiness={"ready": False, "minimum_trading_days": 60},
+    )
+
+    assert result["run_request_template"]["program"] == "risk_target_baseline"
+    assert result["programs"]["risk_target_baseline"]["trainable"] is True
+    assert result["programs"]["risk_target_baseline"]["p2_features_included"] is False
+    assert result["programs"]["risk_target_p2"]["trainable"] is False
+    assert result["programs"]["risk_target_p2"]["eligibility"] == "readiness_unavailable"
+    assert result["runtime_identity"]["available"] is False
+    assert result["run_ready"] is False
+
+
+def test_control_readiness_marks_available_p2_as_accumulating(tmp_path, monkeypatch):
+    descriptor = tmp_path / "market_data" / "factor" / "axiom_risk_target_dataset.json"
+    _write_json(descriptor, {"dataset_id": "frozen-baseline"})
+    monkeypatch.setenv("AXIOM_RISK_TARGET_DATASET", str(descriptor))
+
+    result = read_control_readiness(
+        tmp_path,
+        p2_readiness={"available": True, "ready": False, "minimum_trading_days": 60},
+    )
+
+    assert result["programs"]["risk_target_p2"]["eligibility"] == "accumulating_forward_evidence"
+
+
+def test_control_readiness_exposes_clean_runtime_identity(tmp_path, monkeypatch):
+    descriptor = tmp_path / "market_data" / "factor" / "axiom_risk_target_dataset.json"
+    _write_json(descriptor, {"dataset_id": "frozen-baseline"})
+    source = tmp_path / "src" / "evidence" / "marker.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("IDENTITY = 1\n", encoding="utf-8")
+    for args in (
+        ("init",),
+        ("config", "user.email", "axiom-test@example.invalid"),
+        ("config", "user.name", "AXIOM Test"),
+        ("add", "."),
+        ("commit", "-m", "frozen training source"),
+    ):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+    monkeypatch.setenv("AXIOM_RISK_TARGET_DATASET", str(descriptor))
+    monkeypatch.setenv("AXIOM_CONTROL_ENABLED", "true")
+    trust = tmp_path / "trust.json"
+    trust.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("AXIOM_OPERATOR_TRUST", str(trust))
+
+    result = read_control_readiness(tmp_path)
+
+    assert result["runtime_identity"] == {
+        "available": True,
+        "clean": True,
+        "git_commit": result["runtime_identity"]["git_commit"],
+        "error": None,
+    }
+    assert len(result["runtime_identity"]["git_commit"]) == 40
+    assert result["run_ready"] is True
 
 
 def test_data_status_ignores_hidden_staging_manifests(tmp_path):
@@ -211,6 +276,19 @@ def test_evidence_status_preserves_negative_results_and_lineage(tmp_path):
         {"payload": {"created_at": "2026-07-14T00:00:00Z", "job_manifest_digest": "f" * 64}},
     )
     _write_json(
+        root / "packages" / rejected / "evaluations" / "report.json",
+        {
+            "payload": {
+                "resource_usage": {"wall_seconds": 12.5, "scope": "producer_evaluation"},
+                "cost": {
+                    "amount": 0.25,
+                    "currency": "USD",
+                    "basis": "configured_local_cpu_hourly_rate",
+                },
+            }
+        },
+    )
+    _write_json(
         root / "verdicts" / "reject.json",
         {
             "payload": {
@@ -232,6 +310,8 @@ def test_evidence_status_preserves_negative_results_and_lineage(tmp_path):
     assert lane["current"]["package_digest"] == rejected
     assert lane["current"]["negative_result"] is True
     assert lane["current"]["gate_results"][0]["check_id"] == "significance"
+    assert lane["current"]["evaluation_resource_usage"]["wall_seconds"] == 12.5
+    assert lane["current"]["evaluation_cost"]["amount"] == 0.25
     assert lane["prior_champion"]["package_digest"] == retired
     assert lane["champion"]["package_digest"] == retired
 

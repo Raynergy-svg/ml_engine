@@ -171,7 +171,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         _validate_issuing_trust(private, args.trust_anchor)
         if args.command == "issue-run":
             descriptor = args.dataset.read_bytes()
-            request = {"dataset_sha256": sha256_bytes(descriptor), "lane": "risk_target"}
+            request = {
+                "dataset_sha256": sha256_bytes(descriptor),
+                "lane": "risk_target",
+                "program": "risk_target_baseline",
+            }
             subject = sha256_bytes(canonical_bytes(request))
             credential = _credential(private, action="run", subject=subject, ttl=args.ttl)
         else:

@@ -807,3 +807,19 @@ def test_artifact_corruption_blocks_index_reconstruction(tmp_path: Path) -> None
     shutil.rmtree(context.store.root / "indexes")
     with pytest.raises(StoreCorruptionError, match="stored artifact mismatch"):
         context.store.rebuild_indexes()
+
+
+def test_package_member_reread_rechecks_declared_bytes(tmp_path: Path) -> None:
+    context = build_store(tmp_path)
+    ref = context.package.artifacts[0]
+    isolated_read = tmp_path / "member-reread.bin"
+    original = context.store.load_package_file(
+        context.package_digest, ref.relative_path
+    )
+    tampered = bytearray(original)
+    tampered[-1] ^= 0x01
+    isolated_read.write_bytes(bytes(tampered))
+    assert isolated_read.stat().st_size == ref.size_bytes
+
+    with pytest.raises(StoreCorruptionError, match="stored artifact mismatch"):
+        context.store._read_verified_member(isolated_read, ref)

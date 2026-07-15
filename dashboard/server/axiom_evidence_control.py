@@ -489,7 +489,10 @@ class EvidenceControlPlane:
                     key: result.job_envelope.payload[key]
                     for key in (
                         "job_id",
+                        "git_commit",
                         "container_digest",
+                        "configuration_digest",
+                        "feature_pipeline_version",
                         "resource_class",
                         "assigned_unit",
                         "trial_budget",

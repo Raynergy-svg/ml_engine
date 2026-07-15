@@ -66,7 +66,7 @@ function DataPanel({ data }: { data: AxiomTrainingCockpit["data"] }) {
         <span className="flex flex-wrap gap-2">
           <Badge color={captureAccruing ? POS : stateColor(tick.status)} dot>{captureAccruing ? "CAPTURE ACCRUING" : "CAPTURE DEGRADED"}</Badge>
           <Badge color={data.quality_failure_count ? NEG : POS} dot>{data.quality_failure_count} QUALITY FAILURE{data.quality_failure_count === 1 ? "" : "S"}</Badge>
-          <Badge color={p2.ready ? POS : WARN} dot>{p2.ready ? "P2 READY" : "P2 BLOCKED"}</Badge>
+          <Badge color={p2.ready ? POS : p2.available ? WARN : NEG} dot>{p2.ready ? "P2 FORWARD READY" : p2.available ? "P2 FORWARD BLOCKED" : "P2 FORWARD UNAVAILABLE"}</Badge>
         </span>
       }>Data · live accrual, quality, and eligibility</SectionTitle>
       <div className="grid gap-3 p-3 lg:grid-cols-3">
@@ -93,7 +93,7 @@ function DataPanel({ data }: { data: AxiomTrainingCockpit["data"] }) {
           <div className="mt-3 font-mono text-[10px] leading-relaxed text-faint">A new immutable row is appended only when the upstream account snapshot changes, normally about hourly. Expected dedupe between checks is not a stalled writer.</div>
         </div>
         <div className="rounded-md border p-3 hairline">
-          <div className="mb-2 flex items-center justify-between gap-2"><div className="eyebrow">Risk-target P2 duration gate</div><Badge color={p2.ready ? POS : WARN}>{p2.ready ? "READY" : "BLOCKED"}</Badge></div>
+          <div className="mb-2 flex items-center justify-between gap-2"><div className="eyebrow">P2 forward qualification</div><Badge color={p2.ready ? POS : p2.available ? WARN : NEG}>{p2.ready ? "READY" : p2.available ? "ACCUMULATING" : "UNAVAILABLE"}</Badge></div>
           <div className="space-y-1.5 font-mono text-[10.5px]">
             <div className="flex justify-between"><span className="text-faint">exposure weekdays</span><span>{exposure} / {target}</span></div>
             <div className="flex justify-between"><span className="text-faint">minimum tick weekdays</span><span>{minTick} / {target}</span></div>
@@ -102,7 +102,7 @@ function DataPanel({ data }: { data: AxiomTrainingCockpit["data"] }) {
             <div className="text-[10px] text-faint">{p2.available ? `gate evaluated ${ago(p2.age_seconds)}` : p2.error ?? "readiness report absent"}</div>
             {(p2.blocking_reasons ?? []).slice(0, 2).map((reason) => <div key={reason} className="truncate text-[10px] text-warn" title={reason}>{reason}</div>)}
           </div>
-          <div className="mt-3 font-mono text-[10px] leading-relaxed text-faint">Live rows accrue continuously. This eligibility gate advances once per distinct valid weekday—not once per tick—so active capture and P2 blocked can both be true.</div>
+          <div className="mt-3 font-mono text-[10px] leading-relaxed text-faint">This gate qualifies only the future P2 tick/spread + exposure feature family. It does not block the historical P1 baseline. One valid weekday counts once, regardless of tick or trade volume.</div>
         </div>
       </div>
       <div className="border-t p-3 hairline">
@@ -148,15 +148,17 @@ function JobsPanel({ jobs }: { jobs: AxiomTrainingCockpit["jobs"] }) {
       <div className="divide-y hairline">
         {jobs.jobs.slice(0, 12).map((job) => (
           <div key={job.job_id} className="grid gap-2 px-3 py-2.5 font-mono text-[10.5px] md:grid-cols-[minmax(180px,1fr)_100px_minmax(180px,1fr)_160px]">
-            <div className="min-w-0"><div className="truncate text-text" title={job.job_id}>{job.job_id}</div><div className="truncate text-faint">{job.lane ?? job.lanes?.join(", ") ?? "unknown lane"}</div></div>
+            <div className="min-w-0"><div className="truncate text-text" title={job.job_id}>{job.job_id}</div><div className="truncate text-faint">{job.program ?? job.lane ?? job.lanes?.join(", ") ?? "unknown lane"}</div></div>
             <Badge color={stateColor(job.status)} dot={job.status === "running"} pulse={job.status === "running"}>{job.status.toUpperCase()}</Badge>
             <div className="truncate text-faint" title={job.manifest_digest ?? undefined}>manifest {shortDigest(job.manifest_digest)}</div>
             <div className="text-right text-faint">{shortTime(job.completed_at ?? job.started_at ?? job.submitted_at)}</div>
             <div className="text-faint md:col-span-4">
-              container <span className="text-text" title={job.container_digest ?? undefined}>{shortDigest(job.container_digest)}</span>
+              code <span className="text-text" title={job.git_commit ?? undefined}>{shortDigest(job.git_commit)}</span>
+              {" · "}container <span className="text-text" title={job.container_digest ?? undefined}>{shortDigest(job.container_digest)}</span>
               {" · "}resource <span className="text-text">{job.resource_class ?? "not reported"}</span>
               {" · "}wall <span className="text-text">{job.resource_usage?.wall_seconds == null ? "not reported" : `${number(job.resource_usage.wall_seconds)}s`}</span>
-              {" · "}cost <span className="text-text">{job.cost == null ? "not reported" : number(job.cost)}</span>
+              {" · "}cost <span className="text-text">{job.cost == null ? "not reported" : `${job.cost_currency ?? "USD"} ${number(job.cost, 6)}`}</span>
+              {job.cost_basis ? <span className="text-faint"> · {job.cost_basis.replaceAll("_", " ")}</span> : null}
             </div>
             {job.error && <div className="text-neg md:col-span-4">{job.error}</div>}
           </div>
@@ -185,6 +187,8 @@ function LaneRow({ lane }: { lane: EvidenceLaneView }) {
           <div>job manifest <span className="text-text" title={current.job_manifest_digest ?? undefined}>{shortDigest(current.job_manifest_digest)}</span></div>
           <div>disposition head <span className="text-text" title={current.disposition_head_digest ?? undefined}>{shortDigest(current.disposition_head_digest)}</span></div>
           <div>verification <span className={current.verification?.decision === "REJECT" ? "text-neg" : "text-text"}>{current.verification?.decision ?? "not persisted"}</span>{current.verification?.rejection_reason ? ` · ${current.verification.rejection_reason}` : ""}</div>
+          <div>signed lineage <span className={current.lineage_complete ? "text-pos" : "text-neg"}>{current.lineage_object_count ?? 0}/{current.lineage_expected_count ?? 4} durable</span></div>
+          <div>evaluation compute <span className="text-text">{current.evaluation_resource_usage?.wall_seconds == null ? "not reported" : `${number(current.evaluation_resource_usage.wall_seconds)}s`}</span>{" · "}cost <span className="text-text">{current.evaluation_cost?.amount == null ? "not reported" : `${current.evaluation_cost.currency ?? "USD"} ${number(current.evaluation_cost.amount, 6)}`}</span></div>
           <div>derived from <span className="text-text">{current.derived_from_package_digests?.length ? current.derived_from_package_digests.map((digest) => shortDigest(digest)).join(", ") : "none declared"}</span></div>
           <div>current champion <span className="text-text">{lane.champion ? shortDigest(String(lane.champion.package_digest ?? "")) : "none"}</span></div>
           <div>prior champion <span className="text-text">{lane.prior_champion ? shortDigest(lane.prior_champion.package_digest) : "none"}</span></div>
@@ -234,6 +238,8 @@ function ForwardRow({ row }: { row: ForwardLaneMonitor }) {
 
 function ControlsPanel({ data, reload }: { data: AxiomTrainingCockpit; reload: () => void }) {
   const controls = data.controls;
+  const baselineProgram = controls.programs?.risk_target_baseline;
+  const p2Program = controls.programs?.risk_target_p2;
   const [runCredential, setRunCredential] = useState("");
   const [promotionCredential, setPromotionCredential] = useState("");
   const [disposition, setDisposition] = useState("");
@@ -243,7 +249,8 @@ function ControlsPanel({ data, reload }: { data: AxiomTrainingCockpit; reload: (
   const runCredentialObject = useMemo(() => parseObject(runCredential), [runCredential]);
   const promotionCredentialObject = useMemo(() => parseObject(promotionCredential), [promotionCredential]);
   const dispositionObject = useMemo(() => parseObject(disposition), [disposition]);
-  const ready = controls.enabled && controls.operator_trust_configured;
+  const controlReady = controls.enabled && controls.operator_trust_configured;
+  const runReady = controls.run_ready;
   const observedActiveRun = data.jobs.jobs.find((job) =>
     job.lane === "risk_target" && (job.status === "submitted" || job.status === "running")
   );
@@ -258,45 +265,51 @@ function ControlsPanel({ data, reload }: { data: AxiomTrainingCockpit; reload: (
 
   async function run() {
     if (!runCredentialObject || !controls.run_request_template) return;
-    if (!window.confirm("Train the risk-target volatility and drawdown models from the displayed dataset? The signed evidence result can only end at QUARANTINED or REJECTED.")) return;
+    if (!window.confirm("Train the historical P1 risk-target baseline from the displayed immutable dataset? P2 tick/spread and exposure features are excluded. The signed evidence result can only end at QUARANTINED or REJECTED.")) return;
+    // A server-received request consumes this nonce before queueing. Clearing
+    // first prevents the client from presenting a replayable-looking action.
+    setRunCredential("");
     setBusy("run"); setMessage(null);
     const result = await evidenceTrainingAction("run", { credential: runCredentialObject, request: controls.run_request_template });
     const jobId = typeof result.data.job_id === "string" ? result.data.job_id : "accepted job";
     if (result.ok && typeof result.data.job_id === "string") setPendingJobId(result.data.job_id);
     setBusy(null);
-    setMessage({ ok: result.ok, text: result.ok ? `Training submitted as ${jobId}. Job status and artifacts will update automatically.` : String(result.data.detail ?? result.data.error ?? "Run request failed") });
+    setMessage({ ok: result.ok, text: result.ok ? `Baseline training submitted as ${jobId}. The one-use credential was cleared; job status and artifacts will update automatically.` : `${String(result.data.detail ?? result.data.error ?? "Run request failed")} · credential cleared; issue a fresh credential before retrying.` });
     reload();
   }
 
   async function promote() {
     if (!promotionCredentialObject || !dispositionObject) return;
     if (!window.confirm("Relay this exact operator-signed disposition event? Transition policy and signer authority will be re-verified.")) return;
+    setPromotionCredential("");
     setBusy("promote"); setMessage(null);
     const result = await evidenceTrainingAction("promote", { credential: promotionCredentialObject, disposition: dispositionObject });
     setBusy(null);
-    setMessage({ ok: result.ok, text: result.ok ? "Signed transition relayed and re-verified." : String(result.data.detail ?? result.data.error ?? "Transition relay failed") });
+    setMessage({ ok: result.ok, text: result.ok ? "Signed transition relayed and re-verified. The one-use credential was cleared." : `${String(result.data.detail ?? result.data.error ?? "Transition relay failed")} · credential cleared; issue a fresh credential before retrying.` });
     reload();
   }
 
   return (
     <Card>
-      <SectionTitle right={<span className="flex gap-2"><Badge color={controls.enabled ? POS : MUTE} dot>CONTROL {controls.enabled ? "ENABLED" : "DISABLED"}</Badge><Badge color={controls.operator_trust_configured ? POS : NEG}>OPERATOR TRUST {controls.operator_trust_configured ? "READY" : "ABSENT"}</Badge></span>}>Governed controls · request only</SectionTitle>
+      <SectionTitle right={<span className="flex gap-2"><Badge color={controls.enabled ? POS : MUTE} dot>CONTROL {controls.enabled ? "ENABLED" : "DISABLED"}</Badge><Badge color={controls.operator_trust_configured ? POS : NEG}>OPERATOR TRUST {controls.operator_trust_configured ? "READY" : "ABSENT"}</Badge><Badge color={controls.runtime_identity.available ? POS : NEG}>CODE ID {controls.runtime_identity.available ? "READY" : "BLOCKED"}</Badge></span>}>Governed controls · request only</SectionTitle>
       <div className="grid gap-3 p-3 xl:grid-cols-2">
         <div className="rounded-md border p-3 hairline">
-          <div className="eyebrow mb-2">Train risk-target model</div>
-          <div className="mb-2 font-mono text-[10px] leading-relaxed text-faint">Fits the volatility and drawdown heads, evaluates their gates, signs the immutable artifacts, and queues them for review. Training never promotes a package or changes live sizing.</div>
-          <div className="mb-2 font-mono text-[10px] text-faint">Subject {shortDigest(controls.run_subject_digest)} · dataset {shortDigest(controls.dataset_sha256)} · exact request:</div>
+          <div className="eyebrow mb-2">Train {baselineProgram?.label ?? "risk-target baseline"} · {baselineProgram?.phase ?? "P1"}</div>
+          <div className="mb-2 font-mono text-[10px] leading-relaxed text-faint">Fits the historical daily-data volatility and drawdown heads, evaluates their gates, and writes self-contained signed evidence. P2 microstructure/exposure features are excluded. Training never promotes a package or changes live sizing.</div>
+          <div className="mb-2 rounded border border-warn/30 bg-warn/5 p-2 font-mono text-[10px] text-warn">{p2Program?.label ?? "P2"}: {p2Program?.eligibility?.replaceAll("_", " ") ?? "status unavailable"}. This does not block the P1 baseline.</div>
+          <div className="mb-2 font-mono text-[10px] text-faint">Subject {shortDigest(controls.run_subject_digest)} · dataset {shortDigest(controls.dataset_sha256)} · code {shortDigest(controls.runtime_identity.git_commit)} · exact request:</div>
+          {!controls.runtime_identity.available && <div className="mb-2 rounded border border-neg/30 bg-neg/5 p-2 font-mono text-[10px] text-neg">Training is blocked because the server cannot bind this checkout to one exact Git commit: {controls.runtime_identity.error ?? "runtime identity unavailable"}</div>}
           <pre className="scroll-thin max-h-28 overflow-auto rounded bg-surface2 p-2 font-mono text-[10px] text-dim">{JSON.stringify(controls.run_request_template, null, 2)}</pre>
-          <textarea value={runCredential} onChange={(event) => setRunCredential(event.target.value)} placeholder="Paste operator-signed run credential JSON" className="mt-2 h-32 w-full rounded-md border bg-transparent p-2 font-mono text-[10px] text-text outline-none hairline" />
-          <button onClick={run} disabled={!ready || !controls.dataset_configured || !controls.run_request_template || !runCredentialObject || busy !== null || runLocked} className="mt-2 w-full rounded-md border px-3 py-2 font-mono text-[11px] font-semibold text-pos hairline disabled:cursor-not-allowed disabled:opacity-40">{busy === "run" ? "AUTHORIZING + QUEUING…" : runLocked ? `TRAINING ${runStatus?.toUpperCase()}` : "TRAIN RISK-TARGET MODEL"}</button>
+          <textarea value={runCredential} onChange={(event) => setRunCredential(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Paste one-use operator-signed baseline credential JSON" className="mt-2 h-32 w-full rounded-md border bg-transparent p-2 font-mono text-[10px] text-text outline-none hairline" />
+          <button onClick={run} disabled={!runReady || !controls.dataset_configured || !controls.run_request_template || !runCredentialObject || busy !== null || runLocked} className="mt-2 w-full rounded-md border px-3 py-2 font-mono text-[11px] font-semibold text-pos hairline disabled:cursor-not-allowed disabled:opacity-40">{busy === "run" ? "AUTHORIZING + QUEUING…" : runLocked ? `TRAINING ${runStatus?.toUpperCase()}` : "TRAIN P1 RISK-TARGET BASELINE"}</button>
           {runJobId && <div className="mt-2 truncate font-mono text-[10px] text-warn" title={runJobId}>Active job {runJobId}</div>}
         </div>
         <div className="rounded-md border p-3 hairline">
           <div className="eyebrow mb-2">Relay signed disposition transition</div>
           <div className="mb-2 font-mono text-[10px] text-faint">The dashboard cannot mint approval, skip transition policy, or write a champion pointer.</div>
-          <textarea value={disposition} onChange={(event) => setDisposition(event.target.value)} placeholder="Paste operator-signed disposition envelope JSON" className="h-28 w-full rounded-md border bg-transparent p-2 font-mono text-[10px] text-text outline-none hairline" />
-          <textarea value={promotionCredential} onChange={(event) => setPromotionCredential(event.target.value)} placeholder="Paste credential bound to the envelope payload digest" className="mt-2 h-28 w-full rounded-md border bg-transparent p-2 font-mono text-[10px] text-text outline-none hairline" />
-          <button onClick={promote} disabled={!ready || !dispositionObject || !promotionCredentialObject || busy !== null} className="mt-2 w-full rounded-md border px-3 py-2 font-mono text-[11px] font-semibold text-warn hairline disabled:cursor-not-allowed disabled:opacity-40">{busy === "promote" ? "REVERIFYING…" : "RELAY SIGNED TRANSITION"}</button>
+          <textarea value={disposition} onChange={(event) => setDisposition(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Paste operator-signed disposition envelope JSON" className="h-28 w-full rounded-md border bg-transparent p-2 font-mono text-[10px] text-text outline-none hairline" />
+          <textarea value={promotionCredential} onChange={(event) => setPromotionCredential(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Paste credential bound to the envelope payload digest" className="mt-2 h-28 w-full rounded-md border bg-transparent p-2 font-mono text-[10px] text-text outline-none hairline" />
+          <button onClick={promote} disabled={!controlReady || !dispositionObject || !promotionCredentialObject || busy !== null} className="mt-2 w-full rounded-md border px-3 py-2 font-mono text-[11px] font-semibold text-warn hairline disabled:cursor-not-allowed disabled:opacity-40">{busy === "promote" ? "REVERIFYING…" : "RELAY SIGNED TRANSITION"}</button>
         </div>
       </div>
       <div className="border-t px-3 py-2 font-mono text-[10px] text-faint hairline">{controls.invariants.join(" · ")}</div>

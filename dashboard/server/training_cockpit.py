@@ -21,6 +21,8 @@ from typing import Any, Callable, Mapping
 from src.evidence.canonical import canonical_bytes
 from src.evidence.hashing import sha256_bytes
 
+from dashboard.server.training_identity import read_runtime_code_identity
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DOMAINS = ("fx", "equity", "crypto", "filings", "multi_asset", "portfolio", "outcomes", "evidence")
 DATA_TIERS = ("raw", "normalized", "snapshots", "features", "history")
@@ -329,17 +331,54 @@ def _reader(spec: ReaderSpec) -> Callable[[str | Path], dict]:
 
 
 def _package_metadata(evidence_root: Path, package_digest: str) -> dict[str, Any]:
-    envelope = _json(evidence_root / "packages" / package_digest / "envelope.json", {})
+    package_root = evidence_root / "packages" / package_digest
+    envelope = _json(package_root / "envelope.json", {})
     payload = envelope.get("payload", {}) if isinstance(envelope, Mapping) else {}
     if not isinstance(payload, Mapping):
         return {}
+    logs = [dict(ref) for ref in payload.get("logs", []) if isinstance(ref, Mapping)]
+    lineage_paths = {
+        "manifests/job.json",
+        "manifests/dataset.json",
+        "manifests/capability.json",
+        "evaluations/report.json",
+    }
+    declared_paths = {
+        str(ref.get("relative_path")) for ref in logs if ref.get("relative_path")
+    }
+    present_paths = {
+        relative_path
+        for relative_path in lineage_paths
+        if (package_root / relative_path).is_file()
+    }
+    job_envelope = _json(package_root / "manifests" / "job.json", {})
+    job_manifest = (
+        dict(job_envelope.get("payload", {}))
+        if isinstance(job_envelope, Mapping)
+        and isinstance(job_envelope.get("payload"), Mapping)
+        else {}
+    )
+    report_envelope = _json(package_root / "evaluations" / "report.json", {})
+    evaluation_report = (
+        dict(report_envelope.get("payload", {}))
+        if isinstance(report_envelope, Mapping)
+        and isinstance(report_envelope.get("payload"), Mapping)
+        else {}
+    )
     return {
         "created_at": payload.get("created_at"),
         "job_manifest_digest": payload.get("job_manifest_digest"),
         "dataset_manifest_digests": payload.get("dataset_manifest_digests", []),
         "derived_from_package_digests": payload.get("derived_from_package_digests", []),
         "artifacts": payload.get("artifacts", []),
+        "logs": logs,
         "safety_assertions": payload.get("safety_assertions", []),
+        "job_manifest": job_manifest,
+        "evaluation_resource_usage": evaluation_report.get("resource_usage", {}),
+        "evaluation_cost": evaluation_report.get("cost", {}),
+        "lineage_object_count": len(present_paths & declared_paths),
+        "lineage_expected_count": len(lineage_paths),
+        "lineage_complete": lineage_paths <= declared_paths and lineage_paths <= present_paths,
     }
 
 
@@ -491,8 +530,11 @@ def read_jobs(evidence: Mapping[str, Any], job_root: str | Path) -> dict[str, An
             "source": "immutable_evidence",
             "status": "completed",
             "manifest_digest": digest,
-            "container_digest": None,
-            "resource_class": None,
+            "git_commit": package.get("job_manifest", {}).get("git_commit") if isinstance(package.get("job_manifest"), Mapping) else None,
+            "container_digest": package.get("job_manifest", {}).get("container_digest") if isinstance(package.get("job_manifest"), Mapping) else None,
+            "configuration_digest": package.get("job_manifest", {}).get("configuration_digest") if isinstance(package.get("job_manifest"), Mapping) else None,
+            "feature_pipeline_version": package.get("job_manifest", {}).get("feature_pipeline_version") if isinstance(package.get("job_manifest"), Mapping) else None,
+            "resource_class": package.get("job_manifest", {}).get("resource_class") if isinstance(package.get("job_manifest"), Mapping) else None,
             "resource_usage": None,
             "cost": None,
             "submitted_at": package.get("created_at"),
@@ -556,7 +598,11 @@ def read_forward_monitoring(evidence: Mapping[str, Any], monitor_root: str | Pat
     return {"lanes": rows, "reporting_count": sum(bool(row.get("available")) for row in rows), "total": len(rows), "source": str(monitor_root)}
 
 
-def read_control_readiness(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
+def read_control_readiness(
+    repo_root: str | Path = REPO_ROOT,
+    *,
+    p2_readiness: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     repo_root = Path(repo_root)
     descriptor_path = Path(os.getenv(
         "AXIOM_RISK_TARGET_DATASET",
@@ -569,20 +615,58 @@ def read_control_readiness(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
     if descriptor_path and descriptor_path.is_file():
         try:
             descriptor_digest = sha256_bytes(descriptor_path.read_bytes())
-            request_template = {"dataset_sha256": descriptor_digest, "lane": "risk_target"}
+            request_template = {
+                "dataset_sha256": descriptor_digest,
+                "lane": "risk_target",
+                "program": "risk_target_baseline",
+            }
             request_subject_digest = sha256_bytes(canonical_bytes(request_template))
         except OSError:
             descriptor_digest = None
     enabled = os.getenv("AXIOM_CONTROL_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    p2 = dict(p2_readiness or {})
+    runtime_identity = read_runtime_code_identity(repo_root)
     return {
         "enabled": enabled,
         "operator_trust_configured": trust_path.is_file(),
         "dataset_configured": bool(descriptor_digest),
         "dataset_descriptor": str(descriptor_path),
         "dataset_sha256": descriptor_digest,
+        "runtime_identity": runtime_identity,
+        "run_ready": bool(
+            enabled
+            and trust_path.is_file()
+            and descriptor_digest
+            and runtime_identity["available"]
+        ),
         "run_request_template": request_template,
         "run_subject_digest": request_subject_digest,
         "operator_private_key_on_server": False,
+        "programs": {
+            "risk_target_baseline": {
+                "label": "Risk-target baseline",
+                "phase": "P1",
+                "trainable": True,
+                "p2_features_included": False,
+                "eligibility": "dataset_bound" if descriptor_digest else "blocked",
+                "description": "Historical daily OHLCV baseline; independent of P2 forward qualification.",
+            },
+            "risk_target_p2": {
+                "label": "Risk-target microstructure + exposure",
+                "phase": "P2",
+                "trainable": False,
+                "p2_features_included": True,
+                "eligibility": (
+                    "ready_for_implementation"
+                    if p2.get("ready")
+                    else "accumulating_forward_evidence"
+                    if p2.get("available")
+                    else "readiness_unavailable"
+                ),
+                "minimum_forward_trading_days": p2.get("minimum_trading_days"),
+                "description": "No training endpoint exists until the forward-only tick/spread and exposure contract qualifies.",
+            },
+        },
         "actions": ["run_risk_target_to_quarantine", "relay_operator_signed_disposition"],
         "invariants": [
             "Ed25519 operator request credential is bound to the exact action and subject",
@@ -633,7 +717,7 @@ def read_training_cockpit(repo_root: str | Path = REPO_ROOT) -> dict[str, Any]:
         "jobs": read_jobs(evidence, job_root),
         "evidence": evidence,
         "forward_monitoring": read_forward_monitoring(evidence, monitor_root),
-        "controls": read_control_readiness(repo_root),
+        "controls": read_control_readiness(repo_root, p2_readiness=readiness),
     }
 
 

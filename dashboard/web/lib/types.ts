@@ -1055,6 +1055,23 @@ export interface EvidencePackageView {
   negative_result?: boolean;
   is_champion?: boolean;
   gate_results?: EvidenceCheck[];
+  lineage_object_count?: number;
+  lineage_expected_count?: number;
+  lineage_complete?: boolean;
+  evaluation_resource_usage?: {
+    wall_seconds?: number | null;
+    scope?: string | null;
+    allocation?: string | null;
+    head_count?: number | null;
+  };
+  evaluation_cost?: {
+    amount?: number | null;
+    currency?: string | null;
+    basis?: string | null;
+    rate_per_hour?: number | null;
+    scope?: string | null;
+    allocation?: string | null;
+  };
   verification?: {
     decision?: string | null;
     rejection_reason?: string | null;
@@ -1075,12 +1092,21 @@ export interface TrainingJobView {
   status: string;
   source?: string;
   lane?: string;
+  program?: string;
   lanes?: string[];
   manifest_digest?: string | null;
+  git_commit?: string | null;
   container_digest?: string | null;
+  configuration_digest?: string | null;
+  feature_pipeline_version?: string | null;
+  assigned_unit?: string | null;
+  trial_budget?: number | null;
   resource_class?: string | null;
   resource_usage?: { wall_seconds?: number | null } | null;
   cost?: number | null;
+  cost_currency?: string | null;
+  cost_basis?: string | null;
+  cost_rate_per_hour?: number | null;
   submitted_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
@@ -1108,9 +1134,25 @@ export interface TrainingControlReadiness {
   operator_trust_configured: boolean;
   dataset_configured: boolean;
   dataset_sha256?: string | null;
+  runtime_identity: {
+    available: boolean;
+    clean: boolean;
+    git_commit?: string | null;
+    error?: string | null;
+  };
+  run_ready: boolean;
   run_request_template?: Record<string, unknown> | null;
   run_subject_digest?: string | null;
   operator_private_key_on_server: boolean;
+  programs?: Record<string, {
+    label: string;
+    phase: string;
+    trainable: boolean;
+    p2_features_included: boolean;
+    eligibility: string;
+    minimum_forward_trading_days?: number | null;
+    description: string;
+  }>;
   actions: string[];
   invariants: string[];
 }

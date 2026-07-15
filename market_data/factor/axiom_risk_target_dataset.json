@@ -2,7 +2,7 @@
   "coverage_end": "2026-06-11",
   "coverage_start": "2014-01-01",
   "dataset_id": "fx-factor-daily-2014-2026",
-  "git_commit": "c62935f5caf7e62c5b2e8a8498a9cbf5b0b64a26",
+  "dataset_provenance_commit": "c62935f5caf7e62c5b2e8a8498a9cbf5b0b64a26",
   "job_id": "dashboard-risk-target-fx-daily",
   "partitions": {
     "AUD_JPY": "AUD_JPY_D.csv",

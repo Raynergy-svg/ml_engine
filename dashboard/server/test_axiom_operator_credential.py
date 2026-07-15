@@ -30,7 +30,11 @@ def test_operator_tool_initializes_trust_and_issues_verifiable_run_credential(tm
         "issue-run", "--dataset", str(dataset), "--ttl", "60",
     ]) == 0
     credential = OperatorCredential.from_mapping(json.loads(capsys.readouterr().out))
-    request = {"dataset_sha256": sha256_bytes(dataset.read_bytes()), "lane": "risk_target"}
+    request = {
+        "dataset_sha256": sha256_bytes(dataset.read_bytes()),
+        "lane": "risk_target",
+        "program": "risk_target_baseline",
+    }
     subject = sha256_bytes(canonical_bytes(request))
 
     authorizer = OperatorAuthorizer(load_operator_trust(trust), NonceLedger(tmp_path / "nonces.jsonl"))
