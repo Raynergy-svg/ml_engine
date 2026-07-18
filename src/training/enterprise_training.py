@@ -1063,14 +1063,24 @@ class StatisticalValidator:
         if std_return == 0:
             return {'sharpe_ratio': 0, 'p_value': 1.0, 'significant': False}
 
-        # Annualized Sharpe
+        # Annualized Sharpe (reported)
         sharpe = (mean_return * np.sqrt(periods_per_year)) / std_return
 
-        # Standard error of Sharpe (Lo, 2002)
-        se_sharpe = np.sqrt((1 + 0.5 * sharpe**2) / n)
+        # Standard error of Sharpe (Lo, 2002): Var(SR_pp) ~= (1 + SR_pp^2/2)/n
+        # is defined for the PER-PERIOD Sharpe. (2026-07-18 audit fix: the prior
+        # code plugged the ANNUALIZED Sharpe into the per-period formula, which
+        # shrank the SE and inflated the z-statistic by ~sqrt(periods_per_year)
+        # (~16x at daily), declaring pure-noise strategies highly significant.)
+        # The test is computed in per-period units — annualization-invariant —
+        # with the benchmark (given annualized) converted to per-period.
+        sharpe_pp = mean_return / std_return
+        benchmark_pp = benchmark_sharpe / np.sqrt(periods_per_year)
+        se_sharpe_pp = np.sqrt((1 + 0.5 * sharpe_pp**2) / n)
 
-        # Z-test
-        z_stat = (sharpe - benchmark_sharpe) / se_sharpe
+        # Z-test (per-period units)
+        z_stat = (sharpe_pp - benchmark_pp) / se_sharpe_pp
+        # Report the SE on the annualized scale for interpretability.
+        se_sharpe = se_sharpe_pp * np.sqrt(periods_per_year)
 
         if SCIPY_AVAILABLE:
             p_value = 2 * (1 - stats.norm.cdf(abs(z_stat)))

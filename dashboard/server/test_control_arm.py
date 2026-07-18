@@ -21,6 +21,13 @@ from dashboard.server import control_safety as cs
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    # chdir into tmp so cwd-relative writers reached through the control layer
+    # (StateEngine -> .claude/state.json on halt/unhalt) hit tmp_path, never
+    # the repo's live operator state. Caught by the root-conftest pollution
+    # guard (2026-07-18): these tests were flipping the real state.json halted
+    # flag on every run — the exact Hard NO #2 surface the guard protects.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".claude").mkdir(exist_ok=True)
     monkeypatch.setattr(cs, "ARM_STATE_PATH", tmp_path / "control_arm_state.json")
     monkeypatch.setattr(cs, "AUDIT_PATH", tmp_path / "control_audit.jsonl")
     monkeypatch.setattr(cs, "OVERRIDES_PATH", tmp_path / "control_overrides.json")

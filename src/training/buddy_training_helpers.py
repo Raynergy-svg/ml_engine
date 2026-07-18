@@ -1741,6 +1741,10 @@ def train_with_walkforward_validation(
         gap=wf_cfg.gap,
         mode=wf_cfg.mode,
         min_train_size=wf_cfg.min_train_size,
+        # 2026-07-18 audit: declare the label horizon so the validator can
+        # enforce gap >= horizon (set `label_horizon` in the walkforward YAML
+        # block; for tier-2 TP/SL labels this is tier2_horizon_candles).
+        label_horizon=getattr(wf_cfg, "label_horizon", 0),
     )
 
     # Train on each fold

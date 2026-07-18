@@ -296,6 +296,22 @@ def compute_strategy_scorecard(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]
     hedged_gross_dates = [r.get("asof_date", "") for r in hedged_gross_rows]
     hedged_gross_stats = _series_stats(hedged_gross_returns, hedged_gross_dates) if hedged_gross_rows else None
 
+    # 2026-07-18 audit fix (F2): the alpha-vs-beta decision must compare raw
+    # and hedged over the SAME cycles. raw_stats above spans ALL resolved
+    # cycles (reported for reference), but if the hedge only applied on a
+    # subset, comparing full-history raw expectancy to subset hedged
+    # expectancy attributes sample-composition differences to the hedge.
+    # The PAIRED baseline is the raw leg of exactly the rows that entered the
+    # hedged series (hedged net_return non-null implies raw non-null by
+    # construction in run_cycle_for_strategy).
+    _paired_src = [
+        r for r in (hedged_net_rows if hedged_net_rows else hedged_gross_rows)
+        if r["raw"]["net_return"] is not None
+    ]
+    raw_paired_returns = [r["raw"]["net_return"] for r in _paired_src]
+    raw_paired_dates = [r.get("asof_date", "") for r in _paired_src]
+    raw_paired_stats = _series_stats(raw_paired_returns, raw_paired_dates)
+
     # "Cost unmodeled" is TRUE for this strategy's hedge iff every applied
     # cycle came back cost_known=False (equity SPY/sector-ETF case) — never
     # inferred from a single cycle.
@@ -306,7 +322,7 @@ def compute_strategy_scorecard(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]
     exposure_reports = [r.get("exposure", {}) for r in rows]
     drift = _exposure_drift(exposure_reports)
 
-    decision = decision_readout(raw_stats, hedged_stats, hedged_gross_stats, cost_unmodeled)
+    decision = decision_readout(raw_paired_stats, hedged_stats, hedged_gross_stats, cost_unmodeled)
     if hedge_unavailable:
         statuses = sorted({r["hedge"]["status"] for r in rows})
         # Same n (resolved-raw-return count) as decision_readout's own gate
@@ -329,6 +345,9 @@ def compute_strategy_scorecard(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]
         "n_cycles": len(rows),
         "asof_range": [asof_dates[0], asof_dates[-1]] if asof_dates else [None, None],
         "raw": raw_stats,
+        # F2 (2026-07-18): the baseline actually used for the verdict —
+        # raw returns of exactly the cycles in the hedged series.
+        "raw_paired": raw_paired_stats,
         "hedged_net": hedged_stats,
         "hedged_gross": hedged_gross_stats,
         "cost_unmodeled_for_venue": cost_unmodeled,

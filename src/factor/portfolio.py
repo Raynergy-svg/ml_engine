@@ -71,8 +71,21 @@ def _weights_one_date(
     w_valid = shape[valid & np.isfinite(sigma)]
     if rw.shape[1] == 0:
         return np.zeros(n)
+    # 2026-07-18 audit fix: np.cov is not NaN-safe (unlike the nanstd used for
+    # sigma above). A single NaN cell in the window poisoned the covariance,
+    # made var = NaN, and — via max(nan, eps) returning nan and nan > 0 being
+    # False — silently flattened the ENTIRE book to cash for that date (and for
+    # ~VOL_LOOKBACK dates after any one-pair data gap). Drop incomplete rows so
+    # the covariance is estimated on complete observations only, and treat a
+    # non-finite/degenerate result as "insufficient data" explicitly.
+    complete_rows = ~np.isnan(rw).any(axis=1)
+    rw = rw[complete_rows]
+    if rw.shape[0] < 2:
+        return np.zeros(n)
     cov = _shrunk_cov(rw) * ANNUALIZATION
     var = float(w_valid @ cov @ w_valid)
+    if not np.isfinite(var) or var <= 0.0:
+        return np.zeros(n)
     book_vol = np.sqrt(max(var, 1e-12))
 
     leverage = min(vol_target / book_vol, gross_cap) if book_vol > 0 else 0.0

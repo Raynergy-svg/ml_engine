@@ -129,6 +129,14 @@ class WalkForwardConfig:
     purge_gap: int = 24                      # Purge samples near test
     embargo_gap: int = 12                    # Embargo after train
 
+    # 2026-07-18 audit (operator directive): the purge/gap MUST cover the
+    # label's forward-information horizon. A 24-bar gap under 288-bar tier-2
+    # labels (tier2_horizon_candles default) leaks train-label information into
+    # validation. Set this to the max forward horizon your labels consume; the
+    # validator enforces effective_gap = max(gap, label_horizon) and warns
+    # loudly when it is left at 0 (unverified).
+    label_horizon: int = 0
+
     # Model retraining per fold
     retrain_per_fold: bool = True            # Retrain model for each fold
     aggregate_method: str = "best"           # "best", "average", or "ensemble"
@@ -273,6 +281,7 @@ class WalkForwardValidator:
         gap: int = 10,
         mode: str = "expanding",
         min_train_size: int = 500,
+        label_horizon: int = 0,
     ):
         """
         Initialize walk-forward validator.
@@ -290,6 +299,30 @@ class WalkForwardValidator:
         self.train_size = train_size
         self.val_size = val_size
         self.test_size = test_size
+        # 2026-07-18 audit (operator directive — leakage is not optional):
+        # the train/val gap must cover the label's forward-information horizon.
+        # If labels consume information through t+H (e.g. tier-2 TP/SL labels
+        # with tier2_horizon_candles=288), training samples closer than H to
+        # the validation boundary overlap validation outcomes. Enforce
+        # effective gap = max(gap, label_horizon); warn when the horizon was
+        # not declared (unverifiable ⇒ possibly leaked baselines).
+        self.label_horizon = int(label_horizon)
+        if self.label_horizon > 0 and gap < self.label_horizon:
+            logger.warning(
+                "WalkForwardValidator: gap=%d < label_horizon=%d — raising gap to %d "
+                "to prevent train→validation label leakage. Baselines produced with "
+                "the smaller gap should be considered leaked and regenerated.",
+                gap, self.label_horizon, self.label_horizon,
+            )
+            gap = self.label_horizon
+        elif self.label_horizon == 0:
+            logger.warning(
+                "WalkForwardValidator: label_horizon not declared — gap=%d is "
+                "UNVERIFIED against the label's forward horizon. If labels look "
+                "further ahead than %d bars, validation metrics are leaked. Pass "
+                "label_horizon (e.g. tier2_horizon_candles) to enforce the bound.",
+                gap, gap,
+            )
         self.gap = gap
         self.mode = mode
         self.min_train_size = min_train_size
@@ -367,6 +400,7 @@ def purged_kfold_split(
     n_splits: int = 5,
     purge_gap: int = 10,
     embargo_gap: int = 5,
+    label_horizon: int = 0,
 ) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
     """
     Purged K-Fold split for time series with embargo.
@@ -385,6 +419,23 @@ def purged_kfold_split(
     Yields:
         (train_indices, test_indices) for each fold
     """
+    # 2026-07-18 audit (operator directive): the purge must cover the label's
+    # forward-information horizon or train samples adjacent to the test fold
+    # share label outcomes with it. Enforce purge_gap >= label_horizon; warn
+    # when the horizon was not declared.
+    if label_horizon > 0 and purge_gap < label_horizon:
+        logger.warning(
+            "purged_kfold_split: purge_gap=%d < label_horizon=%d — raising to %d "
+            "to prevent label leakage (prior baselines with the smaller purge "
+            "should be regenerated).", purge_gap, label_horizon, label_horizon,
+        )
+        purge_gap = label_horizon
+    elif label_horizon == 0:
+        logger.warning(
+            "purged_kfold_split: label_horizon not declared — purge_gap=%d is "
+            "UNVERIFIED against the label's forward horizon.", purge_gap,
+        )
+
     fold_size = n_samples // n_splits
 
     for i in range(n_splits):
@@ -394,14 +445,21 @@ def purged_kfold_split(
         # Purge: remove training samples too close to test
         train_before_test = np.arange(0, max(0, test_start - purge_gap))
 
-        # Embargo: start test after some gap
-        test_start_embargoed = test_start + embargo_gap if i > 0 else test_start
-
-        # Training samples after test (if any)
-        train_after_test = np.arange(test_end + purge_gap, n_samples)
+        # Embargo (2026-07-18 audit fix): the embargo removes TRAINING samples
+        # immediately AFTER the test interval (their feature/label windows still
+        # overlap test-period information — Lopez de Prado, Advances in
+        # Financial ML, ch.7). The prior code instead chopped embargo_gap
+        # samples off the FRONT of the test fold (wasting them, tested nowhere)
+        # while leaving the trailing train set with zero embargo protection —
+        # the exact leakage the embargo exists to prevent. Reference
+        # implementation: src/research/gated_harness/purging.py (hi = last +
+        # purge + embargo on the train side).
+        train_after_test = np.arange(
+            min(test_end + purge_gap + embargo_gap, n_samples), n_samples
+        )
 
         train_idx = np.concatenate([train_before_test, train_after_test])
-        test_idx = np.arange(test_start_embargoed, test_end)
+        test_idx = np.arange(test_start, test_end)
 
         if len(train_idx) > 0 and len(test_idx) > 0:
             yield train_idx, test_idx

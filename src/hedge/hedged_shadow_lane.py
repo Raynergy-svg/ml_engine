@@ -498,6 +498,34 @@ def load_fx_price_panel(instrument: str,
     return df.sort_index()
 
 
+def fx_basket_forward_return(weights: Dict[str, float], asof_date: str,
+                             panel_dir: Path = FX_PRICE_PANEL_DIR
+                             ) -> Tuple[Optional[float], List[str]]:
+    """Weighted forward return of an FX book, mirroring ``basket_forward_return``.
+
+    2026-07-18 (F1 fix): gives the FX ``own_ledger`` book a forward mark over
+    the SAME period the hedge overlay uses, so lane A and lane B are period-
+    and book-aligned. Same ALL-OR-NOTHING contract: any unresolved instrument
+    fails the whole basket (silent partial == implicit zero-fill, forbidden).
+    """
+    notes: List[str] = []
+    total = 0.0
+    unresolved: List[str] = []
+    for instrument, weight in weights.items():
+        ret, leg_notes = fx_instrument_forward_return(instrument, asof_date, panel_dir)
+        if ret is None:
+            unresolved.append(instrument)
+            notes.extend(leg_notes)
+            continue
+        total += weight * ret
+    if unresolved:
+        notes.append(
+            f"insufficient_forward_price_data:{len(unresolved)}_of_{len(weights)}_instruments_unresolved")
+        notes.extend(f"no_forward_price:{i}" for i in unresolved)
+        return None, notes
+    return total, notes
+
+
 def fx_instrument_forward_return(instrument: str, asof_date: str,
                                  panel_dir: Path = FX_PRICE_PANEL_DIR
                                  ) -> Tuple[Optional[float], List[str]]:
@@ -753,10 +781,32 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
         hedge_status = "applied"
 
     # --- Lane A: raw ------------------------------------------------------
-    if book.return_source == "own_ledger":
-        raw_net_return, raw_notes = book.raw_net_return, []
-    else:
+    # 2026-07-18 audit fix (F1): both lanes MUST span the SAME forward period
+    # on the SAME book. ``own_ledger`` previously used the ledger's realized
+    # return AT asof — a D-1→D return of the PRIOR book — while the hedge
+    # overlay is marked strictly forward (D→D+1) on the CURRENT book, so
+    # hedged−raw reduced to an unrelated period's hedge P&L and the
+    # alpha-vs-beta verdict was noise. The raw lane is now marked forward
+    # from asof over the same weights the exposure report / overlay use
+    # (equity via the price panel, FX via the cached daily panels, both
+    # ALL-OR-NOTHING). The ledger's own figure is preserved separately in
+    # the row as ``ledger_net_return`` for reference — it is no longer the
+    # lane-A comparison number.
+    ledger_net_return = book.raw_net_return if book.return_source == "own_ledger" else None
+    if book.asset_class == "fx":
+        raw_net_return, raw_notes = fx_basket_forward_return(book.weights, book.asof_date)
+        if book.return_source == "own_ledger":
+            raw_notes = ["aligned_forward_mark_replaces_ledger_return(F1_2026-07-18)"] + raw_notes
+    elif book.asset_class == "equity":
         raw_net_return, raw_notes = basket_forward_return(price_panel, book.weights, book.asof_date)
+        if book.return_source == "own_ledger":
+            raw_notes = ["aligned_forward_mark_replaces_ledger_return(F1_2026-07-18)"] + raw_notes
+    else:
+        # Unsupported hedge asset class (e.g. crypto): no overlay can apply, so
+        # hedged == raw by construction and there is nothing to align — keep
+        # the ledger's own figure rather than failing it against a price panel
+        # that cannot cover it.
+        raw_net_return, raw_notes = book.raw_net_return, []
 
     # --- Lane B: raw + applied hedge --------------------------------------
     overlay = hedge_overlay_pnl(applied, notional, book.asof_date, price_panel, sector_bucket_map,
@@ -778,6 +828,10 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
         "raw": {
             "return_source": book.return_source,
             "net_return": raw_net_return,
+            # F1 (2026-07-18): the ledger's own realized-at-asof figure, kept
+            # for reference only — net_return above is the period-aligned
+            # forward mark used for the lane A/B comparison.
+            "ledger_net_return": ledger_net_return,
             "gross_return": book.raw_gross_return,
             "cost": book.raw_cost,
             "n_long": sum(1 for w in book.weights.values() if w > 0),

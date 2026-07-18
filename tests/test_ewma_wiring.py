@@ -174,6 +174,10 @@ def test_ewma_engine_init_with_config_pairs(config):
 def test_ewma_state_load_on_init(em, temp_state_dir):
     """Test EWMA loads persisted state on initialization."""
     # Create a dummy state file
+    # v1.1 format (2026-07-18): the EWMA covariance/means are persisted with
+    # the state. A legacy file WITHOUT them must cold-start (observation_count
+    # reset to 0) because a restored count over a zeroed covariance produced
+    # degenerate ±1 correlations while bypassing the warm-up guard.
     state_data = {
         "correlation_matrix": {"EUR_USD": {"EUR_USD": 1.0}},
         "avg_correlation": 0.0,
@@ -181,7 +185,9 @@ def test_ewma_state_load_on_init(em, temp_state_dir):
         "observation_count": 5,
         "pairs_tracked": ["EUR_USD"],
         "last_updated": "2026-03-23T00:00:00",
-        "_version": "1.0",
+        "_version": "1.1",
+        "ewma_covariance": [[1.0e-4]],
+        "ewma_means": [0.0],
     }
 
     state_path = Path("trained_data/ewma_correlation_state.json")

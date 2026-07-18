@@ -176,14 +176,21 @@ class ConfidenceCalibrator:
 
             unfitted = False
 
-        # Apply thresholds (clamp to configured min/max)
+        # 2026-07-18 audit fix: do NOT floor the calibrated probability at
+        # min_confidence_threshold. The old clip raised every low-probability
+        # setup to the threshold, which (a) destroyed the low half of the
+        # calibration map (a true p=0.30 reported as 0.50) and (b) made the
+        # is_valid check below a permanent no-op (clipped value >= threshold by
+        # construction — nothing could ever be invalid). The min threshold is a
+        # DECISION gate, applied to the honest probability; only the high-side
+        # cap (a conservative ceiling) and numeric sanity bounds clamp the value.
         calibrated = float(np.clip(
             calibrated,
-            self.config.min_confidence_threshold,
+            0.01,
             self.config.max_confidence_threshold,
         ))
 
-        # Determine validity.
+        # Determine validity against the honest (un-floored) probability.
         is_valid = calibrated >= float(self.config.min_confidence_threshold)
         if unfitted:
             reason = "Models not fitted"
@@ -456,17 +463,26 @@ class ConfidenceAdjuster:
 
 
 def create_default_calibrator() -> ConfidenceCalibrator:
-    """Create a default calibrator with recommended settings."""
+    """Create a default calibrator with recommended settings.
+
+    2026-07-18 audit fix: the multiplicative post-calibration adjustments are
+    now OFF by default (matching ``recalibrate_from_journal``). Multiplying a
+    calibrated probability by constant shrink factors (e.g. the unconditional
+    x0.85 trading-context penalty) systematically de-calibrates the output —
+    a well-calibrated 0.80 became 0.68 for every sample regardless of evidence.
+    The options remain available for explicit opt-in, but a *default*
+    calibrator must return a faithful probability.
+    """
     config = CalibrationConfig(
         method='platt',
         min_confidence_threshold=0.5,
         max_confidence_threshold=0.95,
-        apply_directional_adjustment=True,
+        apply_directional_adjustment=False,
         neutral_threshold=0.05,
         directional_penalty=0.1,
-        apply_win_probability_adjustment=True,
+        apply_win_probability_adjustment=False,
         win_probability_threshold=0.5,
-        apply_trading_context_adjustment=True,
+        apply_trading_context_adjustment=False,
         trading_penalty=0.15
     )
     return ConfidenceCalibrator(config)

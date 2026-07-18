@@ -184,12 +184,25 @@ class EWMACorrelationEngine:
         logger.debug(f"Added pair {pair}, now tracking {len(self._pairs)} pairs")
 
     def _resize_matrices(self, n: int) -> None:
-        """Resize covariance and means matrices to handle n pairs."""
+        """Resize covariance and means matrices to handle n pairs.
+
+        2026-07-18 audit fix: growth PRESERVES the accumulated top-left block.
+        The prior implementation re-zeroed the whole covariance whenever a new
+        pair appeared mid-stream, discarding all history for existing pairs
+        while _observation_count kept claiming warm-up was complete — the next
+        update then produced degenerate ±1 correlations from a rank-1 matrix.
+        """
         if self._means is not None and len(self._means) == n:
             return
 
-        self._means = np.zeros(n)
-        self._covariance = np.zeros((n, n))
+        new_means = np.zeros(n)
+        new_cov = np.zeros((n, n))
+        if self._means is not None and len(self._means) > 0:
+            old_n = min(len(self._means), n)
+            new_means[:old_n] = self._means[:old_n]
+            new_cov[:old_n, :old_n] = self._covariance[:old_n, :old_n]
+        self._means = new_means
+        self._covariance = new_cov
 
     def update(self, returns_dict: Dict[str, float]) -> CorrelationState:
         """Update EWMA covariance with new returns observation.
@@ -467,7 +480,16 @@ class EWMACorrelationEngine:
             data = state.to_dict()
 
             # Add version field for forward compatibility
-            data["_version"] = "1.0"
+            # v1.1 (2026-07-18 audit): persist the EWMA covariance and means —
+            # without them a restarted process restored observation_count but a
+            # ZEROED covariance, so the first update produced ±1 correlations
+            # everywhere while the warm-up guard (keyed on observation_count)
+            # was bypassed → phantom RISK_OFF after every restart.
+            data["_version"] = "1.1"
+            if self._covariance is not None:
+                data["ewma_covariance"] = self._covariance.tolist()
+            if self._means is not None:
+                data["ewma_means"] = self._means.tolist()
 
             if not safe_json_write(path, data, sort_keys=True):
                 msg = f"Failed to save EWMA correlation state to {path}"
@@ -505,9 +527,30 @@ class EWMACorrelationEngine:
                 self._regime = state.regime
                 self._observation_count = state.observation_count
 
-                # Reconstruct covariance matrix if possible
+                # Restore the EWMA covariance/means (v1.1+). For legacy v1.0
+                # files without them, the covariance cannot be reconstructed —
+                # reset observation_count so the warm-up guard re-engages
+                # instead of trusting a zeroed matrix (2026-07-18 audit fix).
                 n = len(self._pairs)
                 self._resize_matrices(n)
+                cov_raw = data.get("ewma_covariance")
+                means_raw = data.get("ewma_means")
+                restored = False
+                if cov_raw is not None and means_raw is not None:
+                    cov_arr = np.asarray(cov_raw, dtype=float)
+                    means_arr = np.asarray(means_raw, dtype=float)
+                    if cov_arr.shape == (n, n) and means_arr.shape == (n,) \
+                            and np.all(np.isfinite(cov_arr)) and np.all(np.isfinite(means_arr)):
+                        self._covariance = cov_arr
+                        self._means = means_arr
+                        restored = True
+                    else:
+                        logger.warning(
+                            "EWMA state %s: covariance/means shape or finiteness "
+                            "mismatch — treating as cold start", path,
+                        )
+                if not restored:
+                    self._observation_count = 0
 
                 logger.debug(
                     f"Loaded EWMA correlation state from {path}: "

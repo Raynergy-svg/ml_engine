@@ -113,17 +113,24 @@ def calculate_sortino(
     excess_returns = returns_arr - risk_free_rate
     mean_excess = np.mean(excess_returns)
 
-    # Downside deviation (only negative returns)
-    negative_returns = returns_arr[returns_arr < 0]
-    if len(negative_returns) < 2:
+    # Downside deviation (2026-07-18 audit fix): RMS of shortfalls BELOW the
+    # target (the risk-free/MAR rate), measured FROM the target, averaged over
+    # ALL N periods — sqrt(mean(min(r - target, 0)^2)). The prior code used
+    # np.std(negative_returns, ddof=1): deviations about the mean of the loser
+    # subset over (n_neg - 1), which (a) zeroes out whenever losses are equal
+    # (a profitable strategy reported Sortino = 0) and (b) is not the Sortino
+    # denominator. Target is the same MAR as the numerator for consistency.
+    shortfalls = np.minimum(excess_returns, 0.0)
+    if not np.any(shortfalls < 0):
+        # No downside periods at all — downside risk is genuinely zero; fall
+        # back to Sharpe rather than dividing by zero.
         return calculate_sharpe(returns, risk_free_rate, annualization_factor)
+    downside_dev = float(np.sqrt(np.mean(shortfalls**2)))
 
-    downside_std = np.std(negative_returns, ddof=1)
-
-    if downside_std < 1e-8:
+    if downside_dev < 1e-8:
         return 0.0
 
-    return (mean_excess / downside_std) * annualization_factor
+    return (mean_excess / downside_dev) * annualization_factor
 
 
 def calculate_calmar(

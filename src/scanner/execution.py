@@ -56,6 +56,31 @@ except ImportError:
 # Use get_registry().get(symbol).pip_value to access pip values
 
 
+def _quote_to_usd_factor(pair: str, price: Any = None) -> float:
+    """Approximate quote-currency -> USD conversion for risk aggregation.
+
+    2026-07-18 audit helper. Exact when the quote is USD; for USD-base pairs
+    (USD_JPY, USD_CHF, USD_CAD) the pair's own price IS the USD->quote rate, so
+    quote->USD = 1/price. For crosses (EUR_JPY, EUR_GBP) 1/price converts
+    quote->base and the base is approximated at USD parity — error bounded at
+    the majors' base/USD deviation (~±30%), versus the ~150x error of no
+    conversion at all for JPY quotes. Falls back to the position-sizing module's
+    static per-currency estimates when no price is available.
+    """
+    try:
+        p = str(pair).upper()
+        quote = p.replace("_", "")[-3:]
+        if quote == "USD":
+            return 1.0
+        px = float(price) if price else 0.0
+        if px > 0:
+            return 1.0 / px
+        from src.risk.position_sizing import _approx_ccy_to_usd
+        return _approx_ccy_to_usd(quote)
+    except Exception:  # noqa: BLE001 — risk aggregation must not crash; parity fallback
+        return 1.0
+
+
 def _get_pip_value(pair: str, fallback: float = 0.0001) -> float:
     """Get pip value for a pair from InstrumentRegistry.
 
@@ -1159,10 +1184,15 @@ class ExecutionManager:
             for s in statuses:
                 sl_dist = s.get("sl_dist_pips", 0)
                 units = abs(s.get("units", 0))
-                pip_val = _get_pip_value(s.get("pair", ""), 0.0001)
-                # Risk = SL distance in price * units
-                risk_amount = sl_dist * pip_val * units
-                total_risk += risk_amount
+                pair = s.get("pair", "")
+                pip_val = _get_pip_value(pair, 0.0001)
+                # Risk = SL distance in price * units — this yields QUOTE-currency
+                # risk. 2026-07-18 audit fix: convert to account (USD) terms
+                # before summing. The old code summed raw quote amounts against a
+                # USD NAV, so a single USD_JPY position (pip 0.01, risk in JPY)
+                # overstated risk ~150x and wedged the 15% cap shut.
+                risk_quote = sl_dist * pip_val * units
+                total_risk += risk_quote * _quote_to_usd_factor(pair, s.get("entry"))
 
             risk_pct = total_risk / nav if nav > 0 else 0.0
 
@@ -5694,7 +5724,16 @@ class ExecutionManager:
                 if any(isinstance(u.get("entry"), dict) for u in rl_updates):
                     try:
                         from src.scanner.automation.safe_json import safe_json_write
-                        safe_json_write(journal_path, entries)
+                        # 2026-07-18 audit: surface a failed flag-persist loudly.
+                        # The bounded re-score on next cycle is the designed
+                        # behavior (review #4), but a PERSISTENT write failure
+                        # would re-score every cycle — that must be visible.
+                        if not safe_json_write(journal_path, entries):
+                            logger.error(
+                                "rl_weights_applied flags NOT persisted (%s) — these "
+                                "trades will be re-scored next cycle; investigate disk/lock",
+                                journal_path,
+                            )
                     except ImportError:
                         journal_path.write_text(json.dumps(entries, indent=2, default=str))
 
