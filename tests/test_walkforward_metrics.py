@@ -6,7 +6,6 @@ Covers US-250 (CV Splitting) and US-251 (Trading Metrics + Monte Carlo).
 
 import numpy as np
 import pytest
-from collections import defaultdict
 
 # Import the module under test
 from src.training.walkforward_validation import (
@@ -118,6 +117,10 @@ class TestWalkForwardConfig:
             'aggregate_method': 'average',
             'ensure_regime_balance': True,
             'min_samples_per_regime': 100,
+            # 2026-07-18 audit hardening: the label's forward horizon is part
+            # of the validation contract and MUST survive serialization —
+            # a to_dict() that drops it silently reverts purge enforcement.
+            'label_horizon': 288,
         }
 
         config = WalkForwardConfig.from_dict(original)
@@ -437,7 +440,6 @@ class TestPurgedKFoldSplit:
         for train_idx, test_idx in folds:
             # Check that no training samples exist within purge_gap of test
             test_start = test_idx.min()
-            test_end = test_idx.max()
 
             # Training samples should not be in [test_start - purge_gap, test_start)
             # This is handled by the split logic
@@ -448,10 +450,16 @@ class TestPurgedKFoldSplit:
                     "Purge gap not enforced before test"
 
     def test_embargo_gap_applied(self):
-        """Test that embargo gap is applied at test start."""
+        """Embargo removes TRAINING samples immediately after the test fold
+        (2026-07-18 audit fix, Lopez de Prado ch.7). The old behavior — chopping
+        embargo_gap samples off the FRONT of the test fold while leaving the
+        trailing train set unprotected — was the exact leakage the embargo
+        exists to prevent; this test locks in the corrected semantics."""
         n_samples = 1000
         n_splits = 5
+        purge_gap = 10  # purged_kfold_split default
         embargo_gap = 10
+        fold_size = n_samples // n_splits
 
         folds = list(purged_kfold_split(
             n_samples,
@@ -459,16 +467,15 @@ class TestPurgedKFoldSplit:
             embargo_gap=embargo_gap,
         ))
 
-        # First fold should not have embargo (i > 0 check)
-        first_train, first_test = folds[0]
-        # First test should start from 0 (no embargo)
-
-        # Second fold should have embargo
-        if len(folds) > 1:
-            second_train, second_test = folds[1]
-            # Second test start should have embargo applied
-            expected_start = (1000 // n_splits) + embargo_gap
-            assert second_test[0] >= expected_start
+        for i, (train_idx, test_idx) in enumerate(folds):
+            # The test fold keeps its FULL range — embargo never eats test data
+            assert test_idx[0] == i * fold_size, "test fold front must not be chopped"
+            test_end = test_idx[-1] + 1
+            # Trailing train side is embargoed: purge + embargo past test end
+            train_after = train_idx[train_idx >= test_end]
+            if len(train_after) > 0:
+                assert train_after[0] >= test_end + purge_gap + embargo_gap, \
+                    "trailing train samples inside the embargo window leak test-period info"
 
 
 class TestCombinatorialPurgedCV:

@@ -937,6 +937,12 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
         "asset_class": book.asset_class,
         "asof_date": book.asof_date,
         "notional": notional,
+        # 2026-07-18 (F8): the book's signed fraction-of-NAV weights, persisted
+        # so an unresolved row (stale price cache at cycle time) can be
+        # re-marked later by ``reconcile_unresolved`` once forward bars exist.
+        # Without this the ledger row is unreproducible: the raw lane's mark
+        # depends on weights that lived only in memory.
+        "weights": {str(k): float(v) for k, v in book.weights.items()},
         "raw": {
             "return_source": book.return_source,
             "net_return": raw_net_return,
@@ -987,6 +993,139 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
     return row
 
 
+def _row_is_unresolved(row: Dict[str, Any]) -> bool:
+    """True when a ledger row's twin-lane marks are incomplete: the raw lane
+    never resolved, or the hedged lane is still ``unresolved`` (overlay legs
+    lacked forward bars). Rows whose hedged basis is ``gross_cost_unknown``
+    are NOT unresolved — the mark exists; only the cost model is honest about
+    not knowing the overlay cost, and no amount of waiting changes that."""
+    raw_unresolved = (row.get("raw") or {}).get("net_return") is None
+    hedged_unresolved = (row.get("hedged") or {}).get("return_basis") == "unresolved"
+    return raw_unresolved or hedged_unresolved
+
+
+def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
+                         price_panel: Optional[pd.DataFrame] = None,
+                         sector_bucket_map: Optional[Dict[str, dict]] = None,
+                         currency_bucket_map: Optional[Dict[str, dict]] = None,
+                         today: Optional[str] = None) -> Dict[str, int]:
+    """Re-mark ledger rows whose lanes were unresolved at cycle time (F8,
+    2026-07-18 review finding: 'snapshot at cycle time, never reconciled').
+
+    A cycle that runs on the live 'today' book cannot mark t→t+1 forward
+    returns — the forward bar doesn't exist yet — so the row is honestly
+    persisted with ``None`` lanes. Before this function existed those rows
+    stayed unresolved FOREVER, silently shrinking every downstream aligned
+    sample (scorecard, attribution, promotion gate) and biasing it toward
+    cycles that happened to run on stale asof dates. This revisits every
+    unresolved row whose ``asof_date`` is strictly before ``today`` (a
+    forward bar could now exist), re-marks BOTH lanes from the row's own
+    persisted ``weights`` / ``hedge.applied_proposal`` / ``notional`` —
+    the exact same functions the live cycle uses — and atomically rewrites
+    the ledger (tmp + fsync + os.replace, same durability convention as the
+    append path).
+
+    Fail-closed properties preserved: a row that STILL can't be marked is
+    left unresolved (never partially filled); rows persisted before weights
+    were captured are counted ``skipped_no_weights`` and left untouched;
+    a resolved row is never touched again (``reconciled_at`` stamps the
+    revisit). Order and row count of the ledger never change."""
+    rows = _read_jsonl_rows(ledger_path)
+    summary = {"checked": 0, "resolved": 0, "still_unresolved": 0, "skipped_no_weights": 0}
+    if not rows:
+        return summary
+    if today is None:
+        today = datetime.now(timezone.utc).date().isoformat()
+
+    panel = price_panel
+    sector_map = sector_bucket_map
+    currency_map = currency_bucket_map
+    changed = False
+
+    for row in rows:
+        if not _row_is_unresolved(row):
+            continue
+        asof = row.get("asof_date")
+        if not asof or str(asof) >= today:
+            continue  # forward bar still cannot exist — nothing to reconcile yet
+        summary["checked"] += 1
+        weights = row.get("weights")
+        if not isinstance(weights, dict) or not weights:
+            summary["skipped_no_weights"] += 1
+            continue
+
+        # Lazy-load shared inputs only once a reconcilable row exists.
+        if sector_map is None:
+            sector_map = load_bucket_map(SECTOR_BUCKET_MAP_PATH)
+        if currency_map is None:
+            currency_map = load_bucket_map(CURRENCY_BUCKET_MAP_PATH)
+        if panel is None:
+            panel = load_equity_price_panel()
+
+        asset_class = row.get("asset_class")
+        notional = float(row.get("notional") or SHADOW_NOTIONAL_DEFAULT)
+        raw = row.setdefault("raw", {})
+        hedged = row.setdefault("hedged", {})
+        hedge = row.get("hedge") or {}
+
+        # --- Lane A: raw, re-marked from the persisted book ----------------
+        raw_net = raw.get("net_return")
+        if raw_net is None:
+            if asset_class == "fx":
+                raw_net, raw_notes = fx_basket_forward_return(weights, asof)
+            elif asset_class == "equity":
+                raw_net, raw_notes = basket_forward_return(panel, weights, asof)
+            else:
+                raw_net, raw_notes = None, [f"reconcile_unsupported_asset_class:{asset_class}"]
+            if raw_net is not None:
+                raw["net_return"] = raw_net
+                raw["notes"] = list(raw.get("notes") or []) + \
+                    ["reconciled_forward_mark(F8)"] + raw_notes
+                changed = True
+
+        # --- Lane B: overlay re-marked with the row's own applied proposal --
+        if raw_net is not None and hedged.get("return_basis") in (None, "unresolved"):
+            overlay = hedge_overlay_pnl(
+                hedge.get("applied_proposal"), notional, asof, panel, sector_map,
+                currency_bucket_map=currency_map)
+            if overlay["gross_pnl_dollars"] is not None:
+                hedged["gross_return"] = raw_net + (overlay["gross_pnl_dollars"] / notional)
+                hedged["net_return"] = (
+                    raw_net + (overlay["net_pnl_dollars"] / notional)
+                    if overlay["net_pnl_dollars"] is not None else None)
+                hedged["return_basis"] = (
+                    "net" if hedged["net_return"] is not None else "gross_cost_unknown")
+                hedge["overlay_gross_pnl_dollars"] = overlay["gross_pnl_dollars"]
+                hedge["overlay_cost_known"] = overlay["cost_known"]
+                hedge["overlay_cost_dollars"] = overlay["cost_dollars"]
+                hedge["notes"] = list(hedge.get("notes") or []) + ["reconciled_overlay_mark(F8)"]
+                changed = True
+
+        if _row_is_unresolved(row):
+            summary["still_unresolved"] += 1
+        else:
+            summary["resolved"] += 1
+            row["reconciled_at"] = datetime.now(timezone.utc).isoformat()
+
+    if changed:
+        tmp_path = ledger_path.with_name(ledger_path.name + ".reconcile.tmp")
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as fh:
+                for row in rows:
+                    fh.write(json.dumps(row, sort_keys=True) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, ledger_path)
+        except OSError as exc:
+            logger.error("hedged_shadow_lane: reconcile rewrite failed for %s: %s",
+                         ledger_path, exc, exc_info=True)
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return summary
+
+
 def run_all(strategies: Sequence[str] = STRATEGIES, *,
             notional: float = SHADOW_NOTIONAL_DEFAULT,
             ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH,
@@ -997,6 +1136,19 @@ def run_all(strategies: Sequence[str] = STRATEGIES, *,
     price_panel = load_equity_price_panel()
     sector_bucket_map = load_bucket_map(SECTOR_BUCKET_MAP_PATH)
     currency_bucket_map = load_bucket_map(CURRENCY_BUCKET_MAP_PATH)
+    if persist:
+        # F8: before appending today's snapshots, revisit any prior rows whose
+        # lanes were unresolved at their own cycle time — forward bars may
+        # exist by now. Fail-soft: a reconcile failure never blocks the cycle.
+        try:
+            summary = reconcile_unresolved(
+                ledger_path, price_panel=price_panel,
+                sector_bucket_map=sector_bucket_map,
+                currency_bucket_map=currency_bucket_map)
+            if summary["checked"]:
+                logger.info("hedged_shadow_lane: reconcile_unresolved %s", summary)
+        except Exception:
+            logger.exception("hedged_shadow_lane: reconcile_unresolved failed — continuing cycle")
     results: Dict[str, Optional[Dict[str, Any]]] = {}
     for strategy in strategies:
         try:

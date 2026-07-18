@@ -5557,6 +5557,12 @@ class ExecutionManager:
             # phi becomes defined once >= MIN_HISTORY_FOR_REWARD aligned
             # after-cost lane cycles accrue; until then the annotation
             # journals the precise pass-through reason per trade.
+            # F9 (2026-07-18 review): when the residual reward IS live, the
+            # weight-update loop must be told, because its regime reward-ratio
+            # floor (0.3) would otherwise restore 30% credit to a pure-beta
+            # win whose residual reward is ~0 — the exact credit the residual
+            # semantics exist to remove.
+            _residual_live = False
             try:
                 from src.hedge.residual_attribution import (
                     load_attribution_for, residual_reward,
@@ -5576,6 +5582,7 @@ class ExecutionManager:
                     _shaped_reward = _res["reward"]
                     outcome_data["shaped_reward"] = round(_shaped_reward, 6)
                     outcome_data["residual_reward_shadow"]["live"] = True
+                    _residual_live = True
                     logger.info(
                         "Residual-alpha reward LIVE for %s: multiplier=%.3f (phi=%.3f)",
                         tid, _res["multiplier"], _res["phi"],
@@ -5595,6 +5602,9 @@ class ExecutionManager:
                     "shaped_reward": _shaped_reward,
                     # US-515: trade id carried through so sync_rl_weights can tag snapshot rows
                     "trade_id": tid,
+                    # F9: tells the weight-update loop the shaped reward is a
+                    # RESIDUAL reward, so the 0.3 ratio floor must not apply.
+                    "residual_applied": _residual_live,
                     # 2026-07-04 (review #4): carry the entry ref so
                     # rl_weights_applied is set AFTER the weight update
                     # succeeds, never before — see the weight-update block.
@@ -5700,8 +5710,17 @@ class ExecutionManager:
                             # Difficult regimes (HIGH/EXTREME) with profit get amplified reward
                             _abs_pnl = abs(float(upd.get("pnl", 0)))
                             _abs_shaped = abs(_shaped)
+                            # F9 (2026-07-18): the 0.3 floor is a regime-shaping
+                            # guard (never fully mute learning on volatility
+                            # shaping alone). But when the shaped reward is a
+                            # RESIDUAL reward, ~0 is the semantics: a win that
+                            # was pure beta (phi ~ 0) must yield ~zero agent
+                            # credit — flooring it at 0.3 silently restores 30%
+                            # of the credit the hedge lanes proved was market
+                            # return, not agent skill.
+                            _ratio_floor = 0.0 if upd.get("residual_applied") else 0.3
                             if _abs_pnl > 0.001:
-                                _reward_ratio = min(2.0, max(0.3, _abs_shaped / _abs_pnl))
+                                _reward_ratio = min(2.0, max(_ratio_floor, _abs_shaped / _abs_pnl))
                             else:
                                 _reward_ratio = 1.0
                             setattr(_rl_config, "weight_boost_on_win", round(_orig_boost * _reward_ratio, 4))

@@ -63,6 +63,7 @@ MIN_HISTORY_FOR_VERDICT = 3
 # cadences: crypto momentum ~4h/1d, equity harvester ~weekly, Track B ~21d).
 CALENDAR_DAYS_PER_YEAR = 365.25
 
+VERDICT_GENUINE = "genuine_strategy_specific_signal"
 VERDICT_SIGNAL_REAL_BUT_NOISY = "signal_real_but_noisy"
 VERDICT_WEAK_OR_DEAD = "weak_or_dead"
 VERDICT_BETA_NOT_ALPHA = "return_was_beta_not_alpha"
@@ -225,6 +226,14 @@ def _three_way_decision(raw_expectancy: Optional[float], raw_max_dd: Optional[fl
         return VERDICT_WEAK_OR_DEAD
     if raw_expectancy > 0 and hedged_expectancy <= 0:
         return VERDICT_BETA_NOT_ALPHA
+    # 2026-07-18 (gate-contract fix): the "raw profitable AND hedged
+    # profitable" quadrant — the return SURVIVES removal of the systematic
+    # exposure — is the documented "likely genuine strategy-specific signal"
+    # verdict from the interpretation table. It previously fell through to
+    # INCONCLUSIVE, so the promotion gate's pass-set referenced a verdict the
+    # scorecard could never emit.
+    if raw_expectancy > 0 and hedged_expectancy > 0:
+        return VERDICT_GENUINE
     return VERDICT_INCONCLUSIVE
 
 
