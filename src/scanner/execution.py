@@ -5544,6 +5544,43 @@ class ExecutionManager:
                 except Exception as _rr_err:
                     logger.debug(f"Regime reward computation skipped for {tid}: {_rr_err}")
 
+            # ── Layer 8 (2026-07-18): residual-alpha reward hook ─────────────
+            # SHADOW-FIRST: every closed trade records what its reward would be
+            # on a residual-alpha basis (raw reward x the strategy's measured
+            # residual fraction from the hedge twin lanes). The shaped reward
+            # actually fed to the weight updater only changes when the operator
+            # has flipped enable_residual_alpha_rewards AND the strategy has
+            # lane coverage with sufficient after-cost history — otherwise the
+            # hook passes through with its reason journaled as evidence.
+            # Strategy key: this sync serves the scanner lane ("oanda_fx"),
+            # which has no hedge-lane coverage yet — the annotation makes that
+            # gap visible per-trade instead of silently rewarding raw P&L.
+            try:
+                from src.hedge.residual_attribution import (
+                    load_attribution_for, residual_reward,
+                )
+                _attr = load_attribution_for("oanda_fx")
+                _base_reward = _shaped_reward if _shaped_reward is not None else realized_pl
+                _res = residual_reward(float(_base_reward or 0.0), _attr)
+                outcome_data["residual_reward_shadow"] = {
+                    "applied": _res["applied"],
+                    "reason": _res["reason"],
+                    "multiplier": _res["multiplier"],
+                    "phi": _res["phi"],
+                    "reward": round(_res["reward"], 6),
+                    "live": False,
+                }
+                if _res["applied"] and getattr(self.config, "enable_residual_alpha_rewards", False):
+                    _shaped_reward = _res["reward"]
+                    outcome_data["shaped_reward"] = round(_shaped_reward, 6)
+                    outcome_data["residual_reward_shadow"]["live"] = True
+                    logger.info(
+                        "Residual-alpha reward LIVE for %s: multiplier=%.3f (phi=%.3f)",
+                        tid, _res["multiplier"], _res["phi"],
+                    )
+            except Exception as _ra_err:  # noqa: BLE001 — attribution must never break the sync
+                logger.debug(f"Residual-alpha annotation skipped for {tid}: {_ra_err}")
+
             if agents.get("agent_reasons"):
                 rl_updates.append({
                     "agent_verdicts": agents["agent_reasons"],

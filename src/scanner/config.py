@@ -894,6 +894,16 @@ class ScannerConfig:
     enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator (legacy flag — kept for backward compatibility)
     enable_devil_advocate_agent: bool = True  # Agent #14: Canonical _agent-suffixed toggle (supersedes enable_devil_advocate)
     enable_order_flow_agent: bool = True  # Agent #15: Order-flow / book-depth agent
+    # 2026-07-18 Layer-8: scale RL agent rewards by the strategy's measured
+    # residual-alpha fraction (src/hedge/residual_attribution.py) instead of
+    # raw P&L, so agents stop earning credit for market/sector beta. Default
+    # OFF: the hook runs in SHADOW (journal annotation only) until the
+    # operator reviews trained_data/hedge/residual_attribution_report.json
+    # evidence and flips this — promotion requires evidence. Note: the
+    # scanner's own book has no hedge-lane coverage yet, so even when ON the
+    # hook passes through (no_lane_coverage) until the exposure engine covers
+    # it; flipping this is safe but currently inert by design.
+    enable_residual_alpha_rewards: bool = False
     enable_llm_macro_agent: bool = False  # Agent #16: LLM macro reasoning (US-001). Reverted to False 2026-06-16: evaluate() runs _fetch_fred_all (8 blocking FRED GETs, timeout=15ea) + optional live LLM call per-scan/per-pair BEFORE the cache check — up to 120s synchronous HTTP in the scan hot path + violates the no-LLM-in-hot-path rule.
     enable_llm_macro_shadow: bool = True   # Log LLM macro votes without affecting ensemble
     # --- Reflection / observability surfaces ---

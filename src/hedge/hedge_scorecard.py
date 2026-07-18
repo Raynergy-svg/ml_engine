@@ -393,6 +393,16 @@ def _atomic_write_json(payload: Dict[str, Any], path: Path) -> None:
 def main() -> Dict[str, Any]:
     report = build_full_scorecard()
     _atomic_write_json(report, SCORECARD_REPORT_PATH)
+    # Layer 8 (2026-07-18): the residual-attribution report is produced in the
+    # same pass so the learning layer's shadow evidence stays as fresh as the
+    # scorecard it derives from. Fail-soft: attribution problems never block
+    # the scorecard itself.
+    try:
+        from src.hedge.residual_attribution import build_residual_attribution_report
+        build_residual_attribution_report()
+    except Exception as _ra_err:  # noqa: BLE001
+        logging.getLogger(__name__).warning(
+            "residual attribution report not produced: %s", _ra_err)
     return report
 
 
