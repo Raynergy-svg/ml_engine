@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-07-18T19:47:50.886133+00:00",
+  "human_review_required": true,
+  "min_history_for_reward": 5,
+  "multiplier_bounds": [
+    0.0,
+    2.0
+  ],
+  "n_ledger_rows": 6,
+  "note": "Advisory shadow evidence. Reward modulation only activates via ScannerConfig.enable_residual_alpha_rewards after operator review.",
+  "paper_only": true,
+  "runtime_allowed": false,
+  "source": "/home/claude/ml_engine/trained_data/hedge/raw_vs_hedged_ledger.jsonl",
+  "strategies": {
+    "crypto_momentum": {
+      "all_net_basis": false,
+      "asof_range": [
+        null,
+        null
+      ],
+      "excluded_reasons": [
+        "hedge_not_applied:unsupported_asset_class"
+      ],
+      "mean_raw": null,
+      "mean_residual": null,
+      "mean_systematic": null,
+      "n_aligned_cycles": 0,
+      "n_excluded": 2,
+      "residual_fraction": null,
+      "residual_fraction_reason": "no_aligned_residual_cycles"
+    },
+    "equity_harvester": {
+      "all_net_basis": false,
+      "asof_range": [
+        null,
+        null
+      ],
+      "excluded_reasons": [
+        "raw_unresolved"
+      ],
+      "mean_raw": null,
+      "mean_residual": null,
+      "mean_systematic": null,
+      "n_aligned_cycles": 0,
+      "n_excluded": 2,
+      "residual_fraction": null,
+      "residual_fraction_reason": "no_aligned_residual_cycles"
+    },
+    "track_b": {
+      "all_net_basis": false,
+      "asof_range": [
+        null,
+        null
+      ],
+      "excluded_reasons": [
+        "hedge_not_applied:fail_closed"
+      ],
+      "mean_raw": null,
+      "mean_residual": null,
+      "mean_systematic": null,
+      "n_aligned_cycles": 0,
+      "n_excluded": 2,
+      "residual_fraction": null,
+      "residual_fraction_reason": "no_aligned_residual_cycles"
+    }
+  }
+}

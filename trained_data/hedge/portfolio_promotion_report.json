@@ -1,0 +1,353 @@
+{
+  "allocations_provided": false,
+  "allocations_source": "missing_or_invalid_fail_closed",
+  "config": {
+    "dd_tolerance": 1.1,
+    "dup_corr_threshold": 0.85,
+    "max_abs_beta": 0.5,
+    "max_abs_bucket": 0.75,
+    "min_aligned_cycles": 8,
+    "min_overlap_cycles": 6,
+    "min_phi": 0.25
+  },
+  "covered_strategies": [
+    "crypto_momentum",
+    "equity_harvester",
+    "fx_trend",
+    "oanda_fx",
+    "track_b"
+  ],
+  "generated_at": "2026-07-18T19:47:51.214813+00:00",
+  "human_review_required": true,
+  "paper_only": true,
+  "runtime_allowed": false,
+  "source_ledger": "/home/claude/ml_engine/trained_data/hedge/raw_vs_hedged_ledger.jsonl",
+  "verdicts": {
+    "crypto_momentum": {
+      "allocations": null,
+      "checks": [
+        {
+          "detail": "0 aligned after-cost cycles < 8 required",
+          "n_aligned_cycles": 0,
+          "name": "standalone_evidence",
+          "status": "unknown"
+        },
+        {
+          "detail": "no_aligned_residual_cycles",
+          "name": "residual_alpha",
+          "phi": null,
+          "scorecard_verdict": "insufficient_history",
+          "status": "unknown"
+        },
+        {
+          "detail": "no aligned cycles",
+          "name": "hedge_cost",
+          "status": "unknown"
+        },
+        {
+          "detail": "one or more incumbent pairs unresolved (insufficient overlap or undefined correlation) \u2014 duplication cannot be ruled out",
+          "name": "duplication",
+          "pairs": [
+            {
+              "corr": null,
+              "incumbent": "equity_harvester",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            },
+            {
+              "corr": null,
+              "incumbent": "track_b",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            }
+          ],
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 a combined book cannot be formed from assumed weights (supply allocations or trained_data/hedge/portfolio_allocations.json)",
+          "name": "bucket_crowding",
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 the combined residual portfolio cannot be formed from assumed weights",
+          "name": "marginal_contribution",
+          "status": "unknown"
+        }
+      ],
+      "human_review_required": true,
+      "incumbents": [
+        "equity_harvester",
+        "track_b"
+      ],
+      "note": "The strongest verdict this gate emits is a recommendation for operator review \u2014 it promotes nothing itself.",
+      "strategy": "crypto_momentum",
+      "verdict": "CONTINUE_SHADOW"
+    },
+    "equity_harvester": {
+      "allocations": null,
+      "checks": [
+        {
+          "detail": "0 aligned after-cost cycles < 8 required",
+          "n_aligned_cycles": 0,
+          "name": "standalone_evidence",
+          "status": "unknown"
+        },
+        {
+          "detail": "no_aligned_residual_cycles",
+          "name": "residual_alpha",
+          "phi": null,
+          "scorecard_verdict": "insufficient_history",
+          "status": "unknown"
+        },
+        {
+          "detail": "no aligned cycles",
+          "name": "hedge_cost",
+          "status": "unknown"
+        },
+        {
+          "detail": "one or more incumbent pairs unresolved (insufficient overlap or undefined correlation) \u2014 duplication cannot be ruled out",
+          "name": "duplication",
+          "pairs": [
+            {
+              "corr": null,
+              "incumbent": "crypto_momentum",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            },
+            {
+              "corr": null,
+              "incumbent": "track_b",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            }
+          ],
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 a combined book cannot be formed from assumed weights (supply allocations or trained_data/hedge/portfolio_allocations.json)",
+          "name": "bucket_crowding",
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 the combined residual portfolio cannot be formed from assumed weights",
+          "name": "marginal_contribution",
+          "status": "unknown"
+        }
+      ],
+      "human_review_required": true,
+      "incumbents": [
+        "crypto_momentum",
+        "track_b"
+      ],
+      "note": "The strongest verdict this gate emits is a recommendation for operator review \u2014 it promotes nothing itself.",
+      "strategy": "equity_harvester",
+      "verdict": "CONTINUE_SHADOW"
+    },
+    "fx_trend": {
+      "allocations": null,
+      "checks": [
+        {
+          "detail": "0 aligned after-cost cycles < 8 required",
+          "n_aligned_cycles": 0,
+          "name": "standalone_evidence",
+          "status": "unknown"
+        },
+        {
+          "detail": "no_aligned_residual_cycles",
+          "name": "residual_alpha",
+          "phi": null,
+          "scorecard_verdict": null,
+          "status": "unknown"
+        },
+        {
+          "detail": "no aligned cycles",
+          "name": "hedge_cost",
+          "status": "unknown"
+        },
+        {
+          "detail": "one or more incumbent pairs unresolved (insufficient overlap or undefined correlation) \u2014 duplication cannot be ruled out",
+          "name": "duplication",
+          "pairs": [
+            {
+              "corr": null,
+              "incumbent": "equity_harvester",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            },
+            {
+              "corr": null,
+              "incumbent": "crypto_momentum",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            },
+            {
+              "corr": null,
+              "incumbent": "track_b",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            }
+          ],
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 a combined book cannot be formed from assumed weights (supply allocations or trained_data/hedge/portfolio_allocations.json)",
+          "name": "bucket_crowding",
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 the combined residual portfolio cannot be formed from assumed weights",
+          "name": "marginal_contribution",
+          "status": "unknown"
+        }
+      ],
+      "human_review_required": true,
+      "incumbents": [
+        "crypto_momentum",
+        "equity_harvester",
+        "track_b"
+      ],
+      "note": "The strongest verdict this gate emits is a recommendation for operator review \u2014 it promotes nothing itself.",
+      "strategy": "fx_trend",
+      "verdict": "CONTINUE_SHADOW"
+    },
+    "oanda_fx": {
+      "allocations": null,
+      "checks": [
+        {
+          "detail": "0 aligned after-cost cycles < 8 required",
+          "n_aligned_cycles": 0,
+          "name": "standalone_evidence",
+          "status": "unknown"
+        },
+        {
+          "detail": "no_aligned_residual_cycles",
+          "name": "residual_alpha",
+          "phi": null,
+          "scorecard_verdict": null,
+          "status": "unknown"
+        },
+        {
+          "detail": "no aligned cycles",
+          "name": "hedge_cost",
+          "status": "unknown"
+        },
+        {
+          "detail": "one or more incumbent pairs unresolved (insufficient overlap or undefined correlation) \u2014 duplication cannot be ruled out",
+          "name": "duplication",
+          "pairs": [
+            {
+              "corr": null,
+              "incumbent": "equity_harvester",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            },
+            {
+              "corr": null,
+              "incumbent": "crypto_momentum",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            },
+            {
+              "corr": null,
+              "incumbent": "track_b",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            }
+          ],
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 a combined book cannot be formed from assumed weights (supply allocations or trained_data/hedge/portfolio_allocations.json)",
+          "name": "bucket_crowding",
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 the combined residual portfolio cannot be formed from assumed weights",
+          "name": "marginal_contribution",
+          "status": "unknown"
+        }
+      ],
+      "human_review_required": true,
+      "incumbents": [
+        "crypto_momentum",
+        "equity_harvester",
+        "track_b"
+      ],
+      "note": "The strongest verdict this gate emits is a recommendation for operator review \u2014 it promotes nothing itself.",
+      "strategy": "oanda_fx",
+      "verdict": "CONTINUE_SHADOW"
+    },
+    "track_b": {
+      "allocations": null,
+      "checks": [
+        {
+          "detail": "0 aligned after-cost cycles < 8 required",
+          "n_aligned_cycles": 0,
+          "name": "standalone_evidence",
+          "status": "unknown"
+        },
+        {
+          "detail": "no_aligned_residual_cycles",
+          "name": "residual_alpha",
+          "phi": null,
+          "scorecard_verdict": "insufficient_history",
+          "status": "unknown"
+        },
+        {
+          "detail": "no aligned cycles",
+          "name": "hedge_cost",
+          "status": "unknown"
+        },
+        {
+          "detail": "one or more incumbent pairs unresolved (insufficient overlap or undefined correlation) \u2014 duplication cannot be ruled out",
+          "name": "duplication",
+          "pairs": [
+            {
+              "corr": null,
+              "incumbent": "equity_harvester",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            },
+            {
+              "corr": null,
+              "incumbent": "crypto_momentum",
+              "overlap": 0,
+              "resolved": false,
+              "why": "insufficient_overlap"
+            }
+          ],
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 a combined book cannot be formed from assumed weights (supply allocations or trained_data/hedge/portfolio_allocations.json)",
+          "name": "bucket_crowding",
+          "status": "unknown"
+        },
+        {
+          "detail": "no operator allocation plan \u2014 the combined residual portfolio cannot be formed from assumed weights",
+          "name": "marginal_contribution",
+          "status": "unknown"
+        }
+      ],
+      "human_review_required": true,
+      "incumbents": [
+        "crypto_momentum",
+        "equity_harvester"
+      ],
+      "note": "The strongest verdict this gate emits is a recommendation for operator review \u2014 it promotes nothing itself.",
+      "strategy": "track_b",
+      "verdict": "CONTINUE_SHADOW"
+    }
+  }
+}

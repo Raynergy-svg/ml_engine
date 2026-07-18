@@ -18,7 +18,7 @@
         "any_fail_closed": true,
         "avg_concentration_warnings": 0.0,
         "net_beta_mean": 0.0,
-        "net_beta_std": null
+        "net_beta_std": 0.0
       },
       "hedge_unavailable": true,
       "hedged_gross": null,
@@ -31,13 +31,21 @@
         "sortino_annualized": null
       },
       "human_review_required": true,
-      "n_cycles": 1,
+      "n_cycles": 2,
       "paper_only": true,
       "raw": {
         "after_cost_expectancy": 0.010242292477929321,
         "hit_rate": 1.0,
         "max_drawdown": 0.0,
-        "n": 1,
+        "n": 2,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "raw_paired": {
+        "after_cost_expectancy": null,
+        "hit_rate": null,
+        "max_drawdown": null,
+        "n": 0,
         "sharpe_annualized": null,
         "sortino_annualized": null
       },
@@ -58,7 +66,7 @@
         "any_fail_closed": false,
         "avg_concentration_warnings": 0.0,
         "net_beta_mean": 103000.0,
-        "net_beta_std": null
+        "net_beta_std": 0.0
       },
       "hedge_unavailable": false,
       "hedged_gross": null,
@@ -71,9 +79,17 @@
         "sortino_annualized": null
       },
       "human_review_required": true,
-      "n_cycles": 1,
+      "n_cycles": 2,
       "paper_only": true,
       "raw": {
+        "after_cost_expectancy": null,
+        "hit_rate": null,
+        "max_drawdown": null,
+        "n": 0,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "raw_paired": {
         "after_cost_expectancy": null,
         "hit_rate": null,
         "max_drawdown": null,
@@ -98,7 +114,7 @@
         "any_fail_closed": true,
         "avg_concentration_warnings": 0.0,
         "net_beta_mean": 6301.963635942387,
-        "net_beta_std": null
+        "net_beta_std": 0.0
       },
       "hedge_unavailable": true,
       "hedged_gross": null,
@@ -111,13 +127,21 @@
         "sortino_annualized": null
       },
       "human_review_required": true,
-      "n_cycles": 1,
+      "n_cycles": 2,
       "paper_only": true,
       "raw": {
         "after_cost_expectancy": 0.0012642806625314416,
         "hit_rate": 1.0,
         "max_drawdown": 0.0,
         "n": 1,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "raw_paired": {
+        "after_cost_expectancy": null,
+        "hit_rate": null,
+        "max_drawdown": null,
+        "n": 0,
         "sharpe_annualized": null,
         "sortino_annualized": null
       },
