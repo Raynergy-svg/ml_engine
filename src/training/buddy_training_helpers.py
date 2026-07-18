@@ -1711,6 +1711,23 @@ def train_with_walkforward_validation(
     # Parse walk-forward config
     wf_cfg = WalkForwardConfig.from_dict(wf_config)
 
+    # 2026-07-18 hardening (operator directive): this is the SUPERVISED
+    # training boundary — the label's forward-information horizon is not
+    # optional here. A declared horizon lets the validator enforce
+    # gap >= horizon; an undeclared one means the leakage bound is
+    # unverifiable, and every metric downstream could be leaked (tier-2
+    # labels look tier2_horizon_candles=288 bars ahead vs the old 24-bar
+    # gap). Refuse to train rather than warn-and-proceed.
+    if int(getattr(wf_cfg, "label_horizon", 0)) <= 0:
+        raise ValueError(
+            "walk-forward config must declare 'label_horizon' (> 0): the max "
+            "number of bars your labels look ahead (e.g. tier2_horizon_candles "
+            "for tier-2 TP/SL labels; 1 for next-bar direction labels). The "
+            "validator enforces gap >= label_horizon to prevent train->validation "
+            "label leakage. Baselines produced without this bound should be "
+            "regenerated. Set it in the training YAML's walkforward block."
+        )
+
     if console:
         console.print(Panel(
             f"[bold]Walk-Forward Cross-Validation[/bold]\n\n"

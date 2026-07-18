@@ -352,3 +352,31 @@ def test_purged_kfold_purge_raised_to_label_horizon():
         after = train_idx[train_idx >= test_end]
         if len(after):
             assert after.min() >= test_end + horizon + 5
+
+
+# ── 12. label_horizon hardening (round-trip + mandatory at training boundary) ─
+
+def test_walkforward_config_roundtrips_label_horizon():
+    from src.training.walkforward_validation import WalkForwardConfig
+
+    cfg = WalkForwardConfig(label_horizon=288)
+    d = cfg.to_dict()
+    assert d["label_horizon"] == 288, "to_dict must serialize label_horizon"
+    cfg2 = WalkForwardConfig.from_dict(d)
+    assert cfg2.label_horizon == 288, "round trip must not drop the leakage bound"
+
+
+def test_supervised_training_boundary_requires_label_horizon():
+    """train_with_walkforward_validation must REFUSE (not warn) when the
+    walk-forward config omits label_horizon — an unverifiable leakage bound
+    at the supervised boundary means potentially leaked baselines."""
+    import pytest as _pytest
+    from src.training.buddy_training_helpers import train_with_walkforward_validation
+
+    with _pytest.raises(ValueError, match="label_horizon"):
+        train_with_walkforward_validation(
+            trainer_class=object, trainer_config=None,
+            X_train=np.zeros((100, 4)), y_train=np.zeros(100),
+            X_val=np.zeros((20, 4)), y_val=np.zeros(20),
+            wf_config={"enabled": True, "n_splits": 2},  # no label_horizon
+        )

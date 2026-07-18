@@ -164,6 +164,9 @@ class WalkForwardConfig:
             'use_purged_kfold': self.use_purged_kfold,
             'purge_gap': self.purge_gap,
             'embargo_gap': self.embargo_gap,
+            # 2026-07-18 hardening: serialize the label horizon — a config
+            # round trip must never silently drop the leakage bound.
+            'label_horizon': self.label_horizon,
             'retrain_per_fold': self.retrain_per_fold,
             'aggregate_method': self.aggregate_method,
             'ensure_regime_balance': self.ensure_regime_balance,
