@@ -1025,9 +1025,14 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
     the ledger (tmp + fsync + os.replace, same durability convention as the
     append path).
 
-    Fail-closed properties preserved: a row that STILL can't be marked is
-    left unresolved (never partially filled); rows persisted before weights
-    were captured are counted ``skipped_no_weights`` and left untouched;
+    Fail-closed properties preserved: reconciliation never FABRICATES a
+    partial hedge result — a raw lane that genuinely resolves is persisted
+    even when the overlay's own legs still lack forward data (real progress,
+    each lane marked only from real prices), but such a row keeps
+    ``return_basis == "unresolved"``, gets no ``reconciled_at`` stamp, and
+    stays excluded from residual evidence until BOTH lanes resolve; rows
+    persisted before weights were captured are counted
+    ``skipped_no_weights`` and left untouched;
     a resolved row is never touched again (``reconciled_at`` stamps the
     revisit). Order and line count never change, and (rev 2.1/2.2, review
     fixes) every line NOT reconciled is preserved BYTE-FOR-BYTE — the file is
