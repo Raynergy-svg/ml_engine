@@ -172,6 +172,31 @@ def test_reconcile_preserves_corrupt_and_blank_lines_verbatim(tmp_path):
     assert lines[2] == "", "blank line must survive verbatim"
 
 
+def test_reconcile_preserves_line_ending_bytes_exactly(tmp_path):
+    """rev 2.2 (review): 'byte-for-byte' must be literal — CRLF endings,
+    undecodable bytes and a missing final newline all survive a rewrite that
+    reconciles an adjacent line."""
+    panel = _panel({"AAA": [99.0, 100.0, 102.0], "BBB": [51.0, 50.0, 49.0]})
+    stale = json.dumps(_unresolved_row(), sort_keys=True).encode("utf-8") + b"\n"
+    undecodable = b"\xff\xfe not utf-8 \xff\n"
+    corrupt_crlf = b'{"truncated_with_crlf": \r\n'
+    tail_no_newline = b"last line, not json, no trailing newline"
+    ledger = tmp_path / "raw_vs_hedged_ledger.jsonl"
+    ledger.write_bytes(stale + undecodable + corrupt_crlf + tail_no_newline)
+
+    summary = hsl.reconcile_unresolved(
+        ledger, price_panel=panel, sector_bucket_map={}, currency_bucket_map={},
+        today="2026-07-01")
+    assert summary["resolved"] == 1
+
+    lines = ledger.read_bytes().splitlines(keepends=True)
+    assert len(lines) == 4
+    assert json.loads(lines[0])["raw"]["net_return"] == pytest.approx(0.016)
+    assert lines[1] == undecodable, "undecodable bytes must survive verbatim"
+    assert lines[2] == corrupt_crlf, "CRLF terminator must not be normalized to LF"
+    assert lines[3] == tail_no_newline, "no final newline must be invented"
+
+
 def test_run_all_wires_reconciliation_before_the_cycle(tmp_path):
     # Real repo price panel; skip when the environment lacks it. Pick a real
     # ticker + a past asof so the forward bar genuinely exists on disk.

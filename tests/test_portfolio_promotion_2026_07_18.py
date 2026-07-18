@@ -131,6 +131,71 @@ def test_no_allocation_plan_means_no_combined_book_checks():
     assert out["verdict"] == VERDICT_SHADOW
 
 
+def test_incomplete_or_invalid_plans_are_unknown_never_repaired_never_raise():
+    # rev 2.2: a plan must cover the candidate AND every incumbent with a
+    # positive finite weight. Zero-filling omissions silently removed
+    # strategies from the combined book, divided by zero in the
+    # without-candidate portfolio, and made an omitted candidate look
+    # harmless (with == without). Every bad plan below must land UNKNOWN ->
+    # CONTINUE_SHADOW — and never raise.
+    rows = {
+        "incumbent_a": _series("incumbent_a", _alpha_returns(1)),
+        "candidate":   _series("candidate", _alpha_returns(99)),
+    }
+    sc = _sc(VERDICT_GENUINE)
+    bad_plans = [
+        {"candidate": 1.0},                       # incumbent omitted
+        {"incumbent_a": 1.0},                     # candidate omitted
+        {"incumbent_a": 0.7, "candidate": 0.0},   # candidate weight zero
+        {"incumbent_a": -0.5, "candidate": 1.0},  # negative weight
+        {"incumbent_a": True, "candidate": 1.0},  # non-numeric
+    ]
+    for plan in bad_plans:
+        out = evaluate_strategy("candidate", rows, sc, allocations=plan)
+        assert out["allocations"] is None, plan
+        for name in ("bucket_crowding", "marginal_contribution"):
+            assert _status(out, name)["status"] == "unknown", (plan, name)
+        assert out["verdict"] == VERDICT_SHADOW, plan
+
+
+def test_plan_omitting_one_of_two_incumbents_is_unknown():
+    rows = {
+        "incumbent_a": _series("incumbent_a", _alpha_returns(1)),
+        "incumbent_b": _series("incumbent_b", _alpha_returns(2)),
+        "candidate":   _series("candidate", _alpha_returns(99)),
+    }
+    partial = {"incumbent_a": 0.5, "candidate": 0.5}  # incumbent_b missing
+    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE),
+                            allocations=partial)
+    assert out["allocations"] is None
+    assert out["verdict"] == VERDICT_SHADOW
+    # the SAME book with complete coverage resolves the combined checks
+    full = {"incumbent_a": 0.4, "incumbent_b": 0.3, "candidate": 0.3}
+    out2 = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE),
+                             allocations=full)
+    assert out2["allocations"] is not None
+    assert sum(out2["allocations"].values()) == pytest.approx(1.0)
+    assert _status(out2, "bucket_crowding")["status"] != "unknown" or \
+        "allocation" not in _status(out2, "bucket_crowding")["detail"]
+
+
+def test_allocations_file_with_any_invalid_entry_is_rejected_whole(tmp_path):
+    # rev 2.2: no positive-subset salvage — one bad entry rejects the plan.
+    from src.hedge.portfolio_promotion import load_operator_allocations
+    p = tmp_path / "portfolio_allocations.json"
+    p.write_text(json.dumps({"allocations": {"candidate": 1.0, "incumbent_a": "half"}}))
+    assert load_operator_allocations(p) is None
+    p.write_text(json.dumps({"candidate": 1.0, "incumbent_a": -2}))
+    assert load_operator_allocations(p) is None
+    p.write_text(json.dumps({"allocations": {}}))
+    assert load_operator_allocations(p) is None
+    p.write_text("{not json")
+    assert load_operator_allocations(p) is None
+    assert load_operator_allocations(tmp_path / "missing.json") is None
+    p.write_text(json.dumps({"candidate": 2.0, "incumbent_a": 1.0}))
+    assert load_operator_allocations(p) == {"candidate": 2.0, "incumbent_a": 1.0}
+
+
 def test_pure_beta_candidate_rejected():
     # Residual ~ 0 while raw is strongly positive: phi ~ 0 -> residual_alpha FAIL
     rows = {
@@ -335,7 +400,7 @@ def test_report_without_operator_allocation_plan_stays_in_shadow(tmp_path):
         ledger_path=ledger, scorecard_path=scorecard,
         out_path=tmp_path / "report.json",
         allocations_path=tmp_path / "no_such_allocations.json")
-    assert report["allocations_source"] == "missing_fail_closed"
+    assert report["allocations_source"] == "missing_or_invalid_fail_closed"
     assert report["verdicts"]["candidate"]["verdict"] == VERDICT_SHADOW
 
 

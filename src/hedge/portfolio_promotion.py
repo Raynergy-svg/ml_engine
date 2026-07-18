@@ -170,23 +170,39 @@ def _resolve_allocations(strategies: Sequence[str],
     given strategies. ``None`` when no usable plan was supplied (rev 2.1:
     equal weight is a planning ASSUMPTION, not evidence about the real book —
     combined-book checks must go UNKNOWN, never silently assume). The single-
-    strategy case needs no plan: its allocation is exactly 1 by identity."""
-    if allocations:
-        vals = {s: max(0.0, float(allocations.get(s, 0.0))) for s in strategies}
-        total = sum(vals.values())
-        if total > 0:
-            return {s: v / total for s, v in vals.items()}
+    strategy case needs no plan: its allocation is exactly 1 by identity.
+
+    rev 2.2 (review of 722ffd4): COMPLETE coverage is required — every listed
+    strategy (candidate AND every incumbent) must carry a positive finite
+    weight. The previous version zero-filled omissions, which silently
+    removed an omitted incumbent from the combined exposure, gave a
+    zero-allocation "without-candidate" portfolio (division by zero in
+    marginal contribution), and let an omitted candidate look harmless
+    because with == without. An incomplete plan is UNKNOWN, never repaired."""
     if len(strategies) == 1:
         return {strategies[0]: 1.0}
-    return None
+    if not allocations:
+        return None
+    vals: Dict[str, float] = {}
+    for s in strategies:
+        v = allocations.get(s)
+        if (isinstance(v, bool) or not isinstance(v, (int, float))
+                or not math.isfinite(float(v)) or float(v) <= 0):
+            return None  # missing / zero / negative / non-numeric: no plan
+        vals[s] = float(v)
+    total = sum(vals.values())
+    return {s: v / total for s, v in vals.items()}
 
 
 def load_operator_allocations(
         path: Path = PORTFOLIO_ALLOCATIONS_PATH) -> Optional[Dict[str, float]]:
     """The operator's capital plan from disk. ``None`` (fail-closed, logged)
-    when the file is missing, unparseable, or contains no positive weights —
-    the report path then leaves combined-book checks UNKNOWN rather than
-    inventing an equal-weight book."""
+    when the file is missing, unparseable, empty, or contains ANY invalid
+    entry — rev 2.2: a malformed plan is rejected WHOLE, never reduced to its
+    positive subset (a partial plan silently drops strategies from the
+    combined book, which is exactly the failure _resolve_allocations guards
+    against). The report path then leaves combined-book checks UNKNOWN rather
+    than inventing a book."""
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -197,14 +213,20 @@ def load_operator_allocations(
         return None
     if isinstance(data, dict) and isinstance(data.get("allocations"), dict):
         data = data["allocations"]
-    if not isinstance(data, dict):
+    if not isinstance(data, dict) or not data:
         logger.warning("portfolio_promotion: allocations file has no mapping at %s", path)
         return None
     out: Dict[str, float] = {}
     for k, v in data.items():
-        if isinstance(v, (int, float)) and float(v) > 0 and math.isfinite(float(v)):
-            out[str(k)] = float(v)
-    return out or None
+        if (isinstance(v, bool) or not isinstance(v, (int, float))
+                or not math.isfinite(float(v)) or float(v) <= 0):
+            logger.warning(
+                "portfolio_promotion: invalid allocation %r=%r in %s — rejecting the "
+                "WHOLE plan (fail-closed; fix the file, no partial plan is usable)",
+                k, v, path)
+            return None
+        out[str(k)] = float(v)
+    return out
 
 
 # --------------------------------------------------------------------- #
@@ -500,7 +522,7 @@ def build_portfolio_promotion_report(
         allocations = load_operator_allocations(allocations_path)
         allocations_source = (
             f"operator_file:{allocations_path}" if allocations is not None
-            else "missing_fail_closed")
+            else "missing_or_invalid_fail_closed")
 
     rows_by_strategy: Dict[str, List[Dict[str, Any]]] = {}
     try:

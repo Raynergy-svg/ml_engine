@@ -13,10 +13,13 @@ Identity (per aligned twin-lane cycle, F1-fixed schema):
 so ``residual + systematic == raw`` exactly, cycle by cycle. The residual is
 only defined on cycles where a hedge was actually APPLIED and both lanes
 resolved — everything else fails closed (excluded, reasons recorded), never
-imputed. Strategies without lane coverage (today: the 15-agent scanner's own
-book) get an explicit ``no_lane_coverage`` pass-through — raw credit remains
-the honest signal until the exposure engine covers that book; we never borrow
-another strategy's residual fraction.
+imputed. Any strategy without lane coverage gets an explicit
+``no_lane_coverage`` pass-through — raw credit remains the honest signal, and
+we never borrow another strategy's residual fraction. (The 15-agent scanner's
+own book HAS lane coverage since 2026-07-18 via
+``hedged_shadow_lane.load_oanda_fx_book``; its pass-throughs, when they
+occur, now come from insufficient resolved after-cost history —
+``insufficient_history`` / phi-undefined reasons — not missing coverage.)
 
 Authority contract (same as the rest of src/hedge): ZERO orders, no gate,
 halt or leverage mutation. This module computes and reports. The reward hook

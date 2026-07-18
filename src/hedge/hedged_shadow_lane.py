@@ -1029,23 +1029,30 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
     left unresolved (never partially filled); rows persisted before weights
     were captured are counted ``skipped_no_weights`` and left untouched;
     a resolved row is never touched again (``reconciled_at`` stamps the
-    revisit). Order and line count never change, and (rev 2.1, review fix)
-    unparseable/blank lines are preserved BYTE-FOR-BYTE: the rewrite emits
-    each original line verbatim unless that specific line's row was
-    reconciled — reading through a tolerant parser and writing back only
-    what parsed would silently destroy corrupt evidence lines."""
+    revisit). Order and line count never change, and (rev 2.1/2.2, review
+    fixes) every line NOT reconciled is preserved BYTE-FOR-BYTE — the file is
+    read and rewritten in binary with original terminators kept, so corrupt
+    lines, blank lines, undecodable bytes, CRLF endings and a missing final
+    newline all survive verbatim. Only a line whose row was actually
+    reconciled is re-serialized (LF-terminated, the append convention)."""
     summary = {"checked": 0, "resolved": 0, "still_unresolved": 0, "skipped_no_weights": 0}
     if not ledger_path.exists():
         return summary
     try:
-        with open(ledger_path, "r", encoding="utf-8") as fh:
-            raw_lines = fh.read().splitlines()
+        with open(ledger_path, "rb") as fh:
+            raw_lines = fh.read().splitlines(keepends=True)
     except OSError as exc:
         logger.warning("hedged_shadow_lane: ledger unreadable at %s (%s)", ledger_path, exc)
         return summary
     indexed_rows: List[Tuple[int, Dict[str, Any]]] = []
-    for i, line in enumerate(raw_lines):
-        stripped = line.strip()
+    for i, line_bytes in enumerate(raw_lines):
+        try:
+            stripped = line_bytes.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            logger.warning("hedged_shadow_lane: preserving undecodable ledger line %d in %s "
+                           "verbatim (reconcile never rewrites what it cannot read)",
+                           i + 1, ledger_path)
+            continue
         if not stripped:
             continue
         try:
@@ -1136,13 +1143,16 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
         row_by_line = dict(indexed_rows)
         tmp_path = ledger_path.with_name(ledger_path.name + ".reconcile.tmp")
         try:
-            with open(tmp_path, "w", encoding="utf-8") as fh:
-                for i, line in enumerate(raw_lines):
+            with open(tmp_path, "wb") as fh:
+                for i, line_bytes in enumerate(raw_lines):
                     if i in modified_lines:
-                        fh.write(json.dumps(row_by_line[i], sort_keys=True) + "\n")
+                        fh.write(json.dumps(row_by_line[i], sort_keys=True)
+                                 .encode("utf-8") + b"\n")
                     else:
-                        # verbatim — including blank and unparseable lines
-                        fh.write(line + "\n")
+                        # verbatim BYTES — blank/corrupt/undecodable lines,
+                        # original terminators (CRLF kept as CRLF), and a
+                        # missing final newline all pass through unchanged
+                        fh.write(line_bytes)
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp_path, ledger_path)
