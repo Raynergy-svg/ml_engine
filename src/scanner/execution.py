@@ -362,6 +362,31 @@ class ExecutionResult:
     slippage_pips: float = 0.0  # fill_price - expected_price in pips
 
 
+def regime_reward_ratio(pnl: Any, shaped_reward: Any,
+                        residual_applied: bool = False) -> float:
+    """Ratio scaling ``weight_boost_on_win`` / ``weight_penalty_on_loss`` in
+    the RL weight update (extracted from sync_closed_trades_rl so the F9
+    semantics are EXECUTABLE in tests, not just readable in source).
+
+    Normal shaped rewards keep the regime-shaping guard: the ratio is floored
+    at 0.3 so volatility shaping alone never fully mutes learning, and capped
+    at 2.0. F9 (2026-07-18 review): when the shaped reward is a RESIDUAL
+    reward, ~0 IS the semantics — a win the hedge lanes proved was market
+    return (pure beta) must yield ~zero agent credit, so the floor is 0.0.
+    rev 2.1 closes the tiny-P&L bypass the review caught: |pnl| <= 0.001
+    previously returned 1.0 unconditionally, restoring FULL credit to exactly
+    the trades whose residual reward had been attenuated to nothing — that
+    branch is now 0.0 when the residual reward is live (1.0 otherwise,
+    unchanged ordinary behavior).
+    """
+    abs_pnl = abs(float(pnl or 0.0))
+    abs_shaped = abs(float(shaped_reward or 0.0))
+    floor = 0.0 if residual_applied else 0.3
+    if abs_pnl > 0.001:
+        return min(2.0, max(floor, abs_shaped / abs_pnl))
+    return 0.0 if residual_applied else 1.0
+
+
 class ExecutionManager:
     """Manages trade execution with position sizing and daily limits.
 
@@ -5706,23 +5731,14 @@ class ExecutionManager:
                     _orig_boost = getattr(_rl_config, "weight_boost_on_win", 0.10) if _rl_config else 0.10
                     if _shaped is not None and _rl_config is not None:
                         try:
-                            # Scale boost/penalty by |shaped_reward| relative to |pnl|
-                            # Difficult regimes (HIGH/EXTREME) with profit get amplified reward
-                            _abs_pnl = abs(float(upd.get("pnl", 0)))
-                            _abs_shaped = abs(_shaped)
-                            # F9 (2026-07-18): the 0.3 floor is a regime-shaping
-                            # guard (never fully mute learning on volatility
-                            # shaping alone). But when the shaped reward is a
-                            # RESIDUAL reward, ~0 is the semantics: a win that
-                            # was pure beta (phi ~ 0) must yield ~zero agent
-                            # credit — flooring it at 0.3 silently restores 30%
-                            # of the credit the hedge lanes proved was market
-                            # return, not agent skill.
-                            _ratio_floor = 0.0 if upd.get("residual_applied") else 0.3
-                            if _abs_pnl > 0.001:
-                                _reward_ratio = min(2.0, max(_ratio_floor, _abs_shaped / _abs_pnl))
-                            else:
-                                _reward_ratio = 1.0
+                            # Scale boost/penalty by |shaped_reward| relative to |pnl|.
+                            # Difficult regimes (HIGH/EXTREME) with profit get amplified
+                            # reward. F9 semantics (residual rewards floor at 0.0,
+                            # including the tiny-P&L branch) live in the module-level
+                            # regime_reward_ratio helper so tests EXECUTE them.
+                            _reward_ratio = regime_reward_ratio(
+                                upd.get("pnl", 0), _shaped,
+                                bool(upd.get("residual_applied")))
                             setattr(_rl_config, "weight_boost_on_win", round(_orig_boost * _reward_ratio, 4))
                             _current_penalty = getattr(_rl_config, "weight_penalty_on_loss", 0.15)
                             setattr(_rl_config, "weight_penalty_on_loss", round(_current_penalty * _reward_ratio, 4))

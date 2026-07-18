@@ -32,6 +32,15 @@ is provided as a pure primitive (`exponential_credit_update`) for the future
 strategy-allocation layer; the existing per-trade agent updater instead
 consumes `residual_reward` (a bounded multiplier on its shaped reward), which
 composes with its EMA damping and [0.1, 2.0] bounds without replacing them.
+
+Scope honesty (2026-07-18 operator review): what the live hook implements is
+RESIDUAL-BASED CREDIT SUPPRESSION at strategy level, not full signed
+agent-level residual attribution. Negative phi clamps to a 0.0 multiplier, so
+"raw win + negative hedge residual" yields NO agent credit rather than
+actively penalizing the supporting agents; the signed per-agent update above
+remains an unwired primitive until contribution_j is connected. This is the
+intended conservative shadow-first policy — suppression can only remove
+unearned credit, never flip a win into a loss signal on a phi estimate.
 """
 from __future__ import annotations
 

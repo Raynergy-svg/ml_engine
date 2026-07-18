@@ -148,6 +148,30 @@ def test_reconcile_fail_closed_paths(tmp_path):
         "checked": 0, "resolved": 0, "still_unresolved": 0, "skipped_no_weights": 0}
 
 
+def test_reconcile_preserves_corrupt_and_blank_lines_verbatim(tmp_path):
+    """rev 2.1 (review): the rewrite must never launder the evidence ledger —
+    unparseable and blank lines survive BYTE-FOR-BYTE even when another line
+    on the same file is reconciled."""
+    panel = _panel({"AAA": [99.0, 100.0, 102.0], "BBB": [51.0, 50.0, 49.0]})
+    stale = _unresolved_row()
+    corrupt = '{"strategy": "truncated_by_a_crash", "asof_da'
+    ledger = tmp_path / "raw_vs_hedged_ledger.jsonl"
+    ledger.write_text(
+        json.dumps(stale, sort_keys=True) + "\n" + corrupt + "\n" + "\n",
+        encoding="utf-8")
+
+    summary = hsl.reconcile_unresolved(
+        ledger, price_panel=panel, sector_bucket_map={}, currency_bucket_map={},
+        today="2026-07-01")
+    assert summary["resolved"] == 1
+
+    lines = ledger.read_text(encoding="utf-8").split("\n")
+    assert len(lines) == 4 and lines[3] == ""  # 3 lines + trailing newline
+    assert json.loads(lines[0])["raw"]["net_return"] == pytest.approx(0.016)
+    assert lines[1] == corrupt, "corrupt evidence line must survive verbatim"
+    assert lines[2] == "", "blank line must survive verbatim"
+
+
 def test_run_all_wires_reconciliation_before_the_cycle(tmp_path):
     # Real repo price panel; skip when the environment lacks it. Pick a real
     # ticker + a past asof so the forward bar genuinely exists on disk.
@@ -175,20 +199,75 @@ def test_run_all_wires_reconciliation_before_the_cycle(tmp_path):
 
 # ── F9: residual reward must not be floored back to 0.3 ─────────────────────
 
-def test_residual_applied_flag_and_floor_contract_in_rl_sync():
-    """Source contract test (the clamp lives inline in a 6k-line method; this
-    locks the wiring the way the repo's singularity-verification greps do):
-    the rl_updates row carries residual_applied, the ratio floor is 0.0 for
-    residual rewards, and the old unconditional max(0.3, ...) clamp is gone."""
+def test_regime_reward_ratio_semantics_executed():
+    """The extracted helper IS the loop's ratio (see wiring test below) — so
+    these are executed semantics, not source inspection."""
+    from src.scanner.execution import regime_reward_ratio
+
+    # ordinary shaped rewards keep the regime-shaping guard: floor 0.3, cap 2.0
+    assert regime_reward_ratio(100.0, 10.0, False) == pytest.approx(0.3)
+    assert regime_reward_ratio(100.0, 90.0, False) == pytest.approx(0.9)
+    assert regime_reward_ratio(10.0, 100.0, False) == pytest.approx(2.0)
+    assert regime_reward_ratio(0.0005, 5.0, False) == pytest.approx(1.0)  # tiny pnl
+    assert regime_reward_ratio(100.0, None, False) == pytest.approx(0.3)
+    # residual rewards: ~0 IS the semantics — no floor anywhere
+    assert regime_reward_ratio(100.0, 10.0, True) == pytest.approx(0.1)
+    assert regime_reward_ratio(100.0, 0.0, True) == pytest.approx(0.0)
+    assert regime_reward_ratio(100.0, 1e-9, True) == pytest.approx(0.0, abs=1e-9)
+    # rev 2.1 (review): the tiny-P&L branch must NOT bypass the residual rule —
+    # a tiny pure-beta result previously got full ordinary credit back
+    assert regime_reward_ratio(0.0005, 0.0, True) == pytest.approx(0.0)
+    assert regime_reward_ratio(0.0, 5.0, True) == pytest.approx(0.0)
+    # residual cap still holds
+    assert regime_reward_ratio(10.0, 100.0, True) == pytest.approx(2.0)
+
+
+def test_zero_residual_ratio_leaves_real_agent_weights_unchanged(tmp_path, monkeypatch):
+    """Executed through the REAL updater: a pure-beta win whose residual
+    reward ratio is 0.0 scales boost/penalty to 0 exactly as the sync loop
+    does, and ScannerAgentTeam.update_weights_from_outcome then produces ZERO
+    weight movement — on real disk (tmp cwd), no mocks. A control update with
+    a nonzero ratio proves the test can detect movement."""
+    from src.scanner.agents import ScannerAgentTeam
+    from src.scanner.config import ScannerConfig
+    from src.scanner.execution import regime_reward_ratio
+
+    monkeypatch.chdir(tmp_path)  # _WEIGHTS_FILE is cwd-relative
+    cfg = ScannerConfig()
+    team = ScannerAgentTeam(config=cfg)
+    verdicts = [{"name": "trend", "passed": True},
+                {"name": "momentum", "passed": False}]
+    before = dict(team._learned_weights.get("_global", team._BASE_WEIGHTS))
+
+    # pure-beta win, residual reward live: shaped residual reward ~ 0
+    ratio = regime_reward_ratio(120.0, 0.0, True)
+    assert ratio == 0.0
+    orig_boost = cfg.weight_boost_on_win
+    orig_penalty = cfg.weight_penalty_on_loss
+    cfg.weight_boost_on_win = round(orig_boost * ratio, 4)
+    cfg.weight_penalty_on_loss = round(orig_penalty * ratio, 4)
+    after = team.update_weights_from_outcome(verdicts, trade_won=True, regime="NORMAL")
+    for name in ("trend", "momentum"):
+        assert after[name] == pytest.approx(before[name]), (
+            f"{name}: pure-beta win must move NO weight when residual credit is 0")
+
+    # control: restore ordinary boost — the same call must now move weights
+    cfg.weight_boost_on_win = orig_boost
+    cfg.weight_penalty_on_loss = orig_penalty
+    moved = team.update_weights_from_outcome(verdicts, trade_won=True, regime="NORMAL")
+    assert moved["trend"] != pytest.approx(before["trend"])
+
+
+def test_rl_sync_wires_the_helper_and_the_flag():
+    """Wiring lock (the loop lives inline in a 6k-line method): rl_updates
+    rows carry residual_applied, the loop delegates to regime_reward_ratio,
+    and no unconditional 0.3 clamp survives anywhere."""
     src = (Path(__file__).resolve().parents[1]
            / "src" / "scanner" / "execution.py").read_text(encoding="utf-8")
-    assert '"residual_applied": _residual_live' in src, (
-        "rl_updates rows must tell the weight-update loop the reward is residual")
-    assert '_ratio_floor = 0.0 if upd.get("residual_applied") else 0.3' in src, (
-        "a pure-beta win's ~0 residual reward must reach the updater as ~0 credit")
-    assert "max(_ratio_floor, _abs_shaped / _abs_pnl)" in src
-    assert "max(0.3, _abs_shaped" not in src, (
-        "the unconditional 0.3 floor would silently restore 30% credit to beta wins")
+    assert '"residual_applied": _residual_live' in src
+    assert '_reward_ratio = regime_reward_ratio(' in src
+    assert 'bool(upd.get("residual_applied"))' in src
+    assert "max(0.3, _abs_shaped" not in src
     # the flag goes live ONLY on the operator-gated branch
     flag_idx = src.index("_residual_live = True")
     gate_idx = src.index('_res["applied"] and getattr(self.config, "enable_residual_alpha_rewards"')

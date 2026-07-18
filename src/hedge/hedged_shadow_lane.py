@@ -1029,10 +1029,35 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
     left unresolved (never partially filled); rows persisted before weights
     were captured are counted ``skipped_no_weights`` and left untouched;
     a resolved row is never touched again (``reconciled_at`` stamps the
-    revisit). Order and row count of the ledger never change."""
-    rows = _read_jsonl_rows(ledger_path)
+    revisit). Order and line count never change, and (rev 2.1, review fix)
+    unparseable/blank lines are preserved BYTE-FOR-BYTE: the rewrite emits
+    each original line verbatim unless that specific line's row was
+    reconciled — reading through a tolerant parser and writing back only
+    what parsed would silently destroy corrupt evidence lines."""
     summary = {"checked": 0, "resolved": 0, "still_unresolved": 0, "skipped_no_weights": 0}
-    if not rows:
+    if not ledger_path.exists():
+        return summary
+    try:
+        with open(ledger_path, "r", encoding="utf-8") as fh:
+            raw_lines = fh.read().splitlines()
+    except OSError as exc:
+        logger.warning("hedged_shadow_lane: ledger unreadable at %s (%s)", ledger_path, exc)
+        return summary
+    indexed_rows: List[Tuple[int, Dict[str, Any]]] = []
+    for i, line in enumerate(raw_lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            logger.warning("hedged_shadow_lane: preserving unparseable ledger line %d in %s "
+                           "verbatim (reconcile never rewrites what it cannot read)",
+                           i + 1, ledger_path)
+            continue
+        if isinstance(parsed, dict):
+            indexed_rows.append((i, parsed))
+    if not indexed_rows:
         return summary
     if today is None:
         today = datetime.now(timezone.utc).date().isoformat()
@@ -1040,9 +1065,9 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
     panel = price_panel
     sector_map = sector_bucket_map
     currency_map = currency_bucket_map
-    changed = False
+    modified_lines: set = set()
 
-    for row in rows:
+    for line_no, row in indexed_rows:
         if not _row_is_unresolved(row):
             continue
         asof = row.get("asof_date")
@@ -1081,7 +1106,7 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
                 raw["net_return"] = raw_net
                 raw["notes"] = list(raw.get("notes") or []) + \
                     ["reconciled_forward_mark(F8)"] + raw_notes
-                changed = True
+                modified_lines.add(line_no)
 
         # --- Lane B: overlay re-marked with the row's own applied proposal --
         if raw_net is not None and hedged.get("return_basis") in (None, "unresolved"):
@@ -1099,7 +1124,7 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
                 hedge["overlay_cost_known"] = overlay["cost_known"]
                 hedge["overlay_cost_dollars"] = overlay["cost_dollars"]
                 hedge["notes"] = list(hedge.get("notes") or []) + ["reconciled_overlay_mark(F8)"]
-                changed = True
+                modified_lines.add(line_no)
 
         if _row_is_unresolved(row):
             summary["still_unresolved"] += 1
@@ -1107,12 +1132,17 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
             summary["resolved"] += 1
             row["reconciled_at"] = datetime.now(timezone.utc).isoformat()
 
-    if changed:
+    if modified_lines:
+        row_by_line = dict(indexed_rows)
         tmp_path = ledger_path.with_name(ledger_path.name + ".reconcile.tmp")
         try:
             with open(tmp_path, "w", encoding="utf-8") as fh:
-                for row in rows:
-                    fh.write(json.dumps(row, sort_keys=True) + "\n")
+                for i, line in enumerate(raw_lines):
+                    if i in modified_lines:
+                        fh.write(json.dumps(row_by_line[i], sort_keys=True) + "\n")
+                    else:
+                        # verbatim — including blank and unparseable lines
+                        fh.write(line + "\n")
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp_path, ledger_path)

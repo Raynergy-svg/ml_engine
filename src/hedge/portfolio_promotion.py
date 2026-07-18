@@ -59,6 +59,13 @@ HEDGE_LEDGER_DIR = REPO_ROOT / "trained_data" / "hedge"
 RAW_VS_HEDGED_LEDGER_PATH = HEDGE_LEDGER_DIR / "raw_vs_hedged_ledger.jsonl"
 SCORECARD_REPORT_PATH = HEDGE_LEDGER_DIR / "hedge_scorecard_report.json"
 PROMOTION_REPORT_PATH = HEDGE_LEDGER_DIR / "portfolio_promotion_report.json"
+# The operator's capital plan: {"strategy_name": relative_weight, ...}.
+# rev 2.1 (operator review of 735d897): the automatic report path previously
+# defaulted to EQUAL allocations — allocation-aware code operating under a
+# planning assumption that is not grounded in the actual book. Combined-book
+# checks now require a real allocation plan (this file, or the ``allocations``
+# argument); without one they are UNKNOWN -> CONTINUE_SHADOW, fail-closed.
+PORTFOLIO_ALLOCATIONS_PATH = HEDGE_LEDGER_DIR / "portfolio_allocations.json"
 
 RUNTIME_ALLOWED = False
 PAPER_ONLY = True
@@ -157,17 +164,47 @@ def _check(name: str, status: str, detail: str, **extra: Any) -> Dict[str, Any]:
 
 
 def _resolve_allocations(strategies: Sequence[str],
-                         allocations: Optional[Dict[str, float]]) -> Dict[str, float]:
+                         allocations: Optional[Dict[str, float]]
+                         ) -> Optional[Dict[str, float]]:
     """Per-strategy portfolio allocation a_s, normalized to sum 1 over the
-    given strategies. Default: equal weight (documented planning assumption —
-    pass real intended allocations to reflect the actual book)."""
+    given strategies. ``None`` when no usable plan was supplied (rev 2.1:
+    equal weight is a planning ASSUMPTION, not evidence about the real book —
+    combined-book checks must go UNKNOWN, never silently assume). The single-
+    strategy case needs no plan: its allocation is exactly 1 by identity."""
     if allocations:
         vals = {s: max(0.0, float(allocations.get(s, 0.0))) for s in strategies}
         total = sum(vals.values())
         if total > 0:
             return {s: v / total for s, v in vals.items()}
-    n = max(1, len(strategies))
-    return {s: 1.0 / n for s in strategies}
+    if len(strategies) == 1:
+        return {strategies[0]: 1.0}
+    return None
+
+
+def load_operator_allocations(
+        path: Path = PORTFOLIO_ALLOCATIONS_PATH) -> Optional[Dict[str, float]]:
+    """The operator's capital plan from disk. ``None`` (fail-closed, logged)
+    when the file is missing, unparseable, or contains no positive weights —
+    the report path then leaves combined-book checks UNKNOWN rather than
+    inventing an equal-weight book."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except OSError:
+        return None
+    except ValueError:
+        logger.warning("portfolio_promotion: allocations file unparseable at %s", path)
+        return None
+    if isinstance(data, dict) and isinstance(data.get("allocations"), dict):
+        data = data["allocations"]
+    if not isinstance(data, dict):
+        logger.warning("portfolio_promotion: allocations file has no mapping at %s", path)
+        return None
+    out: Dict[str, float] = {}
+    for k, v in data.items():
+        if isinstance(v, (int, float)) and float(v) > 0 and math.isfinite(float(v)):
+            out[str(k)] = float(v)
+    return out or None
 
 
 # --------------------------------------------------------------------- #
@@ -285,11 +322,19 @@ def evaluate_strategy(candidate: str,
     checks.append(_check("duplication", dup_status, dup_detail, pairs=dup_details))
 
     # 5. bucket crowding — ONE synchronized snapshot date (#1, #5) -----------
+    # rev 2.1: combining strategies requires the operator's REAL capital plan;
+    # equal weighting is an assumption, not evidence about the actual book.
     exp_by_strat = {candidate: _exposure_by_date(cand_rows)}
     for name, rows in incumbents.items():
         exp_by_strat[name] = _exposure_by_date(rows)
     missing_exp = sorted(s for s, m in exp_by_strat.items() if not m)
-    if missing_exp:
+    if alloc is None:
+        checks.append(_check(
+            "bucket_crowding", "unknown",
+            "no operator allocation plan — a combined book cannot be formed "
+            "from assumed weights (supply allocations or "
+            "trained_data/hedge/portfolio_allocations.json)"))
+    elif missing_exp:
         checks.append(_check(
             "bucket_crowding", "unknown",
             f"no non-fail-closed exposure rows for: {missing_exp} — a partial "
@@ -341,6 +386,11 @@ def evaluate_strategy(candidate: str,
     if not incumbents:
         checks.append(_check("marginal_contribution", "pass",
                              "first covered strategy — no incumbent portfolio to harm"))
+    elif alloc is None:
+        checks.append(_check(
+            "marginal_contribution", "unknown",
+            "no operator allocation plan — the combined residual portfolio "
+            "cannot be formed from assumed weights"))
     else:
         inc_maps = {s: _residual_map(r) for s, r in incumbents.items()}
         inc_maps = {s: m for s, m in inc_maps.items() if m}
@@ -433,11 +483,24 @@ def build_portfolio_promotion_report(
     out_path: Path = PROMOTION_REPORT_PATH,
     config: GateConfig = GateConfig(),
     allocations: Optional[Dict[str, float]] = None,
+    allocations_path: Path = PORTFOLIO_ALLOCATIONS_PATH,
 ) -> Dict[str, Any]:
     """Evaluate the FULL covered-strategy set (#7): the lane registry's
     STRATEGIES union whatever the ledger contains. A covered lane with no
-    rows receives an explicit CONTINUE_SHADOW verdict, never silence."""
+    rows receives an explicit CONTINUE_SHADOW verdict, never silence.
+
+    rev 2.1: when no ``allocations`` argument is given, the operator's capital
+    plan is read from ``allocations_path``; if neither exists, combined-book
+    checks are UNKNOWN and no strategy can leave CONTINUE_SHADOW on the gate's
+    say-so — the report never invents an equal-weight book."""
     from datetime import datetime, timezone
+
+    allocations_source = "call_argument"
+    if allocations is None:
+        allocations = load_operator_allocations(allocations_path)
+        allocations_source = (
+            f"operator_file:{allocations_path}" if allocations is not None
+            else "missing_fail_closed")
 
     rows_by_strategy: Dict[str, List[Dict[str, Any]]] = {}
     try:
@@ -485,6 +548,7 @@ def build_portfolio_promotion_report(
             "dd_tolerance": config.dd_tolerance,
         },
         "allocations_provided": bool(allocations),
+        "allocations_source": allocations_source,
         "verdicts": {
             s: evaluate_strategy(s, rows_by_strategy, scorecards, config, allocations)
             for s in covered

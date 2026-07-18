@@ -76,6 +76,9 @@ def _alpha_returns(seed, n=10, mu=0.004, sigma=0.002):
     return [rng.gauss(mu, sigma) for _ in range(n)]
 
 
+EQ = {"incumbent_a": 0.5, "candidate": 0.5}  # explicit operator plan (rev 2.1)
+
+
 def _sc(verdict):
     return {"candidate": {"decision": {"verdict": verdict}}}
 
@@ -101,7 +104,7 @@ def test_good_uncorrelated_candidate_promotes_to_operator_review():
         "incumbent_a": _series("incumbent_a", _alpha_returns(1)),
         "candidate":   _series("candidate", _alpha_returns(99)),
     }
-    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE))
+    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE), allocations=EQ)
     assert out["verdict"] == VERDICT_PROMOTE, [c for c in out["checks"] if c["status"] != "pass"]
     assert out["human_review_required"] is True
     assert {c["name"] for c in out["checks"]} == {
@@ -109,6 +112,23 @@ def test_good_uncorrelated_candidate_promotes_to_operator_review():
         "duplication", "bucket_crowding", "marginal_contribution",
     }
     assert sum(out["allocations"].values()) == pytest.approx(1.0)
+
+
+def test_no_allocation_plan_means_no_combined_book_checks():
+    # rev 2.1: equal weighting is an ASSUMPTION, not evidence about the real
+    # book. With incumbents present and no operator plan, the combined-book
+    # checks are UNKNOWN and the strongest possible verdict is shadow.
+    rows = {
+        "incumbent_a": _series("incumbent_a", _alpha_returns(1)),
+        "candidate":   _series("candidate", _alpha_returns(99)),
+    }
+    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE))
+    assert out["allocations"] is None
+    for name in ("bucket_crowding", "marginal_contribution"):
+        chk = _status(out, name)
+        assert chk["status"] == "unknown", name
+        assert "allocation" in chk["detail"]
+    assert out["verdict"] == VERDICT_SHADOW
 
 
 def test_pure_beta_candidate_rejected():
@@ -181,7 +201,7 @@ def test_bucket_crowding_rejects_same_direction_but_not_offsetting():
         "candidate":   _series("candidate", _alpha_returns(99),
                                currency={"USD": 0.5}),
     }
-    out = evaluate_strategy("candidate", rows_crowding, sc, cfg)
+    out = evaluate_strategy("candidate", rows_crowding, sc, cfg, allocations=EQ)
     assert out["verdict"] == VERDICT_REJECT
     crowd = _status(out, "bucket_crowding")
     assert crowd["status"] == "fail"
@@ -195,7 +215,7 @@ def test_bucket_crowding_rejects_same_direction_but_not_offsetting():
         "candidate":   _series("candidate", _alpha_returns(99),
                                currency={"USD": -0.4}),
     }
-    out2 = evaluate_strategy("candidate", rows_offset, sc, cfg)
+    out2 = evaluate_strategy("candidate", rows_offset, sc, cfg, allocations=EQ)
     assert _status(out2, "bucket_crowding")["status"] == "pass"
 
 
@@ -210,7 +230,7 @@ def test_crowding_normalizes_dollar_exposures_by_each_rows_own_notional():
         "candidate":   _series("candidate", _alpha_returns(99),
                                currency={"USD": 0.4}, notional=200_000.0),
     }
-    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE))
+    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE), allocations=EQ)
     assert _status(out, "bucket_crowding")["status"] == "pass"
     assert out["verdict"] == VERDICT_PROMOTE
 
@@ -227,7 +247,7 @@ def test_crowding_honors_operator_allocations():
                                currency={"USD": 0.2}),
     }
     sc = _sc(VERDICT_GENUINE)
-    out_equal = evaluate_strategy("candidate", rows, sc)
+    out_equal = evaluate_strategy("candidate", rows, sc, allocations=EQ)
     assert _status(out_equal, "bucket_crowding")["status"] == "pass"
     out_conc = evaluate_strategy(
         "candidate", rows, sc,
@@ -244,7 +264,7 @@ def test_missing_incumbent_exposure_is_unknown_not_partial_portfolio():
                                exposure_ok=False),
         "candidate":   _series("candidate", _alpha_returns(99)),
     }
-    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE))
+    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE), allocations=EQ)
     crowd = _status(out, "bucket_crowding")
     assert crowd["status"] == "unknown"
     assert "incumbent_a" in crowd["missing"]
@@ -258,7 +278,7 @@ def test_time_misaligned_snapshots_are_unknown_not_a_portfolio():
         "incumbent_a": _series("incumbent_a", _alpha_returns(1), start=11),
         "candidate":   _series("candidate", _alpha_returns(99), start=1),
     }
-    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE))
+    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE), allocations=EQ)
     crowd = _status(out, "bucket_crowding")
     assert crowd["status"] == "unknown"
     assert "no common exposure date" in crowd["detail"]
@@ -273,7 +293,7 @@ def test_harmful_marginal_contribution_rejected():
         "incumbent_a": _series("incumbent_a", base),
         "candidate":   _series("candidate", [-r * 3 for r in base]),
     }
-    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE))
+    out = evaluate_strategy("candidate", rows, _sc(VERDICT_GENUINE), allocations=EQ)
     assert _status(out, "marginal_contribution")["status"] == "fail"
     assert out["verdict"] == VERDICT_REJECT
 
@@ -298,6 +318,27 @@ def test_first_covered_strategy_can_promote_without_incumbents():
 
 # ── report build (real disk) ────────────────────────────────────────────────
 
+def test_report_without_operator_allocation_plan_stays_in_shadow(tmp_path):
+    # rev 2.1: the automatic report path must never invent an equal-weight
+    # book. No allocations argument + no operator file -> combined-book checks
+    # UNKNOWN -> even a perfect candidate stays CONTINUE_SHADOW.
+    ledger = tmp_path / "raw_vs_hedged_ledger.jsonl"
+    with open(ledger, "w", encoding="utf-8") as fh:
+        for row in (_series("incumbent_a", _alpha_returns(1))
+                    + _series("candidate", _alpha_returns(99))):
+            fh.write(json.dumps(row) + "\n")
+    scorecard = tmp_path / "hedge_scorecard_report.json"
+    scorecard.write_text(json.dumps({"scorecards": {
+        "candidate": {"decision": {"verdict": VERDICT_GENUINE}},
+    }}))
+    report = build_portfolio_promotion_report(
+        ledger_path=ledger, scorecard_path=scorecard,
+        out_path=tmp_path / "report.json",
+        allocations_path=tmp_path / "no_such_allocations.json")
+    assert report["allocations_source"] == "missing_fail_closed"
+    assert report["verdicts"]["candidate"]["verdict"] == VERDICT_SHADOW
+
+
 def test_report_build_is_universal_and_roundtrips(tmp_path):
     ledger = tmp_path / "raw_vs_hedged_ledger.jsonl"
     with open(ledger, "w", encoding="utf-8") as fh:
@@ -310,10 +351,15 @@ def test_report_build_is_universal_and_roundtrips(tmp_path):
         "candidate": {"decision": {"verdict": VERDICT_GENUINE}},
     }}))
     out = tmp_path / "portfolio_promotion_report.json"
+    alloc_file = tmp_path / "portfolio_allocations.json"
+    alloc_file.write_text(json.dumps(
+        {"allocations": {"incumbent_a": 0.5, "candidate": 0.5}}))
 
     report = build_portfolio_promotion_report(
-        ledger_path=ledger, scorecard_path=scorecard, out_path=out)
+        ledger_path=ledger, scorecard_path=scorecard, out_path=out,
+        allocations_path=alloc_file)
     assert out.exists()
+    assert report["allocations_source"].startswith("operator_file:")
 
     # #7 universal: the FULL covered-strategy registry is evaluated, union the
     # ledger's own keys — a lane with no rows gets an explicit verdict.
