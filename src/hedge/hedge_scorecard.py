@@ -403,6 +403,15 @@ def main() -> Dict[str, Any]:
     except Exception as _ra_err:  # noqa: BLE001
         logging.getLogger(__name__).warning(
             "residual attribution report not produced: %s", _ra_err)
+    # Universal portfolio promotion gate (2026-07-18): verdict per covered
+    # strategy against the rest, from the same ledger + the scorecard just
+    # written. Fail-soft: gate problems never block the scorecard.
+    try:
+        from src.hedge.portfolio_promotion import build_portfolio_promotion_report
+        build_portfolio_promotion_report()
+    except Exception as _pg_err:  # noqa: BLE001
+        logging.getLogger(__name__).warning(
+            "portfolio promotion report not produced: %s", _pg_err)
     return report
 
 
