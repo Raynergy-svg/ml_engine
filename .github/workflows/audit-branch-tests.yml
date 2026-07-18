@@ -33,16 +33,18 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies (slim — exactly the suites' import closure)
-        # Traced via sys.modules over all six suites + the ScannerAgentTeam
-        # executed-updater path: numpy, pandas, scipy, pyarrow (parquet price
-        # panel), rich. Version pins mirror requirements.txt where pinned.
-        # Deliberately NOT the full ML stack (tensorflow etc.) — these suites
-        # are pure-Python + data libs, and the fat install would add ~10 min
-        # for imports the tests never make.
+        # Verified by running these exact steps in a CLEAN venv containing
+        # ONLY this list (a sys.modules trace alone missed scikit-learn,
+        # which enters via function-level lazy imports in the calibration and
+        # scanner-lane paths — the first CI run failed on exactly that).
+        # numpy/pandas/scipy/pyarrow (parquet price panel)/rich/sklearn;
+        # version pins mirror requirements.txt where pinned. Deliberately NOT
+        # the full ML stack (tensorflow etc.) — the fat install would add
+        # ~10 min for imports these suites never make.
         run: |
           python -m pip install --upgrade pip
           pip install pytest "numpy>=1.26.4" "pandas==2.3.3" "scipy>=1.13.0" \
-            "pyarrow==22.0.0" rich "flake8==7.3.0"
+            "pyarrow==22.0.0" rich "scikit-learn==1.7.2" "flake8==7.3.0"
 
       - name: Flake8 (audit-touched surface)
         run: |
