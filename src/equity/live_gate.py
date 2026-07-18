@@ -499,7 +499,18 @@ class LiveGate:
         except LiveGateError as exc:
             self._refuse(str(exc))
 
-        if self.config.require_kill_switch and kill_switch_factory is not None:
+        # 2026-07-18 audit fix: require_* must mean REQUIRED. Previously a
+        # caller that omitted the factory kwargs armed live with these
+        # preconditions silently skipped (`require_kill_switch=True` was a
+        # no-op unless a factory happened to be passed) — contradicting the
+        # module docstring's "refused unless ALL of the following hold".
+        # A missing factory now refuses arming, same as a failing one.
+        if self.config.require_kill_switch:
+            if kill_switch_factory is None:
+                self._refuse(
+                    "kill switch (US-013) is required for arming but no "
+                    "kill_switch_factory was provided"
+                )
             try:
                 kill_switch_factory()
             except Exception as exc:  # noqa: BLE001 — surface + audit
@@ -507,10 +518,12 @@ class LiveGate:
                     f"kill switch (US-013) refused to construct: {exc}"
                 )
 
-        if (
-            self.config.require_drawdown_guardian
-            and drawdown_guardian_factory is not None
-        ):
+        if self.config.require_drawdown_guardian:
+            if drawdown_guardian_factory is None:
+                self._refuse(
+                    "drawdown guardian (US-008) is required for arming but no "
+                    "drawdown_guardian_factory was provided"
+                )
             try:
                 drawdown_guardian_factory()
             except Exception as exc:  # noqa: BLE001 — surface + audit

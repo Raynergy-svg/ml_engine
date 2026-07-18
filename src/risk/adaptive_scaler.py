@@ -43,7 +43,8 @@ class AdaptiveRiskScaler:
     MAX_SCALE = 1.15
     LOSS_SCALE_3 = 0.70  # After 3 consecutive losses
     LOSS_SCALE_5 = 0.50  # After 5 consecutive losses
-    WIN_BOOST = 1.15     # After 5 consecutive wins
+    WIN_BOOST = 1.15     # Ceiling reachable via win streaks (== MAX_SCALE)
+    WIN_STEP = 1.05      # Per-win multiplicative step once streak >= 5
     DECAY_HOURS = 48     # Hours to decay fully back to 1.0
 
     def __init__(
@@ -74,9 +75,12 @@ class AdaptiveRiskScaler:
             self._consecutive_wins += 1
             self._consecutive_losses = 0
 
-            # Scale up after 5 consecutive wins
+            # Scale up after 5 consecutive wins. 2026-07-18 audit cleanup: the
+            # per-win step is an explicit constant now (WIN_STEP); WIN_BOOST=1.15
+            # was advertised but never referenced — the effective ceiling is
+            # MAX_SCALE either way.
             if self._consecutive_wins >= 5:
-                self._scale_factor = min(self.MAX_SCALE, self._scale_factor * 1.05)
+                self._scale_factor = min(self.MAX_SCALE, self._scale_factor * self.WIN_STEP)
                 logger.info(
                     f"Win streak ({self._consecutive_wins}): "
                     f"scale factor → {self._scale_factor:.2f}"

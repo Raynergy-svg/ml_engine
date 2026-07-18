@@ -394,14 +394,21 @@ def purged_kfold_split(
         # Purge: remove training samples too close to test
         train_before_test = np.arange(0, max(0, test_start - purge_gap))
 
-        # Embargo: start test after some gap
-        test_start_embargoed = test_start + embargo_gap if i > 0 else test_start
-
-        # Training samples after test (if any)
-        train_after_test = np.arange(test_end + purge_gap, n_samples)
+        # Embargo (2026-07-18 audit fix): the embargo removes TRAINING samples
+        # immediately AFTER the test interval (their feature/label windows still
+        # overlap test-period information — Lopez de Prado, Advances in
+        # Financial ML, ch.7). The prior code instead chopped embargo_gap
+        # samples off the FRONT of the test fold (wasting them, tested nowhere)
+        # while leaving the trailing train set with zero embargo protection —
+        # the exact leakage the embargo exists to prevent. Reference
+        # implementation: src/research/gated_harness/purging.py (hi = last +
+        # purge + embargo on the train side).
+        train_after_test = np.arange(
+            min(test_end + purge_gap + embargo_gap, n_samples), n_samples
+        )
 
         train_idx = np.concatenate([train_before_test, train_after_test])
-        test_idx = np.arange(test_start_embargoed, test_end)
+        test_idx = np.arange(test_start, test_end)
 
         if len(train_idx) > 0 and len(test_idx) > 0:
             yield train_idx, test_idx

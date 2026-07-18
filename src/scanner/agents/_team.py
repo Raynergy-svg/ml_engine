@@ -1163,7 +1163,16 @@ class ScannerAgentTeam:
             for _agent_name, _w in list(_global_w.items()):
                 _last_seen = _ltpa.get(_agent_name, 0)
                 if (int(total_trades) - _last_seen) > _STALENESS_THRESHOLD:
-                    _new_w = max(0.5, round(float(_w) * _DECAY_FACTOR, 4))  # 0.5 floor — never fully kill via decay
+                    # 2026-07-18 audit fix: decay toward the agent's own BASELINE,
+                    # not multiplicatively toward a hard 0.5 floor. The old form
+                    # dragged every idle agent toward 0.5 — permanently
+                    # under-weighting hard-veto agents (devil_advocate 1.30,
+                    # trend 1.15, risk_sentinel 1.25) merely for being idle,
+                    # inconsistent with the other three decay mechanisms which
+                    # all target _BASE_WEIGHTS. Staleness should mean "forget
+                    # what was learned", i.e. drift back to the design prior.
+                    _base = float(self._BASE_WEIGHTS.get(_agent_name, 1.0))
+                    _new_w = round(_base + (float(_w) - _base) * _DECAY_FACTOR, 4)
                     if abs(_new_w - float(_w)) > 0.001:
                         _global_w[_agent_name] = _new_w
                         _decayed.append(f"{_agent_name}: {_w:.3f}→{_new_w:.3f}")
@@ -1520,10 +1529,16 @@ class ScannerAgentTeam:
             except Exception as da_err:
                 logger.warning(f"Devil's Advocate agent failed: {da_err}")
 
-        # US-069: Filter out regime-disabled agents (don't count toward vote totals)
+        # US-069: Filter out regime-disabled agents (don't count toward vote totals).
+        # 2026-07-18 audit fix: a verdict carrying block_trade=True is NEVER
+        # dropped by this filter — the doctrine says trend passed=False and the
+        # devil's-advocate bear case are HARD vetoes, and this filter ran after
+        # they were computed, silently discarding vetoes for disabled agents.
+        # A disabled agent still doesn't vote (its score is excluded when it
+        # isn't blocking); only its safety veto survives.
         if _regime_disabled:
-            _skipped = [v for v in verdicts if v.name in _regime_disabled]
-            verdicts = [v for v in verdicts if v.name not in _regime_disabled]
+            _skipped = [v for v in verdicts if v.name in _regime_disabled and not v.block_trade]
+            verdicts = [v for v in verdicts if v.name not in _regime_disabled or v.block_trade]
             if _skipped:
                 logger.info(
                     "Regime %s: skipped %d agents (%s) for %s",
@@ -1541,8 +1556,17 @@ class ScannerAgentTeam:
                 _meta_selection = self._meta_strategy_agent.select(_regime_name)
                 _selected_strategies = set(_meta_selection.get("selected_strategies", []))
                 if _selected_strategies:
-                    _meta_skipped = [v for v in verdicts if v.name not in _selected_strategies]
-                    verdicts = [v for v in verdicts if v.name in _selected_strategies]
+                    # 2026-07-18 audit fix (same rationale as the regime filter
+                    # above): MetaStrategy deselection must not discard a
+                    # block_trade=True safety veto computed earlier this cycle.
+                    _meta_skipped = [
+                        v for v in verdicts
+                        if v.name not in _selected_strategies and not v.block_trade
+                    ]
+                    verdicts = [
+                        v for v in verdicts
+                        if v.name in _selected_strategies or v.block_trade
+                    ]
                     if _meta_skipped:
                         logger.info(
                             "MetaStrategy %s: deactivated %d agents (%s) for %s (reason=%s)",

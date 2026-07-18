@@ -56,6 +56,31 @@ except ImportError:
 # Use get_registry().get(symbol).pip_value to access pip values
 
 
+def _quote_to_usd_factor(pair: str, price: Any = None) -> float:
+    """Approximate quote-currency -> USD conversion for risk aggregation.
+
+    2026-07-18 audit helper. Exact when the quote is USD; for USD-base pairs
+    (USD_JPY, USD_CHF, USD_CAD) the pair's own price IS the USD->quote rate, so
+    quote->USD = 1/price. For crosses (EUR_JPY, EUR_GBP) 1/price converts
+    quote->base and the base is approximated at USD parity — error is bounded
+    at the majors' base/USD deviation (~±30%), versus the ~150x error of no
+    conversion at all for JPY quotes. Falls back to the position-sizing module's
+    static per-currency estimates when no price is available.
+    """
+    try:
+        p = str(pair).upper()
+        quote = p.replace("_", "")[-3:]
+        if quote == "USD":
+            return 1.0
+        px = float(price) if price else 0.0
+        if px > 0:
+            return 1.0 / px
+        from src.risk.position_sizing import _approx_ccy_to_usd
+        return _approx_ccy_to_usd(quote)
+    except Exception:  # noqa: BLE001 — risk aggregation must not crash; parity fallback
+        return 1.0
+
+
 def _get_pip_value(pair: str, fallback: float = 0.0001) -> float:
     """Get pip value for a pair from InstrumentRegistry.
 
@@ -1159,10 +1184,15 @@ class ExecutionManager:
             for s in statuses:
                 sl_dist = s.get("sl_dist_pips", 0)
                 units = abs(s.get("units", 0))
-                pip_val = _get_pip_value(s.get("pair", ""), 0.0001)
-                # Risk = SL distance in price * units
-                risk_amount = sl_dist * pip_val * units
-                total_risk += risk_amount
+                pair = s.get("pair", "")
+                pip_val = _get_pip_value(pair, 0.0001)
+                # Risk = SL distance in price * units — this yields QUOTE-currency
+                # risk. 2026-07-18 audit fix: convert to account (USD) terms
+                # before summing. The old code summed raw quote amounts against a
+                # USD NAV, so a single USD_JPY position (pip 0.01, risk in JPY)
+                # overstated risk ~150x and tripped the 15% cap on ~1% real risk.
+                risk_quote = sl_dist * pip_val * units
+                total_risk += risk_quote * _quote_to_usd_factor(pair, s.get("entry"))
 
             risk_pct = total_risk / nav if nav > 0 else 0.0
 
@@ -2088,22 +2118,40 @@ class ExecutionManager:
         # when auto_halt_loss_streak or AlertManager fires during scanning)
         # was being bypassed — see trade 1306 (2026-05-12T20:39 UTC, opened
         # while halted=True). Read-only check; never raises out of this guard.
+        # FAIL-CLOSED (2026-07-18 audit): the prior guard failed OPEN twice —
+        # StateEngine.load_state() returns halted=False on a corrupt state.json,
+        # and this wrapper swallowed its own exception and proceeded. Hard NO #2
+        # ("respect halted:true") requires the opposite: a present-but-unreadable
+        # halt file, or a failure of the check itself, must BLOCK the trade.
+        # Mirrors src/equity/decision_gate._global_halt (read the file directly).
         try:
-            from src.scanner.automation.state_engine import StateEngine
-            if StateEngine().get_halted():
-                logger.warning(
-                    "execute_trade BLOCKED — state.halted=True (mid-cycle re-check); pair=%s",
-                    pair,
-                )
-                return ExecutionResult(
-                    success=False,
-                    error="BLOCKED: state.halted=True",
-                )
+            from src.scanner.automation.state_engine import STATE_PATH
+            if STATE_PATH.exists():
+                _state_payload = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+                if not isinstance(_state_payload, dict):
+                    raise ValueError("state.json is not a JSON object")
+                if bool(_state_payload.get("halted", False)):
+                    logger.warning(
+                        "execute_trade BLOCKED — state.halted=True (mid-cycle re-check); pair=%s",
+                        pair,
+                    )
+                    return ExecutionResult(
+                        success=False,
+                        error="BLOCKED: state.halted=True",
+                    )
+            # Absent file = fresh environment, no halt set (same convention as
+            # decision_gate._global_halt) — proceed to the remaining gates.
         except Exception as _halt_exc:  # noqa: BLE001
-            # Halt-check should never block execution due to its own failure.
-            # Log and proceed; circuit breaker + submit_trade are still in place
-            # for callers that route through them.
-            logger.warning("execute_trade halt re-check failed (%s); proceeding", _halt_exc)
+            # The halt check itself failed (corrupt file, read error): halted
+            # means halted, and *unknowable* means halted too. Block the trade.
+            logger.error(
+                "execute_trade BLOCKED — halt re-check failed (%s); failing closed per Hard NO #2",
+                _halt_exc,
+            )
+            return ExecutionResult(
+                success=False,
+                error=f"BLOCKED: halt state unreadable ({type(_halt_exc).__name__})",
+            )
 
         # Phase 84 (US-P84-004): CircuitBreaker — reject if API is degraded
         _cb = getattr(self, "_api_circuit_breaker", None)
@@ -5526,12 +5574,30 @@ class ExecutionManager:
         # ── LEGACY BLOCK REMOVED — was 360+ lines of inline post-trade callbacks ──
         # See: src/scanner/automation/event_handlers.py for all extracted handlers
 
-        # Write updated journal (atomic)
+        # Write updated journal (atomic). 2026-07-18 audit fix: the boolean
+        # return of safe_json_write was ignored — on a failed write (disk full,
+        # lock contention) the outcomes were NOT persisted while the RL weight
+        # updates below still ran, so the next sync re-saw the same trades as
+        # pending and applied the weight deltas AGAIN (double-count). If the
+        # journal cannot be persisted, the RL updates for this batch are
+        # dropped: they will be applied exactly once on the next successful
+        # sync, when these trades are processed again.
+        _journal_persisted = False
         try:
             from src.scanner.automation.safe_json import safe_json_write
-            safe_json_write(journal_path, entries)
+            _journal_persisted = bool(safe_json_write(journal_path, entries))
         except ImportError:
-            journal_path.write_text(json.dumps(entries, indent=2, default=str))
+            try:
+                journal_path.write_text(json.dumps(entries, indent=2, default=str))
+                _journal_persisted = True
+            except OSError as _jw_err:
+                logger.error(f"Journal write failed: {_jw_err}")
+        if not _journal_persisted:
+            logger.error(
+                "RL journal not persisted — deferring %d weight updates to the next "
+                "successful sync to avoid double-counting", len(rl_updates),
+            )
+            rl_updates = []
 
         # ── Angle 2': append every closed trade to the outcomes JSONL ledger ──
         # CANONICAL HOOK. This is the single source of truth for closed trades:

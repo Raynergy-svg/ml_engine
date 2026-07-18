@@ -32,6 +32,50 @@ from src.brokers.instrument import Instrument
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Approximate currency->USD conversion for risk math (2026-07-18 audit).
+#
+# Risk-per-trade and pip-value math must be expressed in ACCOUNT (USD) terms.
+# These are documented planning approximations — the same role the old single
+# 0.000065 JPY constant played, but per-currency so non-USD-quoted pairs are
+# no longer treated as USD-quoted (which oversized EUR_GBP ~27% and undersized
+# USD_CAD ~26%). Callers with a live rate can override via set_quote_usd_rate;
+# unknown currencies fall back to parity with a warning (the old implicit
+# behavior, now at least logged).
+# ---------------------------------------------------------------------------
+_APPROX_USD_RATES: dict[str, float] = {
+    "USD": 1.0,
+    "JPY": 1.0 / 150.0,   # ~0.00667
+    "EUR": 1.08,
+    "GBP": 1.27,
+    "CHF": 1.12,
+    "CAD": 0.73,
+    "AUD": 0.66,
+    "NZD": 0.60,
+}
+_QUOTE_USD_OVERRIDES: dict[str, float] = {}
+
+# Hard gross-leverage ceiling (matches src/equity/oanda_trend.py MAX_GROSS_LEVERAGE
+# and the operator's documented "<=15x re-clamped every cycle" invariant).
+MAX_GROSS_LEVERAGE = 15.0
+
+
+def set_quote_usd_rate(currency: str, rate: float) -> None:
+    """Register a live currency->USD rate to supersede the static estimate."""
+    if rate > 0:
+        _QUOTE_USD_OVERRIDES[currency.upper()] = float(rate)
+
+
+def _approx_ccy_to_usd(currency: str) -> float:
+    """Best available currency->USD rate: live override, else static estimate."""
+    ccy = currency.upper()
+    if ccy in _QUOTE_USD_OVERRIDES:
+        return _QUOTE_USD_OVERRIDES[ccy]
+    if ccy in _APPROX_USD_RATES:
+        return _APPROX_USD_RATES[ccy]
+    logger.warning("No USD conversion estimate for %s — assuming parity", ccy)
+    return 1.0
+
 
 # Volatility regime constants (matching volatility.py)
 REGIME_LOW = 0
@@ -372,14 +416,18 @@ class DynamicPositionSizer:
         else:
             instrument_upper = instrument.upper().replace("_", "")
 
-        # Approximate USD pip value per unit. For USD-quoted and most cross
-        # pairs this is close to 0.0001 USD/unit/pip. JPY pairs convert the
-        # 0.01 JPY pip into USD terms; 0.000065 is a conservative round-number
-        # estimate near recent USD/JPY levels.
-        if instrument_upper.endswith("JPY"):
-            pip_value_per_unit = 0.000065
-        else:
-            pip_value_per_unit = 0.0001
+        # Pip value per unit in ACCOUNT (USD) terms = pip_size x quote->USD.
+        # 2026-07-18 audit fix: the previous flat constants (0.0001 for every
+        # non-JPY pair, one JPY constant for all JPY pairs) assumed quote
+        # currency == USD. That oversized GBP-quoted pairs ~27% (EUR_GBP true
+        # pip value ~0.000127) and undersized CAD-quoted ~26%. We now apply an
+        # approximate quote->USD conversion; these are documented planning
+        # approximations (same spirit as the old 0.000065), refreshed by any
+        # caller that passes a live rate via _QUOTE_USD_OVERRIDES.
+        pip_size = 0.01 if instrument_upper.endswith("JPY") else 0.0001
+        quote_ccy = instrument_upper[-3:]
+        quote_to_usd = _approx_ccy_to_usd(quote_ccy)
+        pip_value_per_unit = pip_size * quote_to_usd
 
         return stop_loss_pips * pip_value_per_unit
 
@@ -421,6 +469,19 @@ class DynamicPositionSizer:
         else:
             # FX positioning
             max_position_from_equity = int(account_equity * self.config.max_position_pct * 100)  # In units
+
+            # 2026-07-18 audit fix: hard notional-leverage clamp. The equity
+            # cap above allows up to (max_position_pct x 100) = ~30x equity in
+            # units, and no <=15x clamp existed anywhere in this FX path — the
+            # documented "leverage re-clamped to <=15x" invariant lived only in
+            # src/equity/oanda_trend.py. Notional(USD) ~= units x base->USD, so
+            # units are capped at equity x 15 / base->USD (approximate
+            # conversion; conservative parity fallback for unknowns).
+            symbol = instrument.symbol if isinstance(instrument, Instrument) else str(instrument)
+            base_ccy = symbol.upper().replace("_", "")[:3]
+            base_to_usd = _approx_ccy_to_usd(base_ccy)
+            max_units_leverage = int((account_equity * MAX_GROSS_LEVERAGE) / max(base_to_usd, 1e-9))
+            max_position_from_equity = min(max_position_from_equity, max_units_leverage)
 
         # No artificial config cap - let equity-based limit control it
         # This allows proper scaling with account size

@@ -90,6 +90,20 @@ def gate(state_path: Path, audit_path: Path) -> LiveGate:
 # ---------------------------------------------------------------------------
 
 
+def _ok_factories() -> dict:
+    """Trivial REAL factories for the arm() preconditions.
+
+    2026-07-18: arm() now refuses when require_kill_switch /
+    require_drawdown_guardian are set (the default) and no factory is
+    provided — required means required. Happy-path tests supply these
+    minimal real constructors.
+    """
+    return {
+        "kill_switch_factory": lambda: object(),
+        "drawdown_guardian_factory": lambda: object(),
+    }
+
+
 def test_live_confirmation_token_is_exact_literal() -> None:
     """The TUI mode_modal.py pins on this same literal. Don't drift."""
     assert LIVE_CONFIRMATION_TOKEN == "LIVE"
@@ -219,6 +233,7 @@ def test_arm_succeeds_with_typed_confirmation_and_clear_gate(
         ship_gate_path=ship_gate_path,
         expected_universe_hash="univ-abc-123",
         confirmation_token=LIVE_CONFIRMATION_TOKEN,
+        **_ok_factories(),
     )
     assert isinstance(result, ArmResult)
     assert result.armed is True
@@ -258,6 +273,7 @@ def test_arm_persists_across_gate_reconstruction(
         ship_gate_path=ship_gate_path,
         expected_universe_hash="univ-abc-123",
         confirmation_token=LIVE_CONFIRMATION_TOKEN,
+        **_ok_factories(),
     )
 
     # Fresh instance loads the persisted armed=True
@@ -283,6 +299,7 @@ def test_arm_refuses_when_ship_gate_missing(
             ship_gate_path=ship_gate_path,
             expected_universe_hash="univ-abc-123",
             confirmation_token=LIVE_CONFIRMATION_TOKEN,
+            **_ok_factories(),
         )
     assert gate.is_armed() is False
 
@@ -296,6 +313,7 @@ def test_arm_refuses_when_gate_pass_false(
             ship_gate_path=ship_gate_path,
             expected_universe_hash="univ-abc-123",
             confirmation_token=LIVE_CONFIRMATION_TOKEN,
+            **_ok_factories(),
         )
     assert gate.is_armed() is False
 
@@ -309,6 +327,7 @@ def test_arm_refuses_on_universe_hash_mismatch(
             ship_gate_path=ship_gate_path,
             expected_universe_hash="univ-different",
             confirmation_token=LIVE_CONFIRMATION_TOKEN,
+            **_ok_factories(),
         )
     assert gate.is_armed() is False
 
@@ -376,6 +395,9 @@ def test_arm_refuses_when_drawdown_guardian_factory_raises(
             ship_gate_path=ship_gate_path,
             expected_universe_hash="univ-abc-123",
             confirmation_token=LIVE_CONFIRMATION_TOKEN,
+            # kill switch precondition must be satisfied so the test reaches
+            # the drawdown-guardian check (arm() now requires both factories).
+            kill_switch_factory=lambda: object(),
             drawdown_guardian_factory=guardian_factory,
         )
     assert gate.is_armed() is False
@@ -449,6 +471,7 @@ def test_refuse_logs_with_pinned_tag(
             ship_gate_path=ship_gate_path,
             expected_universe_hash="mismatch",
             confirmation_token=LIVE_CONFIRMATION_TOKEN,
+            **_ok_factories(),
         )
     assert any(LOG_TAG_REFUSE in r.message for r in caplog.records)
 
@@ -462,6 +485,7 @@ def test_arm_logs_with_pinned_tag(
         ship_gate_path=ship_gate_path,
         expected_universe_hash="univ-abc-123",
         confirmation_token=LIVE_CONFIRMATION_TOKEN,
+        **_ok_factories(),
     )
     assert any(LOG_TAG_ARM in r.message for r in caplog.records)
 
@@ -479,6 +503,7 @@ def test_disarm_flips_armed_to_false(
         ship_gate_path=ship_gate_path,
         expected_universe_hash="univ-abc-123",
         confirmation_token=LIVE_CONFIRMATION_TOKEN,
+        **_ok_factories(),
     )
     assert gate.is_armed() is True
 
@@ -517,6 +542,7 @@ def test_state_write_leaves_no_temp_files(
         ship_gate_path=ship_gate_path,
         expected_universe_hash="univ-abc-123",
         confirmation_token=LIVE_CONFIRMATION_TOKEN,
+        **_ok_factories(),
     )
     leftover = list(state_path.parent.glob(".*.tmp"))
     assert leftover == []

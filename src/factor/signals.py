@@ -60,7 +60,11 @@ def carry_signal(rate_diff: pd.DataFrame) -> pd.DataFrame:
     n = ranked.count(axis=1)
     # Map rank 1..n -> [-1, 1]; centered, robust to n changing over time.
     centered = ranked.sub((n + 1) / 2.0, axis=0)
-    scaled = centered.div((n - 1) / 2.0, axis=0)
+    # 2026-07-18 audit fix: a date with a single valid pair has (n-1)/2 = 0,
+    # which produced inf/NaN and propagated through combine_signals. A 1-name
+    # cross-section carries no rank information — emit a neutral 0 instead.
+    denom = ((n - 1) / 2.0).where(n > 1)
+    scaled = centered.div(denom, axis=0).fillna(0.0)
     return scaled.where(rate_diff.notna())
 
 

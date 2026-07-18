@@ -252,22 +252,19 @@ class IBKRTransportFSM:
         if self.consecutive_misses >= self.down_after:
             self.state = TransportState.DOWN
         elif self.consecutive_misses >= self.reconnect_after:
-            new_state = (
-                TransportState.RECONNECTING
-                if self.consecutive_misses >= self.reconnect_after
-                else TransportState.DEGRADED
-            )
-            if new_state is TransportState.RECONNECTING:
-                if self.reconnect_fn is not None:
-                    try:
-                        self.reconnect_fn()
-                    except (RuntimeError, OSError) as exc:
-                        logger.warning(
-                            "reconnect_fn raised %s — staying in "
-                            "RECONNECTING",
-                            exc,
-                        )
-            self.state = new_state
+            # 2026-07-18 audit cleanup: the inner ternary re-tested the branch
+            # guard (always True), so the dead DEGRADED arm inside it could
+            # never fire. Behavior unchanged; the branch is RECONNECTING.
+            if self.reconnect_fn is not None:
+                try:
+                    self.reconnect_fn()
+                except (RuntimeError, OSError) as exc:
+                    logger.warning(
+                        "reconnect_fn raised %s — staying in "
+                        "RECONNECTING",
+                        exc,
+                    )
+            self.state = TransportState.RECONNECTING
         else:
             self.state = TransportState.DEGRADED
         self.last_transition_ts = time.time()
