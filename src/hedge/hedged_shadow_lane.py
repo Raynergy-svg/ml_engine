@@ -143,7 +143,13 @@ MIN_SECTOR_PROXY_TICKERS = 3
 # +1844% in a day).
 MAX_SANE_DAILY_RETURN = 0.50
 
-STRATEGIES = ("equity_harvester", "crypto_momentum", "track_b", "fx_trend")
+STRATEGIES = ("equity_harvester", "crypto_momentum", "track_b", "fx_trend", "oanda_fx")
+
+# The 15-agent scanner's own trade journal — the ONLY scanner-attributed
+# position source (account_state.json is the whole shared practice account,
+# which also carries the trend lane's positions; using it here would
+# mis-attribute trend exposure to the scanner's agents).
+SCANNER_JOURNAL_PATH = REPO_ROOT / "trained_data" / "trade_journal_rl.json"
 
 
 # --------------------------------------------------------------------- #
@@ -350,11 +356,117 @@ def load_fx_trend_book(account_state_path: Path = FX_TREND_ACCOUNT_STATE_PATH,
     )
 
 
+def load_oanda_fx_book(journal_path: Optional[Path] = None,
+                       account_state_path: Optional[Path] = None) -> Optional[BookSnapshot]:
+    """The 15-agent scanner's book — scanner-attributed OPEN trades only.
+
+    Layer-8 lane coverage (2026-07-18): sourced from the scanner's own
+    ``trade_journal_rl.json`` (entries whose ``outcome`` is still None — the
+    exact pending-set the RL sync itself uses), NOT from account_state.json:
+    the practice account is shared with the trend lane, and attributing the
+    trend lane's exposure to the scanner's agents would corrupt the residual
+    credit signal this coverage exists to produce.
+
+    Weights: signed fraction-of-NAV notional per pair, aggregated across
+    same-pair entries. Units = lots x 100,000; base->USD via the pair's own
+    entry price when the quote is USD (exact), 1.0 when the base is USD
+    (exact), else the position-sizing module's documented static estimate
+    (same approximation family the sizing path uses; noted in meta).
+    NAV from the shared account state (one account, one NAV).
+
+    Fail-closed: no journal / no open FX entries / no positive NAV / a
+    malformed open entry (missing pair or non-positive lots) -> None with a
+    warning — never a partial or fabricated book. ``raw_net_return`` is None
+    (the journal carries no live mark); lane A is marked forward from asof by
+    run_cycle_for_strategy's F1-aligned ``fx_basket_forward_return``.
+    """
+    from datetime import datetime, timezone
+
+    journal_path = journal_path or SCANNER_JOURNAL_PATH
+    account_state_path = account_state_path or FX_TREND_ACCOUNT_STATE_PATH
+    try:
+        entries = json.loads(Path(journal_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("hedged_shadow_lane: scanner journal unreadable (%s) — no oanda_fx book", exc)
+        return None
+    if not isinstance(entries, list):
+        logger.warning("hedged_shadow_lane: scanner journal is not a list — no oanda_fx book")
+        return None
+
+    open_fx = [
+        e for e in entries
+        if isinstance(e, dict) and e.get("outcome") is None
+        and str(e.get("asset_class", "FX")).upper() == "FX"
+    ]
+    if not open_fx:
+        logger.info("hedged_shadow_lane: scanner book is flat (no open FX journal entries)")
+        return None
+
+    state = {}
+    try:
+        state = json.loads(Path(account_state_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    nav = _safe_float(state.get("nav")) if isinstance(state, dict) else None
+    if not nav or nav <= 0:
+        logger.warning("hedged_shadow_lane: no positive NAV for the scanner book — "
+                       "cannot express fraction-of-NAV weights")
+        return None
+
+    from src.risk.position_sizing import _approx_ccy_to_usd
+
+    weights: Dict[str, float] = {}
+    approx_legs = 0
+    for e in open_fx:
+        pair = str(e.get("pair") or "")
+        lots = _safe_float(e.get("lots"))
+        direction = str(e.get("direction") or "").upper()
+        parts = pair.split("_")
+        if len(parts) != 2 or not lots or lots <= 0 or direction not in ("LONG", "SHORT"):
+            logger.warning("hedged_shadow_lane: malformed open scanner entry "
+                           "(pair=%r lots=%r direction=%r) — refusing partial book",
+                           pair, e.get("lots"), direction)
+            return None
+        base, quote = parts
+        units = lots * 100_000.0
+        entry_price = _safe_float(e.get("entry_price"))
+        if base == "USD":
+            base_to_usd = 1.0
+        elif quote == "USD" and entry_price and entry_price > 0:
+            base_to_usd = entry_price
+        else:
+            base_to_usd = _approx_ccy_to_usd(base)
+            approx_legs += 1
+        signed = units * base_to_usd * (1.0 if direction == "LONG" else -1.0)
+        weights[pair] = weights.get(pair, 0.0) + signed / nav
+
+    # Same-pair netting can cancel to a flat book — nothing to score.
+    weights = {p: w for p, w in weights.items() if abs(w) > 1e-12}
+    if not weights:
+        logger.info("hedged_shadow_lane: scanner book nets flat across open entries")
+        return None
+
+    return BookSnapshot(
+        strategy="oanda_fx", asset_class="fx",
+        asof_date=datetime.now(timezone.utc).date().isoformat(),
+        weights=weights,
+        raw_net_return=None, raw_gross_return=None, raw_cost=None,
+        return_source="open_positions_journal",
+        meta={
+            "source": str(journal_path),
+            "n_open_entries": len(open_fx),
+            "n_approx_base_usd_legs": approx_legs,
+            "nav": nav,
+        },
+    )
+
+
 _LOADERS = {
     "equity_harvester": load_equity_harvester_book,
     "crypto_momentum": load_crypto_momentum_book,
     "track_b": load_track_b_book,
     "fx_trend": load_fx_trend_book,
+    "oanda_fx": load_oanda_fx_book,
 }
 
 

@@ -5553,8 +5553,10 @@ class ExecutionManager:
             # lane coverage with sufficient after-cost history — otherwise the
             # hook passes through with its reason journaled as evidence.
             # Strategy key: this sync serves the scanner lane ("oanda_fx"),
-            # which has no hedge-lane coverage yet — the annotation makes that
-            # gap visible per-trade instead of silently rewarding raw P&L.
+            # covered by hedged_shadow_lane.load_oanda_fx_book (2026-07-18).
+            # phi becomes defined once >= MIN_HISTORY_FOR_REWARD aligned
+            # after-cost lane cycles accrue; until then the annotation
+            # journals the precise pass-through reason per trade.
             try:
                 from src.hedge.residual_attribution import (
                     load_attribution_for, residual_reward,
