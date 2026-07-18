@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePoll } from "@/lib/api";
 import type { Strategy, Prices } from "@/lib/types";
 import { fmtPrice, fmtNum, fmtPct, prettyPair } from "@/lib/format";
@@ -16,37 +16,56 @@ export function PriceTiles({
 }: { selected: string; onSelect: (i: string) => void }) {
   const { data: priceData } = usePoll<Prices>(`/api/prices?instruments=${MAJORS.join(",")}`, 4000);
   const { data: strat } = usePoll<Strategy>("/api/strategy", 60000);
-  const prices = priceData?.prices ?? {};
+  const prices = useMemo(() => priceData?.prices ?? {}, [priceData]);
   const onSet = new Set(strat?.on ?? []);
   const [compact, setCompact] = useState(false);
   const prev = useRef<Record<string, number>>({});
   const [flash, setFlash] = useState<Record<string, "up" | "down">>({});
   // Session-open reference mid per instrument (first tick seen after mount) — used
   // to show a real Δ%, honestly scoped to "since connect" rather than a fabricated
-  // "daily change" the backend doesn't track per-tick.
+  // "daily change" the backend doesn't track per-tick. Mirrored into state so render
+  // never reads a ref (react-hooks/refs).
   const sessionOpen = useRef<Record<string, number>>({});
+  const [openRefs, setOpenRefs] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    const next: Record<string, "up" | "down"> = {};
-    for (const m of MAJORS) {
-      const p = prices[m]?.mid;
-      if (p == null) continue;
-      if (sessionOpen.current[m] == null) sessionOpen.current[m] = p;
-      const old = prev.current[m];
-      if (old != null && p !== old) next[m] = p > old ? "up" : "down";
-      prev.current[m] = p;
-    }
-    if (Object.keys(next).length) {
-      setFlash(next);
-      const t = setTimeout(() => setFlash({}), 600);
-      return () => clearTimeout(t);
-    }
+    // All bookkeeping runs in a task so the effect body only schedules work
+    // (lint: react-hooks/set-state-in-effect); the 600ms flash reset is unchanged.
+    let flashTimer: ReturnType<typeof setTimeout> | null = null;
+    const tick = setTimeout(() => {
+      const next: Record<string, "up" | "down"> = {};
+      let openChanged = false;
+      for (const m of MAJORS) {
+        const p = prices[m]?.mid;
+        if (p == null) continue;
+        if (sessionOpen.current[m] == null) { sessionOpen.current[m] = p; openChanged = true; }
+        const old = prev.current[m];
+        if (old != null && p !== old) next[m] = p > old ? "up" : "down";
+        prev.current[m] = p;
+      }
+      if (openChanged) setOpenRefs({ ...sessionOpen.current });
+      if (Object.keys(next).length) {
+        setFlash(next);
+        flashTimer = setTimeout(() => setFlash({}), 600);
+      }
+    }, 0);
+    return () => { clearTimeout(tick); if (flashTimer) clearTimeout(flashTimer); };
   }, [prices]);
 
   // Real session-overlap readout from the actual current UTC hour — standard FX
-  // session hours (Sydney/Tokyo/London/New York), not a fabricated label.
+  // session hours (Sydney/Tokyo/London/New York), not a fabricated label. The hour
+  // is read in an effect (impure Date access is not allowed during render) and
+  // refreshed each minute.
+  const [utcHour, setUtcHour] = useState<number | null>(null);
+  useEffect(() => {
+    const read = () => setUtcHour(new Date().getUTCHours());
+    const first = setTimeout(read, 0);
+    const id = setInterval(read, 60_000);
+    return () => { clearTimeout(first); clearInterval(id); };
+  }, []);
   const sessionLabel = (() => {
-    const h = new Date().getUTCHours();
+    if (utcHour == null) return "—";
+    const h = utcHour;
     const sessions: string[] = [];
     if (h >= 21 || h < 6) sessions.push("Sydney");
     if (h >= 0 && h < 9) sessions.push("Tokyo");
@@ -63,7 +82,7 @@ export function PriceTiles({
           const on = onSet.has(m);
           const isSel = selected === m;
           const dir = flash[m];
-          const openRef = sessionOpen.current[m];
+          const openRef = openRefs[m];
           const pct = p && openRef ? ((p.mid - openRef) / openRef) * 100 : null;
           const color = pct == null ? "#8b98a9" : pct >= 0 ? "var(--color-pos)" : "var(--color-neg)";
           const bidAskColor = dir === "up" ? "var(--color-pos)" : dir === "down" ? "var(--color-neg)" : color;
@@ -117,7 +136,7 @@ export function PriceTiles({
         >
           <SparklineIcon />
         </button>
-        <button className="grid flex-1 place-items-center text-faint hover:bg-surface2 hover:text-text" title={`Session: ${sessionLabel} (UTC ${new Date().getUTCHours()}:00)`}>
+        <button className="grid flex-1 place-items-center text-faint hover:bg-surface2 hover:text-text" title={`Session: ${sessionLabel}${utcHour != null ? ` (UTC ${utcHour}:00)` : ""}`}>
           <ClockIcon />
         </button>
       </div>

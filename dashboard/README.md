@@ -39,6 +39,11 @@ npm install        # first time only
 npm run dev        # -> http://localhost:3000
 ```
 
+> **Dev footgun:** don't run `next build` while `next dev` is serving — both use the
+> same `.next/` directory, and the production build clobbers the dev server's
+> artifacts. Pages keep serving but their client JS silently dies (e.g. the login
+> form stops submitting) until the dev server is restarted.
+
 The frontend reads `NEXT_PUBLIC_AXIOM_API_URL` (defaults to `http://localhost:8888`,
 set in `web/.env.local`).
 

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createChart, CandlestickSeries, LineSeries, HistogramSeries, ColorType, CrosshairMode, LineStyle, PriceScaleMode,
   type IChartApi, type ISeriesApi, type IPriceLine, type MouseEventParams, type UTCTimestamp,
@@ -86,9 +86,11 @@ function rollingBollinger(values: number[], period: number, mult: number) {
 function useClock(): string {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
-    setNow(new Date());
+    // First tick via a task (not synchronously in the effect body) so the effect
+    // only *subscribes*; SSR still renders "" and hydration stays clean.
+    const first = setTimeout(() => setNow(new Date()), 0);
     const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    return () => { clearTimeout(first); clearInterval(id); };
   }, []);
   if (!now) return "";
   return now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -133,12 +135,11 @@ export function CandleChart({
   const smaRef = useRef<ISeriesApi<"Line"> | null>(null);
   const volRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const bracketLinesRef = useRef<IPriceLine[]>([]);
-  const activeSeries = () => (chartType === "line" ? lineRef.current : candleRef.current);
 
   // ---- drawing tools -------------------------------------------------------
   const [tool, setTool] = useState<ToolId>("cursor");
   const [magnetOn, setMagnetOn] = useState(false);
-  const [pending, setPending] = useState<Point[]>([]);
+  const [, setPending] = useState<Point[]>([]);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [overlayVersion, setOverlayVersion] = useState(0);
   const dragging = useRef(false);
@@ -153,8 +154,15 @@ export function CandleChart({
     setPending([]);
   }
 
-  // reset drawings + pending tool state on instrument/granularity change
-  useEffect(() => { clearDrawings(); setTool("cursor"); }, [instrument, gran]); // eslint-disable-line react-hooks/exhaustive-deps
+  // reset drawings + pending tool state on instrument/granularity change. The reset
+  // is deferred to a microtask: the effect body only schedules (chart series removal
+  // is imperative work against the external chart object, and the setStates ride
+  // along) — satisfies react-hooks/set-state-in-effect without behavior change.
+  useEffect(() => {
+    const cancel = { done: false };
+    queueMicrotask(() => { if (!cancel.done) { clearDrawings(); setTool("cursor"); } });
+    return () => { cancel.done = true; };
+  }, [instrument, gran]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function commit(kind: ToolId, points: Point[]) {
     const chart = chartRef.current, series = candleRef.current;
@@ -241,7 +249,11 @@ export function CandleChart({
   const compareSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
 
   useEffect(() => {
-    if (!compareInstrument) { setCompareCandles(null); return; }
+    if (!compareInstrument) {
+      const cancel = { done: false };
+      queueMicrotask(() => { if (!cancel.done) setCompareCandles(null); });
+      return () => { cancel.done = true; };
+    }
     let cancelled = false;
     const load = () => {
       fetch(`/api/candles/${compareInstrument}?granularity=${gran}&count=300`)
@@ -253,6 +265,15 @@ export function CandleChart({
     const id = setInterval(load, 30000);
     return () => { cancelled = true; clearInterval(id); };
   }, [compareInstrument, gran]);
+
+  // handleToolClick reads changing state (tool) — keep a ref so the one
+  // chart-lifetime subscription always calls the latest closure. Declared (and
+  // updated in its own effect) BEFORE the chart-creation effect that captures it,
+  // per react-hooks/immutability; never read or written during render.
+  const handleToolClickRef = useRef<(p: MouseEventParams) => void>(() => {});
+  useEffect(() => {
+    handleToolClickRef.current = handleToolClick;
+  });
 
   // Create the chart once.
   useEffect(() => {
@@ -293,11 +314,6 @@ export function CandleChart({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // handleToolClick reads changing state (tool/pending) — keep a ref so the one
-  // chart-lifetime subscription always calls the latest closure.
-  const handleToolClickRef = useRef(handleToolClick);
-  handleToolClickRef.current = handleToolClick;
 
   // Push candle/volume/sma data; toggle candle vs line series visibility.
   useEffect(() => {
@@ -408,31 +424,38 @@ export function CandleChart({
     : null;
 
   // Recompute HTML-overlay pixel positions from real chart coordinates whenever
-  // the visible range changes (pan/zoom) or a new drawing is added.
+  // the visible range changes (pan/zoom) or a new drawing is added. The chart is an
+  // external imperative system, so coordinates are read in an effect (scheduled as a
+  // task) and mirrored into state — never read from refs during render.
   type OverlayPixel =
     | { id: string; kind: "zone"; top: number; height: number; width: number }
     | { id: string; kind: "text"; x: number; y: number; text: string };
-  const overlayPixels = useMemo((): OverlayPixel[] => {
-    void overlayVersion;
-    const chart = chartRef.current, series = candleRef.current;
-    if (!chart || !series || !elRef.current) return [];
-    const width = elRef.current.clientWidth;
-    const out: OverlayPixel[] = [];
-    for (const d of drawings) {
-      if (d.kind === "zone") {
-        const yTop = series.priceToCoordinate(d.top);
-        const yBottom = series.priceToCoordinate(d.bottom);
-        if (yTop == null || yBottom == null) continue;
-        out.push({ id: d.id, kind: "zone", top: yTop, height: Math.max(1, yBottom - yTop), width });
-      } else if (d.kind === "text") {
-        const x = chart.timeScale().timeToCoordinate(d.point.time as UTCTimestamp);
-        const y = series.priceToCoordinate(d.point.price);
-        if (x == null || y == null) continue;
-        out.push({ id: d.id, kind: "text", x, y, text: d.text });
+  const [overlayPixels, setOverlayPixels] = useState<OverlayPixel[]>([]);
+  useEffect(() => {
+    void overlayVersion; void data;
+    const cancel = { done: false };
+    queueMicrotask(() => {
+      if (cancel.done) return;
+      const chart = chartRef.current, series = candleRef.current, el = elRef.current;
+      if (!chart || !series || !el) { setOverlayPixels([]); return; }
+      const width = el.clientWidth;
+      const out: OverlayPixel[] = [];
+      for (const d of drawings) {
+        if (d.kind === "zone") {
+          const yTop = series.priceToCoordinate(d.top);
+          const yBottom = series.priceToCoordinate(d.bottom);
+          if (yTop == null || yBottom == null) continue;
+          out.push({ id: d.id, kind: "zone", top: yTop, height: Math.max(1, yBottom - yTop), width });
+        } else if (d.kind === "text") {
+          const x = chart.timeScale().timeToCoordinate(d.point.time as UTCTimestamp);
+          const y = series.priceToCoordinate(d.point.price);
+          if (x == null || y == null) continue;
+          out.push({ id: d.id, kind: "text", x, y, text: d.text });
+        }
       }
-    }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      setOverlayPixels(out);
+    });
+    return () => { cancel.done = true; };
   }, [drawings, overlayVersion, data]);
 
   return (

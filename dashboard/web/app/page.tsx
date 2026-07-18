@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { StreamProvider, useStream } from "@/lib/stream";
 import { control } from "@/lib/control";
 import { AccountHeader } from "@/components/AccountHeader";
@@ -48,10 +48,10 @@ function useStoredValue(key: string, fallback: string) {
     };
   }, [key, value]);
 
-  const setValue = (next: string) => {
+  const setValue = useCallback((next: string) => {
     setValueState(next);
     window.localStorage.setItem(key, next);
-  };
+  }, [key]);
 
   return [value, setValue] as const;
 }
@@ -77,7 +77,7 @@ function DashboardBody() {
   const [resetZoomTick, setResetZoomTick] = useState(0);
   const [storedTab, setStoredTab] = useStoredValue("axiom:selectedTab", "Overview");
   const tab: Tab = TABS.includes(storedTab as Tab) ? (storedTab as Tab) : "Overview";
-  const setTab = (next: Tab) => setStoredTab(next);
+  const setTab = useCallback((next: Tab) => setStoredTab(next), [setStoredTab]);
   const marketTabs = new Set<Tab>(["Markets"]);
   const ledgerTabs = new Set<Tab>(["Orders", "Executions", "Journal"]);
   const controlTabs = new Set<Tab>(["Risk", "Automation", "Settings"]);
@@ -119,7 +119,7 @@ function DashboardBody() {
       },
     ];
     return [...nav, ...actions, ...instruments];
-  }, [halted]);
+  }, [halted, setTab]);
 
   return (
     <div className="dashboard-shell">
@@ -271,9 +271,11 @@ function DashboardBody() {
 function useClock(): string {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
-    setNow(new Date());
+    // First tick via a task, not synchronously in the effect body (lint:
+    // react-hooks/set-state-in-effect); SSR renders "" and hydrates cleanly.
+    const first = setTimeout(() => setNow(new Date()), 0);
     const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    return () => { clearTimeout(first); clearInterval(id); };
   }, []);
   if (!now) return "";
   return now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -285,10 +287,22 @@ function DashboardFooter() {
   const acctId = payload?.account?.account_id;
   const clock = useClock();
   const [brokerMenuOpen, setBrokerMenuOpen] = useState(false);
+  // Honesty (D-C2): every footer chip is driven by a real signal, never hardcoded.
+  // - CONNECTED/OFFLINE  -> SSE stream state (as before)
+  // - LIVE DATA / FILE-BACKED / NO DATA -> are live broker prices actually flowing?
+  // - broker (connected) -> the same price-feed signal, never a hardcoded "connected"
+  // - SYNC / STALE / NO SYNC -> is the on-disk account snapshot present and fresh?
+  const brokerLive = payload?.prices?.connected === true;
+  const acct = payload?.account;
+  const acctConnected = acct?.connected === true;
+  const acctFresh = acctConnected && acct?.stale !== true;
+  const dataLabel = brokerLive ? "LIVE DATA" : acctConnected ? "FILE-BACKED" : "NO DATA";
   return (
     <footer className="mx-auto flex max-w-[1680px] flex-wrap items-center gap-4 border-t px-4 py-3 font-mono text-[10.5px] text-faint hairline">
       <span className={connected ? "text-pos" : "text-neg"}>● {connected ? "CONNECTED" : "OFFLINE"}</span>
-      <span>LIVE DATA</span>
+      <span className={brokerLive ? "text-pos" : undefined} title="LIVE DATA = broker price feed up · FILE-BACKED = bot state files only · NO DATA = neither">
+        {dataLabel}
+      </span>
       <div className="relative">
         <button onClick={() => setBrokerMenuOpen((v) => !v)} className="flex items-center gap-1 text-text hover:text-pos" title={acctId ? `Practice account …${acctId.slice(-4)}` : "Practice account"}>
           OANDA fxPractice
@@ -296,8 +310,11 @@ function DashboardFooter() {
         </button>
         {brokerMenuOpen && (
           <div className="card absolute bottom-7 left-0 z-20 min-w-[200px] p-2 text-[10.5px]">
-            <div className="rounded px-2 py-1.5 text-pos">● OANDA fxPractice (connected)</div>
-            {acctId && <div className="px-2 py-1 text-faint">Acct …{acctId.slice(-4)} — only connected broker</div>}
+            <div className={`rounded px-2 py-1.5 ${brokerLive ? "text-pos" : "text-neg"}`}>
+              ● OANDA fxPractice ({brokerLive ? "connected" : "not connected"})
+            </div>
+            {acctId && <div className="px-2 py-1 text-faint">Acct …{acctId.slice(-4)} — only configured broker</div>}
+            {!brokerLive && <div className="px-2 py-1 text-faint">No live price feed (missing/stale token?)</div>}
           </div>
         )}
         {brokerMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setBrokerMenuOpen(false)} />}
@@ -305,7 +322,11 @@ function DashboardFooter() {
       <span className="text-pos">PRACTICE TRADING</span>
       {control?.gross_leverage != null && <span className="text-text">{control.gross_leverage}x</span>}
       <span className="ml-auto">{clock} (local)</span>
-      <span className="flex items-center gap-1 text-pos"><CheckCircleSolid size={12} /> SYNC</span>
+      {acctFresh ? (
+        <span className="flex items-center gap-1 text-pos" title="account snapshot on disk is present and fresh"><CheckCircleSolid size={12} /> SYNC</span>
+      ) : (
+        <span className="text-warn" title="account snapshot missing or stale — not synced">{acctConnected ? "STALE" : "NO SYNC"}</span>
+      )}
       <span>v0.1.0</span>
     </footer>
   );

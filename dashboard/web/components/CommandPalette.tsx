@@ -17,7 +17,11 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) { setQ(""); setIdx(0); setTimeout(() => inputRef.current?.focus(), 10); }
+    if (!open) return;
+    // Reset + focus via a task so the effect body only schedules work
+    // (lint: react-hooks/set-state-in-effect).
+    const t = setTimeout(() => { setQ(""); setIdx(0); inputRef.current?.focus(); }, 10);
+    return () => clearTimeout(t);
   }, [open]);
 
   const filtered = useMemo(() => {
@@ -44,7 +48,6 @@ export function CommandPalette({
 
   if (!open) return null;
 
-  let lastGroup = "";
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-[12vh]" onClick={onClose}>
       <div
@@ -67,8 +70,8 @@ export function CommandPalette({
             <div className="px-3 py-6 text-center font-mono text-[12px] text-faint">No matching commands</div>
           )}
           {filtered.map((item, i) => {
-            const showGroup = item.group !== lastGroup;
-            lastGroup = item.group;
+            // Pure derivation from neighbors — no render-scope mutation.
+            const showGroup = i === 0 || filtered[i - 1].group !== item.group;
             return (
               <div key={item.id}>
                 {showGroup && <div className="px-3 pb-1 pt-2 font-mono text-[10px] uppercase tracking-wide text-faint">{item.group}</div>}

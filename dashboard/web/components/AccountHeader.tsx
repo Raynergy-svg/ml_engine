@@ -5,7 +5,7 @@ import type { Trades, SystemHealth, ControlState } from "@/lib/types";
 import { Logo } from "./Logo";
 import { Badge } from "./ui";
 import { ShieldCheckIcon, ChevronDown } from "./icons";
-import { fmtMoney, fmtSigned, pnlClass, fmtNum, fmtPct } from "@/lib/format";
+import { fmtMoney, fmtSigned, fmtNum, fmtPct } from "@/lib/format";
 
 function TopMetric({ label, children, title, positive }: {
   label: string; children: React.ReactNode; title?: string; positive?: boolean;
@@ -41,6 +41,12 @@ export function AccountHeader() {
   const { data: health } = usePoll<SystemHealth>("/api/system_health", 5000);
   const { data: control, error: controlErr } = usePoll<ControlState>("/api/control/state", 5000);
 
+  // Honesty gate (D-C2): the degraded account shape (connected:false) carries
+  // fabricated-looking zeros (nav=0, margin=0). Only render numbers when the
+  // snapshot actually exists — otherwise "—", never $0.00.
+  const acctConnected = acct?.connected === true;
+  const acctStale = acctConnected && acct?.stale === true;
+
   // Day P&L: realized pl of today's UTC fills + current unrealized (gated on both
   // sources so it never transiently shows unrealized-only as the settled figure).
   let realizedToday = 0;
@@ -52,10 +58,11 @@ export function AccountHeader() {
     }
   }
   const unrealized = acct?.unrealized_pl ?? 0;
-  const dayPnl = acct && trades?.trades ? realizedToday + unrealized : null;
+  const dayPnl = acctConnected && trades?.connected ? realizedToday + unrealized : null;
 
   // Win rate: real fraction of CLOSING fills (pl != 0) that were profitable.
   let winRate: number | null = null;
+  let winRateN = 0;
   if (trades?.trades) {
     let wins = 0, closes = 0;
     for (const t of trades.trades) {
@@ -63,6 +70,7 @@ export function AccountHeader() {
       closes += 1;
       if (t.pl > 0) wins += 1;
     }
+    winRateN = closes;
     winRate = closes > 0 ? (wins / closes) * 100 : null;
   }
 
@@ -90,17 +98,21 @@ export function AccountHeader() {
       <StatusBlock label="Gate status" value={gateLabel} ok={gatesStatus === "GREEN"} unknown={gatesStatus == null} />
 
       <div className="order-3 grid w-full min-w-0 grid-cols-2 rounded-md border bg-surface/55 hairline sm:grid-cols-3 lg:order-none lg:ml-auto lg:w-auto xl:flex">
-        <TopMetric label="Equity">{acct ? fmtMoney(acct.nav) : "—"}</TopMetric>
+        <TopMetric label="Equity" title={acctStale ? `snapshot stale (${fmtNum(acct?.snapshot_age_s ?? 0, 0)}s old) — not live truth` : undefined}>
+          {acctConnected ? <>{fmtMoney(acct!.nav)}{acctStale && <span className="ml-1 text-warn">·stale</span>}</> : "—"}
+        </TopMetric>
         <TopMetric label="P&L (Day)" positive={dayPnl == null ? undefined : dayPnl >= 0}>
           {dayPnl == null ? "—" : fmtSigned(dayPnl)}
         </TopMetric>
-        <TopMetric label="Win Rate">{winRate == null ? "—" : fmtPct(winRate, 1)}</TopMetric>
+        <TopMetric label="Win Rate" title={winRate != null ? `${winRateN} closing fill${winRateN === 1 ? "" : "s"} in the loaded ledger window` : undefined}>
+          {winRate == null ? "—" : `${fmtPct(winRate, 1)}`}
+        </TopMetric>
         <TopMetric label="Drawdown" positive={drawdownPct == null ? undefined : drawdownPct < 5}>
           {drawdownPct == null ? "—" : fmtPct(drawdownPct, 2)}
         </TopMetric>
         <TopMetric label="Leverage">{leverage == null ? "—" : `${fmtNum(leverage, 1)}x`}</TopMetric>
         <TopMetric label="Margin" title={marginUsedPct != null ? `${fmtNum(marginUsedPct, 1)}% used` : undefined}>
-          {acct ? fmtMoney(acct.margin_available) : "—"}
+          {acctConnected ? fmtMoney(acct!.margin_available) : "—"}
         </TopMetric>
       </div>
 

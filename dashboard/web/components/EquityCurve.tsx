@@ -29,6 +29,16 @@ export function EquityCurve() {
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
 
+  // Wall-clock reads happen in an effect, never during render (impure). Refreshed
+  // every 30s — plenty for range cutoffs and the live-NAV edge point.
+  const [nowSec, setNowSec] = useState<number | null>(null);
+  useEffect(() => {
+    const read = () => setNowSec(Math.floor(Date.now() / 1000));
+    const first = setTimeout(read, 0);
+    const id = setInterval(read, 30_000);
+    return () => { clearTimeout(first); clearInterval(id); };
+  }, []);
+
   useEffect(() => {
     if (!elRef.current) return;
     const chart = createChart(elRef.current, {
@@ -62,21 +72,22 @@ export function EquityCurve() {
     }
     let entries = [...byT.entries()].sort((a, b) => a[0] - b[0]);
     const spec = RANGES.find((r) => r.label === range);
-    if (spec && spec.days !== Infinity) {
-      const now = Date.now() / 1000;
+    if (spec && spec.days !== Infinity && nowSec != null) {
       let cutoff: number;
       if (spec.days === null) { // YTD
-        const jan1 = new Date(new Date().getFullYear(), 0, 1).getTime() / 1000;
+        const jan1 = new Date(new Date(nowSec * 1000).getFullYear(), 0, 1).getTime() / 1000;
         cutoff = jan1;
       } else {
-        cutoff = now - spec.days * 86400;
+        cutoff = nowSec - spec.days * 86400;
       }
       entries = entries.filter(([t]) => t >= cutoff);
     }
     return entries.map(([time, value]) => ({ time, value }));
-  }, [data, range]);
+  }, [data, range, nowSec]);
 
-  const liveNav = payload?.account?.nav ?? null;
+  // Honesty gate (D-C2): the degraded account shape carries nav=0 with
+  // connected:false — never treat that 0 as a real live NAV.
+  const liveNav = payload?.account?.connected ? payload.account.nav : null;
   // "Unrealized" appends ONE real, live point (now, current NAV = balance + open
   // trades' floating P&L). We don't have a historical floating-P&L series (that
   // would require replaying tick history against each past open position — not
@@ -84,12 +95,11 @@ export function EquityCurve() {
   // scope is: realized history is exact, and the live edge reflects the real,
   // currently-open floating P&L via the streaming NAV.
   const chartSeries = useMemo(() => {
-    if (mode !== "unrealized" || liveNav == null || !filteredSeries.length) return filteredSeries;
-    const nowSec = Math.floor(Date.now() / 1000);
+    if (mode !== "unrealized" || liveNav == null || !filteredSeries.length || nowSec == null) return filteredSeries;
     const lastPoint = filteredSeries[filteredSeries.length - 1];
     if (nowSec <= lastPoint.time) return filteredSeries;
     return [...filteredSeries, { time: nowSec, value: liveNav }];
-  }, [filteredSeries, mode, liveNav]);
+  }, [filteredSeries, mode, liveNav, nowSec]);
 
   useEffect(() => {
     if (!chartSeries.length || !seriesRef.current) return;
@@ -104,12 +114,12 @@ export function EquityCurve() {
   // vs the mode's current equity figure — not a second network call, just the data
   // already here.
   const dayOpenBalance = useMemo(() => {
-    if (!data?.points?.length) return null;
-    const startOfDay = new Date(); startOfDay.setUTCHours(0, 0, 0, 0);
+    if (!data?.points?.length || nowSec == null) return null;
+    const startOfDay = new Date(nowSec * 1000); startOfDay.setUTCHours(0, 0, 0, 0);
     const cutoff = startOfDay.getTime();
     const todays = data.points.filter((p) => new Date(p.time).getTime() >= cutoff);
     return todays.length ? todays[0].balance : null;
-  }, [data]);
+  }, [data, nowSec]);
   const dayPct = currentEquity != null && dayOpenBalance ? ((currentEquity - dayOpenBalance) / dayOpenBalance) * 100 : null;
 
   return (
