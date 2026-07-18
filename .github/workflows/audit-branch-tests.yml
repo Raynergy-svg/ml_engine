@@ -1,0 +1,81 @@
+name: Audit Branch Tests
+
+# 2026-07-18 pipeline-audit + hedge-plane evidence. The other workflows only
+# trigger on main/develop/copilot/claude branches, so the audit branch had no
+# CI runs and every reported test total was local evidence — this converts it
+# to reproduced evidence on each push and on the PR into the active branch.
+
+on:
+  push:
+    branches: [ "audit/harvester-fixes" ]
+  pull_request:
+    branches: [ "ralph/equity-harvester-bot", "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: audit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit-suites:
+    name: 2026-07-18 audit suites (no-mock) + flake8
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies (slim — exactly the suites' import closure)
+        # Traced via sys.modules over all six suites + the ScannerAgentTeam
+        # executed-updater path: numpy, pandas, scipy, pyarrow (parquet price
+        # panel), rich. Version pins mirror requirements.txt where pinned.
+        # Deliberately NOT the full ML stack (tensorflow etc.) — these suites
+        # are pure-Python + data libs, and the fat install would add ~10 min
+        # for imports the tests never make.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest "numpy>=1.26.4" "pandas==2.3.3" "scipy>=1.13.0" \
+            "pyarrow==22.0.0" rich "flake8==7.3.0"
+
+      - name: Flake8 (audit-touched surface)
+        run: |
+          python -m flake8 \
+            src/hedge/ \
+            src/scanner/execution.py \
+            src/training/walkforward_validation.py \
+            src/training/buddy_training_helpers.py \
+            tests/test_pipeline_audit_fixes_2026_07_18.py \
+            tests/test_residual_attribution_2026_07_18.py \
+            tests/test_scanner_lane_coverage_2026_07_18.py \
+            tests/test_portfolio_promotion_2026_07_18.py \
+            tests/test_hedge_gate_corrections_2026_07_18.py \
+            tests/test_walkforward_metrics.py \
+            --config=.flake8 --statistics
+
+      - name: Pytest — six audit suites (111 tests, no-mock policy)
+        run: |
+          python -m pytest \
+            tests/test_pipeline_audit_fixes_2026_07_18.py \
+            tests/test_residual_attribution_2026_07_18.py \
+            tests/test_scanner_lane_coverage_2026_07_18.py \
+            tests/test_portfolio_promotion_2026_07_18.py \
+            tests/test_hedge_gate_corrections_2026_07_18.py \
+            tests/test_walkforward_metrics.py \
+            -q --tb=short
+
+      - name: Hard-NO guard — repo state untouched by the test run
+        # The root conftest reverts state.json pollution and FAILS the
+        # polluting test; this step is the independent, can't-be-narrated-
+        # around backstop: no test may leave tracked state or evidence
+        # ledgers modified, and none may drop untracked files into them.
+        run: |
+          git diff --exit-code .claude/state.json
+          git status --porcelain .claude/ trained_data/ | tee /tmp/dirty.txt
+          test ! -s /tmp/dirty.txt

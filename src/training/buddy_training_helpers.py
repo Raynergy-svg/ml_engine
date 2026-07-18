@@ -1520,7 +1520,7 @@ def train_joint_multi_pair_ensemble(
         # W&B: log joint model metrics (transformer + ridge + lgbm in one shot)
         if wb_run and wandb_log_sklearn_training:
             _wb_loggable = {k: v for k, v in (joint_metrics or {}).items()
-                          if isinstance(v, (int, float, bool))}
+                            if isinstance(v, (int, float, bool))}
             if _wb_loggable:
                 try:
                     wb_run.log({"joint/" + k: v for k, v in _wb_loggable.items()})
@@ -1540,7 +1540,7 @@ def train_joint_multi_pair_ensemble(
             for pair_name, ft_result in fine_tune_results.items():
                 if isinstance(ft_result, dict):
                     ft_metrics = {k: v for k, v in ft_result.items()
-                                 if isinstance(v, (int, float, bool))}
+                                  if isinstance(v, (int, float, bool))}
                     if ft_metrics:
                         wandb_log_sklearn_training(
                             model_name="fine-tune",
@@ -1558,7 +1558,7 @@ def train_joint_multi_pair_ensemble(
         if wandb_log_sklearn_training:
             if tcn_result and isinstance(tcn_result, dict):
                 tcn_metrics = {k: v for k, v in tcn_result.items()
-                              if isinstance(v, (int, float, bool))}
+                               if isinstance(v, (int, float, bool))}
                 if tcn_metrics:
                     wandb_log_sklearn_training(
                         model_name="tcn_volatility_regime",
@@ -1582,8 +1582,9 @@ def train_joint_multi_pair_ensemble(
                     "n_instruments": len(dfs),
                     "joint_val_accuracy": (joint_metrics or {}).get("val_accuracy"),
                     "joint_balanced_accuracy": (joint_metrics or {}).get("val_balanced_accuracy"),
-                    "tcn_val_accuracy": (tcn_result or {}).get("metrics", {}).get("val_accuracy")
-                                        if isinstance(tcn_result, dict) else None,
+                    "tcn_val_accuracy": (
+                        (tcn_result or {}).get("metrics", {}).get("val_accuracy")
+                        if isinstance(tcn_result, dict) else None),
                     "n_fine_tuned": len(fine_tune_results) if fine_tune_results else 0,
                 })
             except Exception:
