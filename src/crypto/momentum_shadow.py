@@ -354,6 +354,87 @@ def record_shadow_cycle(
     return row
 
 
+def capture_forward(*, ledger_path: Path = LEDGER_PATH_DEFAULT,
+                    cycle_ts_iso: str,
+                    refresh_klines: bool = False,
+                    panels: Any = None) -> List[Dict[str, Any]]:
+    """Evidence-safe forward capture for the H4 lane (2026-07-19: migrated
+    onto ``src.evidence.forward_ledger`` — the known follow-up from the
+    scheduler-safety program). Same engine contract as the H5/multi-asset
+    lanes: cross-process lock, activation baseline, deterministic backfill,
+    applied vs next-target split, explicit frozen-rule rebalance fields,
+    strict fail-closed reads. The legacy ``record_shadow_cycle`` path is
+    retained for compatibility but the scheduler uses THIS.
+
+    Ledger note: the one pre-engine legacy row (asof 2026-05-31, latest-bar
+    semantics) stays as-is — the engine appends strictly after it, and the
+    canonical resolvers treat it as a legacy forward row with None cadence.
+    """
+    from src.evidence.forward_ledger import append_unseen_bars
+
+    if panels is None:
+        close, funding_daily, eligible, _btc, cols, _tk = _h.build_panels(False, refresh_klines)
+    else:
+        close, funding_daily, eligible, cols = panels
+    if close.empty or not cols:
+        raise RuntimeError("crypto momentum shadow: empty universe/panel")
+    cutoff = _last_populated_date(close, cols)
+    close, funding_daily, eligible = close.loc[:cutoff], funding_daily.loc[:cutoff], eligible.loc[:cutoff]
+    sig = _h.make_signal(SIGNAL_NAME, close, None, cols)
+    out, book = _compute_book_and_returns(close, funding_daily, eligible, cols, sig)
+    elig_shifted = eligible[cols].shift(1)
+
+    dates = [str(pd.Timestamp(d).date()) for d in book.index]
+    pos_by_date = {d: i for i, d in enumerate(dates)}
+
+    def _book_dict(row: pd.Series) -> Dict[str, Dict[str, float]]:
+        return {"longs": {str(s): float(w) for s, w in row.items() if w > 1e-12},
+                "shorts": {str(s): float(w) for s, w in row.items() if w < -1e-12}}
+
+    def _universe(i: int) -> int:
+        idx = book.index[i]
+        return int(elig_shifted.loc[idx].sum()) if idx in elig_shifted.index else len(cols)
+
+    def payload_for(d: str) -> Dict[str, Any]:
+        i = pos_by_date[d]
+        idx = book.index[i]
+        ret = out.loc[idx]
+        applied = book.iloc[i - 1] if i > 0 else book.iloc[i] * 0.0
+        nxt = book.iloc[i]
+        return {
+            "rebalance_event": bool(i % REBALANCE_DAYS == 0),
+            "rebalance_id": int(i // REBALANCE_DAYS),
+            "holding_period_id": int(i // REBALANCE_DAYS),
+            "today_net_return": float(ret["net"]),
+            "today_price_return": float(ret["price"]),
+            "today_carry_return": float(ret["carry"]),
+            "today_cost": float(ret["cost"]),
+            "today_turnover": float(ret["turnover"]),
+            "applied_book": _book_dict(applied),
+            "book": _book_dict(nxt),
+            "return_period_start": dates[i - 1] if i > 0 else None,
+            "gross_leverage": float(nxt.abs().sum()),
+            "universe_size": _universe(i),
+            "n_longs": int((nxt > 1e-12).sum()),
+            "n_shorts": int((nxt < -1e-12).sum()),
+            "construction": construction_manifest(),
+        }
+
+    def activation_payload_for(d: str) -> Dict[str, Any]:
+        i = pos_by_date[d]
+        nxt = book.iloc[i]
+        return {"book": _book_dict(nxt), "gross_leverage": float(nxt.abs().sum()),
+                "universe_size": _universe(i),
+                "n_longs": int((nxt > 1e-12).sum()),
+                "n_shorts": int((nxt < -1e-12).sum()),
+                "construction": construction_manifest()}
+
+    return append_unseen_bars(ledger_path, strategy="crypto_momentum",
+                              dates=dates, payload_for=payload_for,
+                              activation_payload_for=activation_payload_for,
+                              cycle_ts_iso=cycle_ts_iso)
+
+
 def forward_oos_summary(ledger_path: Path = LEDGER_PATH_DEFAULT) -> Dict[str, Any]:
     """Honest summary of the live-forward track record accumulated so far.
 

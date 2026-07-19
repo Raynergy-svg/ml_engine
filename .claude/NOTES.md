@@ -1772,3 +1772,14 @@ Killed the `run_equity_harvester.py --broker ibkr-paper` background loop I'd sta
   commit as one transaction w/ truncate-rollback; (7) promotion _max_drawdown now compounded,
   matching scorecard. 16 new no-mock tests incl. real fork-multiprocessing barrier races +
   real failure injection (directory-as-decision-path). 151 green across 9 suites.
+- **2026-07-19 (continuation — "why stop?")**: closed the two remaining buildable items.
+  (a) MODELED ATR-runtime backtest (scripts/backtest_oanda_trend_atr_runtime.py, drives the
+  runtime's OWN risk_normalized_units/leverage_cap_scale/margin_scale/bucket_cap_gate on cached
+  daily OHLC, one config, cumulative N_TRIALS=3): **decisively negative** — Sharpe −0.27…−0.31,
+  1/13 positive years, DSR 0.02–0.03, final NAV 0.85×, 20% dd rail active ~76% of days. Both the
+  signal spec AND the modeled risk-gated runtime are now negative on FX-only; operator fork is
+  retire vs pre-register cross-asset (verdict doc updated). (b) H4 crypto_momentum migrated onto
+  the evidence-safe engine (capture_forward; legacy row untouched, engine appends after it);
+  runner now captures H4+H5+multi_asset. 155 green across 10 suites. Still operator-side:
+  independent review of 518cd02+this commit before ANY scheduling; equity PIT rerun; Track B
+  scoring budget; allocations file.

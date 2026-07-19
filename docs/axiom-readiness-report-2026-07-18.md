@@ -83,10 +83,12 @@ contribution under an operator-authored allocation plan.
      (`docs/oanda-trend-runtime-verdict-2026-07-18.md`): the equal-weight
      SMA SIGNAL spec is expectancy-negative on the FX-only subset under
      BOTH windows at every cost point (Sharpe −0.09…−0.24, 2014→2026) —
-     reject that signal spec. NOT proven either way: the ACTUAL
-     ATR-risk-sized, gate-constrained runtime (sizing/brackets/halts are
-     not modeled). Remaining: model or forward-test the risk-gated runtime,
-     or retire/re-pre-register the lane (operator fork).
+     reject that signal spec. 2026-07-19: the MODELED risk-gated runtime
+     (runtime's own sizing/cap functions, daily OHLC, N_TRIALS=3) is ALSO
+     decisively negative (Sharpe −0.27…−0.31, 1/13 positive years, dd rail
+     active ~76% of days) — `oanda_trend_atr_runtime_*.json` + verdict doc.
+     Remaining operator fork: retire the FX-only lane, or pre-register a
+     cross-asset runtime spec.
    - **Equity harvester** — SHIP_GATE.json's universe_hash (896fc636…)
      verified equal to the committed `universe_snapshot_pit.json`.
      Numeric re-derivation needs yfinance (proxy-blocked in the sandbox):

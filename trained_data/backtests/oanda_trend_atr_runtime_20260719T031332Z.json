@@ -1,0 +1,116 @@
+{
+  "approximations": [
+    "daily bars (runtime loops on daily candles)",
+    "next-open fills, SL-first intra-bar",
+    "ATR at decision prices the bracket",
+    "no financing/swap; no winner-management sub-rules",
+    "metals/CFD candidates uncached (FX-only)"
+  ],
+  "cost_arms": {
+    "0bps": {
+      "activity": {
+        "bucket_blocks": 739,
+        "dd_halt_days": 2487,
+        "entries": 229,
+        "lev_scale_days": 228,
+        "margin_scale_days": 0,
+        "signal_exits": 118,
+        "sl_exits": 70,
+        "tp_exits": 41
+      },
+      "ann_return": -0.01193,
+      "ann_vol": 0.04375,
+      "block_bootstrap_p": 0.8558,
+      "deflated_sr_prob": 0.0323,
+      "final_nav_over_start": 0.8461,
+      "max_drawdown": 0.23409,
+      "n_days": 3266,
+      "net_sharpe": -0.2727,
+      "positive_years": 1,
+      "span": [
+        "2014-01-02",
+        "2026-06-11"
+      ],
+      "total_years": 13
+    },
+    "1bps": {
+      "activity": {
+        "bucket_blocks": 695,
+        "dd_halt_days": 2526,
+        "entries": 217,
+        "lev_scale_days": 226,
+        "margin_scale_days": 0,
+        "signal_exits": 109,
+        "sl_exits": 68,
+        "tp_exits": 40
+      },
+      "ann_return": -0.0115,
+      "ann_vol": 0.04122,
+      "block_bootstrap_p": 0.8626,
+      "deflated_sr_prob": 0.0309,
+      "final_nav_over_start": 0.8521,
+      "max_drawdown": 0.21803,
+      "n_days": 3266,
+      "net_sharpe": -0.279,
+      "positive_years": 1,
+      "span": [
+        "2014-01-02",
+        "2026-06-11"
+      ],
+      "total_years": 13
+    },
+    "2bps": {
+      "activity": {
+        "bucket_blocks": 670,
+        "dd_halt_days": 2551,
+        "entries": 212,
+        "lev_scale_days": 217,
+        "margin_scale_days": 0,
+        "signal_exits": 108,
+        "sl_exits": 65,
+        "tp_exits": 39
+      },
+      "ann_return": -0.0126,
+      "ann_vol": 0.04016,
+      "block_bootstrap_p": 0.8872,
+      "deflated_sr_prob": 0.0235,
+      "final_nav_over_start": 0.8405,
+      "max_drawdown": 0.21999,
+      "n_days": 3266,
+      "net_sharpe": -0.3138,
+      "positive_years": 1,
+      "span": [
+        "2014-01-02",
+        "2026-06-11"
+      ],
+      "total_years": 13
+    }
+  },
+  "cost_model": "turnover x bps/side on traded notional, fixed grid",
+  "generated_at": "2026-07-19T03:13:27.932585+00:00",
+  "n_trials_cumulative": 3,
+  "purpose": "MODELED-RUNTIME validation: the ACTUAL ATR-risk-sized, gate-constrained OANDA trend runtime (1% NAV risk / 2xATR stop, 4xATR TP, one ticket per instrument, 2R bucket caps, 3x gross ceiling, 50% margin rail, 20% dd halt) driven through the runtime's OWN sizing/cap functions on cached daily OHLC. Closes the fork the signal-only verdict left open.",
+  "runtime_defaults": {
+    "atr_period": 14,
+    "atr_sl_mult": 2.0,
+    "atr_tp_mult": 4.0,
+    "dd_hard": 0.2,
+    "gross_leverage": 3.0,
+    "max_bucket_risk_r": 2.0,
+    "risk_pct": 0.01,
+    "sma_window": 100
+  },
+  "scope": "modeled_runtime_daily",
+  "universe_cached": [
+    "AUD_USD",
+    "EUR_GBP",
+    "EUR_JPY",
+    "EUR_USD",
+    "GBP_JPY",
+    "GBP_USD",
+    "NZD_USD",
+    "USD_CAD",
+    "USD_CHF",
+    "USD_JPY"
+  ]
+}

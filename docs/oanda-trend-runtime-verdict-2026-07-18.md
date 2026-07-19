@@ -50,15 +50,25 @@ material drag.
    Half the runner's candidate list (XAU/XAG, index CFDs, energy) is
    uncached, so this verdict is decisive for the FX subset and SILENT on
    the full candidate set (stated limit, not a loophole).
-3. **Operator decision required (pre-registration discipline — no in-place
-   tweak):** (a) reject the simplified equal-weight FX-only SIGNAL
-   specification (this verdict supports that), and either (b1) retire the
-   FX-only practice lane, or (b2) pre-register a runtime spec matching the
-   validated construction (cross-asset + HRP + 10% vol target + monthly)
-   and validate it, or (b3) model/forward-test the ACTUAL ATR-risk-sized,
-   gate-constrained runtime before judging it — the risk-gated runtime
-   remains UNPROVEN in both directions. Reading FX-only SMA100 practice
-   P&L as evidence for the validated trend strategy remains unsupported.
+3. **UPDATE 2026-07-19 — the (b3) fork is now closed.** The MODELED
+   risk-gated runtime (`scripts/backtest_oanda_trend_atr_runtime.py`,
+   artifact `oanda_trend_atr_runtime_20260719T031332Z.json`) drives the
+   runtime's OWN sizing/cap functions (1% NAV risk / 2×ATR stop, 4×ATR TP,
+   one ticket per instrument, 2R bucket caps with same-cycle accumulation,
+   3× gross ceiling, 50% margin rail, 20% dd halt) on the cached daily
+   OHLC, one pre-specified config, cumulative N_TRIALS=3. Result: **also
+   decisively negative** — Sharpe −0.27…−0.31 across the cost grid, 1/13
+   positive years, bootstrap p 0.86–0.89, DSR 0.02–0.03, final NAV 0.85×,
+   maxDD ~22–23%, and the 20% drawdown rail active on ~76% of days (the
+   lane breaches early and spends most of its life halted — the halt
+   preserves capital but there is no edge to resume into). Named
+   approximations in the artifact (daily bars, next-open fills, SL-first
+   intra-bar, no swap, no winner-management). **Operator fork simplifies
+   to:** retire the FX-only practice trend lane (both the signal spec AND
+   the modeled risk-gated runtime are negative), or pre-register a
+   cross-asset runtime spec matching the validated 37-asset construction.
+   Reading FX-only practice P&L as strategy evidence remains unsupported
+   either way.
 
 Not modeled (honest limits): ATR risk-normalized sizing (the runtime's
 actual sizer), SL/TP brackets and position management, drawdown halts,

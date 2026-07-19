@@ -45,6 +45,13 @@ def _describe(name: str, appended: list) -> str:
             f"(cum={appended[-1]['cumulative_shadow_return']:.6f})")
 
 
+def _capture_crypto_momentum(refresh: bool) -> str:
+    from src.crypto import momentum_shadow as h4
+    appended = h4.capture_forward(
+        refresh_klines=refresh, cycle_ts_iso=datetime.now(timezone.utc).isoformat())
+    return _describe("crypto_momentum", appended)
+
+
 def _capture_crypto_ts_trend(refresh: bool) -> str:
     from src.crypto import ts_trend_shadow as ts
     appended = ts.capture_forward(
@@ -69,7 +76,8 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     failures = 0
-    for name, fn in (("crypto_ts_trend", _capture_crypto_ts_trend),
+    for name, fn in (("crypto_momentum", _capture_crypto_momentum),
+                     ("crypto_ts_trend", _capture_crypto_ts_trend),
                      ("multi_asset_trend", _capture_multi_asset_trend)):
         try:
             print(fn(args.refresh))
