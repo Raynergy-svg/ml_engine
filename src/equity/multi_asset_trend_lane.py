@@ -37,11 +37,9 @@ is used as-is and staleness shows up honestly as an unchanged ``asof_date``
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
-import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -57,6 +55,12 @@ from src.equity.multi_asset_trend import (
 )
 from src.equity.ship_gate import DEFAULT_DD_HARD, DEFAULT_DD_SOFT
 from src.equity.sleeve_combiner import combine_sleeves
+from src.evidence.forward_ledger import (
+    append_unseen_bars,
+    cadence_counts as fl_cadence_counts,
+    forward_rows as fl_forward_rows,
+    read_rows as fl_read_rows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +82,27 @@ MIN_BARS: int = 250                                # round-3 eligibility floor
 SOURCE_DOCS = ("docs/experiment-multi-asset-trend-2026-06-29.md",
                "docs/experiment-edge-hunt-round3-2026-06-29.md",
                "docs/experiment-edge-hunt-round4-2026-06-30.md")
-GATE_VERDICT = ("absolute-gate PASS (full Sharpe 0.744, maxDD 18%; OOS 0.829); "
-                "significance near-miss is power-limited — forward-test the spec "
-                "UNCHANGED (readiness report 2026-07-18)")
+# THIS lane's own pre-registered result — the 37-asset Round-3 Lead B run at
+# the spec-correct 10% target vol, 2 bps (round-3 doc section 5). rev 2 fix
+# (2026-07-19 review): the first manifest wrongly stamped the ORIGINAL
+# 21-asset experiment's numbers (0.744/18%/0.829) as this lane's verdict.
+PRE_REGISTERED_37 = {
+    "full_sharpe": 0.665, "full_max_dd": 0.167,
+    "full_dsr_n20": 0.987, "full_bootstrap_p": 0.0,
+    "oos_sharpe": 0.788, "oos_max_dd": 0.162,
+    "oos_dsr_n20": 0.843, "oos_bootstrap_p": 0.002,
+    "clears_gate": False,
+}
+GATE_VERDICT = ("clears_gate=FALSE — OOS DSR 0.843 < 0.95 (short 0.107; the OOS "
+                "bootstrap-p half PASSES at 0.002 < 0.0025 Bonferroni); full-sample "
+                "significance clears (DSR 0.987, p 0.0). Power-limited near-miss -> "
+                "forward-test the spec UNCHANGED (readiness report 2026-07-18). "
+                "Risk-control book, NOT alpha: OOS loses to EW/60-40 on return "
+                "(beta-to-SPY 0.128, maxDD 0.162 vs EW -0.765).")
+# Background context ONLY — a DIFFERENT construction (the original 21-asset
+# experiment), never this lane's verdict.
+BACKGROUND_21_ASSET = {"full_sharpe": 0.744, "full_max_dd": 0.18, "oos_sharpe": 0.829,
+                       "source": "docs/experiment-multi-asset-trend-2026-06-29.md"}
 
 LEDGER_PATH_DEFAULT = REPO_ROOT / "trained_data" / "trend" / "shadow_multi_asset_trend_ledger.jsonl"
 
@@ -104,6 +126,8 @@ def construction_manifest() -> Dict[str, Any]:
         "universe_sha256": universe_sha256(),
         "min_bars": MIN_BARS,
         "source_docs": list(SOURCE_DOCS),
+        "pre_registered_37_asset": dict(PRE_REGISTERED_37),
+        "background_21_asset_context": dict(BACKGROUND_21_ASSET),
         "gate_verdict": GATE_VERDICT,
     }
 
@@ -157,30 +181,21 @@ def _held_state(price: pd.Series) -> Optional[pd.Series]:
 
 
 @dataclass
-class LaneCycleResult:
-    asof_date: str
-    universe_size: int          # sleeves with enough history to trade
-    longs: Dict[str, float]     # asset -> portfolio weight (hrp x held x overlay lev)
-    gross_leverage: float
-    overlay_leverage: float
-    today_net_return: float
-    cumulative_note: str = "net stream embeds 2 bps/side per-sleeve costs (frozen)"
-    construction: Dict[str, Any] = field(default_factory=construction_manifest)
+class LaneFrames:
+    """The frozen construction's full aligned state (regression-locked)."""
+    net: pd.Series               # == combined_portfolio(prices, target_vol=0.10) bit-for-bit
+    scalar: pd.Series            # overlay exposure scalar (causal)
+    hrp: pd.DataFrame            # causal HRP sleeve-weight panel
+    held: pd.DataFrame           # per-asset 0/1 monthly-held state (frozen rule)
+    universe_size: int
 
 
-def compute_lane_cycle(prices: Optional[pd.DataFrame] = None, *,
-                       refresh: bool = False) -> LaneCycleResult:
-    """Compute the frozen 37-asset trend book + today's mark.
-
-    Book weight per asset at the latest bar = HRP sleeve weight (causal panel)
-    x held state (0/1, monthly schedule) x overlay exposure scalar. The net
-    return logged is the SAME number ``combined_portfolio`` produces for the
-    latest bar (regression-locked)."""
+def compute_frames(prices: Optional[pd.DataFrame] = None, *,
+                   refresh: bool = False) -> LaneFrames:
     if prices is None:
         prices = load_panel(refresh=refresh)
     if prices is None or prices.empty:
         raise RuntimeError("multi_asset_trend_lane: empty price panel")
-
     streams = trend_streams(prices)
     if streams.empty or streams.shape[1] < 2:
         raise RuntimeError("multi_asset_trend_lane: fewer than 2 tradeable sleeves — no portfolio")
@@ -193,124 +208,113 @@ def compute_lane_cycle(prices: Optional[pd.DataFrame] = None, *,
     net = (combined * scalar.reindex(combined.index).fillna(0.0)).dropna()
     if net.empty:
         raise RuntimeError("multi_asset_trend_lane: net stream empty")
+    held = pd.DataFrame({a: h for a in streams.columns
+                         if (h := _held_state(prices[a])) is not None})
+    held = held.reindex(net.index).fillna(0.0)
+    return LaneFrames(net=net,
+                      scalar=scalar.reindex(net.index).fillna(0.0),
+                      hrp=weight_panel.reindex(net.index).fillna(0.0),
+                      held=held,
+                      universe_size=int(streams.shape[1]))
 
-    asof = net.index[-1]
-    lev = float(scalar.reindex(net.index).fillna(0.0).loc[asof])
-    hrp_row = weight_panel.reindex(index=[asof]).iloc[0].fillna(0.0)
-    book: Dict[str, float] = {}
-    for asset in streams.columns:
-        held = _held_state(prices[asset])
-        if held is None or asof not in held.index:
-            continue
-        w = float(hrp_row.get(asset, 0.0)) * float(held.loc[asof]) * lev
+
+def _book_at(frames: LaneFrames, i: int, *, applied: bool) -> Dict[str, float]:
+    """Period-aligned book (2026-07-19 review fix 5).
+
+    The frozen construction is causal: ``net[t]`` was earned by the held
+    state decided at ``t-1`` (``w.shift(1)``), weighted by the HRP row and
+    overlay scalar assigned AT ``t`` (both estimated causally from <= t-1).
+    ``applied=True``  -> the book that GENERATED net[t]:
+                         hrp[t] x held[t-1] x scalar[t].
+    ``applied=False`` -> the STANDING next-bar target as of t:
+                         hrp[t] x held[t] x scalar[t] (HRP/scalar may
+                         re-estimate on the next bar — noted, not hidden)."""
+    t = frames.net.index[i]
+    held_row = (frames.held.iloc[i - 1] if applied and i > 0
+                else frames.held.iloc[i] * 0.0 if applied
+                else frames.held.iloc[i])
+    lev = float(frames.scalar.iloc[i])
+    hrp_row = frames.hrp.loc[t].fillna(0.0)
+    book = {}
+    for a in frames.held.columns:
+        w = float(hrp_row.get(a, 0.0)) * float(held_row.get(a, 0.0)) * lev
         if abs(w) > 1e-12:
-            book[str(asset)] = w
-
-    return LaneCycleResult(
-        asof_date=str(pd.Timestamp(asof).date()),
-        universe_size=int(streams.shape[1]),
-        longs=book,   # long-or-flat construction: no shorts by design
-        gross_leverage=float(sum(abs(v) for v in book.values())),
-        overlay_leverage=lev,
-        today_net_return=float(net.loc[asof]),
-    )
+            book[str(a)] = w
+    return book
 
 
-# --------------------------------------------------------------------------- #
-# Ledger — append-only JSONL, flush+fsync (same convention as the crypto
-# shadow lanes / equity live_gate audit log).
-# --------------------------------------------------------------------------- #
-def _read_ledger_rows(path: Path) -> List[Dict[str, Any]]:
-    if not path.exists():
-        return []
-    rows: List[Dict[str, Any]] = []
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.warning("multi_asset_trend ledger unreadable at %s: %s", path, exc)
-        return []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError:
-            logger.warning("skipping corrupt ledger line in %s", path)
-    return rows
+def capture_forward(prices: Optional[pd.DataFrame] = None, *,
+                    refresh: bool = False,
+                    ledger_path: Path = LEDGER_PATH_DEFAULT,
+                    cycle_ts_iso: str) -> List[Dict[str, Any]]:
+    """Evidence-safe forward capture (review fixes 2+3+5): activation
+    baseline on the first run (no realized return), deterministic backfill
+    of every unseen bar afterwards, applied vs next-target books split per
+    row. See ``src.evidence.forward_ledger`` for the engine contract."""
+    frames = compute_frames(prices, refresh=refresh)
+    dates = [str(pd.Timestamp(t).date()) for t in frames.net.index]
+    pos = {d: i for i, d in enumerate(dates)}
 
+    def payload_for(d: str) -> Dict[str, Any]:
+        i = pos[d]
+        nxt = _book_at(frames, i, applied=False)
+        return {
+            "today_net_return": float(frames.net.iloc[i]),
+            "applied_book": {"longs": _book_at(frames, i, applied=True), "shorts": {}},
+            "book": {"longs": nxt, "shorts": {}},
+            "return_period_start": dates[i - 1] if i > 0 else None,
+            "overlay_leverage": float(frames.scalar.iloc[i]),
+            "gross_leverage": float(sum(abs(v) for v in nxt.values())),
+            "universe_size": frames.universe_size,
+            "n_longs": len(nxt),
+            "n_shorts": 0,
+            "construction": construction_manifest(),
+        }
 
-def _append_ledger_row(path: Path, row: Dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(row, sort_keys=True) + "\n"
-    try:
-        with open(path, "a", encoding="utf-8") as fh:
-            fh.write(line)
-            fh.flush()
-            os.fsync(fh.fileno())
-    except OSError as exc:
-        logger.error("multi_asset_trend ledger append failed for %s: %s", path, exc, exc_info=True)
-        raise
+    def activation_payload_for(d: str) -> Dict[str, Any]:
+        i = pos[d]
+        nxt = _book_at(frames, i, applied=False)
+        return {
+            "book": {"longs": nxt, "shorts": {}},
+            "overlay_leverage": float(frames.scalar.iloc[i]),
+            "gross_leverage": float(sum(abs(v) for v in nxt.values())),
+            "universe_size": frames.universe_size,
+            "n_longs": len(nxt),
+            "n_shorts": 0,
+            "construction": construction_manifest(),
+        }
 
-
-def record_lane_cycle(result: LaneCycleResult, *,
-                      ledger_path: Path = LEDGER_PATH_DEFAULT,
-                      cycle_ts_iso: str) -> Optional[Dict[str, Any]]:
-    """Append one forward cycle row. Duplicate ``asof_date`` -> honest no-op
-    (stale cache, not a bug). ``cumulative_shadow_return`` compounds ONLY the
-    rows in this ledger — true forward-from-activation P&L, never backtest
-    history."""
-    rows = _read_ledger_rows(ledger_path)
-    if rows and rows[-1].get("asof_date") == result.asof_date:
-        logger.info("multi_asset_trend shadow: no new trading day (asof_date=%s) — skipping",
-                    result.asof_date)
-        return None
-    prior_cum = float(rows[-1]["cumulative_shadow_return"]) if rows else 0.0
-    cum = (1.0 + prior_cum) * (1.0 + result.today_net_return) - 1.0
-    row = {
-        "cycle_ts": cycle_ts_iso,
-        "asof_date": result.asof_date,
-        "universe_size": result.universe_size,
-        "book": {"longs": result.longs, "shorts": {}},
-        "n_longs": len(result.longs),
-        "n_shorts": 0,
-        "gross_leverage": result.gross_leverage,
-        "overlay_leverage": result.overlay_leverage,
-        "today_net_return": result.today_net_return,
-        "cumulative_shadow_return": cum,
-        "forward_cycle_seq": len(rows) + 1,
-        "construction": result.construction,
-        "orders_placed": 0,
-        "broker": None,
-    }
-    _append_ledger_row(ledger_path, row)
-    return row
+    return append_unseen_bars(ledger_path, dates=dates, payload_for=payload_for,
+                              activation_payload_for=activation_payload_for,
+                              cycle_ts_iso=cycle_ts_iso)
 
 
 def forward_summary(ledger_path: Path = LEDGER_PATH_DEFAULT) -> Dict[str, Any]:
-    """Honest forward-record summary; empty ledger -> explicit zero-state."""
-    rows = _read_ledger_rows(ledger_path)
-    if not rows:
-        return {"n_cycles": 0, "first_asof_date": None, "last_asof_date": None,
-                "cumulative_return": 0.0, "note": "no shadow cycles recorded yet"}
-    rets = [float(r.get("today_net_return", 0.0)) for r in rows]
+    """Honest forward record; activation excluded; cadence in
+    rebalances/months (24-30 completed rebalances is the evidence bar,
+    NEVER raw daily row count)."""
+    rows = fl_read_rows(ledger_path)
+    fwd = fl_forward_rows(rows)
+    rets = [float(r["today_net_return"]) for r in fwd]
     n = len(rets)
-    mean = sum(rets) / n
     sharpe = None
     if n >= 2:
+        mean = sum(rets) / n
         var = sum((x - mean) ** 2 for x in rets) / (n - 1)
         if var > 0:
             sharpe = (mean / var ** 0.5) * (252.0 ** 0.5)
     return {
         "n_cycles": n,
-        "first_asof_date": rows[0].get("asof_date"),
-        "last_asof_date": rows[-1].get("asof_date"),
-        "cumulative_return": float(rows[-1].get("cumulative_shadow_return", 0.0)),
+        "first_asof_date": fwd[0]["asof_date"] if fwd else None,
+        "last_asof_date": rows[-1]["asof_date"] if rows else None,
+        "activated": bool(rows),
+        "cumulative_return": float(rows[-1].get("cumulative_shadow_return", 0.0)) if rows else 0.0,
         "forward_sharpe_annualized": sharpe,
-        "forward_sharpe_note": ("n<2 forward cycles — Sharpe undefined, not reported as zero"
+        "forward_sharpe_note": ("n<2 forward bars — Sharpe undefined, not reported as zero"
                                 if sharpe is None else
-                                "annualized from forward shadow cycles only, NOT the backtest"),
-        "note": None,
+                                "annualized from forward bars only (post-activation), NOT the backtest"),
+        "cadence": fl_cadence_counts(rows),
+        "evidence_target": "24-30 completed MONTHLY rebalances (readiness report) — see cadence",
     }
 
 
@@ -319,8 +323,10 @@ def forward_summary(ledger_path: Path = LEDGER_PATH_DEFAULT) -> Dict[str, Any]:
 FROZEN_PORTFOLIO = combined_portfolio
 
 __all__ = [
-    "FROZEN_PORTFOLIO", "GATE_VERDICT", "LEDGER_PATH_DEFAULT", "MAX_LEV",
-    "MIN_BARS", "PANEL_CACHE", "SOURCE_DOCS", "TARGET_VOL", "UNIVERSE",
-    "LaneCycleResult", "compute_lane_cycle", "construction_manifest",
-    "forward_summary", "load_panel", "record_lane_cycle", "universe_sha256",
+    "BACKGROUND_21_ASSET", "FROZEN_PORTFOLIO", "GATE_VERDICT",
+    "LEDGER_PATH_DEFAULT", "MAX_LEV", "MIN_BARS", "PANEL_CACHE",
+    "PRE_REGISTERED_37", "SOURCE_DOCS", "TARGET_VOL", "UNIVERSE",
+    "LaneFrames", "capture_forward", "compute_frames",
+    "construction_manifest", "forward_summary", "load_panel",
+    "universe_sha256",
 ]

@@ -540,6 +540,10 @@ def build_portfolio_promotion_report(
                     rows_by_strategy.setdefault(strat, []).append(row)
     except OSError:
         pass
+    # 2026-07-19 (review finding 1): duplicate snapshots never count twice
+    # toward promotion evidence.
+    from src.hedge.hedged_shadow_lane import dedupe_ledger_rows
+    rows_by_strategy = {s: dedupe_ledger_rows(r) for s, r in rows_by_strategy.items()}
 
     try:
         from src.hedge.hedged_shadow_lane import STRATEGIES as _COVERED

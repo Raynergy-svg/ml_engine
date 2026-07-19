@@ -78,35 +78,43 @@ _OWN_LEDGERS = {
 
 
 def _own_ledger_series(path: Path) -> Dict[str, Any]:
-    rows = _read_jsonl_rows(path)
+    from src.evidence.forward_ledger import cadence_counts, forward_rows, read_rows
+    all_rows = read_rows(path)
+    rows = forward_rows(all_rows)   # activation baselines are NOT observations
     rets, turns, costs, dates = [], [], [], []
     for r in rows:
-        v = r.get("today_net_return")
-        if isinstance(v, (int, float)):
-            rets.append(float(v))
-            dates.append(str(r.get("asof_date")))
-            t = r.get("today_turnover")
-            c = r.get("today_cost")
-            turns.append(float(t) if isinstance(t, (int, float)) else None)
-            costs.append(float(c) if isinstance(c, (int, float)) else None)
+        rets.append(float(r["today_net_return"]))
+        dates.append(str(r.get("asof_date")))
+        t = r.get("today_turnover")
+        c = r.get("today_cost")
+        turns.append(float(t) if isinstance(t, (int, float)) else None)
+        costs.append(float(c) if isinstance(c, (int, float)) else None)
     try:
         source = str(path.relative_to(REPO_ROOT))
     except ValueError:
         source = str(path)   # e.g. tmp_path ledgers in tests
     return {"returns": rets, "dates": dates, "turnover": turns, "costs": costs,
-            "source": source}
+            "source": source, "cadence": cadence_counts(all_rows)}
 
 
 def _hedge_lane_series(strategy: str, ledger_path: Path) -> Dict[str, Any]:
-    rows = [r for r in _read_jsonl_rows(ledger_path) if r.get("strategy") == strategy]
+    from src.hedge.hedged_shadow_lane import dedupe_ledger_rows
+    rows = [r for r in dedupe_ledger_rows(_read_jsonl_rows(ledger_path))
+            if r.get("strategy") == strategy]
     rets, dates = [], []
     for r in sorted(rows, key=lambda x: x.get("asof_date", "")):
         v = (r.get("raw") or {}).get("net_return")
         if isinstance(v, (int, float)):
             rets.append(float(v))
             dates.append(str(r.get("asof_date")))
+    weeks = {d[:4] + "-" + d[5:7] + "w" for d in dates}  # coarse month bucket fallback
     return {"returns": rets, "dates": dates, "turnover": [], "costs": [],
-            "source": f"{ledger_path.name}:strategy={strategy} (resolved raw marks)"}
+            "source": f"{ledger_path.name}:strategy={strategy} (resolved raw marks, deduped)",
+            "cadence": {"n_return_bars": len(rets), "n_calendar_weeks": None,
+                        "n_calendar_months": len(weeks),
+                        "n_completed_rebalances": None,
+                        "n_independent_holding_periods": None,
+                        "note": "hedge-lane marks; rebalance accounting lives in the strategy's own ledger"}}
 
 
 def _metrics(returns: List[float], ann: float) -> Dict[str, Any]:
@@ -175,6 +183,9 @@ def build_report() -> Dict[str, Any]:
             "cadence_ann_factor": ann,
             "first_asof": series["dates"][0] if series["dates"] else None,
             "last_asof": series["dates"][-1] if series["dates"] else None,
+            # 2026-07-19 review: evidence requirements count weeks/rebalances,
+            # never raw daily bars — 52 daily bars != 52 weekly observations.
+            "cadence": series.get("cadence"),
             **m,
             "avg_turnover_per_cycle": round(float(np.mean(turns)), 5) if turns else None,
             "avg_cost_per_cycle": round(float(np.mean(costs)), 6) if costs else None,

@@ -54,13 +54,27 @@ contribution under an operator-authored allocation plan.
 1. ✅ 2026-07-18: regenerate scorecard + residual + promotion reports on
    the latest branch — all five lanes now carry explicit committed
    CONTINUE_SHADOW verdicts (this commit).
-2. ✅ 2026-07-18: strategy-owned lanes shipped — `src/crypto/ts_trend_shadow.py`
-   (H5, bit-for-bit regression-locked to the pre-registered
-   `ts_trend_backtest`; separate ledger, H4 untouched) and
-   `src/equity/multi_asset_trend_lane.py` (37-asset frozen spec at
-   pre-registered target_vol=0.10, net regression-locked to
-   `combined_portfolio`, universe SHA-256 stamped per row). Both registered
-   in the hedge/portfolio registry (7 lanes covered universally).
+2. ✅ 2026-07-18, rev 2 evidence-safe 2026-07-19 (operator review of
+   f590485, 5 findings fixed): strategy-owned lanes
+   `src/crypto/ts_trend_shadow.py` (H5, bit-for-bit locked to
+   `ts_trend_backtest`) + `src/equity/multi_asset_trend_lane.py` (37-asset
+   frozen spec; manifest now carries the CORRECT Round-3 37-asset results —
+   0.665/0.167 full, 0.788/0.162 OOS, DSR-OOS 0.843, clears_gate=FALSE —
+   with the 21-asset run demoted to background context). Recording now goes
+   through `src/evidence/forward_ledger.py`: activation BASELINE first (no
+   already-realized return counted), deterministic backfill of every unseen
+   bar (missed scheduler days recovered, never lost), per-row
+   applied_book / next-target split with return-period fields (registry
+   loads the standing target; performance ties to the applied book), and
+   cadence accounting in weeks/rebalances (52 daily bars ≠ 52 weekly
+   observations). Hedge ledger appends refuse duplicate snapshot identities
+   (strategy, asof, book SHA-256, notional) and every evidence consumer
+   (scorecard, residual attribution, promotion gate) dedupes defensively —
+   scheduler re-runs can no longer mint extra "cycles". Daily scheduling of
+   `run_strategy_lanes.py` is now safe. Registry = 7 lanes.
+   Known follow-up: the H4 `crypto_momentum` lane's OWN recorder predates
+   this engine (latest-bar semantics, 1 legacy row); migrate it the next
+   time that lane is touched.
 3. ✅ 2026-07-18 (with one operator-side remainder):
    - **OANDA trend, runtime-exact** — `scripts/backtest_oanda_trend_runtime.py`
      ran the VERBATIM runtime rule on the cached FX candidates, both

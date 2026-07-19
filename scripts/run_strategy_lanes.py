@@ -34,27 +34,29 @@ if str(REPO_ROOT) not in sys.path:
 logger = logging.getLogger("run_strategy_lanes")
 
 
+def _describe(name: str, appended: list) -> str:
+    if not appended:
+        return f"{name}: no unseen bar — honest no-op"
+    if appended[0].get("kind") == "activation":
+        return (f"{name}: ACTIVATED at asof={appended[0]['asof_date']} "
+                "(baseline snapshot, no realized return — forward bars start next)")
+    return (f"{name}: appended {len(appended)} forward bar(s) "
+            f"{appended[0]['asof_date']} -> {appended[-1]['asof_date']} "
+            f"(cum={appended[-1]['cumulative_shadow_return']:.6f})")
+
+
 def _capture_crypto_ts_trend(refresh: bool) -> str:
     from src.crypto import ts_trend_shadow as ts
-    result = ts.compute_shadow_cycle(refresh_klines=refresh)
-    row = ts.record_shadow_cycle(
-        result, cycle_ts_iso=datetime.now(timezone.utc).isoformat())
-    if row is None:
-        return f"crypto_ts_trend: no new bar (asof={result.asof_date}) — no-op"
-    return (f"crypto_ts_trend: recorded cycle {row['forward_cycle_seq']} "
-            f"asof={row['asof_date']} net={row['today_net_return']:.6f}")
+    appended = ts.capture_forward(
+        refresh_klines=refresh, cycle_ts_iso=datetime.now(timezone.utc).isoformat())
+    return _describe("crypto_ts_trend", appended)
 
 
 def _capture_multi_asset_trend(refresh: bool) -> str:
     from src.equity import multi_asset_trend_lane as lane
-    result = lane.compute_lane_cycle(refresh=refresh)
-    row = lane.record_lane_cycle(
-        result, cycle_ts_iso=datetime.now(timezone.utc).isoformat())
-    if row is None:
-        return f"multi_asset_trend: no new bar (asof={result.asof_date}) — no-op"
-    return (f"multi_asset_trend: recorded cycle {row['forward_cycle_seq']} "
-            f"asof={row['asof_date']} net={row['today_net_return']:.6f} "
-            f"n_longs={row['n_longs']} lev={row['overlay_leverage']:.3f}")
+    appended = lane.capture_forward(
+        refresh=refresh, cycle_ts_iso=datetime.now(timezone.utc).isoformat())
+    return _describe("multi_asset_trend", appended)
 
 
 def main() -> int:

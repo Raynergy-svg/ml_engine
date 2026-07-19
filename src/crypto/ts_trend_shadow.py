@@ -56,12 +56,16 @@ import experiment_crypto_xs_signals as _h            # noqa: E402  frozen harnes
 import experiment_crypto_h2_infra_stress as _h2i     # noqa: E402  frozen overlay constants
 import experiment_crypto_round2 as _round2           # noqa: E402  frozen H5 lookback + weekly cadence
 
-from src.crypto.momentum_shadow import (             # noqa: E402  shared shadow plumbing (reused, not re-derived)
+from src.crypto.momentum_shadow import (             # noqa: E402  shared panel plumbing (reused, not re-derived)
     MIN_SIGNAL_UNIVERSE,
     ShadowCycleResult,
     _last_populated_date,
-    forward_oos_summary as _forward_oos_summary,
-    record_shadow_cycle as _record_shadow_cycle,
+)
+from src.evidence.forward_ledger import (            # noqa: E402  evidence-safe recording engine
+    append_unseen_bars,
+    cadence_counts,
+    forward_rows,
+    read_rows,
 )
 
 # --------------------------------------------------------------------------- #
@@ -200,23 +204,119 @@ def compute_shadow_cycle(refresh_klines: bool = False) -> ShadowCycleResult:
     )
 
 
-def record_shadow_cycle(result: ShadowCycleResult, *,
-                        ledger_path: Path = LEDGER_PATH_DEFAULT,
-                        cycle_ts_iso: str):
-    """Append one H5 shadow-cycle row to THIS lane's forward-OOS ledger.
-    Same duplicate-asof no-op guard and row schema as momentum_shadow
-    (reused), with the H5 manifest carried on the row."""
-    return _record_shadow_cycle(result, ledger_path=ledger_path, cycle_ts_iso=cycle_ts_iso)
+def _book_dict(row: "pd.Series") -> Dict[str, Dict[str, float]]:
+    return {
+        "longs": {str(s): float(w) for s, w in row.items() if w > 1e-12},
+        "shorts": {str(s): float(w) for s, w in row.items() if w < -1e-12},
+    }
 
 
-def forward_oos_summary(ledger_path: Path = LEDGER_PATH_DEFAULT) -> Dict[str, Any]:
-    return _forward_oos_summary(ledger_path=ledger_path)
+def capture_forward(*, ledger_path: Path = LEDGER_PATH_DEFAULT,
+                    cycle_ts_iso: str,
+                    refresh_klines: bool = False,
+                    panels: Any = None) -> List[Dict[str, Any]]:
+    """Evidence-safe forward capture (2026-07-19 review fixes 2+3+5).
+
+    Empty ledger -> activation BASELINE only (book snapshot, no realized
+    return — the latest bar's return was already known at activation).
+    Otherwise -> appends EVERY bar strictly after the last recorded asof
+    (deterministic backfill of the frozen rule; missed scheduler days are
+    recovered, never lost). Each forward row carries the period-aligned
+    split: ``applied_book`` (Wlev at the PRIOR bar — the book that earned
+    ``today_net_return``) vs ``book`` (Wlev at the row's bar — the standing
+    next-bar target the hedge registry loads).
+
+    ``panels`` is an injectable (close, funding, eligible, cols) tuple for
+    tests / offline runs; production callers leave it None."""
+    if panels is None:
+        close, funding_daily, eligible, _btc, cols, _tk = _h.build_panels(False, refresh_klines)
+    else:
+        close, funding_daily, eligible, cols = panels
+    if close.empty or not cols:
+        raise RuntimeError("crypto ts-trend shadow: empty universe/panel")
+    cutoff = _last_populated_date(close, cols)
+    close, funding_daily, eligible = close.loc[:cutoff], funding_daily.loc[:cutoff], eligible.loc[:cutoff]
+    out, book = _compute_book_and_returns(close, funding_daily, eligible, cols)
+    elig_shifted = eligible[cols].shift(1)
+
+    dates = [str(pd.Timestamp(d).date()) for d in book.index]
+    pos_by_date = {d: i for i, d in enumerate(dates)}
+
+    def _universe(i: int) -> int:
+        idx = book.index[i]
+        return int(elig_shifted.loc[idx].sum()) if idx in elig_shifted.index else len(cols)
+
+    def payload_for(d: str) -> Dict[str, Any]:
+        i = pos_by_date[d]
+        idx = book.index[i]
+        ret = out.loc[idx]
+        applied = book.iloc[i - 1] if i > 0 else book.iloc[i] * 0.0
+        nxt = book.iloc[i]
+        return {
+            "today_net_return": float(ret["net"]),
+            "today_price_return": float(ret["price"]),
+            "today_carry_return": float(ret["carry"]),
+            "today_cost": float(ret["cost"]),
+            "today_turnover": float(ret["turnover"]),
+            "applied_book": _book_dict(applied),
+            "book": _book_dict(nxt),
+            "return_period_start": dates[i - 1] if i > 0 else None,
+            "gross_leverage": float(nxt.abs().sum()),
+            "universe_size": _universe(i),
+            "n_longs": int((nxt > 1e-12).sum()),
+            "n_shorts": int((nxt < -1e-12).sum()),
+            "construction": construction_manifest(),
+        }
+
+    def activation_payload_for(d: str) -> Dict[str, Any]:
+        i = pos_by_date[d]
+        nxt = book.iloc[i]
+        return {
+            "book": _book_dict(nxt),
+            "gross_leverage": float(nxt.abs().sum()),
+            "universe_size": _universe(i),
+            "n_longs": int((nxt > 1e-12).sum()),
+            "n_shorts": int((nxt < -1e-12).sum()),
+            "construction": construction_manifest(),
+        }
+
+    return append_unseen_bars(ledger_path, dates=dates, payload_for=payload_for,
+                              activation_payload_for=activation_payload_for,
+                              cycle_ts_iso=cycle_ts_iso)
+
+
+def forward_summary(ledger_path: Path = LEDGER_PATH_DEFAULT) -> Dict[str, Any]:
+    """Honest forward record: activation excluded; cadence counted in
+    weeks/rebalances, never raw daily bars (52 bars != 52 weeks)."""
+    rows = read_rows(ledger_path)
+    fwd = forward_rows(rows)
+    rets = [float(r["today_net_return"]) for r in fwd]
+    n = len(rets)
+    sharpe = None
+    if n >= 2:
+        mean = sum(rets) / n
+        var = sum((x - mean) ** 2 for x in rets) / (n - 1)
+        if var > 0:
+            sharpe = (mean / var ** 0.5) * (ANN ** 0.5)
+    return {
+        "n_cycles": n,
+        "first_asof_date": fwd[0]["asof_date"] if fwd else None,
+        "last_asof_date": rows[-1]["asof_date"] if rows else None,
+        "activated": bool(rows),
+        "cumulative_return": float(rows[-1].get("cumulative_shadow_return", 0.0)) if rows else 0.0,
+        "forward_sharpe_annualized": sharpe,
+        "forward_sharpe_note": ("n<2 forward bars — Sharpe undefined, not reported as zero"
+                                if sharpe is None else
+                                "annualized from forward bars only (post-activation), NOT the backtest"),
+        "cadence": cadence_counts(rows),
+        "evidence_target": "52 independent WEEKLY observations (readiness report) — see cadence",
+    }
 
 
 __all__ = [
     "ANN", "COST_BPS", "GATE_VERDICT", "LEDGER_PATH_DEFAULT", "MAX_LEV",
     "PRE_REGISTERED_IS_SHARPE", "PRE_REGISTERED_OOS_SHARPE", "REBALANCE_DAYS",
     "SOURCE_DOC", "TARGET_ANN_VOL", "TS_LOOKBACK_D", "VOL_WINDOW",
-    "ShadowCycleResult", "compute_shadow_cycle", "construction_manifest",
-    "forward_oos_summary", "record_shadow_cycle",
+    "ShadowCycleResult", "capture_forward", "compute_shadow_cycle",
+    "construction_manifest", "forward_summary",
 ]

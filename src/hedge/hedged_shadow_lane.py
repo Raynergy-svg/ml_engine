@@ -78,6 +78,7 @@ Honesty notes worth stating explicitly:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -196,6 +197,49 @@ def _read_jsonl_rows(path: Path) -> List[Dict[str, Any]]:
         logger.warning("hedged_shadow_lane: ledger unreadable at %s (%s)", path, exc)
         return []
     return rows
+
+
+def book_identity_sha256(weights: Dict[str, float], notional: float) -> str:
+    """Canonical identity of a book snapshot: sha256 over sorted weights +
+    notional. Two rows with the same (strategy, asof_date, identity) are the
+    SAME market observation — recording both would inflate evidence counts
+    (2026-07-19 review finding 1)."""
+    payload = json.dumps(
+        {"n": float(notional), "w": {str(k): float(v) for k, v in sorted(weights.items())}},
+        sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _row_identity(row: Dict[str, Any]) -> Tuple[str, str, Optional[str], Optional[float]]:
+    weights = row.get("weights")
+    notional = row.get("notional")
+    sha = row.get("book_identity_sha256")
+    if sha is None and isinstance(weights, dict) and isinstance(notional, (int, float)):
+        sha = book_identity_sha256(weights, float(notional))
+    return (str(row.get("strategy", "")), str(row.get("asof_date", "")), sha,
+            float(notional) if isinstance(notional, (int, float)) else None)
+
+
+def dedupe_ledger_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Drop rows whose (strategy, asof_date, book identity, notional) was
+    already seen — keeping the FIRST occurrence. Defensive layer for every
+    evidence consumer (scorecard, residual attribution, promotion gate):
+    even if a duplicate snapshot ever reaches the ledger, it can never count
+    as an extra observation. Order preserved; nothing else touched."""
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    dropped = 0
+    for row in rows:
+        key = _row_identity(row)
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        out.append(row)
+    if dropped:
+        logger.warning("hedged_shadow_lane: excluded %d duplicate snapshot row(s) "
+                       "from evidence (same strategy/asof/book identity)", dropped)
+    return out
 
 
 def _append_jsonl(path: Path, row: Dict[str, Any]) -> None:
@@ -1007,6 +1051,9 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
         # Without this the ledger row is unreproducible: the raw lane's mark
         # depends on weights that lived only in memory.
         "weights": {str(k): float(v) for k, v in book.weights.items()},
+        # 2026-07-19 (review finding 1): canonical snapshot identity — the
+        # append guard + every evidence consumer dedupe on this.
+        "book_identity_sha256": book_identity_sha256(book.weights, notional),
         "raw": {
             "return_source": book.return_source,
             "net_return": raw_net_return,
@@ -1047,6 +1094,20 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
     }
 
     if persist:
+        # 2026-07-19 (review finding 1): a scheduler re-run against an
+        # unchanged market date must NOT mint another "cycle". Reject the
+        # append when this exact snapshot identity (strategy, asof, book
+        # sha, notional) is already in the ledger — 7 runs on one unchanged
+        # date would otherwise become 7 observations and distort expectancy,
+        # drawdown, minimum-history status and promotion evidence.
+        identity = _row_identity(row)
+        for existing in _read_jsonl_rows(ledger_path):
+            if _row_identity(existing) == identity:
+                logger.info(
+                    "hedged_shadow_lane: snapshot already recorded for %s asof=%s "
+                    "(identity %s…) — refusing duplicate cycle row",
+                    strategy, book.asof_date, (identity[2] or "")[:12])
+                return None
         _append_jsonl(ledger_path, row)
         _append_jsonl(decision_log_path, {
             "cycle_ts": cycle_ts, "strategy": strategy, "asof_date": book.asof_date,

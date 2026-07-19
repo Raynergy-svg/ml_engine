@@ -63,6 +63,7 @@ jobs:
             tests/test_walkforward_metrics.py \
             src/crypto/ts_trend_shadow.py \
             src/equity/multi_asset_trend_lane.py \
+            src/evidence/forward_ledger.py \
             scripts/run_strategy_lanes.py \
             scripts/backtest_oanda_trend_runtime.py \
             scripts/research_metrics.py \

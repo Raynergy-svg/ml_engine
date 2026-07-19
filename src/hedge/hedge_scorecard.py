@@ -91,7 +91,12 @@ def read_ledger_rows(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH) -> List[Dict
     except OSError as exc:
         logger.warning("hedge_scorecard: ledger unreadable at %s (%s)", ledger_path, exc)
         return []
-    return rows
+    # 2026-07-19 (review finding 1): defensive dedup — a duplicate snapshot
+    # (same strategy/asof/book identity) can NEVER count as an extra cycle,
+    # even if one reaches the ledger. n_cycles / expectancy / drawdown /
+    # minimum-history all derive from the deduped view.
+    from src.hedge.hedged_shadow_lane import dedupe_ledger_rows
+    return dedupe_ledger_rows(rows)
 
 
 def group_by_strategy(rows: Sequence[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:

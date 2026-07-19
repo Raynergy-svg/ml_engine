@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-19T02:00:28.871862+00:00",
+  "generated_at": "2026-07-19T02:37:38.402818+00:00",
   "human_review_required": true,
   "note": "forward-ledger evidence ONLY \u2014 never blended with backtest history; nulls carry reasons; significance below 30 obs is undefined by design",
   "paper_only": true,
@@ -30,6 +30,14 @@
       "beta": null,
       "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
       "block_bootstrap_p": null,
+      "cadence": {
+        "n_calendar_months": 1,
+        "n_calendar_weeks": 1,
+        "n_completed_rebalances": 0,
+        "n_independent_holding_periods": 0,
+        "n_return_bars": 1,
+        "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
+      },
       "cadence_ann_factor": 365.0,
       "cumulative_return": 0.010242,
       "deflated_sr_prob": null,
@@ -57,6 +65,14 @@
       "beta": null,
       "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
       "block_bootstrap_p": null,
+      "cadence": {
+        "n_calendar_months": 0,
+        "n_calendar_weeks": 0,
+        "n_completed_rebalances": 0,
+        "n_independent_holding_periods": 0,
+        "n_return_bars": 0,
+        "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
+      },
       "cadence_ann_factor": 365.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
@@ -83,6 +99,14 @@
       "beta": null,
       "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
       "block_bootstrap_p": null,
+      "cadence": {
+        "n_calendar_months": 0,
+        "n_calendar_weeks": null,
+        "n_completed_rebalances": null,
+        "n_independent_holding_periods": null,
+        "n_return_bars": 0,
+        "note": "hedge-lane marks; rebalance accounting lives in the strategy's own ledger"
+      },
       "cadence_ann_factor": 52.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
@@ -97,7 +121,7 @@
       },
       "sharpe": null,
       "significance_reason": "n=0 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "raw_vs_hedged_ledger.jsonl:strategy=equity_harvester (resolved raw marks)",
+      "source": "raw_vs_hedged_ledger.jsonl:strategy=equity_harvester (resolved raw marks, deduped)",
       "unavailable_reason": "no forward observations recorded yet"
     },
     "fx_trend": {
@@ -110,6 +134,14 @@
       "beta": null,
       "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
       "block_bootstrap_p": null,
+      "cadence": {
+        "n_calendar_months": 0,
+        "n_calendar_weeks": null,
+        "n_completed_rebalances": null,
+        "n_independent_holding_periods": null,
+        "n_return_bars": 0,
+        "note": "hedge-lane marks; rebalance accounting lives in the strategy's own ledger"
+      },
       "cadence_ann_factor": 252.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
@@ -123,7 +155,7 @@
       },
       "sharpe": null,
       "significance_reason": "n=0 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "raw_vs_hedged_ledger.jsonl:strategy=fx_trend (resolved raw marks)",
+      "source": "raw_vs_hedged_ledger.jsonl:strategy=fx_trend (resolved raw marks, deduped)",
       "unavailable_reason": "no forward observations recorded yet"
     },
     "multi_asset_trend": {
@@ -136,6 +168,14 @@
       "beta": null,
       "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
       "block_bootstrap_p": null,
+      "cadence": {
+        "n_calendar_months": 0,
+        "n_calendar_weeks": 0,
+        "n_completed_rebalances": 0,
+        "n_independent_holding_periods": 0,
+        "n_return_bars": 0,
+        "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
+      },
       "cadence_ann_factor": 252.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
@@ -162,6 +202,14 @@
       "beta": null,
       "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
       "block_bootstrap_p": null,
+      "cadence": {
+        "n_calendar_months": 0,
+        "n_calendar_weeks": null,
+        "n_completed_rebalances": null,
+        "n_independent_holding_periods": null,
+        "n_return_bars": 0,
+        "note": "hedge-lane marks; rebalance accounting lives in the strategy's own ledger"
+      },
       "cadence_ann_factor": 252.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
@@ -175,7 +223,7 @@
       },
       "sharpe": null,
       "significance_reason": "n=0 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "raw_vs_hedged_ledger.jsonl:strategy=oanda_fx (resolved raw marks)",
+      "source": "raw_vs_hedged_ledger.jsonl:strategy=oanda_fx (resolved raw marks, deduped)",
       "unavailable_reason": "no forward observations recorded yet"
     },
     "track_b": {
@@ -188,6 +236,14 @@
       "beta": null,
       "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
       "block_bootstrap_p": null,
+      "cadence": {
+        "n_calendar_months": 1,
+        "n_calendar_weeks": 1,
+        "n_completed_rebalances": 0,
+        "n_independent_holding_periods": 0,
+        "n_return_bars": 1,
+        "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
+      },
       "cadence_ann_factor": 12.0,
       "cumulative_return": 0.001264,
       "deflated_sr_prob": null,

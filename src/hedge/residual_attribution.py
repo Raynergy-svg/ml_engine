@@ -249,6 +249,10 @@ def build_residual_attribution_report(
     except OSError:
         rows = []
 
+    # 2026-07-19 (review finding 1): duplicate snapshots never count twice.
+    from src.hedge.hedged_shadow_lane import dedupe_ledger_rows
+    rows = dedupe_ledger_rows(rows)
+
     by_strategy: Dict[str, List[Dict[str, Any]]] = {}
     for r in rows:
         strat = r.get("strategy")

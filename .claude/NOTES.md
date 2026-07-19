@@ -1731,3 +1731,17 @@ Killed the `run_equity_harvester.py --broker ibkr-paper` background loop I'd sta
   once + schedule daily; rerun equity ship gate; decide the OANDA-trend fork (retire FX-only vs
   pre-register cross-asset runtime spec); author `portfolio_allocations.json` only when candidate
   set is frozen. Residual rewards remain OFF.
+- **2026-07-19 rev 2 (operator review of f590485 — Step 2 was NOT evidence-safe)**: fixed all 5
+  findings before any scheduling. (1) hedge-ledger duplicate inflation: appends now refuse a
+  recorded snapshot identity (strategy, asof, weights-sha256, notional) and scorecard/residual/
+  promotion consumers dedupe defensively — a scheduler re-run can never mint extra cycles.
+  (2) activation baseline: first lane row records the book with NO realized return (the latest
+  bar was already known). (3) deterministic backfill: every unseen bar strictly after last asof
+  is appended chronologically — missed scheduler days recovered. (4) 37-asset manifest now
+  carries its OWN Round-3 numbers (0.665/0.788/DSR-OOS 0.843/clears FALSE); 21-asset demoted to
+  background. (5) applied_book vs next-target split per row + return-period fields; registry
+  loads the standing target. Engine: src/evidence/forward_ledger.py. Cadence accounting added
+  (weeks/rebalances, never raw daily bars). 132 tests green incl. the review's 10 required.
+  KNOWN FOLLOW-UP: H4 crypto_momentum's own recorder still has pre-engine latest-bar semantics
+  (1 legacy ledger row) — migrate when that lane is next touched. Scheduling run_strategy_lanes
+  daily is NOW safe; it was not before this fix.
