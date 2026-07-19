@@ -120,6 +120,10 @@ HEDGE_DECISION_LOG_PATH = HEDGE_LEDGER_DIR / "hedge_decision_log.jsonl"
 
 EQUITY_HARVESTER_STATE_PATH = REPO_ROOT / "trained_data" / "equity" / "rebalance_state.json"
 CRYPTO_MOMENTUM_LEDGER_PATH = REPO_ROOT / "trained_data" / "crypto" / "shadow_momentum_ledger.jsonl"
+# 2026-07-18 readiness step 2: the two new strategy-owned forward ledgers.
+CRYPTO_TS_TREND_LEDGER_PATH = REPO_ROOT / "trained_data" / "crypto" / "shadow_ts_trend_ledger.jsonl"
+MULTI_ASSET_TREND_LEDGER_PATH = (REPO_ROOT / "trained_data" / "trend"
+                                 / "shadow_multi_asset_trend_ledger.jsonl")
 TRACK_B_LEDGER_PATH = REPO_ROOT / "trained_data" / "research" / "track_b_shadow_ledger.jsonl"
 FX_TREND_ACCOUNT_STATE_PATH = REPO_ROOT / "trained_data" / "oanda" / "account_state.json"
 EQUITY_PRICE_PANEL_PATH = REPO_ROOT / "market_data" / "equity" / "sp500_prices.parquet"
@@ -143,7 +147,8 @@ MIN_SECTOR_PROXY_TICKERS = 3
 # +1844% in a day).
 MAX_SANE_DAILY_RETURN = 0.50
 
-STRATEGIES = ("equity_harvester", "crypto_momentum", "track_b", "fx_trend", "oanda_fx")
+STRATEGIES = ("equity_harvester", "crypto_momentum", "crypto_ts_trend",
+              "multi_asset_trend", "track_b", "fx_trend", "oanda_fx")
 
 # The 15-agent scanner's own trade journal — the ONLY scanner-attributed
 # position source (account_state.json is the whole shared practice account,
@@ -261,6 +266,63 @@ def load_crypto_momentum_book(ledger_path: Path = CRYPTO_MOMENTUM_LEDGER_PATH) -
         raw_cost=_safe_float(latest.get("today_cost")),
         return_source="own_ledger",
         meta={"source_path": str(ledger_path), "gross_leverage": latest.get("gross_leverage"),
+              "construction": latest.get("construction", {})},
+    )
+
+
+def load_crypto_ts_trend_book(
+        ledger_path: Path = CRYPTO_TS_TREND_LEDGER_PATH) -> Optional[BookSnapshot]:
+    """H5 time-series trend lane (2026-07-18 readiness step 2) — a SEPARATE
+    strategy from the H4 cross-sectional crypto_momentum lane; never merged."""
+    rows = _read_jsonl_rows(ledger_path)
+    if not rows:
+        logger.warning("hedged_shadow_lane: crypto ts-trend ledger empty/missing at %s", ledger_path)
+        return None
+    latest = rows[-1]
+    book = latest.get("book") or {}
+    weights = {**(book.get("longs") or {}), **(book.get("shorts") or {})}
+    if not weights:
+        logger.warning("hedged_shadow_lane: crypto ts-trend latest cycle has an empty book")
+        return None
+    return BookSnapshot(
+        strategy="crypto_ts_trend", asset_class="crypto",
+        asof_date=str(latest.get("asof_date", "")),
+        weights={str(k): float(v) for k, v in weights.items()},
+        raw_net_return=_safe_float(latest.get("today_net_return")),
+        raw_gross_return=_safe_float(latest.get("today_price_return")),
+        raw_cost=_safe_float(latest.get("today_cost")),
+        return_source="own_ledger",
+        meta={"source_path": str(ledger_path), "gross_leverage": latest.get("gross_leverage"),
+              "construction": latest.get("construction", {})},
+    )
+
+
+def load_multi_asset_trend_book(
+        ledger_path: Path = MULTI_ASSET_TREND_LEDGER_PATH) -> Optional[BookSnapshot]:
+    """37-asset trend lane (2026-07-18 readiness step 2). asset_class is
+    "multi_asset": the exposure engine supports FX and equity only, so hedge
+    status will honestly read unsupported_asset_class while the strategy's own
+    forward marks still accrue in its ledger — same treatment as crypto."""
+    rows = _read_jsonl_rows(ledger_path)
+    if not rows:
+        logger.warning("hedged_shadow_lane: multi-asset trend ledger empty/missing at %s", ledger_path)
+        return None
+    latest = rows[-1]
+    book = latest.get("book") or {}
+    weights = {**(book.get("longs") or {}), **(book.get("shorts") or {})}
+    if not weights:
+        logger.warning("hedged_shadow_lane: multi-asset trend latest cycle has an empty book")
+        return None
+    return BookSnapshot(
+        strategy="multi_asset_trend", asset_class="multi_asset",
+        asof_date=str(latest.get("asof_date", "")),
+        weights={str(k): float(v) for k, v in weights.items()},
+        raw_net_return=_safe_float(latest.get("today_net_return")),
+        raw_gross_return=None,
+        raw_cost=None,   # costs are embedded per-sleeve in the net stream (frozen 2 bps/side)
+        return_source="own_ledger",
+        meta={"source_path": str(ledger_path), "gross_leverage": latest.get("gross_leverage"),
+              "overlay_leverage": latest.get("overlay_leverage"),
               "construction": latest.get("construction", {})},
     )
 
@@ -464,6 +526,8 @@ def load_oanda_fx_book(journal_path: Optional[Path] = None,
 _LOADERS = {
     "equity_harvester": load_equity_harvester_book,
     "crypto_momentum": load_crypto_momentum_book,
+    "crypto_ts_trend": load_crypto_ts_trend_book,
+    "multi_asset_trend": load_multi_asset_trend_book,
     "track_b": load_track_b_book,
     "fx_trend": load_fx_trend_book,
     "oanda_fx": load_oanda_fx_book,

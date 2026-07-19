@@ -58,10 +58,14 @@ jobs:
             tests/test_scanner_lane_coverage_2026_07_18.py \
             tests/test_portfolio_promotion_2026_07_18.py \
             tests/test_hedge_gate_corrections_2026_07_18.py \
+            tests/test_strategy_lanes_2026_07_18.py \
             tests/test_walkforward_metrics.py \
+            src/crypto/ts_trend_shadow.py \
+            src/equity/multi_asset_trend_lane.py \
+            scripts/run_strategy_lanes.py \
             --config=.flake8 --statistics
 
-      - name: Pytest — six audit suites (111 tests, no-mock policy)
+      - name: Pytest — seven audit + lane suites (no-mock policy)
         run: |
           python -m pytest \
             tests/test_pipeline_audit_fixes_2026_07_18.py \
@@ -69,6 +73,7 @@ jobs:
             tests/test_scanner_lane_coverage_2026_07_18.py \
             tests/test_portfolio_promotion_2026_07_18.py \
             tests/test_hedge_gate_corrections_2026_07_18.py \
+            tests/test_strategy_lanes_2026_07_18.py \
             tests/test_walkforward_metrics.py \
             -q --tb=short
 

@@ -54,11 +54,20 @@ contribution under an operator-authored allocation plan.
 1. ✅ 2026-07-18: regenerate scorecard + residual + promotion reports on
    the latest branch — all five lanes now carry explicit committed
    CONTINUE_SHADOW verdicts (this commit).
-2. Add strategy-owned ledgers for `multi_asset_trend` and `crypto_ts_trend`.
+2. ✅ 2026-07-18: strategy-owned lanes shipped — `src/crypto/ts_trend_shadow.py`
+   (H5, bit-for-bit regression-locked to the pre-registered
+   `ts_trend_backtest`; separate ledger, H4 untouched) and
+   `src/equity/multi_asset_trend_lane.py` (37-asset frozen spec at
+   pre-registered target_vol=0.10, net regression-locked to
+   `combined_portfolio`, universe SHA-256 stamped per row). Both registered
+   in the hedge/portfolio registry (7 lanes covered universally).
 3. Runtime-exact backtests for equity harvester and OANDA trend; resolve
    the SMA mismatch.
-4. Automate recurring forward captures (equity, trend, crypto H5, Track B)
-   with immutable configuration/provenance fields.
+4. ◐ capture automation shipped (`scripts/run_strategy_lanes.py` — one
+   command records both new lanes + hedge cycle + all reports; duplicate
+   asof rows refused). Remaining: schedule it on the operator machine
+   (data sources are proxy-blocked from the cloud sandbox) and extend
+   capture to equity + Track B provenance fields.
 5. One consolidated research command emitting the same metric schema for
    every strategy.
 6. Residual rewards stay disabled; no capital allocations until lane
