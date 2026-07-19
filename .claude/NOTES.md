@@ -1708,3 +1708,26 @@ Killed the `run_equity_harvester.py --broker ibkr-paper` background loop I'd sta
   (autonomous L-024 fix), `876c291` (TCC log-path fix). Halt (`oanda_fx: true`), practice pin
   (`config.py:742`), and no-arm confirmed by direct re-check, not carried forward from the
   verifier's report.
+
+## 2026-07-18/19 — Readiness-report evidence program (audit/harvester-fixes, cloud session)
+
+- **Context**: operator's readiness report committed as `docs/axiom-readiness-report-2026-07-18.md`
+  (verdict: strategies promising, evidence nearly empty — stop architecture, accumulate evidence).
+  Executed its order end-to-end on `audit/harvester-fixes` (tip `f590485`+, CI green per push via
+  `.github/workflows/audit-branch-tests.yml`).
+- **Step 1** (`56cc82c`): first universal hedge cycle + scorecard/residual/promotion reports —
+  all lanes explicit CONTINUE_SHADOW verdicts, allocations fail-closed (no file; gate refuses to guess).
+- **Step 2** (`f590485`): strategy-owned lanes — `src/crypto/ts_trend_shadow.py` (H5, bit-for-bit
+  locked to `ts_trend_backtest`; separate ledger, H4 untouched) + `src/equity/multi_asset_trend_lane.py`
+  (37-asset frozen spec, target_vol=0.10 pre-registered, universe SHA-256 stamped). Registry = 7 lanes.
+- **Step 3**: `scripts/backtest_oanda_trend_runtime.py` → **FX-only subset is expectancy-negative
+  under BOTH SMA100 (runtime) and SMA200 (research), all cost points, 2014→2026** — the SMA
+  mismatch is resolved and NOT load-bearing; verdict + operator fork in
+  `docs/oanda-trend-runtime-verdict-2026-07-18.md`. Equity: SHIP_GATE universe_hash == committed
+  snapshot (verified); numeric rerun needs yfinance → operator machine.
+- **Steps 4/5**: `scripts/run_strategy_lanes.py` (recurring capture, duplicate-asof safe) +
+  `scripts/research_metrics.py` (one schema for all 7 strategies; honest nulls; significance
+  undefined <30 obs). OPERATOR ACTIONS: run `python scripts/run_strategy_lanes.py --refresh`
+  once + schedule daily; rerun equity ship gate; decide the OANDA-trend fork (retire FX-only vs
+  pre-register cross-asset runtime spec); author `portfolio_allocations.json` only when candidate
+  set is frozen. Residual rewards remain OFF.

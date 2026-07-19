@@ -61,15 +61,31 @@ contribution under an operator-authored allocation plan.
    pre-registered target_vol=0.10, net regression-locked to
    `combined_portfolio`, universe SHA-256 stamped per row). Both registered
    in the hedge/portfolio registry (7 lanes covered universally).
-3. Runtime-exact backtests for equity harvester and OANDA trend; resolve
-   the SMA mismatch.
+3. ✅ 2026-07-18 (with one operator-side remainder):
+   - **OANDA trend, runtime-exact** — `scripts/backtest_oanda_trend_runtime.py`
+     ran the VERBATIM runtime rule on the cached FX candidates, both
+     pre-specified windows. Verdict
+     (`docs/oanda-trend-runtime-verdict-2026-07-18.md`): the SMA mismatch
+     is resolved and NOT load-bearing — the FX-only subset is
+     expectancy-negative under BOTH SMA100 and SMA200 at every cost point
+     (Sharpe −0.09…−0.24, 2014→2026). Operator decision queued: retire the
+     FX-only practice trend lane, or pre-register a runtime spec matching
+     the validated cross-asset construction.
+   - **Equity harvester** — SHIP_GATE.json's universe_hash (896fc636…)
+     verified equal to the committed `universe_snapshot_pit.json`.
+     Numeric re-derivation needs yfinance (proxy-blocked in the sandbox):
+     run `python scripts/run_equity_harvester_shipgate_pit.py` on the
+     operator machine.
 4. ◐ capture automation shipped (`scripts/run_strategy_lanes.py` — one
-   command records both new lanes + hedge cycle + all reports; duplicate
-   asof rows refused). Remaining: schedule it on the operator machine
-   (data sources are proxy-blocked from the cloud sandbox) and extend
-   capture to equity + Track B provenance fields.
-5. One consolidated research command emitting the same metric schema for
-   every strategy.
+   command records both new lanes + the hedge cycle for ALL lanes incl.
+   equity/Track B + all reports; duplicate asof rows refused). Remaining
+   (operator machine): run it once with `--refresh`, then schedule daily.
+5. ✅ 2026-07-18: `scripts/research_metrics.py` — one command, one schema
+   for every registered strategy (n, cumulative, ann return/vol, Sharpe,
+   maxDD, DSR, bootstrap p, turnover, costs, residual fraction phi, beta,
+   benchmark) from forward-ledger evidence only; nulls carry reasons;
+   significance undefined below 30 observations by design. Artifact:
+   `trained_data/research/strategy_metrics_report.json`.
 6. Residual rewards stay disabled; no capital allocations until lane
    histories are populated and reviewed.
 

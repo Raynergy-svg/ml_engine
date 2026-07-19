@@ -59,10 +59,13 @@ jobs:
             tests/test_portfolio_promotion_2026_07_18.py \
             tests/test_hedge_gate_corrections_2026_07_18.py \
             tests/test_strategy_lanes_2026_07_18.py \
+            tests/test_research_tooling_2026_07_18.py \
             tests/test_walkforward_metrics.py \
             src/crypto/ts_trend_shadow.py \
             src/equity/multi_asset_trend_lane.py \
             scripts/run_strategy_lanes.py \
+            scripts/backtest_oanda_trend_runtime.py \
+            scripts/research_metrics.py \
             --config=.flake8 --statistics
 
       - name: Pytest — seven audit + lane suites (no-mock policy)
@@ -74,6 +77,7 @@ jobs:
             tests/test_portfolio_promotion_2026_07_18.py \
             tests/test_hedge_gate_corrections_2026_07_18.py \
             tests/test_strategy_lanes_2026_07_18.py \
+            tests/test_research_tooling_2026_07_18.py \
             tests/test_walkforward_metrics.py \
             -q --tb=short
 
