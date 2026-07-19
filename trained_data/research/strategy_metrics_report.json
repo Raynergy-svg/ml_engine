@@ -1,17 +1,20 @@
 {
-  "generated_at": "2026-07-19T02:37:38.402818+00:00",
+  "generated_at": "2026-07-19T02:47:56.230371+00:00",
   "human_review_required": true,
   "note": "forward-ledger evidence ONLY \u2014 never blended with backtest history; nulls carry reasons; significance below 30 obs is undefined by design",
   "paper_only": true,
   "runtime_allowed": false,
   "schema": [
     "n_observations",
+    "cadence",
     "cumulative_return",
     "ann_return",
     "ann_vol",
+    "ann_factor_derived",
     "sharpe",
     "max_drawdown",
     "deflated_sr_prob",
+    "dsr_n_trials",
     "block_bootstrap_p",
     "avg_turnover_per_cycle",
     "avg_cost_per_cycle",
@@ -21,14 +24,15 @@
   ],
   "strategies": {
     "crypto_momentum": {
-      "ann_return": 3.73844,
+      "ann_factor_derived": null,
+      "ann_return": null,
       "ann_vol": null,
       "avg_cost_per_cycle": 7e-06,
       "avg_turnover_per_cycle": 0.00732,
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
-      "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
+      "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
         "n_calendar_months": 1,
@@ -38,9 +42,9 @@
         "n_return_bars": 1,
         "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
       },
-      "cadence_ann_factor": 365.0,
       "cumulative_return": 0.010242,
       "deflated_sr_prob": null,
+      "dsr_n_trials": 15,
       "first_asof": "2026-05-31",
       "last_asof": "2026-05-31",
       "max_drawdown": 0.0,
@@ -53,9 +57,10 @@
       "sharpe": null,
       "significance_reason": "n=1 < 30 \u2014 significance undefined (warm-up, not proof)",
       "source": "trained_data/crypto/shadow_momentum_ledger.jsonl",
-      "unavailable_reason": "n<2 \u2014 vol/Sharpe undefined, not reported as zero"
+      "unavailable_reason": "n=1 < 8 observations (or cadence underivable) \u2014 annualizing would be mechanical extrapolation, not a forward estimate"
     },
     "crypto_ts_trend": {
+      "ann_factor_derived": null,
       "ann_return": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
@@ -63,7 +68,7 @@
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
-      "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
+      "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
         "n_calendar_months": 0,
@@ -73,9 +78,9 @@
         "n_return_bars": 0,
         "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
       },
-      "cadence_ann_factor": 365.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
+      "dsr_n_trials": 15,
       "first_asof": null,
       "last_asof": null,
       "max_drawdown": null,
@@ -90,6 +95,7 @@
       "unavailable_reason": "no forward observations recorded yet"
     },
     "equity_harvester": {
+      "ann_factor_derived": null,
       "ann_return": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
@@ -97,7 +103,7 @@
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
-      "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
+      "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
         "n_calendar_months": 0,
@@ -107,9 +113,9 @@
         "n_return_bars": 0,
         "note": "hedge-lane marks; rebalance accounting lives in the strategy's own ledger"
       },
-      "cadence_ann_factor": 52.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
+      "dsr_n_trials": null,
       "first_asof": null,
       "last_asof": null,
       "max_drawdown": null,
@@ -125,6 +131,7 @@
       "unavailable_reason": "no forward observations recorded yet"
     },
     "fx_trend": {
+      "ann_factor_derived": null,
       "ann_return": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
@@ -132,7 +139,7 @@
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
-      "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
+      "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
         "n_calendar_months": 0,
@@ -142,9 +149,9 @@
         "n_return_bars": 0,
         "note": "hedge-lane marks; rebalance accounting lives in the strategy's own ledger"
       },
-      "cadence_ann_factor": 252.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
+      "dsr_n_trials": null,
       "first_asof": null,
       "last_asof": null,
       "max_drawdown": null,
@@ -159,6 +166,7 @@
       "unavailable_reason": "no forward observations recorded yet"
     },
     "multi_asset_trend": {
+      "ann_factor_derived": null,
       "ann_return": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
@@ -166,7 +174,7 @@
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
-      "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
+      "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
         "n_calendar_months": 0,
@@ -176,9 +184,9 @@
         "n_return_bars": 0,
         "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
       },
-      "cadence_ann_factor": 252.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
+      "dsr_n_trials": 20,
       "first_asof": null,
       "last_asof": null,
       "max_drawdown": null,
@@ -193,6 +201,7 @@
       "unavailable_reason": "no forward observations recorded yet"
     },
     "oanda_fx": {
+      "ann_factor_derived": null,
       "ann_return": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
@@ -200,7 +209,7 @@
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
-      "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
+      "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
         "n_calendar_months": 0,
@@ -210,9 +219,9 @@
         "n_return_bars": 0,
         "note": "hedge-lane marks; rebalance accounting lives in the strategy's own ledger"
       },
-      "cadence_ann_factor": 252.0,
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
+      "dsr_n_trials": null,
       "first_asof": null,
       "last_asof": null,
       "max_drawdown": null,
@@ -227,14 +236,15 @@
       "unavailable_reason": "no forward observations recorded yet"
     },
     "track_b": {
-      "ann_return": 0.01517,
+      "ann_factor_derived": null,
+      "ann_return": null,
       "ann_vol": null,
       "avg_cost_per_cycle": 1.2e-05,
       "avg_turnover_per_cycle": 0.05841,
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
-      "beta_reason": "computed by the hedge scorecard once aligned hedged cycles exist",
+      "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
         "n_calendar_months": 1,
@@ -244,9 +254,9 @@
         "n_return_bars": 1,
         "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
       },
-      "cadence_ann_factor": 12.0,
       "cumulative_return": 0.001264,
       "deflated_sr_prob": null,
+      "dsr_n_trials": null,
       "first_asof": "2026-06-24",
       "last_asof": "2026-06-24",
       "max_drawdown": 0.0,
@@ -259,7 +269,7 @@
       "sharpe": null,
       "significance_reason": "n=1 < 30 \u2014 significance undefined (warm-up, not proof)",
       "source": "trained_data/research/track_b_shadow_ledger.jsonl",
-      "unavailable_reason": "n<2 \u2014 vol/Sharpe undefined, not reported as zero"
+      "unavailable_reason": "n=1 < 8 observations (or cadence underivable) \u2014 annualizing would be mechanical extrapolation, not a forward estimate"
     }
   }
 }

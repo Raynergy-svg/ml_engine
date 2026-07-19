@@ -1,7 +1,18 @@
 #!/usr/bin/env python
-"""Runtime-EXACT backtest of the OANDA practice trend lane (readiness step 3).
+"""SIGNAL-ONLY backtest of the OANDA trend lane's target rule (readiness step 3).
 
-The 2026-07-18 readiness report found the practice runner and the validated
+SCOPE CORRECTION (2026-07-19 audit): this is a SIGNAL-layer validation, NOT a
+full runtime reproduction. What is verbatim-exact is the TARGET-WEIGHT rule
+(``oanda_trend.trend_targets`` -> ``trend_sleeve_weights``: equal-weight the
+on-set, long-or-flat, daily step, double shift(1)). What the actual runtime
+does AFTER those targets — ATR-based risk-normalized unit sizing (gross
+leverage is only a ceiling), drawdown halts, margin limits, one-position
+gate, currency-bucket limits, cost gates, stop-loss/take-profit brackets and
+position management — is NOT modeled here. A negative here rejects the
+equal-weight SMA SIGNAL specification on this universe; it does NOT prove
+the risk-gated practice runtime is expectancy-negative.
+
+Background: the 2026-07-18 readiness report found the practice runner and the validated
 research construction disagree on the trend window: the runtime default is
 SMA100 (``src/equity/oanda_trend.py:DEFAULT_SMA``) while the pre-registered
 multi-asset trend work froze SMA200 (``multi_asset_trend.SMA_WINDOW`` /
@@ -10,7 +21,7 @@ validate the research strategy. Backtest the exact live rule ... before
 judging its practice P&L." This script does exactly that, offline, on the
 repo's cached OANDA daily panels.
 
-WHAT IS EXACT (verbatim reuse, nothing re-derived):
+WHAT IS EXACT (verbatim reuse, nothing re-derived) — the SIGNAL layer only:
   * Signal + sizing = ``trend_sleeve_weights(close.ffill(), sma_window=W,
     step=1)`` — the PRECISE call ``oanda_trend.trend_targets`` makes (daily
     step, equal-weight on-set, long-or-flat, double shift(1) causal).
@@ -90,8 +101,10 @@ def load_cached_universe() -> pd.DataFrame:
 
 
 def backtest_arm(panel: pd.DataFrame, sma_window: int,
-                 gross_leverage: float) -> Dict[str, object]:
-    """One arm: the exact runtime construction at ``sma_window``."""
+                 gross_leverage: float, *, with_series: bool = False):
+    """One arm: the exact runtime TARGET rule at ``sma_window`` (signal-only).
+    ``with_series=True`` additionally returns the unlevered gross-of-cost
+    daily series so tests can assert causality bar-by-bar."""
     targets = trend_sleeve_weights(panel.ffill(), sma_window=sma_window, step=1)
     applied = targets.shift(1).fillna(0.0)            # position enters the NEXT bar
     rets = panel.pct_change().reindex(columns=applied.columns).fillna(0.0)
@@ -127,6 +140,8 @@ def backtest_arm(panel: pd.DataFrame, sma_window: int,
             "positive_years": int((yearly > 0).sum()),
             "total_years": int(len(yearly)),
         }
+    if with_series:
+        return out, base
     return out
 
 
@@ -135,9 +150,13 @@ def main() -> int:
     lev = float(DEFAULT_GROSS_LEVERAGE)
     result = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "purpose": ("runtime-exact validation of the OANDA practice trend lane; "
-                    "isolates the SMA100(runtime) vs SMA200(research) window mismatch "
-                    "(readiness report 2026-07-18, step 3)"),
+        "purpose": ("SIGNAL-ONLY validation of the OANDA trend lane's target rule; "
+                    "isolates the SMA100(runtime) vs SMA200(research) window mismatch. "
+                    "NOT a runtime reproduction: ATR risk-normalized sizing, brackets "
+                    "and order-level gates are NOT modeled — a negative here rejects "
+                    "the equal-weight SMA SIGNAL spec, not the risk-gated runtime "
+                    "(readiness report 2026-07-18 step 3; scope corrected 2026-07-19)"),
+        "scope": "signal_only",
         "construction": "trend_sleeve_weights(close.ffill(), sma_window=W, step=1) — verbatim runtime call",
         "universe_cached": sorted(panel.columns),
         "universe_uncovered": panel.attrs["uncovered_candidates"],
@@ -148,8 +167,13 @@ def main() -> int:
             "runtime_sma100": backtest_arm(panel, int(DEFAULT_SMA), lev),
             "research_sma200": backtest_arm(panel, int(RESEARCH_SMA), lev),
         },
-        "not_modeled": ["order-level risk gates", "intraday fill timing",
-                        "financing/swap", "metals+CFD candidates (uncached)"],
+        "not_modeled": ["ATR risk-normalized unit sizing (runtime's actual sizer; "
+                        "gross leverage is only a ceiling there)",
+                        "stop-loss/take-profit brackets + position management",
+                        "drawdown halts, margin limits, one-position gate,",
+                        "currency-bucket limits, cost gates",
+                        "order-level fill timing", "financing/swap",
+                        "metals+CFD candidates (uncached)"],
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

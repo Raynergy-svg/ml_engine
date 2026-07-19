@@ -75,16 +75,18 @@ contribution under an operator-authored allocation plan.
    Known follow-up: the H4 `crypto_momentum` lane's OWN recorder predates
    this engine (latest-bar semantics, 1 legacy row); migrate it the next
    time that lane is touched.
-3. ✅ 2026-07-18 (with one operator-side remainder):
-   - **OANDA trend, runtime-exact** — `scripts/backtest_oanda_trend_runtime.py`
-     ran the VERBATIM runtime rule on the cached FX candidates, both
-     pre-specified windows. Verdict
-     (`docs/oanda-trend-runtime-verdict-2026-07-18.md`): the SMA mismatch
-     is resolved and NOT load-bearing — the FX-only subset is
-     expectancy-negative under BOTH SMA100 and SMA200 at every cost point
-     (Sharpe −0.09…−0.24, 2014→2026). Operator decision queued: retire the
-     FX-only practice trend lane, or pre-register a runtime spec matching
-     the validated cross-asset construction.
+3. ◐ (scope corrected 2026-07-19 audit — SIGNAL-ONLY, plus two
+   operator-side remainders):
+   - **OANDA trend, signal layer** — `scripts/backtest_oanda_trend_runtime.py`
+     validates the VERBATIM target-weight rule (equal-weight SMA long-or-
+     flat) on the cached FX candidates, both pre-specified windows. Verdict
+     (`docs/oanda-trend-runtime-verdict-2026-07-18.md`): the equal-weight
+     SMA SIGNAL spec is expectancy-negative on the FX-only subset under
+     BOTH windows at every cost point (Sharpe −0.09…−0.24, 2014→2026) —
+     reject that signal spec. NOT proven either way: the ACTUAL
+     ATR-risk-sized, gate-constrained runtime (sizing/brackets/halts are
+     not modeled). Remaining: model or forward-test the risk-gated runtime,
+     or retire/re-pre-register the lane (operator fork).
    - **Equity harvester** — SHIP_GATE.json's universe_hash (896fc636…)
      verified equal to the committed `universe_snapshot_pit.json`.
      Numeric re-derivation needs yfinance (proxy-blocked in the sandbox):
@@ -94,11 +96,16 @@ contribution under an operator-authored allocation plan.
    command records both new lanes + the hedge cycle for ALL lanes incl.
    equity/Track B + all reports; duplicate asof rows refused). Remaining
    (operator machine): run it once with `--refresh`, then schedule daily.
-5. ✅ 2026-07-18: `scripts/research_metrics.py` — one command, one schema
-   for every registered strategy (n, cumulative, ann return/vol, Sharpe,
-   maxDD, DSR, bootstrap p, turnover, costs, residual fraction phi, beta,
-   benchmark) from forward-ledger evidence only; nulls carry reasons;
-   significance undefined below 30 observations by design. Artifact:
+5. ✅ 2026-07-18, math corrected 2026-07-19 (audit): `scripts/
+   research_metrics.py` — one command, one schema for every registered
+   strategy, from forward-ledger evidence only. Safety rules now enforced:
+   DSR only against REGISTERED campaign trial counts (crypto 15, trend 20;
+   n_trials=1 is never computed — its benchmark degenerates to −inf); no
+   annualization below 8 observations (one bar is never a 373% annual
+   return) and the factor is DERIVED from observed cadence, never
+   hardcoded; drawdown measures from initial capital (peak starts at 1.0);
+   one asof = one observation (deduped on both ledger kinds); beta/
+   benchmark honestly labeled NOT IMPLEMENTED. Artifact:
    `trained_data/research/strategy_metrics_report.json`.
 6. Residual rewards stay disabled; no capital allocations until lane
    histories are populated and reviewed.

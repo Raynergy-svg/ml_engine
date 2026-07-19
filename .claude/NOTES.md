@@ -1745,3 +1745,16 @@ Killed the `run_equity_harvester.py --broker ibkr-paper` background loop I'd sta
   KNOWN FOLLOW-UP: H4 crypto_momentum's own recorder still has pre-engine latest-bar semantics
   (1 legacy ledger row) — migrate when that lane is next touched. Scheduling run_strategy_lanes
   daily is NOW safe; it was not before this fix.
+- **2026-07-19 audit pass 2 (operator audit of d86cee5)**: the 5 Step-2 integrity items were
+  already fixed in 16bf8a9 (audit predated it — verified from disk). NEW fixes this pass:
+  (a) research_metrics math — DSR now only against registered trial counts (crypto 15 / trend 20;
+  n_trials=1 degenerates the benchmark to −inf and is never computed), no annualization below 8
+  obs + derived-not-hardcoded ann factor, drawdown peak starts at 1.0, asof-dedupe on both ledger
+  kinds, beta/benchmark relabeled NOT IMPLEMENTED; (b) OANDA backtest RENAMED signal-only — the
+  runtime actually sizes with ATR risk-normalized units + gates/brackets which are NOT modeled;
+  the negative verdict rejects the equal-weight SMA SIGNAL spec on FX-only, and the risk-gated
+  runtime stays UNPROVEN both directions (verdict doc + artifact purpose corrected; 015827Z
+  artifact superseded by 024608Z, numbers identical); (c) causality test upgraded to bar-by-bar
+  series equality. Step 4 caveat stands: the runner advances only the two new lanes' own ledgers;
+  equity rebalances + Track B scoring are their own operator-side pipelines — a hedge snapshot of
+  an unchanged book is NOT new strategy evidence. 135 tests green.
