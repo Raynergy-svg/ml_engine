@@ -56,7 +56,6 @@ from src.hedge.hedged_shadow_lane import (  # noqa: E402
     RAW_VS_HEDGED_LEDGER_PATH,
     STRATEGIES,
     TRACK_B_LEDGER_PATH,
-    _read_jsonl_rows,
 )
 
 RESIDUAL_REPORT_PATH = REPO_ROOT / "trained_data" / "hedge" / "residual_attribution_report.json"
@@ -115,9 +114,12 @@ def _own_ledger_series(path: Path) -> Dict[str, Any]:
 
 
 def _hedge_lane_series(strategy: str, ledger_path: Path) -> Dict[str, Any]:
-    from src.hedge.hedged_shadow_lane import dedupe_ledger_rows
-    rows = [r for r in dedupe_ledger_rows(_read_jsonl_rows(ledger_path))
-            if r.get("strategy") == strategy]
+    # STRICT + canonical active set (2026-07-19 audit): corruption fails
+    # closed; one active observation per evidence period.
+    from src.evidence.forward_ledger import read_rows as _strict_read
+    from src.hedge.hedged_shadow_lane import active_ledger_rows
+    all_rows = active_ledger_rows(_strict_read(ledger_path)) if ledger_path.exists() else []
+    rows = [r for r in all_rows if r.get("strategy") == strategy]
     rets, dates = [], []
     for r in sorted(rows, key=lambda x: x.get("asof_date", "")):
         v = (r.get("raw") or {}).get("net_return")

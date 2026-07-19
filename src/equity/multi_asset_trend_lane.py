@@ -251,14 +251,25 @@ def capture_forward(prices: Optional[pd.DataFrame] = None, *,
     baseline on the first run (no realized return), deterministic backfill
     of every unseen bar afterwards, applied vs next-target books split per
     row. See ``src.evidence.forward_ledger`` for the engine contract."""
-    frames = compute_frames(prices, refresh=refresh)
+    if prices is None:
+        prices = load_panel(refresh=refresh)
+    frames = compute_frames(prices)
     dates = [str(pd.Timestamp(t).date()) for t in frames.net.index]
     pos = {d: i for i, d in enumerate(dates)}
+    # The frozen SIGNAL rebalance schedule is positional over the PRICE
+    # panel (i % STEP == 0 in single_asset_trend_returns). HRP re-estimation
+    # and overlay-scalar movement change weights between signal rebalances
+    # and are NOT rebalance events (rev 3, audit finding 4).
+    price_pos = {str(pd.Timestamp(t).date()): i for i, t in enumerate(prices.index)}
 
     def payload_for(d: str) -> Dict[str, Any]:
         i = pos[d]
+        pi = price_pos[d]
         nxt = _book_at(frames, i, applied=False)
         return {
+            "rebalance_event": bool(pi % STEP == 0),
+            "rebalance_id": int(pi // STEP),
+            "holding_period_id": int(pi // STEP),
             "today_net_return": float(frames.net.iloc[i]),
             "applied_book": {"longs": _book_at(frames, i, applied=True), "shorts": {}},
             "book": {"longs": nxt, "shorts": {}},
@@ -284,7 +295,8 @@ def capture_forward(prices: Optional[pd.DataFrame] = None, *,
             "construction": construction_manifest(),
         }
 
-    return append_unseen_bars(ledger_path, dates=dates, payload_for=payload_for,
+    return append_unseen_bars(ledger_path, strategy="multi_asset_trend",
+                              dates=dates, payload_for=payload_for,
                               activation_payload_for=activation_payload_for,
                               cycle_ts_iso=cycle_ts_iso)
 

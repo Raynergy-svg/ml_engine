@@ -302,27 +302,33 @@ def test_scorecard_history_cannot_increase_on_duplicate_identity(tmp_path):
 
 # ── 10: cadence accounting ──────────────────────────────────────────────────
 
-def test_cadence_counts_weeks_and_rebalances_never_raw_bars():
+def test_cadence_counts_explicit_rebalance_fields_never_book_inequality():
+    # 2026-07-19 scheduler-safety audit finding 4: rebalances come from the
+    # frozen rule's EXPLICIT fields. The books below DRIFT every bar (vol
+    # scaling) — inference from book inequality would count 10 rebalances;
+    # the explicit fields say 2 signal events across 2 holding periods + the
+    # activation-period remainder.
     rows = [{"kind": "activation", "asof_date": "2026-06-30",
              "book": {"longs": {"A": 1.0}}, "today_net_return": None}]
-    book = {"A": 1.0}
     for i, d in enumerate(pd.date_range("2026-07-01", periods=10, freq="D")):
-        if i == 4:
-            book = {"A": 0.5, "B": 0.5}          # rebalance 1
-        if i == 8:
-            book = {"B": 1.0}                    # rebalance 2
         rows.append({"kind": "forward", "asof_date": str(d.date()),
-                     "book": {"longs": dict(book)}, "today_net_return": 0.001})
+                     # book weights drift EVERY bar (scalar movement)
+                     "book": {"longs": {"A": 1.0 + i * 0.01}},
+                     "rebalance_event": i in (4, 8),      # frozen-rule events
+                     "rebalance_id": 0 if i < 4 else (1 if i < 8 else 2),
+                     "holding_period_id": 0 if i < 4 else (1 if i < 8 else 2),
+                     "today_net_return": 0.001})
     c = cadence_counts(rows)
     assert c["n_return_bars"] == 10
     assert c["n_calendar_weeks"] == 2            # Jul 1-10 2026 spans ISO weeks 27+28
-    assert c["n_completed_rebalances"] == 2
-    assert c["n_independent_holding_periods"] == 2
-    assert "NEVER raw daily bars" in c["note"]
-    # summaries surface it
-    s_fields = {"n_return_bars", "n_calendar_weeks", "n_completed_rebalances",
-                "n_independent_holding_periods"}
-    assert s_fields <= set(c)
+    assert c["n_completed_rebalances"] == 2, "explicit events, NOT 10 daily book changes"
+    assert c["n_independent_holding_periods"] == 3
+    assert "EXPLICIT rebalance fields" in c["note"]
+    # legacy rows without the fields -> None, never inferred
+    legacy = [{"kind": "forward", "asof_date": "2026-07-01",
+               "book": {"longs": {"A": 1.0}}, "today_net_return": 0.001}]
+    lc = cadence_counts(legacy)
+    assert lc["n_completed_rebalances"] is None and lc["n_independent_holding_periods"] is None
 
 
 def test_forward_summary_counts_only_forward_rows(tmp_path):

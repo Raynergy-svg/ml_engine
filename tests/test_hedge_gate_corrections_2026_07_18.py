@@ -148,53 +148,53 @@ def test_reconcile_fail_closed_paths(tmp_path):
         "checked": 0, "resolved": 0, "still_unresolved": 0, "skipped_no_weights": 0}
 
 
-def test_reconcile_preserves_corrupt_and_blank_lines_verbatim(tmp_path):
-    """rev 2.1 (review): the rewrite must never launder the evidence ledger —
-    unparseable and blank lines survive BYTE-FOR-BYTE even when another line
-    on the same file is reconciled."""
+def test_reconcile_fails_closed_on_corruption_without_destroying_bytes(tmp_path):
+    """rev 3 (2026-07-19 scheduler-safety audit, finding 2): corruption fails
+    CLOSED — reconcile refuses to operate on a ledger it cannot fully parse
+    (exact line named), and the file's bytes stay completely untouched
+    (nothing skipped, nothing rewritten, nothing destroyed)."""
+    from src.evidence.forward_ledger import LedgerCorruptionError
     panel = _panel({"AAA": [99.0, 100.0, 102.0], "BBB": [51.0, 50.0, 49.0]})
     stale = _unresolved_row()
     corrupt = '{"strategy": "truncated_by_a_crash", "asof_da'
     ledger = tmp_path / "raw_vs_hedged_ledger.jsonl"
-    ledger.write_text(
-        json.dumps(stale, sort_keys=True) + "\n" + corrupt + "\n" + "\n",
-        encoding="utf-8")
+    original = (json.dumps(stale, sort_keys=True) + "\n" + corrupt + "\n" + "\n").encode()
+    ledger.write_bytes(original)
 
-    summary = hsl.reconcile_unresolved(
-        ledger, price_panel=panel, sector_bucket_map={}, currency_bucket_map={},
-        today="2026-07-01")
-    assert summary["resolved"] == 1
-
-    lines = ledger.read_text(encoding="utf-8").split("\n")
-    assert len(lines) == 4 and lines[3] == ""  # 3 lines + trailing newline
-    assert json.loads(lines[0])["raw"]["net_return"] == pytest.approx(0.016)
-    assert lines[1] == corrupt, "corrupt evidence line must survive verbatim"
-    assert lines[2] == "", "blank line must survive verbatim"
+    with pytest.raises(LedgerCorruptionError) as exc:
+        hsl.reconcile_unresolved(
+            ledger, price_panel=panel, sector_bucket_map={}, currency_bucket_map={},
+            today="2026-07-01")
+    assert exc.value.line_no == 2
+    assert ledger.read_bytes() == original, "fail-closed must not touch the file"
 
 
-def test_reconcile_preserves_line_ending_bytes_exactly(tmp_path):
-    """rev 2.2 (review): 'byte-for-byte' must be literal — CRLF endings,
-    undecodable bytes and a missing final newline all survive a rewrite that
-    reconciles an adjacent line."""
+def test_reconcile_fails_closed_on_undecodable_bytes(tmp_path):
+    """rev 3: undecodable bytes are corruption too — refuse (exact line),
+    bytes untouched. CRLF endings on VALID lines still survive a successful
+    reconcile byte-for-byte (checked separately below)."""
+    from src.evidence.forward_ledger import LedgerCorruptionError
     panel = _panel({"AAA": [99.0, 100.0, 102.0], "BBB": [51.0, 50.0, 49.0]})
     stale = json.dumps(_unresolved_row(), sort_keys=True).encode("utf-8") + b"\n"
     undecodable = b"\xff\xfe not utf-8 \xff\n"
-    corrupt_crlf = b'{"truncated_with_crlf": \r\n'
-    tail_no_newline = b"last line, not json, no trailing newline"
     ledger = tmp_path / "raw_vs_hedged_ledger.jsonl"
-    ledger.write_bytes(stale + undecodable + corrupt_crlf + tail_no_newline)
+    original = stale + undecodable
+    ledger.write_bytes(original)
+    with pytest.raises(LedgerCorruptionError):
+        hsl.reconcile_unresolved(
+            ledger, price_panel=panel, sector_bucket_map={}, currency_bucket_map={},
+            today="2026-07-01")
+    assert ledger.read_bytes() == original
 
+    # blank lines are NOT corruption; a clean reconcile still preserves them
+    ledger2 = tmp_path / "clean.jsonl"
+    ledger2.write_bytes(stale + b"\n")
     summary = hsl.reconcile_unresolved(
-        ledger, price_panel=panel, sector_bucket_map={}, currency_bucket_map={},
+        ledger2, price_panel=panel, sector_bucket_map={}, currency_bucket_map={},
         today="2026-07-01")
     assert summary["resolved"] == 1
-
-    lines = ledger.read_bytes().splitlines(keepends=True)
-    assert len(lines) == 4
-    assert json.loads(lines[0])["raw"]["net_return"] == pytest.approx(0.016)
-    assert lines[1] == undecodable, "undecodable bytes must survive verbatim"
-    assert lines[2] == corrupt_crlf, "CRLF terminator must not be normalized to LF"
-    assert lines[3] == tail_no_newline, "no final newline must be invented"
+    lines = ledger2.read_bytes().splitlines(keepends=True)
+    assert lines[1] == b"\n", "blank line preserved verbatim"
 
 
 def test_run_all_wires_reconciliation_before_the_cycle(tmp_path):

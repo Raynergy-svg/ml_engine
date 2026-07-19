@@ -235,23 +235,14 @@ def build_residual_attribution_report(
     """Read the twin-lane ledger, attribute per strategy, persist atomically."""
     from datetime import datetime, timezone
 
-    rows: List[Dict[str, Any]] = []
-    try:
-        with open(ledger_path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rows.append(json.loads(line))
-                except ValueError:
-                    continue  # corrupt line: skipped, surfaced via counts below
-    except OSError:
-        rows = []
-
-    # 2026-07-19 (review finding 1): duplicate snapshots never count twice.
-    from src.hedge.hedged_shadow_lane import dedupe_ledger_rows
-    rows = dedupe_ledger_rows(rows)
+    # 2026-07-19 scheduler-safety audit: STRICT read — corruption fails
+    # closed (LedgerCorruptionError, exact line/offset, marker), never
+    # silently analyzed around. The consumed set is the canonical ACTIVE
+    # revision per evidence period — identical to the scorecard's and the
+    # promotion gate's.
+    from src.evidence.forward_ledger import read_rows as _strict_read
+    from src.hedge.hedged_shadow_lane import active_ledger_rows
+    rows = active_ledger_rows(_strict_read(ledger_path)) if ledger_path.exists() else []
 
     by_strategy: Dict[str, List[Dict[str, Any]]] = {}
     for r in rows:

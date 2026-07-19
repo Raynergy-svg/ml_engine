@@ -124,18 +124,23 @@ def test_own_ledger_series_reads_real_rows(tmp_path):
     rows = [
         {"kind": "activation", "asof_date": "2026-06-24",
          "today_net_return": None},                       # baseline: never counted
+        {"asof_date": "2026-07-01", "today_net_return": 0.005},
+        # REVISION of the same evidence period: supersedes (last wins),
+        # never counts beside the first
         {"asof_date": "2026-07-01", "today_net_return": 0.002,
          "today_turnover": 0.5, "today_cost": 0.0005},
-        {"asof_date": "2026-07-01", "today_net_return": 0.002},  # dup asof: excluded
         {"asof_date": "2026-07-08", "today_net_return": -0.001},
         {"asof_date": "2026-07-15"},   # unresolved cycle: skipped, never zero-filled
     ]
     ledger.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     series = _own_ledger_series(ledger)
-    assert series["returns"] == [0.002, -0.001]
+    assert series["returns"] == [0.002, -0.001], "active revision = LAST, one per period"
     assert series["dates"] == ["2026-07-01", "2026-07-08"]
     assert series["turnover"][0] == 0.5 and series["turnover"][1] is None
-    assert series["cadence"]["n_return_bars"] == 3  # cadence counts raw ledger rows pre-dedupe
+    # active_observations already dedupes the duplicate period
+    assert series["cadence"]["n_return_bars"] == 2
+    # legacy rows lack explicit rebalance fields -> None, never inferred
+    assert series["cadence"]["n_completed_rebalances"] is None
 
 
 def test_build_report_covers_all_registered_strategies_uniform_schema():

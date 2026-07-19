@@ -60,6 +60,7 @@ jobs:
             tests/test_hedge_gate_corrections_2026_07_18.py \
             tests/test_strategy_lanes_2026_07_18.py \
             tests/test_research_tooling_2026_07_18.py \
+            tests/test_evidence_safety_2026_07_19.py \
             tests/test_walkforward_metrics.py \
             src/crypto/ts_trend_shadow.py \
             src/equity/multi_asset_trend_lane.py \
@@ -79,6 +80,7 @@ jobs:
             tests/test_hedge_gate_corrections_2026_07_18.py \
             tests/test_strategy_lanes_2026_07_18.py \
             tests/test_research_tooling_2026_07_18.py \
+            tests/test_evidence_safety_2026_07_19.py \
             tests/test_walkforward_metrics.py \
             -q --tb=short
 

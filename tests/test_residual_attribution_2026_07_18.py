@@ -136,15 +136,27 @@ def test_exponential_credit_update_math_and_bounds():
 
 def test_report_build_and_loader_roundtrip(tmp_path):
     ledger = tmp_path / "raw_vs_hedged_ledger.jsonl"
+    # 2026-07-19 scheduler-safety audit (finding 2): corruption FAILS CLOSED —
+    # the report build refuses an unparseable ledger, never analyzes around it.
     with open(ledger, "w", encoding="utf-8") as fh:
         for d in range(1, 9):
             fh.write(json.dumps(_row(f"2026-07-{d:02d}", 0.010, 0.004)) + "\n")
         fh.write("{corrupt line\n")
     out = tmp_path / "residual_attribution_report.json"
-    report = build_residual_attribution_report(ledger_path=ledger, out_path=out)
+    from src.evidence.forward_ledger import LedgerCorruptionError
+    with pytest.raises(LedgerCorruptionError):
+        build_residual_attribution_report(ledger_path=ledger, out_path=out)
+    assert not out.exists(), "no report from a corrupt ledger"
 
+    # clean ledger: full roundtrip
+    with open(ledger, "w", encoding="utf-8") as fh:
+        for d in range(1, 9):
+            fh.write(json.dumps(_row(f"2026-07-{d:02d}", 0.010, 0.004)) + "\n")
+    import pathlib
+    pathlib.Path(str(ledger) + ".corrupt.json").unlink()
+    report = build_residual_attribution_report(ledger_path=ledger, out_path=out)
     assert out.exists()
-    assert report["n_ledger_rows"] == 8  # corrupt line skipped, not fatal
+    assert report["n_ledger_rows"] == 8
     att = report["strategies"]["test_strat"]
     assert att["n_aligned_cycles"] == 8
     assert att["residual_fraction"] == pytest.approx(0.4)

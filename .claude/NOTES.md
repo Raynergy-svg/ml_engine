@@ -1758,3 +1758,17 @@ Killed the `run_equity_harvester.py --broker ibkr-paper` background loop I'd sta
   series equality. Step 4 caveat stands: the runner advances only the two new lanes' own ledgers;
   equity rebalances + Track B scoring are their own operator-side pipelines — a hedge snapshot of
   an unchanged book is NOT new strategy evidence. 135 tests green.
+- **2026-07-19 scheduler-safety audit (7 findings, all fixed pre-scheduling)**: (1) cross-process
+  fcntl lock around every ledger read/validate/append transaction (forward_ledger.ledger_lock;
+  hedge persist block); (2) corruption FAILS CLOSED — LedgerCorruptionError w/ exact line+offset
+  + .corrupt.json marker; appends, scorecard, residual, promotion, reconcile, summaries all
+  refuse (repair = fix file, delete marker); (3) evidence-period identity — one ACTIVE
+  observation per (strategy, period); revisions supersede (supersedes field), never count
+  beside; snapshot_version_id/evidence_period_id on every row; all consumers share the canonical
+  active set; (4) cadence from EXPLICIT frozen-rule fields (rebalance_event/holding_period_id) —
+  never book-inequality inference; legacy rows → None counts; (5) strict pre-write schema
+  validation (ISO/increasing/unique dates, finite non-bool returns+weights, period ordering,
+  construction identity per ledger); (6) _append raises on failure; hedge evidence+decision
+  commit as one transaction w/ truncate-rollback; (7) promotion _max_drawdown now compounded,
+  matching scorecard. 16 new no-mock tests incl. real fork-multiprocessing barrier races +
+  real failure injection (directory-as-decision-path). 151 green across 9 suites.

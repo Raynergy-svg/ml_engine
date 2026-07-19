@@ -253,6 +253,12 @@ def capture_forward(*, ledger_path: Path = LEDGER_PATH_DEFAULT,
         applied = book.iloc[i - 1] if i > 0 else book.iloc[i] * 0.0
         nxt = book.iloc[i]
         return {
+            # explicit frozen-rule cadence (rev 3): the H5 SIGNAL rebalances
+            # at panel positions i % REBALANCE_DAYS == 0 — daily vol-scaling
+            # moves weights every bar and is NOT a rebalance event.
+            "rebalance_event": bool(i % REBALANCE_DAYS == 0),
+            "rebalance_id": int(i // REBALANCE_DAYS),
+            "holding_period_id": int(i // REBALANCE_DAYS),
             "today_net_return": float(ret["net"]),
             "today_price_return": float(ret["price"]),
             "today_carry_return": float(ret["carry"]),
@@ -280,7 +286,8 @@ def capture_forward(*, ledger_path: Path = LEDGER_PATH_DEFAULT,
             "construction": construction_manifest(),
         }
 
-    return append_unseen_bars(ledger_path, dates=dates, payload_for=payload_for,
+    return append_unseen_bars(ledger_path, strategy="crypto_ts_trend",
+                              dates=dates, payload_for=payload_for,
                               activation_payload_for=activation_payload_for,
                               cycle_ts_iso=cycle_ts_iso)
 

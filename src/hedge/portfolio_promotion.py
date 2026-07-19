@@ -116,11 +116,17 @@ def _pearson(xs: Sequence[float], ys: Sequence[float]) -> Optional[float]:
 
 
 def _max_drawdown(returns: Sequence[float]) -> float:
-    equity = peak = max_dd = 0.0
+    """Compounded equity-curve max drawdown, matching hedge_scorecard's
+    definition (2026-07-19 audit finding 7 — the previous additive
+    implementation understated drawdowns and disagreed with the scorecard).
+    Peak starts at 1.0 (initial capital); result is a positive magnitude."""
+    equity = peak = 1.0
+    max_dd = 0.0
     for r in returns:
-        equity += r
+        equity *= (1.0 + r)
         peak = max(peak, equity)
-        max_dd = max(max_dd, peak - equity)
+        if peak > 0:
+            max_dd = max(max_dd, 1.0 - equity / peak)
     return max_dd
 
 
@@ -524,26 +530,18 @@ def build_portfolio_promotion_report(
             f"operator_file:{allocations_path}" if allocations is not None
             else "missing_or_invalid_fail_closed")
 
+    # 2026-07-19 scheduler-safety audit: STRICT read (corruption fails
+    # closed — promotion is REFUSED on an incomplete ledger) + canonical
+    # ACTIVE revision per evidence period, identical to the scorecard's and
+    # residual attribution's consumed set.
+    from src.evidence.forward_ledger import read_rows as _strict_read
+    from src.hedge.hedged_shadow_lane import active_ledger_rows
     rows_by_strategy: Dict[str, List[Dict[str, Any]]] = {}
-    try:
-        with open(ledger_path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    row = json.loads(line)
-                except ValueError:
-                    continue
-                strat = row.get("strategy")
-                if strat:
-                    rows_by_strategy.setdefault(strat, []).append(row)
-    except OSError:
-        pass
-    # 2026-07-19 (review finding 1): duplicate snapshots never count twice
-    # toward promotion evidence.
-    from src.hedge.hedged_shadow_lane import dedupe_ledger_rows
-    rows_by_strategy = {s: dedupe_ledger_rows(r) for s, r in rows_by_strategy.items()}
+    if ledger_path.exists():
+        for row in active_ledger_rows(_strict_read(ledger_path)):
+            strat = row.get("strategy")
+            if strat:
+                rows_by_strategy.setdefault(strat, []).append(row)
 
     try:
         from src.hedge.hedged_shadow_lane import STRATEGIES as _COVERED

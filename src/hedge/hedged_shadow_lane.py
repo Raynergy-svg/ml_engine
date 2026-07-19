@@ -221,30 +221,47 @@ def _row_identity(row: Dict[str, Any]) -> Tuple[str, str, Optional[str], Optiona
 
 
 def dedupe_ledger_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Drop rows whose (strategy, asof_date, book identity, notional) was
-    already seen — keeping the FIRST occurrence. Defensive layer for every
-    evidence consumer (scorecard, residual attribution, promotion gate):
-    even if a duplicate snapshot ever reaches the ledger, it can never count
-    as an extra observation. Order preserved; nothing else touched."""
-    seen = set()
-    out: List[Dict[str, Any]] = []
-    dropped = 0
+    """Canonical ACTIVE evidence set (2026-07-19 scheduler-safety audit,
+    finding 3): the evidence period is (strategy, asof_date) — one market
+    snapshot period. Only ONE active observation may exist per period: the
+    LAST recorded revision supersedes earlier ones (a revised book on the
+    same date is a correction, never an additional independent
+    observation; an IDENTICAL snapshot is refused at append). Every
+    evidence consumer (scorecard, residual attribution, promotion gate,
+    metrics) consumes exactly this canonical set. Order of first
+    appearance preserved."""
+    by_period: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    order: List[Tuple[str, str]] = []
+    superseded = 0
     for row in rows:
-        key = _row_identity(row)
-        if key in seen:
-            dropped += 1
-            continue
-        seen.add(key)
-        out.append(row)
-    if dropped:
-        logger.warning("hedged_shadow_lane: excluded %d duplicate snapshot row(s) "
-                       "from evidence (same strategy/asof/book identity)", dropped)
-    return out
+        key = (str(row.get("strategy", "")), str(row.get("asof_date", "")))
+        if key in by_period:
+            superseded += 1
+        else:
+            order.append(key)
+        by_period[key] = row
+    if superseded:
+        logger.warning("hedged_shadow_lane: %d superseded snapshot revision(s) "
+                       "excluded — one active observation per evidence period",
+                       superseded)
+    return [by_period[k] for k in order]
+
+
+# Explicit alias: the canonical resolver name (finding 3).
+active_ledger_rows = dedupe_ledger_rows
+
+
+def _read_evidence_rows_strict(path: Path) -> List[Dict[str, Any]]:
+    """STRICT evidence read for the hedge ledger (finding 2): corruption
+    fails closed via LedgerCorruptionError + marker — never skipped."""
+    from src.evidence.forward_ledger import read_rows as _strict_read
+    return _strict_read(path)
 
 
 def _append_jsonl(path: Path, row: Dict[str, Any]) -> None:
-    """Append-only JSONL write, flush + fsync — same durability convention
-    as ``momentum_shadow._append_ledger_row``."""
+    """Durable append. 2026-07-19 audit finding 6: a failed append RAISES —
+    no caller may report success unless persistence (incl. fsync)
+    succeeded. Errors are logged AND propagated, never swallowed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(path, "a", encoding="utf-8") as fh:
@@ -253,6 +270,7 @@ def _append_jsonl(path: Path, row: Dict[str, Any]) -> None:
             os.fsync(fh.fileno())
     except OSError as exc:
         logger.error("hedged_shadow_lane: ledger append failed for %s: %s", path, exc, exc_info=True)
+        raise
 
 
 # --------------------------------------------------------------------- #
@@ -290,8 +308,21 @@ def load_equity_harvester_book(state_path: Path = EQUITY_HARVESTER_STATE_PATH) -
     )
 
 
+def _load_book_rows_fail_closed(path: Path, label: str):
+    """Lane-ledger read for book loaders: corruption -> refuse the book
+    (None), never a stale/partial book (2026-07-19 audit finding 2)."""
+    from src.evidence.forward_ledger import LedgerCorruptionError
+    try:
+        return _read_evidence_rows_strict(path)
+    except LedgerCorruptionError as exc:
+        logger.error("hedged_shadow_lane: %s ledger CORRUPT — refusing book: %s", label, exc)
+        return None
+
+
 def load_crypto_momentum_book(ledger_path: Path = CRYPTO_MOMENTUM_LEDGER_PATH) -> Optional[BookSnapshot]:
-    rows = _read_jsonl_rows(ledger_path)
+    rows = _load_book_rows_fail_closed(ledger_path, "crypto momentum")
+    if rows is None:
+        return None
     if not rows:
         logger.warning("hedged_shadow_lane: crypto momentum ledger empty/missing at %s", ledger_path)
         return None
@@ -318,7 +349,9 @@ def load_crypto_ts_trend_book(
         ledger_path: Path = CRYPTO_TS_TREND_LEDGER_PATH) -> Optional[BookSnapshot]:
     """H5 time-series trend lane (2026-07-18 readiness step 2) — a SEPARATE
     strategy from the H4 cross-sectional crypto_momentum lane; never merged."""
-    rows = _read_jsonl_rows(ledger_path)
+    rows = _load_book_rows_fail_closed(ledger_path, "crypto ts-trend")
+    if rows is None:
+        return None
     if not rows:
         logger.warning("hedged_shadow_lane: crypto ts-trend ledger empty/missing at %s", ledger_path)
         return None
@@ -347,7 +380,9 @@ def load_multi_asset_trend_book(
     "multi_asset": the exposure engine supports FX and equity only, so hedge
     status will honestly read unsupported_asset_class while the strategy's own
     forward marks still accrue in its ledger — same treatment as crypto."""
-    rows = _read_jsonl_rows(ledger_path)
+    rows = _load_book_rows_fail_closed(ledger_path, "multi-asset trend")
+    if rows is None:
+        return None
     if not rows:
         logger.warning("hedged_shadow_lane: multi-asset trend ledger empty/missing at %s", ledger_path)
         return None
@@ -372,7 +407,9 @@ def load_multi_asset_trend_book(
 
 
 def load_track_b_book(ledger_path: Path = TRACK_B_LEDGER_PATH) -> Optional[BookSnapshot]:
-    rows = _read_jsonl_rows(ledger_path)
+    rows = _load_book_rows_fail_closed(ledger_path, "track_b")
+    if rows is None:
+        return None
     if not rows:
         logger.warning("hedged_shadow_lane: track_b ledger empty/missing at %s", ledger_path)
         return None
@@ -1094,27 +1131,63 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
     }
 
     if persist:
-        # 2026-07-19 (review finding 1): a scheduler re-run against an
-        # unchanged market date must NOT mint another "cycle". Reject the
-        # append when this exact snapshot identity (strategy, asof, book
-        # sha, notional) is already in the ledger — 7 runs on one unchanged
-        # date would otherwise become 7 observations and distort expectancy,
-        # drawdown, minimum-history status and promotion evidence.
+        # 2026-07-19 scheduler-safety audit: the ENTIRE read/validate/append
+        # transaction holds the ledger's cross-process lock (finding 1 — a
+        # check-before-append without a lock is not sufficient), reads are
+        # STRICT (finding 2 — corruption fails closed, never analyzed
+        # around), an identical snapshot identity is refused while a REVISED
+        # book on the same (strategy, asof) evidence period supersedes the
+        # prior revision (finding 3 — never counts beside it), and the
+        # evidence row + decision record commit as ONE transaction: if the
+        # decision append fails, the evidence append is rolled back
+        # (finding 6 — neither record without both).
+        from src.evidence.forward_ledger import ledger_lock
         identity = _row_identity(row)
-        for existing in _read_jsonl_rows(ledger_path):
-            if _row_identity(existing) == identity:
-                logger.info(
-                    "hedged_shadow_lane: snapshot already recorded for %s asof=%s "
-                    "(identity %s…) — refusing duplicate cycle row",
-                    strategy, book.asof_date, (identity[2] or "")[:12])
-                return None
-        _append_jsonl(ledger_path, row)
-        _append_jsonl(decision_log_path, {
-            "cycle_ts": cycle_ts, "strategy": strategy, "asof_date": book.asof_date,
-            "hedge_report": hedge_report,
-            "runtime_allowed": RUNTIME_ALLOWED, "paper_only": PAPER_ONLY,
-            "human_review_required": HUMAN_REVIEW_REQUIRED,
-        })
+        with ledger_lock(ledger_path):
+            existing_rows = _read_evidence_rows_strict(ledger_path)
+            prior_active: Optional[Dict[str, Any]] = None
+            for existing in existing_rows:
+                if (str(existing.get("strategy", "")) == strategy
+                        and str(existing.get("asof_date", "")) == str(book.asof_date)):
+                    prior_active = existing
+            if prior_active is not None:
+                if _row_identity(prior_active) == identity:
+                    logger.info(
+                        "hedged_shadow_lane: snapshot already recorded for %s asof=%s "
+                        "(identity %s…) — refusing duplicate cycle row",
+                        strategy, book.asof_date, (identity[2] or "")[:12])
+                    return None
+                row["supersedes"] = prior_active.get("book_identity_sha256")
+                logger.warning(
+                    "hedged_shadow_lane: REVISED snapshot for %s asof=%s supersedes "
+                    "%s… — one active observation per evidence period",
+                    strategy, book.asof_date, str(row["supersedes"] or "")[:12])
+            row["evidence_period_id"] = f"{strategy}:{book.asof_date}"
+            row["snapshot_version_id"] = row["book_identity_sha256"]
+
+            evidence_size = ledger_path.stat().st_size if ledger_path.exists() else 0
+            _append_jsonl(ledger_path, row)
+            try:
+                _append_jsonl(decision_log_path, {
+                    "cycle_ts": cycle_ts, "strategy": strategy,
+                    "asof_date": book.asof_date,
+                    "evidence_period_id": row["evidence_period_id"],
+                    "snapshot_version_id": row["snapshot_version_id"],
+                    "hedge_report": hedge_report,
+                    "runtime_allowed": RUNTIME_ALLOWED, "paper_only": PAPER_ONLY,
+                    "human_review_required": HUMAN_REVIEW_REQUIRED,
+                })
+            except OSError:
+                # roll the evidence append back — neither record commits
+                with open(ledger_path, "rb+") as fh:
+                    fh.truncate(evidence_size)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                logger.error(
+                    "hedged_shadow_lane: decision append failed — evidence row for "
+                    "%s asof=%s rolled back (atomic pair, finding 6)",
+                    strategy, book.asof_date)
+                raise
     return row
 
 
@@ -1174,24 +1247,28 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
     except OSError as exc:
         logger.warning("hedged_shadow_lane: ledger unreadable at %s (%s)", ledger_path, exc)
         return summary
+    # 2026-07-19 scheduler-safety audit (finding 2): corruption fails
+    # CLOSED — reconcile refuses to touch a ledger it cannot fully parse
+    # (raising with the exact line, never rewriting around damage; the
+    # bytes stay untouched, so nothing is destroyed either).
+    from src.evidence.forward_ledger import LedgerCorruptionError, ledger_lock
     indexed_rows: List[Tuple[int, Dict[str, Any]]] = []
+    offset = 0
     for i, line_bytes in enumerate(raw_lines):
+        line_offset = offset
+        offset += len(line_bytes)
         try:
             stripped = line_bytes.decode("utf-8").strip()
-        except UnicodeDecodeError:
-            logger.warning("hedged_shadow_lane: preserving undecodable ledger line %d in %s "
-                           "verbatim (reconcile never rewrites what it cannot read)",
-                           i + 1, ledger_path)
-            continue
+        except UnicodeDecodeError as exc:
+            raise LedgerCorruptionError(ledger_path, i + 1, line_offset,
+                                        f"undecodable bytes: {exc}") from exc
         if not stripped:
             continue
         try:
             parsed = json.loads(stripped)
-        except json.JSONDecodeError:
-            logger.warning("hedged_shadow_lane: preserving unparseable ledger line %d in %s "
-                           "verbatim (reconcile never rewrites what it cannot read)",
-                           i + 1, ledger_path)
-            continue
+        except json.JSONDecodeError as exc:
+            raise LedgerCorruptionError(ledger_path, i + 1, line_offset,
+                                        str(exc)) from exc
         if isinstance(parsed, dict):
             indexed_rows.append((i, parsed))
     if not indexed_rows:
@@ -1273,7 +1350,7 @@ def reconcile_unresolved(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH, *,
         row_by_line = dict(indexed_rows)
         tmp_path = ledger_path.with_name(ledger_path.name + ".reconcile.tmp")
         try:
-            with open(tmp_path, "wb") as fh:
+            with ledger_lock(ledger_path), open(tmp_path, "wb") as fh:
                 for i, line_bytes in enumerate(raw_lines):
                     if i in modified_lines:
                         fh.write(json.dumps(row_by_line[i], sort_keys=True)

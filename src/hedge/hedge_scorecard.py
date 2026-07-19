@@ -72,31 +72,20 @@ VERDICT_INSUFFICIENT_HISTORY = "insufficient_history"
 
 
 def read_ledger_rows(ledger_path: Path = RAW_VS_HEDGED_LEDGER_PATH) -> List[Dict[str, Any]]:
-    """Tolerant JSONL reader — corrupt lines are skipped and logged, never
-    crash the scorecard. Missing file -> [] (fail soft)."""
+    """Canonical evidence read (2026-07-19 scheduler-safety audit).
+
+    STRICT: a corrupt line raises ``LedgerCorruptionError`` (exact line +
+    byte offset, marker dropped) and the scorecard REFUSES to analyze an
+    incomplete ledger — corruption fails closed, never skipped (finding 2).
+    The returned set is the canonical ACTIVE revision per evidence period
+    (finding 3) — the same set residual attribution and the promotion gate
+    consume. Missing file -> []."""
     if not ledger_path.exists():
         logger.warning("hedge_scorecard: ledger missing at %s", ledger_path)
         return []
-    rows: List[Dict[str, Any]] = []
-    try:
-        with open(ledger_path, "r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rows.append(json.loads(line))
-                except json.JSONDecodeError:
-                    logger.warning("hedge_scorecard: skipping corrupt ledger line")
-    except OSError as exc:
-        logger.warning("hedge_scorecard: ledger unreadable at %s (%s)", ledger_path, exc)
-        return []
-    # 2026-07-19 (review finding 1): defensive dedup — a duplicate snapshot
-    # (same strategy/asof/book identity) can NEVER count as an extra cycle,
-    # even if one reaches the ledger. n_cycles / expectancy / drawdown /
-    # minimum-history all derive from the deduped view.
-    from src.hedge.hedged_shadow_lane import dedupe_ledger_rows
-    return dedupe_ledger_rows(rows)
+    from src.evidence.forward_ledger import read_rows as _strict_read
+    from src.hedge.hedged_shadow_lane import active_ledger_rows
+    return active_ledger_rows(_strict_read(ledger_path))
 
 
 def group_by_strategy(rows: Sequence[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:

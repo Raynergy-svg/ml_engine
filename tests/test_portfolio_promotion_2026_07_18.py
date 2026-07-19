@@ -93,8 +93,13 @@ def test_pearson_and_drawdown_helpers():
     assert _pearson([1, 2, 3], [2, 4, 6]) == pytest.approx(1.0)
     assert _pearson([1, 2, 3], [3, 2, 1]) == pytest.approx(-1.0)
     assert _pearson([1, 1, 1], [1, 2, 3]) is None  # degenerate: undefined, not 0
-    assert _max_drawdown([0.05, -0.03, -0.04, 0.02]) == pytest.approx(0.07)
+    # 2026-07-19 audit finding 7: COMPOUNDED equity-curve drawdown matching
+    # hedge_scorecard — regression-locked against a manually compounded curve:
+    # eq = 1.05, 1.05*0.97=1.0185, *0.96=0.97776, *1.02=0.9973152; peak 1.05
+    # -> max dd = 1 - 0.97776/1.05 = 0.0688
+    assert _max_drawdown([0.05, -0.03, -0.04, 0.02]) == pytest.approx(1 - (1.05*0.97*0.96)/1.05)
     assert _max_drawdown([0.01, 0.01]) == 0.0
+    assert _max_drawdown([-0.10]) == pytest.approx(0.10)  # peak starts at 1.0
 
 
 # ── verdicts ────────────────────────────────────────────────────────────────
