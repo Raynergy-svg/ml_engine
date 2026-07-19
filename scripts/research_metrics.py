@@ -18,13 +18,19 @@ Sources per strategy:
     benchmark series is designated per lane, so both are null with an
     accurate reason (2026-07-19 audit: the earlier wording overclaimed).
 
-Mathematical safety rules (2026-07-19 audit):
+Mathematical safety rules (2026-07-19 audit + re-review):
+  * ONE canonical evidence view: active_observations only — legacy
+    pre-engine rows EXCLUDED (reported, never counted); same-period
+    conflicts fail closed; returns AND cadence derive from the same view.
+  * Annualization + significance are gated by the FROZEN acceptance target
+    (explicit holding periods / completed rebalances + elapsed span) with
+    structured reason codes — raw daily bars never unlock them.
+  * Annualization factor = observations per ELAPSED year over validated
+    strictly-increasing dates; geometric and arithmetic annualized returns
+    are reported under EXPLICIT names.
   * DSR only against a REGISTERED campaign trial count (n_trials=1
     degenerates the benchmark to -inf — never computed).
-  * No annualization below MIN_OBS_FOR_ANNUALIZATION observations, and the
-    factor is DERIVED from the observed cadence, never hardcoded.
   * Drawdown measures from initial capital (peak starts at 1.0).
-  * One asof_date = one observation (deduped on both ledger kinds).
 
 Usage:
     python scripts/research_metrics.py                # print + persist report
@@ -72,11 +78,17 @@ REGISTERED_TRIAL_COUNTS = {
     "multi_asset_trend": 20,   # Round-3/4 frozen N_TRIALS (edge-hunt campaign)
 }
 
-# 2026-07-19 audit fix: never annualize a handful of observations (one
-# +1.024% bar is NOT a 373% annual return). Below this floor, ann_return /
-# ann_vol / Sharpe stay null with a reason; cumulative + drawdown (which
-# need no extrapolation) are still reported.
-MIN_OBS_FOR_ANNUALIZATION = 8
+# FROZEN acceptance targets (readiness report) gate annualization AND
+# significance (2026-07-19 re-review item 3): raw daily bars never satisfy
+# weekly/monthly evidence requirements. Until a strategy's explicit
+# holding-period/rebalance counts and elapsed span meet its target, ann/
+# Sharpe/DSR/bootstrap stay null with a STRUCTURED reason code.
+ACCEPTANCE_REQUIREMENTS = {
+    "crypto_momentum":   {"min_independent_periods": 52, "min_elapsed_days": 365},
+    "crypto_ts_trend":   {"min_independent_periods": 52, "min_elapsed_days": 365},
+    "multi_asset_trend": {"min_completed_rebalances": 24, "min_elapsed_days": 365},
+    "track_b":           {"min_independent_periods": 24, "min_elapsed_days": 365},
+}
 
 _OWN_LEDGERS = {
     "crypto_momentum": CRYPTO_MOMENTUM_LEDGER_PATH,
@@ -87,20 +99,19 @@ _OWN_LEDGERS = {
 
 
 def _own_ledger_series(path: Path) -> Dict[str, Any]:
-    from src.evidence.forward_ledger import cadence_counts, forward_rows, read_rows
+    """ONE canonical evidence view (re-review item 2): rows are
+    canonicalized ONCE (active_observations — engine forward rows only, one
+    active revision per period, legacy pre-engine rows EXCLUDED, conflicts
+    fail closed) and returns/dates/turnover/costs AND cadence all derive
+    from that same view. Legacy exclusions are reported, never counted."""
+    from src.evidence.forward_ledger import (
+        active_observations, cadence_counts, legacy_rows, read_rows)
     all_rows = read_rows(path)
-    rows = forward_rows(all_rows)   # activation baselines are NOT observations
+    canon = active_observations(all_rows)
     rets, turns, costs, dates = [], [], [], []
-    seen_asof = set()
-    for r in rows:
-        # defensive dedup (audit fix): one asof_date = one observation, even
-        # if a duplicate ever reached a lane ledger.
-        d = str(r.get("asof_date"))
-        if d in seen_asof:
-            continue
-        seen_asof.add(d)
+    for r in canon:
         rets.append(float(r["today_net_return"]))
-        dates.append(d)
+        dates.append(str(r.get("asof_date")))
         t = r.get("today_turnover")
         c = r.get("today_cost")
         turns.append(float(t) if isinstance(t, (int, float)) else None)
@@ -110,7 +121,11 @@ def _own_ledger_series(path: Path) -> Dict[str, Any]:
     except ValueError:
         source = str(path)   # e.g. tmp_path ledgers in tests
     return {"returns": rets, "dates": dates, "turnover": turns, "costs": costs,
-            "source": source, "cadence": cadence_counts(all_rows)}
+            "source": source, "cadence": cadence_counts(all_rows),
+            "legacy_rows_excluded": len(legacy_rows(all_rows)),
+            "legacy_exclusion_reason": ("pre-engine rows use latest-bar semantics "
+                                        "(return already realized when recorded) — "
+                                        "NOT forward evidence; excluded from every count")}
 
 
 def _hedge_lane_series(strategy: str, ledger_path: Path) -> Dict[str, Any]:
@@ -136,57 +151,115 @@ def _hedge_lane_series(strategy: str, ledger_path: Path) -> Dict[str, Any]:
                         "note": "hedge-lane marks; rebalance accounting lives in the strategy's own ledger"}}
 
 
-def _derive_ann_factor(dates: List[str]) -> Optional[float]:
-    """Annualization factor DERIVED from the observed cadence (2026-07-19
-    audit fix: never hardcoded — hedge rows are one-bar daily marks even for
-    weekly-rebalanced strategies). Median calendar-day gap between
-    observations -> periods/year. None below 2 dated observations."""
+def _validated_span(dates: List[str]):
+    """(elapsed_years, reason) — dates must be parseable and STRICTLY
+    increasing (re-review item 4); invalid/non-monotonic -> (None, reason)."""
     ds = []
     for d in dates:
         try:
             ds.append(pd.Timestamp(d))
         except (ValueError, TypeError):
-            continue
+            return None, "invalid_dates"
+    for a, b in zip(ds, ds[1:]):
+        if b <= a:
+            return None, "invalid_dates"
     if len(ds) < 2:
+        return None, "insufficient_observations"
+    elapsed_years = (ds[-1] - ds[0]).days / 365.25
+    if elapsed_years <= 0:
+        return None, "invalid_dates"
+    return elapsed_years, None
+
+
+def _derive_ann_factor(dates: List[str]) -> Optional[float]:
+    """Observations-per-elapsed-year (re-review item 4 — the prior
+    median-gap version mishandled even counts and mapped business-day data
+    to ~365/yr): (n-1) / elapsed_years over VALIDATED strictly-increasing
+    dates. None with the span's reason otherwise."""
+    elapsed_years, _reason = _validated_span(dates)
+    if elapsed_years is None:
         return None
-    gaps = sorted((b - a).days for a, b in zip(ds, ds[1:]) if (b - a).days > 0)
-    if not gaps:
-        return None
-    median_gap = gaps[len(gaps) // 2]
-    return 365.25 / float(median_gap)
+    return (len(dates) - 1) / elapsed_years
+
+
+def evidence_eligibility(strategy: str, cadence: Optional[Dict[str, Any]],
+                         dates: List[str]) -> Dict[str, Any]:
+    """Per-strategy gate for annualization + significance (re-review item 3):
+    explicit holding-period/rebalance counts and elapsed span must meet the
+    FROZEN acceptance target. Structured reason codes:
+    insufficient_observations / insufficient_elapsed_span /
+    insufficient_independent_periods / invalid_dates / cadence_unavailable /
+    no_registered_acceptance_target."""
+    if not dates:
+        return {"eligible": False, "reason_code": "insufficient_observations",
+                "detail": "no forward observations"}
+    elapsed_years, span_reason = _validated_span(dates)
+    if span_reason == "invalid_dates":
+        return {"eligible": False, "reason_code": "invalid_dates",
+                "detail": "dates unparseable or not strictly increasing"}
+    req = ACCEPTANCE_REQUIREMENTS.get(strategy)
+    if req is None:
+        return {"eligible": False, "reason_code": "no_registered_acceptance_target",
+                "detail": f"{strategy} has no frozen acceptance target registered"}
+    if (not cadence or cadence.get("n_completed_rebalances") is None
+            or cadence.get("n_independent_holding_periods") is None):
+        return {"eligible": False, "reason_code": "cadence_unavailable",
+                "detail": "no explicit rebalance/holding-period fields — raw bars "
+                          "never satisfy weekly/monthly evidence requirements"}
+    elapsed_days = (elapsed_years or 0) * 365.25
+    if elapsed_days < req["min_elapsed_days"]:
+        return {"eligible": False, "reason_code": "insufficient_elapsed_span",
+                "detail": f"elapsed {elapsed_days:.0f}d < required "
+                          f"{req['min_elapsed_days']}d"}
+    if ("min_completed_rebalances" in req
+            and cadence["n_completed_rebalances"] < req["min_completed_rebalances"]):
+        return {"eligible": False, "reason_code": "insufficient_independent_periods",
+                "detail": f"{cadence['n_completed_rebalances']} completed rebalances "
+                          f"< required {req['min_completed_rebalances']}"}
+    if ("min_independent_periods" in req
+            and cadence["n_independent_holding_periods"] < req["min_independent_periods"]):
+        return {"eligible": False, "reason_code": "insufficient_independent_periods",
+                "detail": f"{cadence['n_independent_holding_periods']} independent "
+                          f"holding periods < required {req['min_independent_periods']}"}
+    return {"eligible": True, "reason_code": None, "detail": "acceptance target met"}
 
 
 def _metrics(returns: List[float], dates: List[str],
-             n_trials: Optional[int]) -> Dict[str, Any]:
+             n_trials: Optional[int], gate: Dict[str, Any]) -> Dict[str, Any]:
     n = len(returns)
-    out: Dict[str, Any] = {"n_observations": n}
+    out: Dict[str, Any] = {"n_observations": n, "metrics_gate": dict(gate)}
     if n == 0:
-        out.update({"cumulative_return": 0.0, "ann_return": None, "ann_vol": None,
-                    "sharpe": None, "max_drawdown": None, "ann_factor_derived": None,
-                    "unavailable_reason": "no forward observations recorded yet"})
+        out.update({"cumulative_return": 0.0, "ann_return_geometric": None,
+                    "ann_return_arithmetic": None, "ann_vol": None,
+                    "sharpe": None, "max_drawdown": None, "ann_factor_derived": None})
     else:
         s = pd.Series(returns, dtype=float)
         out["cumulative_return"] = round(float((1.0 + s).prod() - 1.0), 6)
-        # drawdown from INITIAL CAPITAL: the peak starts at 1.0, so a first
-        # observation of -10% is a 10% drawdown, never zero (audit fix).
+        # drawdown from INITIAL CAPITAL: peak starts at 1.0.
         eq = pd.concat([pd.Series([1.0]), (1.0 + s).cumprod()], ignore_index=True)
         out["max_drawdown"] = round(float(abs((eq / eq.cummax() - 1.0).min())), 5)
         ann = _derive_ann_factor(dates)
+        elapsed_years, _span_reason = _validated_span(dates)
         out["ann_factor_derived"] = None if ann is None else round(ann, 2)
-        if n >= MIN_OBS_FOR_ANNUALIZATION and ann is not None and s.std(ddof=1) > 0:
-            out["ann_return"] = round(float(s.mean() * ann), 5)
+        eligible = bool(gate.get("eligible"))
+        if eligible and ann is not None and elapsed_years and s.std(ddof=1) > 0:
+            cum = float((1.0 + s).prod())
+            out["ann_return_geometric"] = round(cum ** (1.0 / elapsed_years) - 1.0, 5)
+            out["ann_return_arithmetic"] = round(float(s.mean() * ann), 5)
             out["ann_vol"] = round(float(s.std(ddof=1) * np.sqrt(ann)), 5)
             out["sharpe"] = round(float(np.sqrt(ann) * s.mean() / s.std(ddof=1)), 4)
         else:
-            out["ann_return"] = None
+            out["ann_return_geometric"] = None
+            out["ann_return_arithmetic"] = None
             out["ann_vol"] = None
             out["sharpe"] = None
-            out["unavailable_reason"] = (
-                f"n={n} < {MIN_OBS_FOR_ANNUALIZATION} observations (or cadence "
-                "underivable) — annualizing would be mechanical extrapolation, "
-                "not a forward estimate")
-    # significance: frozen harness fns, ONLY against a registered trial count
-    if n >= 30 and n_trials is not None and n_trials > 1:
+            if eligible and n >= 2 and s.std(ddof=1) == 0:
+                out["metrics_gate"] = {**gate, "eligible": False,
+                                       "reason_code": "zero_variance",
+                                       "detail": "return variance is exactly zero"}
+    # significance: registered trial count AND acceptance eligibility
+    eligible = bool(out["metrics_gate"].get("eligible"))
+    if eligible and n >= 30 and n_trials is not None and n_trials > 1:
         s = pd.Series(returns, dtype=float)
         dsr, _ = _sig.deflated_sr(s, n_trials=int(n_trials))
         out["deflated_sr_prob"] = None if np.isnan(dsr) else round(float(dsr), 4)
@@ -195,13 +268,15 @@ def _metrics(returns: List[float], dates: List[str],
     else:
         out["deflated_sr_prob"] = None
         out["dsr_n_trials"] = n_trials
-        out["block_bootstrap_p"] = (
-            round(float(_sig.block_bootstrap_p(pd.Series(returns, dtype=float))), 5)
-            if n >= 30 else None)
-        out["significance_reason"] = (
-            f"n={n} < 30 — significance undefined (warm-up, not proof)" if n < 30 else
-            "no registered multiple-testing trial count — DSR undefined "
-            "(n_trials=1 degenerates the benchmark to -inf; never computed)")
+        out["block_bootstrap_p"] = None
+        if eligible and n_trials is None:
+            out["significance_reason"] = ("no registered multiple-testing trial "
+                                          "count — DSR undefined (never computed)")
+        elif not eligible:
+            out["significance_reason"] = ("gated by acceptance target: "
+                                          + str(out["metrics_gate"].get("reason_code")))
+        else:
+            out["significance_reason"] = f"n={n} < 30"
     return out
 
 
@@ -227,8 +302,9 @@ def build_report() -> Dict[str, Any]:
             series = _own_ledger_series(_OWN_LEDGERS[s])
         else:
             series = _hedge_lane_series(s, RAW_VS_HEDGED_LEDGER_PATH)
+        gate = evidence_eligibility(s, series.get("cadence"), series["dates"])
         m = _metrics(series["returns"], series["dates"],
-                     REGISTERED_TRIAL_COUNTS.get(s))
+                     REGISTERED_TRIAL_COUNTS.get(s), gate)
         turns = [t for t in series["turnover"] if t is not None]
         costs = [c for c in series["costs"] if c is not None]
         strategies[s] = {
@@ -238,6 +314,8 @@ def build_report() -> Dict[str, Any]:
             # 2026-07-19 review: evidence requirements count weeks/rebalances,
             # never raw daily bars — 52 daily bars != 52 weekly observations.
             "cadence": series.get("cadence"),
+            "legacy_rows_excluded": series.get("legacy_rows_excluded", 0),
+            "legacy_exclusion_reason": series.get("legacy_exclusion_reason"),
             **m,
             "avg_turnover_per_cycle": round(float(np.mean(turns)), 5) if turns else None,
             "avg_cost_per_cycle": round(float(np.mean(costs)), 6) if costs else None,
@@ -253,13 +331,18 @@ def build_report() -> Dict[str, Any]:
         }
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "schema": ["n_observations", "cadence", "cumulative_return", "ann_return",
-                   "ann_vol", "ann_factor_derived", "sharpe", "max_drawdown",
-                   "deflated_sr_prob", "dsr_n_trials", "block_bootstrap_p",
-                   "avg_turnover_per_cycle", "avg_cost_per_cycle",
-                   "residual_fraction", "beta", "benchmark_comparison"],
-        "note": ("forward-ledger evidence ONLY — never blended with backtest history; "
-                 "nulls carry reasons; significance below 30 obs is undefined by design"),
+        "schema": ["n_observations", "cadence", "legacy_rows_excluded",
+                   "metrics_gate", "cumulative_return", "ann_return_geometric",
+                   "ann_return_arithmetic", "ann_vol", "ann_factor_derived",
+                   "sharpe", "max_drawdown", "deflated_sr_prob", "dsr_n_trials",
+                   "block_bootstrap_p", "avg_turnover_per_cycle",
+                   "avg_cost_per_cycle", "residual_fraction", "beta",
+                   "benchmark_comparison"],
+        "note": ("forward ENGINE evidence only — legacy pre-engine rows are "
+                 "excluded and reported, never counted; never blended with "
+                 "backtest history; nulls carry reasons; annualization and "
+                 "significance unlock ONLY at each strategy's frozen "
+                 "acceptance target"),
         "strategies": strategies,
         "runtime_allowed": False, "paper_only": True, "human_review_required": True,
     }

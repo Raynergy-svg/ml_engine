@@ -1,14 +1,17 @@
 {
-  "generated_at": "2026-07-19T02:47:56.230371+00:00",
+  "generated_at": "2026-07-19T03:45:35.015680+00:00",
   "human_review_required": true,
-  "note": "forward-ledger evidence ONLY \u2014 never blended with backtest history; nulls carry reasons; significance below 30 obs is undefined by design",
+  "note": "forward ENGINE evidence only \u2014 legacy pre-engine rows are excluded and reported, never counted; never blended with backtest history; nulls carry reasons; annualization and significance unlock ONLY at each strategy's frozen acceptance target",
   "paper_only": true,
   "runtime_allowed": false,
   "schema": [
     "n_observations",
     "cadence",
+    "legacy_rows_excluded",
+    "metrics_gate",
     "cumulative_return",
-    "ann_return",
+    "ann_return_geometric",
+    "ann_return_arithmetic",
     "ann_vol",
     "ann_factor_derived",
     "sharpe",
@@ -25,43 +28,52 @@
   "strategies": {
     "crypto_momentum": {
       "ann_factor_derived": null,
-      "ann_return": null,
+      "ann_return_arithmetic": null,
+      "ann_return_geometric": null,
       "ann_vol": null,
-      "avg_cost_per_cycle": 7e-06,
-      "avg_turnover_per_cycle": 0.00732,
+      "avg_cost_per_cycle": null,
+      "avg_turnover_per_cycle": null,
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
       "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
-        "n_calendar_months": 1,
-        "n_calendar_weeks": 1,
-        "n_completed_rebalances": 0,
-        "n_independent_holding_periods": 0,
-        "n_return_bars": 1,
-        "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
+        "n_calendar_months": 0,
+        "n_calendar_weeks": 0,
+        "n_completed_rebalances": null,
+        "n_independent_holding_periods": null,
+        "n_legacy_rows_excluded": 1,
+        "n_return_bars": 0,
+        "note": "rows lack explicit rebalance fields (legacy/pre-rev3) \u2014 rebalance counts undefined, not inferred from book inequality; weekly/monthly requirements count holding periods/weeks, NEVER raw daily bars"
       },
-      "cumulative_return": 0.010242,
+      "cumulative_return": 0.0,
       "deflated_sr_prob": null,
       "dsr_n_trials": 15,
-      "first_asof": "2026-05-31",
-      "last_asof": "2026-05-31",
-      "max_drawdown": 0.0,
-      "n_observations": 1,
+      "first_asof": null,
+      "last_asof": null,
+      "legacy_exclusion_reason": "pre-engine rows use latest-bar semantics (return already realized when recorded) \u2014 NOT forward evidence; excluded from every count",
+      "legacy_rows_excluded": 1,
+      "max_drawdown": null,
+      "metrics_gate": {
+        "detail": "no forward observations",
+        "eligible": false,
+        "reason_code": "insufficient_observations"
+      },
+      "n_observations": 0,
       "residual_fraction": {
         "n_aligned_cycles": 0,
         "phi": null,
         "reason": "no_aligned_residual_cycles"
       },
       "sharpe": null,
-      "significance_reason": "n=1 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "trained_data/crypto/shadow_momentum_ledger.jsonl",
-      "unavailable_reason": "n=1 < 8 observations (or cadence underivable) \u2014 annualizing would be mechanical extrapolation, not a forward estimate"
+      "significance_reason": "gated by acceptance target: insufficient_observations",
+      "source": "trained_data/crypto/shadow_momentum_ledger.jsonl"
     },
     "crypto_ts_trend": {
       "ann_factor_derived": null,
-      "ann_return": null,
+      "ann_return_arithmetic": null,
+      "ann_return_geometric": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
       "avg_turnover_per_cycle": null,
@@ -73,30 +85,38 @@
       "cadence": {
         "n_calendar_months": 0,
         "n_calendar_weeks": 0,
-        "n_completed_rebalances": 0,
-        "n_independent_holding_periods": 0,
+        "n_completed_rebalances": null,
+        "n_independent_holding_periods": null,
+        "n_legacy_rows_excluded": 0,
         "n_return_bars": 0,
-        "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
+        "note": "rows lack explicit rebalance fields (legacy/pre-rev3) \u2014 rebalance counts undefined, not inferred from book inequality; weekly/monthly requirements count holding periods/weeks, NEVER raw daily bars"
       },
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
       "dsr_n_trials": 15,
       "first_asof": null,
       "last_asof": null,
+      "legacy_exclusion_reason": "pre-engine rows use latest-bar semantics (return already realized when recorded) \u2014 NOT forward evidence; excluded from every count",
+      "legacy_rows_excluded": 0,
       "max_drawdown": null,
+      "metrics_gate": {
+        "detail": "no forward observations",
+        "eligible": false,
+        "reason_code": "insufficient_observations"
+      },
       "n_observations": 0,
       "residual_fraction": {
         "phi": null,
         "reason": "strategy not in residual attribution report"
       },
       "sharpe": null,
-      "significance_reason": "n=0 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "trained_data/crypto/shadow_ts_trend_ledger.jsonl",
-      "unavailable_reason": "no forward observations recorded yet"
+      "significance_reason": "gated by acceptance target: insufficient_observations",
+      "source": "trained_data/crypto/shadow_ts_trend_ledger.jsonl"
     },
     "equity_harvester": {
       "ann_factor_derived": null,
-      "ann_return": null,
+      "ann_return_arithmetic": null,
+      "ann_return_geometric": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
       "avg_turnover_per_cycle": null,
@@ -118,7 +138,14 @@
       "dsr_n_trials": null,
       "first_asof": null,
       "last_asof": null,
+      "legacy_exclusion_reason": null,
+      "legacy_rows_excluded": 0,
       "max_drawdown": null,
+      "metrics_gate": {
+        "detail": "no forward observations",
+        "eligible": false,
+        "reason_code": "insufficient_observations"
+      },
       "n_observations": 0,
       "residual_fraction": {
         "n_aligned_cycles": 0,
@@ -126,13 +153,13 @@
         "reason": "no_aligned_residual_cycles"
       },
       "sharpe": null,
-      "significance_reason": "n=0 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "raw_vs_hedged_ledger.jsonl:strategy=equity_harvester (resolved raw marks, deduped)",
-      "unavailable_reason": "no forward observations recorded yet"
+      "significance_reason": "gated by acceptance target: insufficient_observations",
+      "source": "raw_vs_hedged_ledger.jsonl:strategy=equity_harvester (resolved raw marks, deduped)"
     },
     "fx_trend": {
       "ann_factor_derived": null,
-      "ann_return": null,
+      "ann_return_arithmetic": null,
+      "ann_return_geometric": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
       "avg_turnover_per_cycle": null,
@@ -154,20 +181,27 @@
       "dsr_n_trials": null,
       "first_asof": null,
       "last_asof": null,
+      "legacy_exclusion_reason": null,
+      "legacy_rows_excluded": 0,
       "max_drawdown": null,
+      "metrics_gate": {
+        "detail": "no forward observations",
+        "eligible": false,
+        "reason_code": "insufficient_observations"
+      },
       "n_observations": 0,
       "residual_fraction": {
         "phi": null,
         "reason": "strategy not in residual attribution report"
       },
       "sharpe": null,
-      "significance_reason": "n=0 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "raw_vs_hedged_ledger.jsonl:strategy=fx_trend (resolved raw marks, deduped)",
-      "unavailable_reason": "no forward observations recorded yet"
+      "significance_reason": "gated by acceptance target: insufficient_observations",
+      "source": "raw_vs_hedged_ledger.jsonl:strategy=fx_trend (resolved raw marks, deduped)"
     },
     "multi_asset_trend": {
       "ann_factor_derived": null,
-      "ann_return": null,
+      "ann_return_arithmetic": null,
+      "ann_return_geometric": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
       "avg_turnover_per_cycle": null,
@@ -179,30 +213,38 @@
       "cadence": {
         "n_calendar_months": 0,
         "n_calendar_weeks": 0,
-        "n_completed_rebalances": 0,
-        "n_independent_holding_periods": 0,
+        "n_completed_rebalances": null,
+        "n_independent_holding_periods": null,
+        "n_legacy_rows_excluded": 0,
         "n_return_bars": 0,
-        "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
+        "note": "rows lack explicit rebalance fields (legacy/pre-rev3) \u2014 rebalance counts undefined, not inferred from book inequality; weekly/monthly requirements count holding periods/weeks, NEVER raw daily bars"
       },
       "cumulative_return": 0.0,
       "deflated_sr_prob": null,
       "dsr_n_trials": 20,
       "first_asof": null,
       "last_asof": null,
+      "legacy_exclusion_reason": "pre-engine rows use latest-bar semantics (return already realized when recorded) \u2014 NOT forward evidence; excluded from every count",
+      "legacy_rows_excluded": 0,
       "max_drawdown": null,
+      "metrics_gate": {
+        "detail": "no forward observations",
+        "eligible": false,
+        "reason_code": "insufficient_observations"
+      },
       "n_observations": 0,
       "residual_fraction": {
         "phi": null,
         "reason": "strategy not in residual attribution report"
       },
       "sharpe": null,
-      "significance_reason": "n=0 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "trained_data/trend/shadow_multi_asset_trend_ledger.jsonl",
-      "unavailable_reason": "no forward observations recorded yet"
+      "significance_reason": "gated by acceptance target: insufficient_observations",
+      "source": "trained_data/trend/shadow_multi_asset_trend_ledger.jsonl"
     },
     "oanda_fx": {
       "ann_factor_derived": null,
-      "ann_return": null,
+      "ann_return_arithmetic": null,
+      "ann_return_geometric": null,
       "ann_vol": null,
       "avg_cost_per_cycle": null,
       "avg_turnover_per_cycle": null,
@@ -224,52 +266,66 @@
       "dsr_n_trials": null,
       "first_asof": null,
       "last_asof": null,
+      "legacy_exclusion_reason": null,
+      "legacy_rows_excluded": 0,
       "max_drawdown": null,
+      "metrics_gate": {
+        "detail": "no forward observations",
+        "eligible": false,
+        "reason_code": "insufficient_observations"
+      },
       "n_observations": 0,
       "residual_fraction": {
         "phi": null,
         "reason": "strategy not in residual attribution report"
       },
       "sharpe": null,
-      "significance_reason": "n=0 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "raw_vs_hedged_ledger.jsonl:strategy=oanda_fx (resolved raw marks, deduped)",
-      "unavailable_reason": "no forward observations recorded yet"
+      "significance_reason": "gated by acceptance target: insufficient_observations",
+      "source": "raw_vs_hedged_ledger.jsonl:strategy=oanda_fx (resolved raw marks, deduped)"
     },
     "track_b": {
       "ann_factor_derived": null,
-      "ann_return": null,
+      "ann_return_arithmetic": null,
+      "ann_return_geometric": null,
       "ann_vol": null,
-      "avg_cost_per_cycle": 1.2e-05,
-      "avg_turnover_per_cycle": 0.05841,
+      "avg_cost_per_cycle": null,
+      "avg_turnover_per_cycle": null,
       "benchmark_comparison": null,
       "benchmark_reason": "no operator-designated benchmark series for this lane yet",
       "beta": null,
       "beta_reason": "NOT IMPLEMENTED by any current pipeline \u2014 no benchmark series is designated for this lane and none is imputed; field populates only when a pipeline actually computes it",
       "block_bootstrap_p": null,
       "cadence": {
-        "n_calendar_months": 1,
-        "n_calendar_weeks": 1,
-        "n_completed_rebalances": 0,
-        "n_independent_holding_periods": 0,
-        "n_return_bars": 1,
-        "note": "weekly/monthly evidence requirements count rebalances/weeks, NEVER raw daily bars"
+        "n_calendar_months": 0,
+        "n_calendar_weeks": 0,
+        "n_completed_rebalances": null,
+        "n_independent_holding_periods": null,
+        "n_legacy_rows_excluded": 1,
+        "n_return_bars": 0,
+        "note": "rows lack explicit rebalance fields (legacy/pre-rev3) \u2014 rebalance counts undefined, not inferred from book inequality; weekly/monthly requirements count holding periods/weeks, NEVER raw daily bars"
       },
-      "cumulative_return": 0.001264,
+      "cumulative_return": 0.0,
       "deflated_sr_prob": null,
       "dsr_n_trials": null,
-      "first_asof": "2026-06-24",
-      "last_asof": "2026-06-24",
-      "max_drawdown": 0.0,
-      "n_observations": 1,
+      "first_asof": null,
+      "last_asof": null,
+      "legacy_exclusion_reason": "pre-engine rows use latest-bar semantics (return already realized when recorded) \u2014 NOT forward evidence; excluded from every count",
+      "legacy_rows_excluded": 1,
+      "max_drawdown": null,
+      "metrics_gate": {
+        "detail": "no forward observations",
+        "eligible": false,
+        "reason_code": "insufficient_observations"
+      },
+      "n_observations": 0,
       "residual_fraction": {
         "n_aligned_cycles": 0,
         "phi": null,
         "reason": "no_aligned_residual_cycles"
       },
       "sharpe": null,
-      "significance_reason": "n=1 < 30 \u2014 significance undefined (warm-up, not proof)",
-      "source": "trained_data/research/track_b_shadow_ledger.jsonl",
-      "unavailable_reason": "n=1 < 8 observations (or cadence underivable) \u2014 annualizing would be mechanical extrapolation, not a forward estimate"
+      "significance_reason": "gated by acceptance target: insufficient_observations",
+      "source": "trained_data/research/track_b_shadow_ledger.jsonl"
     }
   }
 }

@@ -220,6 +220,27 @@ def _row_identity(row: Dict[str, Any]) -> Tuple[str, str, Optional[str], Optiona
             float(notional) if isinstance(notional, (int, float)) else None)
 
 
+def _material_evidence(row: Dict[str, Any]) -> str:
+    """Canonical serialization of the fields that ARE the evidence: realized
+    raw/hedged returns+costs, the hedge decision, exposure and review flags.
+    Two same-period rows whose material evidence matches are ONE observation
+    (re-review item 2: 'exact duplicate evidence-period rows may collapse');
+    volatile provenance (cycle_ts, meta.source_path) never distinguishes
+    evidence."""
+    def _marks(sub: Any) -> Dict[str, Any]:
+        sub = sub if isinstance(sub, dict) else {}
+        return {k: sub.get(k) for k in ("net_return", "gross_return", "cost")}
+    return json.dumps({
+        "raw": _marks(row.get("raw")),
+        "hedged": _marks(row.get("hedged")),
+        "hedge": row.get("hedge"),
+        "exposure": row.get("exposure"),
+        "paper_only": row.get("paper_only"),
+        "runtime_allowed": row.get("runtime_allowed"),
+        "human_review_required": row.get("human_review_required"),
+    }, sort_keys=True, default=str)
+
+
 def dedupe_ledger_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Canonical ACTIVE evidence set (2026-07-19 scheduler-safety audit,
     finding 3): the evidence period is (strategy, asof_date) — one market
@@ -230,20 +251,43 @@ def dedupe_ledger_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     evidence consumer (scorecard, residual attribution, promotion gate,
     metrics) consumes exactly this canonical set. Order of first
     appearance preserved."""
+    from src.evidence.forward_ledger import EvidenceConflictError
     by_period: Dict[Tuple[str, str], Dict[str, Any]] = {}
     order: List[Tuple[str, str]] = []
     superseded = 0
+    voided = 0
     for row in rows:
+        if row.get("voided") is True:
+            # Explicitly voided by an audited repair (e.g. a degraded
+            # re-capture with null marks of an already-resolved period) —
+            # never evidence, never a conflict. Kept in the file as history.
+            voided += 1
+            continue
         key = (str(row.get("strategy", "")), str(row.get("asof_date", "")))
         if key in by_period:
+            # 2026-07-19 re-review item 2: an EXACT duplicate (identical book
+            # identity AND identical material evidence) collapses to one
+            # observation. Anything else replaces the prior revision ONLY via
+            # explicit supersession (the ``supersedes`` pointer the locked
+            # append writes). Two differing rows claiming one period without
+            # it is CONFLICTING evidence — fail closed, never silently pick
+            # one.
+            prior = by_period[key]
+            if (_row_identity(prior) == _row_identity(row)
+                    and _material_evidence(prior) == _material_evidence(row)):
+                continue                      # exact duplicate: count ONCE
+            if not row.get("supersedes"):
+                raise EvidenceConflictError(
+                    f"conflicting hedge rows for evidence period {key!r} "
+                    "without explicit supersession — refusing to resolve silently")
             superseded += 1
         else:
             order.append(key)
         by_period[key] = row
-    if superseded:
-        logger.warning("hedged_shadow_lane: %d superseded snapshot revision(s) "
-                       "excluded — one active observation per evidence period",
-                       superseded)
+    if superseded or voided:
+        logger.warning("hedged_shadow_lane: %d explicitly superseded and %d "
+                       "explicitly voided revision(s) excluded — one active "
+                       "observation per evidence period", superseded, voided)
     return [by_period[k] for k in order]
 
 
@@ -1157,7 +1201,13 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
                         "(identity %s…) — refusing duplicate cycle row",
                         strategy, book.asof_date, (identity[2] or "")[:12])
                     return None
-                row["supersedes"] = prior_active.get("book_identity_sha256")
+                # NEVER falsy: a legacy prior may lack a stored identity —
+                # derive it, else stamp an explicit sentinel so downstream
+                # canonical reads recognize the supersession (a None stamp
+                # would re-raise EvidenceConflictError forever).
+                row["supersedes"] = (prior_active.get("book_identity_sha256")
+                                     or _row_identity(prior_active)[2]
+                                     or "pre_identity_row")
                 logger.warning(
                     "hedged_shadow_lane: REVISED snapshot for %s asof=%s supersedes "
                     "%s… — one active observation per evidence period",

@@ -1,0 +1,138 @@
+{
+  "arms": {
+    "research_sma200": {
+      "avg_annual_turnover": 33.08525766470972,
+      "cost_arms": {
+        "0bps": {
+          "ann_return_levered": -0.01614,
+          "ann_return_unlevered": -0.00538,
+          "ann_vol_levered": 0.15926,
+          "block_bootstrap_p": 0.6382,
+          "deflated_sr_prob": 0.1904,
+          "max_dd_levered": 0.49491,
+          "max_dd_unlevered": 0.19327,
+          "net_sharpe": -0.1014,
+          "positive_years": 5,
+          "total_years": 13
+        },
+        "1bps": {
+          "ann_return_levered": -0.02607,
+          "ann_return_unlevered": -0.00869,
+          "ann_vol_levered": 0.15924,
+          "block_bootstrap_p": 0.7178,
+          "deflated_sr_prob": 0.1363,
+          "max_dd_levered": 0.54662,
+          "max_dd_unlevered": 0.21053,
+          "net_sharpe": -0.1637,
+          "positive_years": 5,
+          "total_years": 13
+        },
+        "2bps": {
+          "ann_return_levered": -0.03599,
+          "ann_return_unlevered": -0.012,
+          "ann_vol_levered": 0.15922,
+          "block_bootstrap_p": 0.7916,
+          "deflated_sr_prob": 0.0937,
+          "max_dd_levered": 0.59472,
+          "max_dd_unlevered": 0.23869,
+          "net_sharpe": -0.2261,
+          "positive_years": 4,
+          "total_years": 13
+        }
+      },
+      "n_days": 3066,
+      "sma_window": 200,
+      "span": [
+        "2014-10-09",
+        "2026-06-11"
+      ]
+    },
+    "runtime_sma100": {
+      "avg_annual_turnover": 43.005685407454195,
+      "cost_arms": {
+        "0bps": {
+          "ann_return_levered": -0.01435,
+          "ann_return_unlevered": -0.00478,
+          "ann_vol_levered": 0.16605,
+          "block_bootstrap_p": 0.623,
+          "deflated_sr_prob": 0.2031,
+          "max_dd_levered": 0.58564,
+          "max_dd_unlevered": 0.23788,
+          "net_sharpe": -0.0864,
+          "positive_years": 6,
+          "total_years": 13
+        },
+        "1bps": {
+          "ann_return_levered": -0.02725,
+          "ann_return_unlevered": -0.00908,
+          "ann_vol_levered": 0.166,
+          "block_bootstrap_p": 0.7288,
+          "deflated_sr_prob": 0.1329,
+          "max_dd_levered": 0.61798,
+          "max_dd_unlevered": 0.25824,
+          "net_sharpe": -0.1642,
+          "positive_years": 6,
+          "total_years": 13
+        },
+        "2bps": {
+          "ann_return_levered": -0.04015,
+          "ann_return_unlevered": -0.01338,
+          "ann_vol_levered": 0.16596,
+          "block_bootstrap_p": 0.8194,
+          "deflated_sr_prob": 0.0811,
+          "max_dd_levered": 0.64919,
+          "max_dd_unlevered": 0.27806,
+          "net_sharpe": -0.2419,
+          "positive_years": 5,
+          "total_years": 13
+        }
+      },
+      "n_days": 3166,
+      "sma_window": 100,
+      "span": [
+        "2014-05-22",
+        "2026-06-11"
+      ]
+    }
+  },
+  "construction": "trend_sleeve_weights(close.ffill(), sma_window=W, step=1) \u2014 verbatim runtime call",
+  "cost_model": "turnover x bps/side, fixed grid \u2014 stated assumption, not fitted",
+  "generated_at": "2026-07-19T03:46:37.948036+00:00",
+  "gross_leverage": 3.0,
+  "n_trials_declared": 2,
+  "not_modeled": [
+    "ATR risk-normalized unit sizing (runtime's actual sizer; gross leverage is only a ceiling there)",
+    "stop-loss/take-profit brackets + position management",
+    "drawdown halts, margin limits, one-position gate,",
+    "currency-bucket limits, cost gates",
+    "order-level fill timing",
+    "financing/swap",
+    "metals+CFD candidates (uncached)"
+  ],
+  "purpose": "SIGNAL-ONLY validation of the OANDA trend lane's target rule; isolates the SMA100(runtime) vs SMA200(research) window mismatch. NOT a runtime reproduction: ATR risk-normalized sizing, brackets and order-level gates are NOT modeled \u2014 a negative here rejects the equal-weight SMA SIGNAL spec, not the risk-gated runtime (readiness report 2026-07-18 step 3; scope corrected 2026-07-19)",
+  "scope": "signal_only",
+  "universe_cached": [
+    "AUD_USD",
+    "EUR_GBP",
+    "EUR_JPY",
+    "EUR_USD",
+    "GBP_JPY",
+    "GBP_USD",
+    "NZD_USD",
+    "USD_CAD",
+    "USD_CHF",
+    "USD_JPY"
+  ],
+  "universe_uncovered": [
+    "XAU_USD",
+    "XAG_USD",
+    "SPX500_USD",
+    "NAS100_USD",
+    "US30_USD",
+    "DE30_EUR",
+    "UK100_GBP",
+    "BCO_USD",
+    "WTICO_USD",
+    "NATGAS_USD"
+  ]
+}

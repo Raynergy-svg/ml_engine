@@ -15,9 +15,15 @@ modeled here. This verdict therefore rejects the equal-weight SMA SIGNAL
 specification on this universe; it does NOT prove the risk-gated practice
 runtime is expectancy-negative. Runner:
 `scripts/backtest_oanda_trend_runtime.py`; artifact:
-`trained_data/backtests/oanda_trend_runtime_20260719T024608Z.json`
-(supersedes the 015827Z artifact, whose purpose field overclaimed
-"runtime-exact"; numbers identical). Two pre-specified arms only
+`trained_data/backtests/oanda_trend_runtime_20260719T034642Z.json`
+(supersedes 024608Z after the 2026-07-19 re-review accounting fixes —
+item 5: costs now charged on `applied.diff()` turnover, the series that
+earns returns, not the unshifted decision targets; item 6: max drawdown is
+the compounded initial-capital-peak implementation shared with the
+promotion gate. Numeric effect at this turnover: Sharpe shifts ≤0.001,
+maxDD ≤0.01pp — the verdict is unchanged on every arm. 024608Z itself
+superseded 015827Z, whose purpose field overclaimed "runtime-exact";
+those numbers were identical). Two pre-specified arms only
 (N_TRIALS=2); costs: fixed turnover × {0,1,2} bps/side grid.
 
 ## Result (FX-only cached subset: the 10 FX candidates; 2014-05 → 2026-06)

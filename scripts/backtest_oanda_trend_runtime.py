@@ -16,15 +16,16 @@ Background: the 2026-07-18 readiness report found the practice runner and the va
 research construction disagree on the trend window: the runtime default is
 SMA100 (``src/equity/oanda_trend.py:DEFAULT_SMA``) while the pre-registered
 multi-asset trend work froze SMA200 (``multi_asset_trend.SMA_WINDOW`` /
-``trend_sleeve.DEFAULT_SMA``). "Practice results cannot be assumed to
-validate the research strategy. Backtest the exact live rule ... before
-judging its practice P&L." This script does exactly that, offline, on the
-repo's cached OANDA daily panels.
+``trend_sleeve.DEFAULT_SMA``). This script isolates that window mismatch at
+the SIGNAL layer, offline, on the repo's cached OANDA daily panels. (The
+runtime's OWN risk machinery is modeled separately by
+``backtest_oanda_trend_atr_runtime.py``.)
 
 WHAT IS EXACT (verbatim reuse, nothing re-derived) — the SIGNAL layer only:
-  * Signal + sizing = ``trend_sleeve_weights(close.ffill(), sma_window=W,
+  * Target rule = ``trend_sleeve_weights(close.ffill(), sma_window=W,
     step=1)`` — the PRECISE call ``oanda_trend.trend_targets`` makes (daily
     step, equal-weight on-set, long-or-flat, double shift(1) causal).
+    Sizing is NOT this — the runtime sizes with ATR risk-normalized units.
   * Universe = the runner's ``CANDIDATE_INSTRUMENTS`` intersected with the
     cached daily panels (``market_data/factor/{PAIR}_D.csv``). The cache
     covers the 10 FX candidates; metals/index/commodity CFDs are NOT cached
@@ -42,10 +43,17 @@ COST MODEL (stated assumption, three fixed stress points, no fitting):
   spread; ~1bp/side approximates majors' typical all-in cost, 2bp is the
   stress case, 0bp bounds the frictionless ceiling.
 
-WHAT IS NOT MODELED (honest limits): order-level risk gates
-(one-position gate, exposure fail-closed refusals), intraday fill timing,
-financing/swap. Those bind occasionally at runtime; this backtest answers
-the SIGNAL+SIZING question the report asked, not fill microstructure.
+WHAT IS NOT MODELED (honest limits): ATR risk-normalized sizing, brackets,
+order-level risk gates (one-position gate, exposure fail-closed refusals),
+intraday fill timing, financing/swap. This backtest validates the TARGET
+SIGNAL specification only — nothing more.
+
+ACCOUNTING (2026-07-19 re-review items 5+6): costs are charged on the
+turnover of the APPLIED weights (``applied.diff()`` — the same series that
+earns the returns), so a target change decided at bar t-1 pays its cost on
+bar t, exactly when the position actually changes. Max drawdown is the
+compounded equity-curve drawdown with the peak starting at INITIAL CAPITAL
+(1.0) — the same implementation the promotion gate uses.
 
 Usage:
     python scripts/backtest_oanda_trend_runtime.py
@@ -68,6 +76,7 @@ for _p in (str(REPO_ROOT), str(REPO_ROOT / "scripts")):
 
 import experiment_crypto_xs_signals as _sig                     # noqa: E402  frozen DSR/bootstrap fns
 from run_oanda_trend import CANDIDATE_INSTRUMENTS               # noqa: E402  the runner's own universe
+from src.hedge.portfolio_promotion import _max_drawdown         # noqa: E402  compounded, initial-capital peak
 from src.equity.oanda_trend import DEFAULT_GROSS_LEVERAGE, DEFAULT_SMA  # noqa: E402
 from src.equity.multi_asset_trend import SMA_WINDOW as RESEARCH_SMA     # noqa: E402
 from src.equity.trend_sleeve import trend_sleeve_weights        # noqa: E402  the exact runtime call
@@ -109,7 +118,11 @@ def backtest_arm(panel: pd.DataFrame, sma_window: int,
     applied = targets.shift(1).fillna(0.0)            # position enters the NEXT bar
     rets = panel.pct_change().reindex(columns=applied.columns).fillna(0.0)
     base = (applied * rets).sum(axis=1)               # unlevered, gross of costs
-    turnover = (targets - targets.shift(1)).abs().sum(axis=1).fillna(0.0)
+    # 2026-07-19 re-review item 5: turnover from the APPLIED weights — the
+    # series that earns the returns. The previous unshifted-target turnover
+    # charged each cost one bar BEFORE the position actually changed,
+    # misaligning costs with returns.
+    turnover = applied.diff().abs().sum(axis=1).fillna(0.0)
 
     # Warmup: drop the span before the signal can exist at all.
     start = panel.index[min(len(panel) - 1, sma_window + 1)]
@@ -133,8 +146,10 @@ def backtest_arm(panel: pd.DataFrame, sma_window: int,
             "ann_return_unlevered": round(float(net1.mean() * ANN), 5),
             "ann_return_levered": round(float(net.mean() * ANN), 5),
             "ann_vol_levered": round(float(net.std(ddof=1) * np.sqrt(ANN)), 5),
-            "max_dd_unlevered": round(abs(_sig.max_drawdown(net1)), 5),
-            "max_dd_levered": round(abs(_sig.max_drawdown(net)), 5),
+            # item 6: compounded drawdown, peak starts at INITIAL capital —
+            # _sig.max_drawdown omitted drawdown from the starting equity.
+            "max_dd_unlevered": round(_max_drawdown(net1.tolist()), 5),
+            "max_dd_levered": round(_max_drawdown(net.tolist()), 5),
             "deflated_sr_prob": None if np.isnan(dsr) else round(dsr, 4),
             "block_bootstrap_p": round(_sig.block_bootstrap_p(net1), 5),
             "positive_years": int((yearly > 0).sum()),

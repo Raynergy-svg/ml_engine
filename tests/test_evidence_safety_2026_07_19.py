@@ -350,8 +350,11 @@ def test_all_consumers_share_the_same_canonical_evidence_period_set(tmp_path):
         {**base, "asof_date": "2026-06-01", "weights": {"A": 0.5},
          "raw": {"net_return": 0.010}, "hedged": {"net_return": 0.009, "gross_return": None,
                                                   "return_basis": "net"}},
-        # revision of the SAME period — must supersede everywhere
+        # revision of the SAME period — must supersede everywhere. Re-review
+        # item 2: the replacement is EXPLICIT (the ``supersedes`` stamp the
+        # locked append writes); an unmarked second row now fails closed.
         {**base, "asof_date": "2026-06-01", "weights": {"A": 0.7},
+         "supersedes": "prior-book-identity",
          "raw": {"net_return": 0.012}, "hedged": {"net_return": 0.011, "gross_return": None,
                                                   "return_basis": "net"}},
         {**base, "asof_date": "2026-06-02", "weights": {"A": 0.7},

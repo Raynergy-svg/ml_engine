@@ -67,10 +67,12 @@ jobs:
             tests/test_research_tooling_2026_07_18.py \
             tests/test_evidence_safety_2026_07_19.py \
             tests/test_atr_runtime_and_h4_2026_07_19.py \
+            tests/test_evidence_canonical_2026_07_19.py \
             tests/test_walkforward_metrics.py \
             src/crypto/ts_trend_shadow.py \
             src/crypto/momentum_shadow.py \
             scripts/backtest_oanda_trend_atr_runtime.py \
+            scripts/repair_hedge_ledger_supersession.py \
             src/equity/multi_asset_trend_lane.py \
             src/evidence/forward_ledger.py \
             scripts/run_strategy_lanes.py \
@@ -90,6 +92,7 @@ jobs:
             tests/test_research_tooling_2026_07_18.py \
             tests/test_evidence_safety_2026_07_19.py \
             tests/test_atr_runtime_and_h4_2026_07_19.py \
+            tests/test_evidence_canonical_2026_07_19.py \
             tests/test_walkforward_metrics.py \
             -q --tb=short
 

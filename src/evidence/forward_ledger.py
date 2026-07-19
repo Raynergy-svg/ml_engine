@@ -352,28 +352,67 @@ def _last_forward_seq(rows: List[Dict[str, Any]]) -> int:
     return max(seqs) if seqs else 0
 
 
+class EvidenceConflictError(RuntimeError):
+    """Two rows claim the same evidence period without explicit supersession
+    — conflicting evidence fails closed, never silently resolved."""
+
+
+def legacy_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Rows written BEFORE the evidence-safe engine (no ``kind`` field).
+    They were recorded with latest-bar semantics — their returns were
+    already realized when recorded, so they are NOT forward evidence and
+    are excluded from every forward count (2026-07-19 re-review item 1).
+    They are surfaced here so reports can state exactly what was excluded."""
+    return [r for r in rows if "kind" not in r]
+
+
 def active_observations(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Canonical evidence set: ONE active observation per evidence period —
-    the LAST recorded revision supersedes earlier ones (finding 3). Rows
-    without an evidence_period_id (legacy) key on asof_date. Activation
-    baselines are excluded."""
+    """The ONE canonical evidence view (re-review item 2): engine-written
+    forward rows only, one ACTIVE observation per evidence period.
+
+    * Activation baselines: excluded (not observations).
+    * Legacy pre-engine rows (no ``kind``): excluded — latest-bar semantics
+      are not forward evidence; see ``legacy_rows`` for the excluded set.
+    * Duplicate evidence periods: an EXACT duplicate (same
+      ``snapshot_version_id`` AND same realized return) collapses to one
+      observation; anything else FAILS CLOSED (``EvidenceConflictError``)
+      unless the later row carries an explicit ``supersedes`` pointer, in
+      which case it replaces the earlier revision. Silent keep-last on a
+      conflict is gone.
+    Every consumer (returns, dates, turnover, costs, cadence, residuals,
+    promotion inputs) must derive from THIS view — never from the raw set.
+    """
     by_period: Dict[str, Dict[str, Any]] = {}
     order: List[str] = []
     for r in rows:
-        if r.get("kind", "forward") != "forward":
+        if "kind" not in r:
+            continue          # legacy: excluded, surfaced via legacy_rows()
+        if r.get("kind") != "forward":
             continue
         if not isinstance(r.get("today_net_return"), (int, float)):
             continue
-        key = r.get("evidence_period_id") or f"legacy:{r.get('asof_date')}"
-        if key not in by_period:
+        key = r.get("evidence_period_id") or f"undated:{r.get('asof_date')}"
+        if key in by_period:
+            prior = by_period[key]
+            same_snapshot = (r.get("snapshot_version_id") is not None
+                             and r.get("snapshot_version_id")
+                             == prior.get("snapshot_version_id"))
+            same_return = r.get("today_net_return") == prior.get("today_net_return")
+            if same_snapshot and same_return:
+                continue      # exact duplicate: ONE observation, never two
+            if not r.get("supersedes"):
+                raise EvidenceConflictError(
+                    f"conflicting rows for evidence period {key!r} without "
+                    "explicit supersession — refusing to pick one silently")
+            by_period[key] = r
+        else:
             order.append(key)
-        by_period[key] = r
+            by_period[key] = r
     return [by_period[k] for k in order]
 
 
 def forward_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Active forward observations only (baselines excluded, one per
-    evidence period). Alias kept for existing consumers."""
+    """Alias for the canonical view (kept for existing consumers)."""
     return active_observations(rows)
 
 
@@ -398,6 +437,7 @@ def cadence_counts(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
                 months.add(d[:7])
             except ValueError:
                 pass
+    n_legacy = len(legacy_rows(rows))
     have_explicit = bool(fwd) and all(
         "holding_period_id" in r and "rebalance_event" in r for r in fwd)
     if have_explicit:
@@ -421,10 +461,12 @@ def cadence_counts(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "n_calendar_months": len(months),
         "n_completed_rebalances": n_rebal,
         "n_independent_holding_periods": n_holding,
+        "n_legacy_rows_excluded": n_legacy,
         "note": note,
     }
 
 
-__all__ = ["LedgerCorruptionError", "active_observations", "append_unseen_bars",
-           "cadence_counts", "construction_sha256", "forward_rows",
-           "ledger_lock", "read_rows", "snapshot_version_id"]
+__all__ = ["EvidenceConflictError", "LedgerCorruptionError",
+           "active_observations", "append_unseen_bars", "cadence_counts",
+           "construction_sha256", "forward_rows", "ledger_lock",
+           "legacy_rows", "read_rows", "snapshot_version_id"]
