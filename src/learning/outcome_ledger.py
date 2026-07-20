@@ -33,9 +33,20 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 from src.evidence.hashing import content_digest
+from src.learning.decision_record import RECORD_KIND_DECISION, RECORD_KIND_REALIZED
 from src.learning.outcome_attribution import AttributionReport, OutcomeRecord
 
 logger = logging.getLogger(__name__)
+
+
+class OutcomeLedgerKindError(TypeError):
+    """A decision record was offered to the realized-outcome ledger.
+
+    The two corpora must never blend: a decision is an intention, a realized
+    outcome is money that moved. Raised rather than skipped, because silently
+    dropping the row would hide a caller that has confused the two.
+    """
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LEDGER_PATH = REPO_ROOT / "trained_data" / "learning" / "outcome_ledger.jsonl"
@@ -89,6 +100,7 @@ def build_row(
 ) -> Dict[str, Any]:
     """Assemble one ledger row from an outcome and its attribution."""
     return {
+        "record_kind": RECORD_KIND_REALIZED,
         "schema_version": LEDGER_SCHEMA_VERSION,
         "outcome_key": outcome_key(outcome),
         "source": source,
@@ -146,6 +158,16 @@ def append_rows(
                     seen.add(existing["outcome_key"])
 
             for row in pending:
+                # A DecisionRecord describes an INTENTION; this ledger holds
+                # money that actually moved. Letting a candidate in would let a
+                # counterfactual inflate realized performance, so the boundary
+                # is enforced here rather than trusted to the caller.
+                kind = row.get("record_kind")
+                if kind == RECORD_KIND_DECISION:
+                    raise OutcomeLedgerKindError(
+                        "realized outcome ledger refuses a decision record; "
+                        "decisions belong in src.learning.decision_ledger"
+                    )
                 key = row.get("outcome_key")
                 if not key:
                     logger.warning("outcome_ledger: row without outcome_key refused")
@@ -167,6 +189,7 @@ def append_rows(
 
 __all__ = [
     "LEDGER_PATH",
+    "OutcomeLedgerKindError",
     "LEDGER_SCHEMA_VERSION",
     "append_rows",
     "build_row",

@@ -59,6 +59,12 @@ from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import pandas as pd
 
+from src.equity.decision_capture import (
+    LOG_TAG_DECISION_CAPTURE_FAILED,
+    build_cycle_decisions,
+    persist_cycle_decisions,
+)
+from src.learning.decision_record import Disposition
 from src.equity.rebalance import (
     DEFAULT_NO_TRADE_BAND,
     DEFAULT_REBALANCE_FREQ_DAYS,
@@ -523,6 +529,9 @@ class CycleOutcome(str, Enum):
     STATE_CORRUPT = "STATE_CORRUPT"
     HALTED = "HALTED"
     SHIP_GATE_REFUSED = "SHIP_GATE_REFUSED"
+    # An executable decision could not be durably recorded. The cycle
+    # refuses rather than submitting an order nobody can attribute.
+    ABSTAINED_UNRECORDED = "ABSTAINED_UNRECORDED"
 
 
 @dataclass(frozen=True)
@@ -602,6 +611,10 @@ class AutonomousLoop:
     portfolio_state_path: Path
     ship_gate_path: Path
     get_adv: Optional[AdvProviderFn] = None
+    # Where decision evidence is written. None uses the shared default;
+    # tests point it at a tmp path. Purely additive -- every existing
+    # construction site keeps working unchanged.
+    decision_ledger_path: Optional[Path] = None
 
     @classmethod
     def create(
@@ -844,6 +857,22 @@ class AutonomousLoop:
                 if risk_decision.halt
                 else CycleOutcome.RISK_BLOCKED
             )
+            # Candidate evidence: the lane refused, but the signal, sizing
+            # intention and refusal reason are still worth recording. A failed
+            # write must NOT change the disposition -- the trade was already
+            # refused -- but must be loudly visible.
+            self._capture_decisions(
+                loop_state=loop_state,
+                ts_iso=ts_iso,
+                disposition=(
+                    Disposition.HALT if risk_decision.halt else Disposition.NO_ACT
+                ),
+                reason_codes=list(risk_decision.reasons),
+                target_weights=target_weights,
+                degross_factor=risk_decision.degross_factor,
+                portfolio_state=portfolio_state,
+                executable=False,
+            )
             report = CycleReport(
                 cycle_index=loop_state.cycle_count,
                 asof=ts_iso,
@@ -862,10 +891,44 @@ class AutonomousLoop:
         }
         plan = self._plan_or_resume(asof, scaled)
         if plan is None or not plan.orders:
+            self._capture_decisions(
+                loop_state=loop_state,
+                ts_iso=ts_iso,
+                disposition=Disposition.NO_ACT,
+                reason_codes=["no_plan"],
+                target_weights=target_weights,
+                degross_factor=risk_decision.degross_factor,
+                portfolio_state=portfolio_state,
+                executable=False,
+            )
             report = CycleReport(
                 cycle_index=loop_state.cycle_count,
                 asof=ts_iso,
                 outcome=CycleOutcome.NO_PLAN,
+                transport_state=self.transport.state,
+                reconcile=reconcile_report,
+                risk=risk_decision,
+            )
+            self._advance(loop_state, report)
+            return report
+
+        # 6b. record the executable decision BEFORE any order leaves. A failed
+        # write converts the cycle to ABSTAIN: an execution nobody recorded is
+        # an execution nobody can attribute.
+        if not self._capture_decisions(
+            loop_state=loop_state,
+            ts_iso=ts_iso,
+            disposition=Disposition.EXECUTE,
+            reason_codes=list(risk_decision.reasons),
+            target_weights=target_weights,
+            degross_factor=risk_decision.degross_factor,
+            portfolio_state=portfolio_state,
+            executable=True,
+        ):
+            report = CycleReport(
+                cycle_index=loop_state.cycle_count,
+                asof=ts_iso,
+                outcome=CycleOutcome.ABSTAINED_UNRECORDED,
                 transport_state=self.transport.state,
                 reconcile=reconcile_report,
                 risk=risk_decision,
@@ -1023,6 +1086,58 @@ class AutonomousLoop:
         return self.scheduler.plan_and_persist(
             target_weights=target_weights, asof=asof
         )
+
+    def _capture_decisions(
+        self,
+        *,
+        loop_state: LoopState,
+        ts_iso: str,
+        disposition: Disposition,
+        reason_codes: List[str],
+        target_weights: Dict[str, float],
+        degross_factor: float,
+        portfolio_state: PortfolioState,
+        executable: bool,
+    ) -> bool:
+        """Record this cycle's decisions. Returns False iff the caller must abstain.
+
+        Deterministic and side-effect-free with respect to the trading decision
+        -- it records what was decided, it never influences it. The one place it
+        DOES affect control flow is the executable path: a decision that cannot
+        be durably written must not become an order.
+
+        ``cycle_id`` is derived from (asof, cycle_count) so a retry of the same
+        cycle reproduces the same identity digest and appends nothing new.
+        """
+        cycle_id = f"{ts_iso}:{loop_state.cycle_count}"
+        try:
+            records = build_cycle_decisions(
+                cycle_id=cycle_id,
+                decision_timestamp=ts_iso,
+                disposition=disposition,
+                reason_codes=reason_codes,
+                target_weights=target_weights,
+                degross_factor=degross_factor,
+                current_weights=portfolio_state.current_weights,
+                portfolio_nav=portfolio_state.nav,
+                peak_nav=portfolio_state.peak_nav,
+                market_data_asof=ts_iso,
+                strategy_version=getattr(self.config, "pipeline_version", None),
+                lane="equity",
+            )
+        except Exception as exc:  # noqa: BLE001 - capture must never crash the loop
+            logger.error(
+                "%s could not BUILD decision records: %r", LOG_TAG_DECISION_CAPTURE_FAILED, exc
+            )
+            return not executable
+
+        persisted, _stats = persist_cycle_decisions(
+            records, executable=executable, path=self.decision_ledger_path
+        )
+        # A candidate's disposition is already decided; losing its record is an
+        # observability failure, not a trading one. Only an executable decision
+        # is gated on the write.
+        return persisted if executable else True
 
     def _advance(self, loop_state: LoopState, report: CycleReport) -> None:
         loop_state.cycle_count += 1

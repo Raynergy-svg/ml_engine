@@ -113,6 +113,18 @@ def main(argv: Optional[list] = None) -> int:
             logger.error("ledger unreadable after append: %s", exc)
             return 2
 
+    # Refuse to compute realized performance over a ledger that has been
+    # contaminated with decision records. A candidate is an intention, not
+    # money that moved; averaging the two would overstate performance.
+    contaminated = [r for r in ledger_rows if r.get("record_kind") == "decision"]
+    if contaminated:
+        logger.error(
+            "REFUSING: %d decision record(s) found in the realized ledger %s. "
+            "Decisions belong in the decision ledger and must never be attributed "
+            "as realized P&L.", len(contaminated), args.ledger,
+        )
+        return 2
+
     memory = build_memory(ledger_rows)
     if not args.dry_run:
         _write_json_atomic(memory, args.memory)
