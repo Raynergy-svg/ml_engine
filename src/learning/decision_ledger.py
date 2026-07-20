@@ -192,8 +192,52 @@ def link_broker_order(
     return True
 
 
+def append_execution_context(context, path: Optional[Path] = None) -> bool:
+    """Append an immutable execution-context row. Idempotent by context digest.
+
+    A replay of the same decision, plan and material market snapshot resolves to
+    the same digest and appends nothing -- the existing context stands.
+
+    Returns True if a new row was written, False if it already existed.
+
+    Raises:
+        DecisionLedgerError: if the row could not be durably written. The caller
+            MUST NOT contact the broker in that case.
+    """
+    target = Path(path) if path is not None else DECISION_LEDGER_PATH
+    row = context.to_row()
+    _validate_kind(row)
+    key = row["decision_digest"]
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "a+", encoding="utf-8") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                fh.seek(0)
+                for line in fh.read().splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        existing = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(existing, dict) and existing.get("decision_digest") == key:
+                        return False
+                fh.write(json.dumps(row, sort_keys=True) + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    except OSError as exc:
+        raise DecisionLedgerError(
+            f"could not persist execution context to {target}: {exc}"
+        ) from exc
+    return True
+
+
 __all__ = [
     "DECISION_LEDGER_PATH",
+    "append_execution_context",
     "DecisionLedgerError",
     "append_decisions",
     "existing_digests",

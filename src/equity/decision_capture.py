@@ -40,8 +40,15 @@ from src.evidence.hashing import content_digest
 from src.learning.decision_ledger import (
     DecisionLedgerError,
     append_decisions,
+    append_execution_context,
     existing_digests,
     link_broker_order,
+)
+from src.learning.execution_context import ExecutionContextError, LotConstraints, QuoteSnapshot
+from src.learning.execution_context_builder import (
+    DEFAULT_MAX_QUOTE_AGE_MS,
+    SubmissionGate,
+    build_execution_context,
 )
 from src.learning.decision_record import (
     DecisionClass,
@@ -54,6 +61,8 @@ logger = logging.getLogger(__name__)
 
 LOG_TAG_DECISION_CAPTURE_FAILED = "DECISION_CAPTURE_FAILED"
 LOG_TAG_ORDER_UNLINKED = "ORDER_REFUSED_NO_PERSISTED_DECISION"
+LOG_TAG_CONTEXT_REFUSED = "ORDER_REFUSED_NO_EXECUTION_CONTEXT"
+LOG_TAG_GATE_CLOSED = "ORDER_REFUSED_SUBMISSION_GATE_CLOSED"
 
 #: Fields that simply do not exist at the equity decision seam today. Named
 #: once here so every record reports the same honest gap rather than each
@@ -227,36 +236,61 @@ __all__ = [
 ]
 
 
+QuoteProvider = Callable[[str], Optional[QuoteSnapshot]]
+NavProvider = Callable[[], Optional[Dict[str, float]]]
+HoldingsProvider = Callable[[str], Optional[float]]
+
+
 def decision_linked_executor(
     inner: Callable[[Order], Any],
     *,
     decisions: Sequence[DecisionRecord],
     ledger_path: Optional[Any] = None,
+    plan_id: str = "unknown-plan",
+    created_at: str = "",
+    quote_provider: Optional[QuoteProvider] = None,
+    nav_provider: Optional[NavProvider] = None,
+    holdings_provider: Optional[HoldingsProvider] = None,
+    lot: Optional[LotConstraints] = None,
+    max_quote_age_ms: float = DEFAULT_MAX_QUOTE_AGE_MS,
+    submission_gate: Optional[SubmissionGate] = None,
 ) -> Callable[[Order], Any]:
-    """Wrap an executor so no order can be sent without a persisted decision.
+    """Wrap an executor so nothing reaches the broker unattributably.
 
-    The lifecycle this protects is:
+    The full boundary, in order:
 
-        DecisionRecord -> execution plan -> broker order -> partial /
-        replacement / cancel events -> closing transaction -> OutcomeRecord
+        submission gate open?
+        -> decision exists, is EXECUTED_DECISION, and is ON DISK
+        -> quote + NAV + holdings obtained
+        -> weights converted to broker-valid units
+        -> execution-context row PERSISTED
+        -> broker called
+        -> broker-link row appended
 
-    Every row in that chain must carry one originating ``decision_id``. If an
-    order cannot be associated with a decision that is ON DISK, it is refused
-    -- not logged-and-sent. An order nobody can trace to a recorded intention
-    is precisely the unattributable fill this subsystem exists to prevent.
+    Every pre-submission failure returns ``ExecResult.REJECTED`` with no broker
+    call. A post-acceptance linkage failure is different in kind: the order is
+    real and must not be blindly cancelled, so the existing order stands, a
+    CRITICAL incident is raised, and the submission gate CLOSES so no further
+    order can compound an unreconciled book.
 
-    "Persisted" is checked against the ledger, not against the in-memory
-    objects: a record that was built but failed to write must not authorise an
-    order. The digest set is read once per cycle and reused across that
-    cycle's orders.
-
-    A CANDIDATE_NOT_EXECUTED record can never authorise a submission, even if
-    one exists for the instrument -- it documents a refusal.
+    When no quote/NAV provider is supplied the context step is skipped, which
+    preserves the pre-enrichment behaviour for callers that have not yet been
+    given a market-data source.
     """
     by_instrument: Dict[str, DecisionRecord] = {d.instrument: d for d in decisions}
     on_disk = existing_digests(ledger_path)
+    gate = submission_gate or SubmissionGate()
 
     def _guarded(order: Order) -> Any:
+        if not gate.is_open():
+            state = gate.state()
+            logger.error(
+                "%s order=%s -- gate closed by %s (%s); NOT submitting",
+                LOG_TAG_GATE_CLOSED, order.client_order_id,
+                state.get("incident"), state.get("detail"),
+            )
+            return ExecResult.REJECTED
+
         record = by_instrument.get(order.ticker)
         if record is None:
             logger.error(
@@ -280,11 +314,39 @@ def decision_linked_executor(
             )
             return ExecResult.REJECTED
 
+        # -- execution context: weights become units, or nothing is sent -----
+        if quote_provider is not None and nav_provider is not None:
+            try:
+                quote = quote_provider(order.ticker)
+                if quote is None:
+                    raise ExecutionContextError(f"no quote available for {order.ticker}")
+                nav_info = nav_provider()
+                if not nav_info:
+                    raise ExecutionContextError("no NAV available")
+                held = holdings_provider(order.ticker) if holdings_provider else 0.0
+                context = build_execution_context(
+                    decision=record,
+                    decision_digest=digest,
+                    plan_id=plan_id,
+                    created_at=created_at,
+                    quote=quote,
+                    portfolio_nav=float(nav_info.get("portfolio_nav")),
+                    allocatable_nav=nav_info.get("allocatable_nav"),
+                    cash_available=nav_info.get("cash_available"),
+                    current_units=float(held or 0.0),
+                    lot=lot,
+                    max_quote_age_ms=max_quote_age_ms,
+                )
+                append_execution_context(context, ledger_path)
+            except (ExecutionContextError, DecisionLedgerError, OSError, TypeError, ValueError) as exc:
+                logger.error(
+                    "%s order=%s ticker=%s -- %s; NOT submitting",
+                    LOG_TAG_CONTEXT_REFUSED, order.client_order_id, order.ticker, exc,
+                )
+                return ExecResult.REJECTED
+
         outcome = inner(order)
 
-        # Append-only linkage: the decision row is never rewritten. Every later
-        # lifecycle event (partial, replacement, cancel, close) carries the same
-        # decision digest, so the whole chain resolves to one intention.
         try:
             link_broker_order(
                 digest,
@@ -293,12 +355,15 @@ def decision_linked_executor(
                 path=ledger_path,
             )
         except (DecisionLedgerError, OSError) as exc:
-            # The order is already away; losing the linkage row is an
-            # observability failure, not a trading one. Surface it loudly --
-            # this fill will be harder to attribute.
-            logger.error(
-                "%s could not link order=%s to decision=%s: %s",
-                LOG_TAG_DECISION_CAPTURE_FAILED, order.client_order_id, record.decision_id, exc,
+            # The broker may now hold an order with no durable local linkage.
+            # Do NOT cancel -- the position is real and a blind cancel can race
+            # a fill. Do NOT keep submitting either: each further order could
+            # add another unlinked position to an already-unreconciled book.
+            gate.raise_unlinked_incident(
+                broker_order_id=order.client_order_id,
+                decision_id=record.decision_id,
+                detail=f"linkage write failed after broker acceptance: {exc}",
+                at=created_at,
             )
         return outcome
 

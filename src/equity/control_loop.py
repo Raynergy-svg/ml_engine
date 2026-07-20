@@ -616,6 +616,13 @@ class AutonomousLoop:
     # tests point it at a tmp path. Purely additive -- every existing
     # construction site keeps working unchanged.
     decision_ledger_path: Optional[Path] = None
+    # Market-data + capital-base sources for execution-context enrichment.
+    # When either is None the conversion step is skipped and behaviour is
+    # unchanged, so wiring a data source is an additive opt-in.
+    quote_provider: Optional[Callable[[str], Any]] = None
+    nav_provider: Optional[Callable[[], Any]] = None
+    holdings_provider: Optional[Callable[[str], Any]] = None
+    lot_constraints: Optional[Any] = None
 
     @classmethod
     def create(
@@ -948,6 +955,12 @@ class AutonomousLoop:
                 self.execute_order,
                 decisions=cycle_decisions,
                 ledger_path=self.decision_ledger_path,
+                plan_id=plan.rebalance_id,
+                created_at=ts_iso,
+                quote_provider=self.quote_provider,
+                nav_provider=self.nav_provider,
+                holdings_provider=self.holdings_provider,
+                lot=self.lot_constraints,
             )
             touched = self.scheduler.execute_plan(plan, guarded)
             attempted = len(touched)
