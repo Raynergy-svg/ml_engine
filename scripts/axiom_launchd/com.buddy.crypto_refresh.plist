@@ -28,8 +28,8 @@
   <key>KeepAlive</key>
   <false/>
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/crypto_refresh.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.crypto_refresh.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/crypto_refresh.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.crypto_refresh.log</string>
 </dict>
 </plist>

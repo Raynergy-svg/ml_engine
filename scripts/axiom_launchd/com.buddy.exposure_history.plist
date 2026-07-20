@@ -32,8 +32,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/exposure_history_capture.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.exposure_history.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/exposure_history_capture.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.exposure_history.log</string>
 </dict>
 </plist>

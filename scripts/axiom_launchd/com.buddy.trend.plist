@@ -28,8 +28,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/trend_loop.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.trend.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/trend_loop.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.trend.log</string>
 </dict>
 </plist>

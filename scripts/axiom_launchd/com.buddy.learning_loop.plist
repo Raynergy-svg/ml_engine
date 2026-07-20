@@ -37,8 +37,8 @@
   <key>KeepAlive</key>
   <false/>
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/learning_loop.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.learning_loop.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/learning_loop.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.learning_loop.log</string>
 </dict>
 </plist>

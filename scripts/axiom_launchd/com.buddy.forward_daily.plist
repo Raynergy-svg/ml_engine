@@ -27,8 +27,8 @@
   <key>KeepAlive</key>
   <false/>
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/forward_daily.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.forward_daily.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/forward_daily.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.forward_daily.log</string>
 </dict>
 </plist>

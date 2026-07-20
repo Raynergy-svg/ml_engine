@@ -32,8 +32,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/safety_monitor.out</string>
+  <string>/Users/buddy/Library/Logs/com.axiom.safety_monitor.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/safety_monitor.out</string>
+  <string>/Users/buddy/Library/Logs/com.axiom.safety_monitor.log</string>
 </dict>
 </plist>
