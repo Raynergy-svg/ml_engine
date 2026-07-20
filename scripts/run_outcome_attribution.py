@@ -90,6 +90,27 @@ def main(argv: Optional[list] = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
+    # Refuse a ledger contaminated with decision records BEFORE anything else.
+    # A candidate is an intention, not money that moved; averaging the two would
+    # overstate performance. This check deliberately precedes the journal load:
+    # contamination is fatal on its own, and gating it behind an unrelated
+    # missing-file exit made it unreachable on a clean checkout.
+    if args.ledger.exists():
+        try:
+            contaminated = [
+                r for r in load_ledger(args.ledger) if r.get("record_kind") == "decision"
+            ]
+        except OSError as exc:
+            logger.error("ledger unreadable: %s", exc)
+            return 2
+        if contaminated:
+            logger.error(
+                "REFUSING: %d decision record(s) found in the realized ledger %s. "
+                "Decisions belong in the decision ledger and must never be attributed "
+                "as realized P&L.", len(contaminated), args.ledger,
+            )
+            return 2
+
     try:
         records, unlinkable = load_outcome_records(args.transactions)
     except FileNotFoundError as exc:
@@ -112,18 +133,6 @@ def main(argv: Optional[list] = None) -> int:
         except OSError as exc:
             logger.error("ledger unreadable after append: %s", exc)
             return 2
-
-    # Refuse to compute realized performance over a ledger that has been
-    # contaminated with decision records. A candidate is an intention, not
-    # money that moved; averaging the two would overstate performance.
-    contaminated = [r for r in ledger_rows if r.get("record_kind") == "decision"]
-    if contaminated:
-        logger.error(
-            "REFUSING: %d decision record(s) found in the realized ledger %s. "
-            "Decisions belong in the decision ledger and must never be attributed "
-            "as realized P&L.", len(contaminated), args.ledger,
-        )
-        return 2
 
     memory = build_memory(ledger_rows)
     if not args.dry_run:
