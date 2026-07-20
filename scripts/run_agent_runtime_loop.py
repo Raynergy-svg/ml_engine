@@ -61,17 +61,52 @@ def main(argv: Optional[list[str]] = None) -> int:
         except Exception as exc:  # noqa: BLE001 - one bad cycle must not kill the loop
             print(json.dumps({"cycle_error": repr(exc)}, sort_keys=True))
         else:
+            # QA logging: this print() is captured verbatim into
+            # ~/Library/Logs/com.axiom.operator.log by the launchd plist's
+            # StandardOutPath. Summary counts alone are not enough for a human
+            # to review what the loop actually reasoned, proposed, executed,
+            # or refused -- so this emits the diagnose reasoning, every
+            # proposed action, and every outcome (executed result / shadow /
+            # proposal / denial detail, including SELF_IMPROVE commit_sha)
+            # per cycle. The full observation payload is deliberately
+            # excluded here (it is already durably captured, unabridged, in
+            # trained_data/axiom/loop_cycles.jsonl per cycle_id -- duplicating
+            # it into this unrotated log file on every 5-minute cycle would
+            # just bloat disk for no QA benefit).
             print(json.dumps({
                 "cycle_id": result.cycle_id,
+                "ts": result.ts,
                 "cli_available": result.cli_available,
+                "reasoning_ok": result.reasoning_ok,
                 "autonomy_enabled": result.autonomy_enabled,
-                "proposed_actions": len(result.proposed_actions),
-                "executed": sum(1 for o in result.outcomes if o.executed),
-                "shadow_logged": sum(1 for o in result.outcomes if o.shadow),
-                "proposed_for_operator": sum(1 for o in result.outcomes if o.proposal),
-                "denied": sum(1 for o in result.outcomes if o.denied),
+                "diagnosis": {
+                    "beliefs": result.diagnosis.get("beliefs"),
+                    "reasoning": result.diagnosis.get("reasoning"),
+                    "failure_kind": result.diagnosis.get("failure_kind"),
+                    "failure_detail": result.diagnosis.get("failure_detail"),
+                },
+                "proposed_actions": [
+                    {"action": pa.action, "tier": pa.tier, "rationale": pa.rationale, "params": pa.params}
+                    for pa in result.proposed_actions
+                ],
+                "outcomes": [
+                    {
+                        "action": o.action, "tier": o.tier, "executed": o.executed,
+                        "shadow": o.shadow, "proposal": o.proposal, "denied": o.denied,
+                        "proposal_id": o.proposal_id, "detail": o.detail,
+                    }
+                    for o in result.outcomes
+                ],
                 "verified": result.verified,
-            }, indent=2, sort_keys=True))
+                "verify_detail": result.verify_detail,
+                "counts": {
+                    "proposed_actions": len(result.proposed_actions),
+                    "executed": sum(1 for o in result.outcomes if o.executed),
+                    "shadow_logged": sum(1 for o in result.outcomes if o.shadow),
+                    "proposed_for_operator": sum(1 for o in result.outcomes if o.proposal),
+                    "denied": sum(1 for o in result.outcomes if o.denied),
+                },
+            }, indent=2, sort_keys=True, default=str))
         if args.loop and idx < cycles - 1:
             time.sleep(args.interval)
     return 0

@@ -35,6 +35,7 @@ diagnosis.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -51,6 +52,72 @@ from src.agent_runtime.tools import readers
 from src.agent_runtime.tools.registry import TOOL_ACTIONS, TOOLS
 from src.axiom_operator.session import append_jsonl, tail_jsonl, utc_now
 from src.utils.claude_cli import augmented_path_env, resolve_claude_cli
+
+logger = logging.getLogger(__name__)
+
+# Max chars of subprocess output retained per stream when DIAGNOSE fails. The
+# reason a cycle degraded is load-bearing operational data (a 401, a rate
+# limit, a crash) -- it must reach a log, but an unbounded stdout must never
+# be able to bloat loop_cycles.jsonl.
+_FAILURE_DETAIL_MAX_CHARS = 2000
+
+# Substrings that identify an auth failure in CLI output. Matched
+# case-insensitively against stdout+stderr so a monitor can distinguish
+# "credentials expired" (operator must re-auth) from a transient crash.
+_AUTH_FAILURE_MARKERS = (
+    "401", "oauth", "access token", "unauthorized",
+    "authentication", "authenticate", "please run /login", "invalid api key",
+)
+
+
+# Captured CLI output is written to loop_cycles.jsonl and the debug log, both
+# of which persist. An auth failure is exactly the situation where a tool is
+# most likely to echo the credential it just rejected, so the capture is
+# redacted before it is allowed anywhere near disk. Patterns are deliberately
+# broad -- a false-positive redaction costs nothing, a leaked token is
+# unrecoverable once appended to an append-only ledger.
+_SECRET_PATTERNS: Tuple[Any, ...] = (
+    re.compile(r"\b(sk-[A-Za-z0-9_\-]{8,})"),
+    re.compile(r"\b(Bearer\s+[A-Za-z0-9._\-]{8,})", re.IGNORECASE),
+    re.compile(r"((?:api[_-]?key|token|secret|password|authorization)\s*[=:]\s*)(\S{6,})", re.IGNORECASE),
+    re.compile(r"\b(ey[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,})"),  # JWT
+)
+
+
+def _redact_secrets(text: str) -> str:
+    """Strip anything credential-shaped from captured subprocess output."""
+    redacted = text
+    for pattern in _SECRET_PATTERNS:
+        if pattern.groups >= 2:
+            redacted = pattern.sub(lambda m: f"{m.group(1)}[REDACTED]", redacted)
+        else:
+            redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
+
+
+def _truncate_stream(text: Optional[str]) -> str:
+    """Redact, then bound, a captured subprocess stream.
+
+    Redaction runs BEFORE truncation so a secret cannot survive by sitting past
+    the cut-off in a string that is later re-joined or re-logged.
+    """
+    raw = _redact_secrets((text or "").strip())
+    if len(raw) <= _FAILURE_DETAIL_MAX_CHARS:
+        return raw
+    return raw[:_FAILURE_DETAIL_MAX_CHARS] + f"... [truncated, {len(raw)} chars total]"
+
+
+def _classify_cli_failure(stdout: str, stderr: str) -> str:
+    """Return a coarse failure kind for a non-zero CLI exit.
+
+    ``auth`` is called out separately because it is the one failure mode a
+    human must resolve (re-authenticate); everything else is ``error`` and is
+    a candidate for automatic retry.
+    """
+    blob = f"{stdout}\n{stderr}".lower()
+    if any(marker in blob for marker in _AUTH_FAILURE_MARKERS):
+        return "auth"
+    return "error"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AXIOM_DIR = REPO_ROOT / "trained_data" / "axiom"
@@ -151,6 +218,14 @@ class CycleResult:
     outcomes: List[ActionOutcome]
     verified: bool
     verify_detail: Dict[str, Any]
+    # Honest liveness signal for DIAGNOSE. ``cli_available`` only reports that
+    # the binary was FOUND -- it stays True when the CLI is present but
+    # unusable (expired credentials, timeout, crash), which made a brain-dead
+    # loop indistinguishable from a healthy one. ``reasoning_ok`` is False
+    # whenever the cycle produced no usable diagnosis, so a monitor can alarm
+    # on a degraded streak. Defaulted for backward compatibility with existing
+    # CycleResult constructions.
+    reasoning_ok: bool = True
 
 
 class ResidentLoop:
@@ -204,6 +279,7 @@ class ResidentLoop:
             cycle_id=cycle_id, ts=utc_now(), actor=actor, cli_available=cli_available,
             autonomy_enabled=autonomy, observations=observations, diagnosis=diagnosis,
             proposed_actions=proposed, outcomes=outcomes, verified=verified, verify_detail=verify_detail,
+            reasoning_ok=cli_available and not bool(diagnosis.get("degraded", False)),
         )
         self._log(result)
         return result
@@ -248,8 +324,15 @@ class ResidentLoop:
 
     def _diagnose(self, observations: Dict[str, Any], *, cli_path: Optional[str], timeout_seconds: int) -> Dict[str, Any]:
         if not cli_path:
+            logger.error(
+                "agent_runtime_loop DIAGNOSE degraded: claude CLI not found on PATH -- "
+                "no diagnosis, no actions proposed this cycle"
+            )
             return {
                 "available": False,
+                "degraded": True,
+                "failure_kind": "cli_missing",
+                "failure_detail": "claude CLI not found on PATH",
                 "reasoning": "claude CLI not found on PATH -- degraded cycle: OBSERVE ran, no diagnosis, no actions proposed.",
                 "beliefs": "unknown (no reasoning step available this cycle)",
                 "proposed_actions": [],
@@ -279,14 +362,28 @@ class ResidentLoop:
                     timeout=timeout_seconds, cwd=str(self.project_root), env=child_env,
                 )
         except subprocess.TimeoutExpired:
+            logger.error(
+                "agent_runtime_loop DIAGNOSE degraded: claude timed out after %ss -- "
+                "no actions proposed this cycle", timeout_seconds,
+            )
             return {
                 "available": True,
+                "degraded": True,
+                "failure_kind": "timeout",
+                "failure_detail": f"claude timed out after {timeout_seconds}s",
                 "reasoning": f"claude timed out after {timeout_seconds}s -- degraded cycle, no actions proposed.",
                 "beliefs": "unknown", "proposed_actions": [],
             }
         except OSError as exc:
+            logger.error(
+                "agent_runtime_loop DIAGNOSE degraded: claude subprocess failed: %r -- "
+                "no actions proposed this cycle", exc,
+            )
             return {
                 "available": True,
+                "degraded": True,
+                "failure_kind": "spawn_error",
+                "failure_detail": repr(exc),
                 "reasoning": f"claude subprocess failed: {exc} -- degraded cycle, no actions proposed.",
                 "beliefs": "unknown", "proposed_actions": [],
             }
@@ -298,9 +395,34 @@ class ResidentLoop:
                     pass
 
         if proc.returncode != 0:
+            # The CLI prints its failure reason (401, rate limit, crash) to
+            # stdout/stderr. Discarding them here made a 38-hour credential
+            # expiry indistinguishable from any other failure -- the loop kept
+            # reporting a contentless "claude exited 1" while proposing
+            # nothing. Capture, classify and LOG the reason.
+            # Classify on the RAW streams, redact only for storage. Redaction
+            # can scrub the very tokens that identify an auth failure (e.g.
+            # "Authorization: ..."), so classifying the redacted text would
+            # silently downgrade auth failures to generic errors.
+            failure_kind = _classify_cli_failure(proc.stdout or "", proc.stderr or "")
+            stdout = _truncate_stream(proc.stdout)
+            stderr = _truncate_stream(proc.stderr)
+            detail = " | ".join(part for part in (stdout, stderr) if part) or "(no output captured)"
+            logger.error(
+                "agent_runtime_loop DIAGNOSE degraded: claude exited %s (kind=%s) -- "
+                "no actions proposed this cycle. CLI output: %s",
+                proc.returncode, failure_kind, detail,
+            )
+            reasoning = f"claude exited {proc.returncode} [{failure_kind}] -- degraded cycle, no actions proposed."
+            if failure_kind == "auth":
+                reasoning += " Operator action required: re-authenticate the claude CLI."
             return {
                 "available": True,
-                "reasoning": f"claude exited {proc.returncode} -- degraded cycle, no actions proposed.",
+                "degraded": True,
+                "failure_kind": failure_kind,
+                "failure_detail": detail,
+                "returncode": proc.returncode,
+                "reasoning": reasoning,
                 "beliefs": "unknown", "proposed_actions": [],
             }
 
@@ -518,7 +640,8 @@ class ResidentLoop:
         )
         append_jsonl(self.cycles_path, {
             "cycle_id": result.cycle_id, "ts": result.ts, "actor": result.actor,
-            "cli_available": result.cli_available, "autonomy_enabled": result.autonomy_enabled,
+            "cli_available": result.cli_available, "reasoning_ok": result.reasoning_ok,
+            "autonomy_enabled": result.autonomy_enabled,
             "observations": result.observations, "diagnosis": result.diagnosis,
             "proposed_actions": [vars(pa) for pa in result.proposed_actions],
             "outcomes": [vars(o) for o in result.outcomes],

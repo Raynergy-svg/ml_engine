@@ -600,3 +600,156 @@ def test_default_resident_loop_wires_all_registered_tools_as_operational(tmp_pat
 
     for name in TOOLS:
         assert resident.engine.classify(name) is policy.ActionTier.OPERATIONAL
+
+
+# ---------------------------------------------------------------------------
+# DIAGNOSE failure observability (2026-07-20). The CLI prints its failure
+# reason to stdout/stderr; the loop used to discard both on a non-zero exit,
+# which made a 38-hour credential expiry look identical to any other crash --
+# 1,446 of 2,187 recorded cycles carried only "claude exited 1". These tests
+# pin the reason reaching the cycle record, and pin reasoning_ok as the honest
+# liveness signal (cli_available deliberately stays True: the binary WAS
+# found, and 8 consumers depend on that meaning).
+# ---------------------------------------------------------------------------
+
+
+def _runner_with_streams(stdout: str, stderr: str, returncode: int):
+    def _run(*args, **kwargs):
+        return subprocess.CompletedProcess(args=args, returncode=returncode, stdout=stdout, stderr=stderr)
+
+    return _run
+
+
+def _loop_with_runner(tmp_path, monkeypatch, runner):
+    _isolate_audit(tmp_path, monkeypatch)
+    _fresh_state(tmp_path)
+    engine = policy.PolicyEngine(_test_registry([]), audit_fn=_audit_record_for(tmp_path))
+    return agent_loop.ResidentLoop(
+        engine=engine, cycles_path=tmp_path / "loop_cycles.jsonl",
+        autonomy_path=tmp_path / "loop_autonomy.json",
+        observe_tool_names=(), shadow_lanes=(),
+        cli_resolver=lambda _bin: "/usr/bin/fake-claude",
+        subprocess_runner=runner,
+    )
+
+
+def test_expired_credentials_are_classified_and_surfaced(tmp_path, monkeypatch):
+    """The exact live failure: CLI exits 1 printing a 401 to stdout."""
+    resident = _loop_with_runner(tmp_path, monkeypatch, _runner_with_streams(
+        stdout="API Error: 401 OAuth access token has expired", stderr="", returncode=1,
+    ))
+
+    result = resident.run_cycle(actor="test-agent")
+
+    assert result.reasoning_ok is False
+    assert result.cli_available is True  # binary found -- unchanged meaning
+    assert result.diagnosis["degraded"] is True
+    assert result.diagnosis["failure_kind"] == "auth"
+    assert result.diagnosis["returncode"] == 1
+    assert "401" in result.diagnosis["failure_detail"]
+    assert "re-authenticate" in result.diagnosis["reasoning"]
+
+
+def test_non_auth_failure_classified_as_error_and_stderr_captured(tmp_path, monkeypatch):
+    resident = _loop_with_runner(tmp_path, monkeypatch, _runner_with_streams(
+        stdout="", stderr="Segmentation fault", returncode=139,
+    ))
+
+    result = resident.run_cycle(actor="test-agent")
+
+    assert result.reasoning_ok is False
+    assert result.diagnosis["failure_kind"] == "error"
+    assert "Segmentation fault" in result.diagnosis["failure_detail"]
+
+
+def test_failure_detail_is_bounded_so_it_cannot_bloat_the_cycle_ledger(tmp_path, monkeypatch):
+    resident = _loop_with_runner(tmp_path, monkeypatch, _runner_with_streams(
+        stdout="x" * 50_000, stderr="", returncode=1,
+    ))
+
+    result = resident.run_cycle(actor="test-agent")
+
+    assert len(result.diagnosis["failure_detail"]) < 3000
+    assert "truncated" in result.diagnosis["failure_detail"]
+
+
+def test_healthy_cycle_reports_reasoning_ok_and_no_degraded_marker(tmp_path, monkeypatch):
+    stdout = _diagnosis_stdout([])
+    resident = _build_loop(tmp_path, monkeypatch, side_effects=[], stdout=stdout, autonomy_enabled=False)
+
+    result = resident.run_cycle(actor="test-agent")
+
+    assert result.reasoning_ok is True
+    assert "degraded" not in result.diagnosis
+
+
+def test_missing_cli_is_degraded_and_not_reasoning_ok(tmp_path, monkeypatch):
+    _isolate_audit(tmp_path, monkeypatch)
+    _fresh_state(tmp_path)
+    engine = policy.PolicyEngine(_test_registry([]), audit_fn=_audit_record_for(tmp_path))
+    resident = agent_loop.ResidentLoop(
+        engine=engine, cycles_path=tmp_path / "loop_cycles.jsonl",
+        autonomy_path=tmp_path / "loop_autonomy.json",
+        observe_tool_names=(), shadow_lanes=(),
+        cli_resolver=lambda _bin: None,
+        subprocess_runner=lambda *a, **kw: pytest.fail("must not spawn when CLI missing"),
+    )
+
+    result = resident.run_cycle(actor="test-agent")
+
+    assert result.reasoning_ok is False
+    assert result.diagnosis["failure_kind"] == "cli_missing"
+
+
+def test_reasoning_ok_is_persisted_to_the_cycle_ledger(tmp_path, monkeypatch):
+    """A monitor must be able to alarm on a degraded streak from disk alone."""
+    resident = _loop_with_runner(tmp_path, monkeypatch, _runner_with_streams(
+        stdout="401 unauthorized", stderr="", returncode=1,
+    ))
+
+    resident.run_cycle(actor="test-agent")
+
+    rows = [json.loads(line) for line in (tmp_path / "loop_cycles.jsonl").read_text().splitlines() if line.strip()]
+    assert rows[-1]["reasoning_ok"] is False
+    assert rows[-1]["diagnosis"]["failure_kind"] == "auth"
+
+
+def test_captured_cli_output_is_redacted_before_it_reaches_disk(tmp_path, monkeypatch):
+    """An auth failure is exactly when a tool may echo the rejected credential.
+
+    loop_cycles.jsonl is append-only, so a leaked token there is unrecoverable.
+    """
+    leaky = (
+        "Failed to authenticate. api_key=sk-abcdefghijklmnop1234 "
+        "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N "
+        "token: supersecretvalue123"
+    )
+    resident = _loop_with_runner(tmp_path, monkeypatch, _runner_with_streams(
+        stdout=leaky, stderr="", returncode=1,
+    ))
+
+    result = resident.run_cycle(actor="test-agent")
+    blob = json.dumps(result.diagnosis)
+
+    assert "sk-abcdefghijklmnop1234" not in blob
+    assert "supersecretvalue123" not in blob
+    assert "eyJhbGciOiJIUzI1NiJ9" not in blob
+    assert "[REDACTED]" in blob
+    # ...and it is still legible enough to diagnose.
+    assert "Failed to authenticate" in blob
+    assert result.diagnosis["failure_kind"] == "auth"
+
+    # The persisted ledger row must be clean too, not just the in-memory result.
+    ledger = (tmp_path / "loop_cycles.jsonl").read_text()
+    assert "sk-abcdefghijklmnop1234" not in ledger
+    assert "supersecretvalue123" not in ledger
+
+
+def test_redaction_runs_before_truncation_so_secrets_cannot_survive_the_cutoff(tmp_path, monkeypatch):
+    resident = _loop_with_runner(tmp_path, monkeypatch, _runner_with_streams(
+        stdout="x" * 40_000 + " sk-tailingsecretvalue999", stderr="", returncode=1,
+    ))
+
+    result = resident.run_cycle(actor="test-agent")
+
+    assert "sk-tailingsecretvalue999" not in json.dumps(result.diagnosis)
