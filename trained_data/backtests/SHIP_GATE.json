@@ -1,7 +1,20 @@
 {
   "asof": "2026-07-01",
+  "caveats": [
+    "HEADLINE IS CURATED-UNIVERSE. net_sharpe=0.906 / max_dd=0.229 were measured on the curated 20-name universe identified by universe_hash.",
+    "SURVIVORSHIP-CORRECTED WIDE UNIVERSE FAILS THIS GATE: 0.740 full-sample / 0.355 OOS vs the min_net_sharpe=0.4 threshold. Source: 2026-07-01 independent audit, recorded at docs/training-architecture-audit-2026-07-03.md:132-134, which directs that BOTH numbers always be reported together.",
+    "gate_pass=true refers ONLY to the curated universe above. Do not read it as evidence the strategy clears the bar on a survivorship-corrected wide universe -- it does not."
+  ],
   "criteria_source": "src.factor.ship_gate.evaluate_gate (US-007 canonical bar)",
   "gate_pass": true,
+  "independent_audit": {
+    "asof": "2026-07-01",
+    "note": "survivorship-corrected; 0.355 OOS is below the min_net_sharpe=0.4 threshold",
+    "source": "docs/training-architecture-audit-2026-07-03.md:132-134",
+    "wide_universe_gate_verdict": "FAIL",
+    "wide_universe_net_sharpe_full": 0.74,
+    "wide_universe_net_sharpe_oos": 0.355
+  },
   "max_dd": 0.229,
   "net_sharpe": 0.906,
   "pipeline_version": "2026-06-18-eq1",
@@ -14,5 +27,6 @@
     "min_total_years": 10.0
   },
   "total_years": 17,
-  "universe_hash": "896fc63606f5ebb6da96a87f6c332ffd9ac9d0848a2fb9e392de40a45917ac1a"
+  "universe_hash": "896fc63606f5ebb6da96a87f6c332ffd9ac9d0848a2fb9e392de40a45917ac1a",
+  "universe_scope": "curated 20-name universe"
 }

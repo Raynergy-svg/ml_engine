@@ -9,6 +9,7 @@ both PASS and FAIL paths without depending on yfinance or live data.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -295,3 +296,68 @@ def test_evaluate_harvester_rejects_invalid_execution_lag():
     )
     with pytest.raises(ShipGateError, match="execution_lag"):
         evaluate_harvester(snapshot, prices, execution_lag=0)
+
+
+# ---------------------------------------------------------------------------
+# Universe-scope self-description (2026-07-20). A headline net_sharpe is only
+# interpretable against the universe it was measured on: the live artifact's
+# curated 20-name PASS (0.906) becomes 0.740 full / 0.355 OOS -- a gate FAIL --
+# once the wide universe is survivorship-corrected (2026-07-01 independent
+# audit, docs/training-architecture-audit-2026-07-03.md:132-134). The payload
+# must carry scope so a regenerated artifact cannot silently drop it.
+# ---------------------------------------------------------------------------
+
+
+def test_ship_gate_payload_states_universe_scope_and_carries_caveats(tmp_path):
+    idx = _utc_bday_index("2010-01-04", 252 * 12 + 5)
+    tickers = ["AA", "BB", "CC"]
+    snapshot = _make_snapshot(idx, tickers)
+    prices = _prices_from_drift(
+        idx, tickers, mu_annual=0.10, sigma_annual=0.12, seed=99
+    )
+    report = evaluate_harvester(snapshot, prices)
+
+    payload = json.loads(write_ship_gate(report, tmp_path / "SHIP_GATE.json").read_text())
+
+    assert "universe_scope" in payload, "SHIP_GATE must state the universe it measured"
+    # Derived from the snapshot itself, so it cannot drift from what ran.
+    assert "3 distinct names" in payload["universe_scope"]
+    assert str(len(idx)) in payload["universe_scope"]
+    assert "caveats" in payload
+    assert isinstance(payload["caveats"], list)
+
+
+def test_universe_scope_is_derived_not_defaulted(tmp_path):
+    """Scope must reflect the real universe width, not a placeholder."""
+    idx = _utc_bday_index("2010-01-04", 252 * 12 + 5)
+    wide = ["AA", "BB", "CC", "DD", "EE", "FF"]
+    snapshot = _make_snapshot(idx, wide)
+    prices = _prices_from_drift(idx, wide, mu_annual=0.10, sigma_annual=0.12, seed=7)
+
+    report = evaluate_harvester(snapshot, prices)
+
+    assert report.universe_scope != "unspecified"
+    assert "6 distinct names" in report.universe_scope
+
+
+def test_live_ship_gate_artifact_reports_both_universe_numbers():
+    """The committed artifact must never show the flattering number alone.
+
+    Pins the 2026-07-01 audit directive ("always report both") against the
+    real on-disk file the arming path reads.
+    """
+    path = Path(__file__).resolve().parents[1] / "trained_data" / "backtests" / "SHIP_GATE.json"
+    if not path.exists():
+        pytest.skip("SHIP_GATE.json not present in this checkout")
+    payload = json.loads(path.read_text())
+
+    # arm() contract fields must still be intact.
+    assert payload["gate_pass"] is True
+    assert payload["net_sharpe"] == 0.906
+
+    # ...and the failing wide-universe counterpart must travel with it.
+    audit = payload["independent_audit"]
+    assert audit["wide_universe_net_sharpe_oos"] == 0.355
+    assert audit["wide_universe_gate_verdict"] == "FAIL"
+    assert audit["wide_universe_net_sharpe_oos"] < payload["thresholds"]["min_net_sharpe"]
+    assert any("SURVIVORSHIP" in c.upper() for c in payload["caveats"])

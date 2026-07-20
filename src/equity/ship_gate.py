@@ -46,7 +46,7 @@ import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -116,6 +116,16 @@ class HarvesterShipGateReport:
     pipeline_version: str = ""
     criteria_source: str = CRITERIA_SOURCE
     thresholds: Dict[str, float] = field(default_factory=dict)
+    # Universe scope + caveats make the artifact self-describing. A headline
+    # `net_sharpe` is only interpretable against the universe it was measured
+    # on: the 2026-07-01 independent audit found the harvester's curated
+    # 20-name PASS (0.906) becomes 0.740 full / 0.355 OOS -- a GATE FAIL --
+    # once the wide universe is survivorship-corrected, and directed that both
+    # numbers always be reported together. Carrying them in the payload means
+    # a reader cannot see the flattering number without the caveat, and a
+    # regenerated artifact cannot silently drop it.
+    universe_scope: str = "unspecified"
+    caveats: List[str] = field(default_factory=list)
 
     def to_ship_gate_payload(self) -> Dict[str, object]:
         """Minimal canonical SHIP_GATE.json payload (PRD schema)."""
@@ -131,6 +141,8 @@ class HarvesterShipGateReport:
             "criteria_source": str(self.criteria_source),
             "thresholds": dict(self.thresholds),
             "pipeline_version": str(self.pipeline_version),
+            "universe_scope": str(self.universe_scope),
+            "caveats": list(self.caveats),
         }
 
     def to_full_payload(self) -> Dict[str, object]:
@@ -340,6 +352,7 @@ def evaluate_harvester(
         positive_years=positive_years,
         total_years=total_years,
         universe_hash=snapshot.universe_hash,
+        universe_scope=_describe_universe_scope(snapshot),
         asof=asof_iso,
         summary=verdict.summary,
         criteria=criteria,
@@ -377,6 +390,23 @@ def _atomic_write_json(payload: dict, path: Path) -> Path:
     tmp.write_text(json.dumps(payload, indent=2, sort_keys=True))
     os.replace(tmp, path)
     return path
+
+
+def _describe_universe_scope(snapshot) -> str:
+    """Human-readable scope tag: how many distinct names the gate ever held.
+
+    Deliberately derived from the snapshot rather than passed in, so it cannot
+    drift from the universe actually measured. Breadth is the axis on which
+    this gate's headline number is known to be fragile (see the ``caveats``
+    field docstring), so the artifact should always state it.
+    """
+    try:
+        n_names = int(snapshot.membership.any(axis=0).sum())
+        n_dates = int(len(snapshot.membership.index))
+        return f"{n_names} distinct names over {n_dates} dates"
+    except Exception as exc:  # noqa: BLE001 - scope is descriptive metadata, never a gate input
+        logger.warning("ship_gate: could not describe universe scope: %r", exc)
+        return "unspecified (scope derivation failed)"
 
 
 def write_ship_gate(
