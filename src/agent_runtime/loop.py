@@ -119,6 +119,7 @@ def _classify_cli_failure(stdout: str, stderr: str) -> str:
         return "auth"
     return "error"
 
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AXIOM_DIR = REPO_ROOT / "trained_data" / "axiom"
 CYCLES_PATH = AXIOM_DIR / "loop_cycles.jsonl"

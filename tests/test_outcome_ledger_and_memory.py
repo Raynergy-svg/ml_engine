@@ -256,6 +256,18 @@ def _run(*args):
     )
 
 
+# The broker journal lives under trained_data/, which is gitignored. On a clean
+# checkout it is absent and the runner correctly exits 2 -- these tests exercise
+# the happy path and must skip rather than fail. Caught by running the suite on
+# a fresh worktree; the dirty dev tree always has the journal, so it passed
+# there and would have shipped broken.
+requires_journal_for_runner = pytest.mark.skipif(
+    not (REPO_ROOT / "trained_data" / "oanda" / "transactions.jsonl").exists(),
+    reason="broker journal (gitignored) not present in this checkout",
+)
+
+
+@requires_journal_for_runner
 def test_runner_dry_run_writes_nothing_and_exits_zero(tmp_path):
     ledger = tmp_path / "ledger.jsonl"
     memory = tmp_path / "memory.json"
@@ -268,6 +280,7 @@ def test_runner_dry_run_writes_nothing_and_exits_zero(tmp_path):
     assert json.loads(proc.stdout)["residual_health"] == "OK"
 
 
+@requires_journal_for_runner
 def test_runner_is_idempotent_end_to_end(tmp_path):
     ledger = tmp_path / "ledger.jsonl"
     memory = tmp_path / "memory.json"
@@ -287,6 +300,7 @@ def test_runner_exits_2_when_journal_is_missing(tmp_path):
     assert proc.returncode == 2
 
 
+@requires_journal_for_runner
 def test_runner_leaves_no_tmp_siblings(tmp_path):
     ledger = tmp_path / "ledger.jsonl"
     memory = tmp_path / "memory.json"
