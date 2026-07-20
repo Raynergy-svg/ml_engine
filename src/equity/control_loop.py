@@ -62,9 +62,10 @@ import pandas as pd
 from src.equity.decision_capture import (
     LOG_TAG_DECISION_CAPTURE_FAILED,
     build_cycle_decisions,
+    decision_linked_executor,
     persist_cycle_decisions,
 )
-from src.learning.decision_record import Disposition
+from src.learning.decision_record import DecisionRecord, Disposition
 from src.equity.rebalance import (
     DEFAULT_NO_TRADE_BAND,
     DEFAULT_REBALANCE_FREQ_DAYS,
@@ -915,7 +916,7 @@ class AutonomousLoop:
         # 6b. record the executable decision BEFORE any order leaves. A failed
         # write converts the cycle to ABSTAIN: an execution nobody recorded is
         # an execution nobody can attribute.
-        if not self._capture_decisions(
+        recorded, cycle_decisions = self._capture_decisions(
             loop_state=loop_state,
             ts_iso=ts_iso,
             disposition=Disposition.EXECUTE,
@@ -924,7 +925,8 @@ class AutonomousLoop:
             degross_factor=risk_decision.degross_factor,
             portfolio_state=portfolio_state,
             executable=True,
-        ):
+        )
+        if not recorded:
             report = CycleReport(
                 cycle_index=loop_state.cycle_count,
                 asof=ts_iso,
@@ -940,7 +942,14 @@ class AutonomousLoop:
         attempted = 0
         filled = 0
         try:
-            touched = self.scheduler.execute_plan(plan, self.execute_order)
+            # Every submission passes the decision-linkage guard: an order
+            # that cannot be tied to a persisted decision is refused, not sent.
+            guarded = decision_linked_executor(
+                self.execute_order,
+                decisions=cycle_decisions,
+                ledger_path=self.decision_ledger_path,
+            )
+            touched = self.scheduler.execute_plan(plan, guarded)
             attempted = len(touched)
             filled = sum(1 for o in touched if o.is_filled)
         except (
@@ -1098,7 +1107,7 @@ class AutonomousLoop:
         degross_factor: float,
         portfolio_state: PortfolioState,
         executable: bool,
-    ) -> bool:
+    ) -> "tuple[bool, List[DecisionRecord]]":
         """Record this cycle's decisions. Returns False iff the caller must abstain.
 
         Deterministic and side-effect-free with respect to the trading decision
@@ -1129,7 +1138,7 @@ class AutonomousLoop:
             logger.error(
                 "%s could not BUILD decision records: %r", LOG_TAG_DECISION_CAPTURE_FAILED, exc
             )
-            return not executable
+            return (not executable), []
 
         persisted, _stats = persist_cycle_decisions(
             records, executable=executable, path=self.decision_ledger_path
@@ -1137,7 +1146,7 @@ class AutonomousLoop:
         # A candidate's disposition is already decided; losing its record is an
         # observability failure, not a trading one. Only an executable decision
         # is gated on the write.
-        return persisted if executable else True
+        return (persisted if executable else True), records
 
     def _advance(self, loop_state: LoopState, report: CycleReport) -> None:
         loop_state.cycle_count += 1

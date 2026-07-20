@@ -35,8 +35,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from src.equity.rebalance import ExecResult, Order
 from src.evidence.hashing import content_digest
-from src.learning.decision_ledger import DecisionLedgerError, append_decisions
+from src.learning.decision_ledger import (
+    DecisionLedgerError,
+    append_decisions,
+    existing_digests,
+    link_broker_order,
+)
 from src.learning.decision_record import (
     DecisionClass,
     DecisionRecord,
@@ -47,6 +53,7 @@ from src.learning.decision_record import (
 logger = logging.getLogger(__name__)
 
 LOG_TAG_DECISION_CAPTURE_FAILED = "DECISION_CAPTURE_FAILED"
+LOG_TAG_ORDER_UNLINKED = "ORDER_REFUSED_NO_PERSISTED_DECISION"
 
 #: Fields that simply do not exist at the equity decision seam today. Named
 #: once here so every record reports the same honest gap rather than each
@@ -213,6 +220,86 @@ def persist_cycle_decisions(
 
 __all__ = [
     "LOG_TAG_DECISION_CAPTURE_FAILED",
+    "LOG_TAG_ORDER_UNLINKED",
+    "decision_linked_executor",
     "build_cycle_decisions",
     "persist_cycle_decisions",
 ]
+
+
+def decision_linked_executor(
+    inner: Callable[[Order], Any],
+    *,
+    decisions: Sequence[DecisionRecord],
+    ledger_path: Optional[Any] = None,
+) -> Callable[[Order], Any]:
+    """Wrap an executor so no order can be sent without a persisted decision.
+
+    The lifecycle this protects is:
+
+        DecisionRecord -> execution plan -> broker order -> partial /
+        replacement / cancel events -> closing transaction -> OutcomeRecord
+
+    Every row in that chain must carry one originating ``decision_id``. If an
+    order cannot be associated with a decision that is ON DISK, it is refused
+    -- not logged-and-sent. An order nobody can trace to a recorded intention
+    is precisely the unattributable fill this subsystem exists to prevent.
+
+    "Persisted" is checked against the ledger, not against the in-memory
+    objects: a record that was built but failed to write must not authorise an
+    order. The digest set is read once per cycle and reused across that
+    cycle's orders.
+
+    A CANDIDATE_NOT_EXECUTED record can never authorise a submission, even if
+    one exists for the instrument -- it documents a refusal.
+    """
+    by_instrument: Dict[str, DecisionRecord] = {d.instrument: d for d in decisions}
+    on_disk = existing_digests(ledger_path)
+
+    def _guarded(order: Order) -> Any:
+        record = by_instrument.get(order.ticker)
+        if record is None:
+            logger.error(
+                "%s order=%s ticker=%s -- no decision record for this instrument; "
+                "NOT submitting", LOG_TAG_ORDER_UNLINKED, order.client_order_id, order.ticker,
+            )
+            return ExecResult.REJECTED
+        if record.decision_class is not DecisionClass.EXECUTED_DECISION:
+            logger.error(
+                "%s order=%s ticker=%s -- decision is %s, which documents a refusal "
+                "and cannot authorise an order; NOT submitting",
+                LOG_TAG_ORDER_UNLINKED, order.client_order_id, order.ticker,
+                record.decision_class.value,
+            )
+            return ExecResult.REJECTED
+        digest = record.digest()
+        if digest not in on_disk:
+            logger.error(
+                "%s order=%s ticker=%s -- decision %s is not persisted; NOT submitting",
+                LOG_TAG_ORDER_UNLINKED, order.client_order_id, order.ticker, record.decision_id,
+            )
+            return ExecResult.REJECTED
+
+        outcome = inner(order)
+
+        # Append-only linkage: the decision row is never rewritten. Every later
+        # lifecycle event (partial, replacement, cancel, close) carries the same
+        # decision digest, so the whole chain resolves to one intention.
+        try:
+            link_broker_order(
+                digest,
+                broker_order_id=order.client_order_id,
+                client_order_id=order.client_order_id,
+                path=ledger_path,
+            )
+        except (DecisionLedgerError, OSError) as exc:
+            # The order is already away; losing the linkage row is an
+            # observability failure, not a trading one. Surface it loudly --
+            # this fill will be harder to attribute.
+            logger.error(
+                "%s could not link order=%s to decision=%s: %s",
+                LOG_TAG_DECISION_CAPTURE_FAILED, order.client_order_id, record.decision_id, exc,
+            )
+        return outcome
+
+    return _guarded

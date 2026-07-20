@@ -350,3 +350,143 @@ def test_default_ledger_path_is_separate_from_the_realized_ledger():
 
     assert DECISION_LEDGER_PATH != LEDGER_PATH
     assert DECISION_LEDGER_PATH.name != LEDGER_PATH.name
+
+
+# ---------------------------------------------------------------------------
+# Order linkage: no order may be submitted without a PERSISTED decision
+# ---------------------------------------------------------------------------
+
+
+def _order(ticker="AAPL", coid="oid-1"):
+    from src.equity.rebalance import Order
+
+    return Order(client_order_id=coid, ticker=ticker, side="BUY",
+                 weight_delta=0.1, target_weight=0.1)
+
+
+def _exec_records(tmp_path, *, persist=True, cycle_id="c9"):
+    """EXECUTED_DECISION records, optionally written to disk."""
+    recs = build_cycle_decisions(
+        cycle_id=cycle_id, decision_timestamp="2026-07-20T12:00:00Z",
+        disposition=Disposition.EXECUTE, reason_codes=[],
+        target_weights={"AAPL": 0.1}, degross_factor=1.0,
+        current_weights={}, portfolio_nav=100_000.0, peak_nav=100_000.0,
+    )
+    ledger = tmp_path / "d.jsonl"
+    if persist:
+        append_decisions(recs, ledger)
+    return recs, ledger
+
+
+def test_order_with_a_persisted_decision_is_submitted_and_linked(tmp_path):
+    from src.equity.decision_capture import decision_linked_executor
+    from src.equity.rebalance import ExecResult
+
+    recs, ledger = _exec_records(tmp_path)
+    sent = []
+    guarded = decision_linked_executor(
+        lambda o: (sent.append(o.client_order_id), ExecResult.FILLED)[1],
+        decisions=recs, ledger_path=ledger,
+    )
+
+    result = guarded(_order())
+
+    assert result is ExecResult.FILLED
+    assert sent == ["oid-1"]
+    links = [r for r in load_decisions(ledger) if r.get("row_type") == "broker_link"]
+    assert len(links) == 1
+    assert links[0]["broker_order_id"] == "oid-1"
+    assert links[0]["links_decision_digest"] == recs[0].digest()
+
+
+def test_order_is_refused_when_the_decision_was_never_persisted(tmp_path):
+    """Built-but-not-written must not authorise a submission."""
+    from src.equity.decision_capture import decision_linked_executor
+    from src.equity.rebalance import ExecResult
+
+    recs, ledger = _exec_records(tmp_path, persist=False)
+    sent = []
+    guarded = decision_linked_executor(
+        lambda o: (sent.append(o), ExecResult.FILLED)[1],
+        decisions=recs, ledger_path=ledger,
+    )
+
+    result = guarded(_order())
+
+    assert result is ExecResult.REJECTED
+    assert sent == [], "an unpersisted decision must not produce an order"
+
+
+def test_order_for_an_instrument_with_no_decision_is_refused(tmp_path):
+    from src.equity.decision_capture import decision_linked_executor
+    from src.equity.rebalance import ExecResult
+
+    recs, ledger = _exec_records(tmp_path)
+    sent = []
+    guarded = decision_linked_executor(
+        lambda o: (sent.append(o), ExecResult.FILLED)[1],
+        decisions=recs, ledger_path=ledger,
+    )
+
+    result = guarded(_order(ticker="TSLA", coid="oid-tsla"))
+
+    assert result is ExecResult.REJECTED
+    assert sent == []
+
+
+def test_candidate_decision_can_never_authorise_an_order(tmp_path):
+    """A record documenting a refusal must not become permission to trade."""
+    from src.equity.decision_capture import decision_linked_executor
+    from src.equity.rebalance import ExecResult
+
+    recs = _records(disposition=Disposition.HALT, cycle_id="cX")
+    ledger = tmp_path / "d.jsonl"
+    append_decisions(recs, ledger)
+    sent = []
+    guarded = decision_linked_executor(
+        lambda o: (sent.append(o), ExecResult.FILLED)[1],
+        decisions=recs, ledger_path=ledger,
+    )
+
+    result = guarded(_order())
+
+    assert result is ExecResult.REJECTED
+    assert sent == []
+
+
+def test_every_lifecycle_row_retains_one_originating_decision_digest(tmp_path):
+    """Partial / replacement / cancel events all resolve to one decision."""
+    from src.learning.decision_ledger import link_broker_order
+
+    recs, ledger = _exec_records(tmp_path)
+    digest = recs[0].digest()
+    for oid in ("oid-1", "oid-1-replace", "oid-1-cancel"):
+        link_broker_order(digest, broker_order_id=oid, path=ledger)
+
+    links = [r for r in load_decisions(ledger) if r.get("row_type") == "broker_link"]
+
+    assert len(links) == 3
+    assert {r["links_decision_digest"] for r in links} == {digest}
+
+
+def test_linkage_rows_are_idempotent(tmp_path):
+    from src.learning.decision_ledger import link_broker_order
+
+    recs, ledger = _exec_records(tmp_path)
+    digest = recs[0].digest()
+
+    assert link_broker_order(digest, broker_order_id="oid-1", path=ledger) is True
+    assert link_broker_order(digest, broker_order_id="oid-1", path=ledger) is False
+
+
+def test_decision_row_is_never_rewritten_by_linkage(tmp_path):
+    """Append-only: the original decision must survive linkage untouched."""
+    from src.learning.decision_ledger import link_broker_order
+
+    recs, ledger = _exec_records(tmp_path)
+    before = [r for r in load_decisions(ledger) if r.get("row_type") != "broker_link"]
+    link_broker_order(recs[0].digest(), broker_order_id="oid-1", path=ledger)
+    after = [r for r in load_decisions(ledger) if r.get("row_type") != "broker_link"]
+
+    assert before == after
+    assert after[0]["broker_order_id"] is None, "decision row stays as written"
