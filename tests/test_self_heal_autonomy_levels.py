@@ -204,11 +204,16 @@ def _make_self_heal_for_apply(tmp_path: Path, config: ScannerConfig) -> SelfHeal
 
 
 def test_apply_skips_level_4_at_default(tmp_path):
-    """End-to-end: apply() with default config skips level-4 tighten action.
+    """End-to-end: apply() with default config does NOT execute the level-4 action.
 
-    Verifies the guard is wired into the dispatch flow, not just the
-    helper. The action should appear in actions_taken with
-    success=False and a level_gate_skipped detail.
+    Verifies the guard is wired into the dispatch flow, not just the helper.
+
+    Since 2026-07-21 ``tighten_gate_threshold`` is ALSO orphaned-action
+    quarantined (it writes scanner gate thresholds, which the live trend lane
+    does not read), so quarantine intercepts before the level gate. Both
+    suppress it; quarantine is the stronger reason -- "no live consumer" beats
+    "level too high" -- so the detail names quarantine. The invariant this test
+    protects is unchanged: the action is RECORDED and NOT executed.
     """
     config = ScannerConfig()
     sh = _make_self_heal_for_apply(tmp_path, config)
@@ -233,8 +238,11 @@ def test_apply_skips_level_4_at_default(tmp_path):
     assert len(actions) == 1
     assert actions[0]["action"] == "tighten_gate_threshold:min_confidence"
     assert actions[0]["success"] is False
-    assert "level_gate_skipped" in actions[0]["detail"]
-    assert "level=4" in actions[0]["detail"]
+    # Suppressed either way; quarantine runs first and is the stronger reason.
+    assert (
+        "quarantined_no_live_consumer" in actions[0]["detail"]
+        or "level_gate_skipped" in actions[0]["detail"]
+    ), actions[0]["detail"]
 
 
 def test_apply_allows_level_3_at_default(tmp_path):

@@ -125,6 +125,53 @@ class SelfHeal:
     LEVEL_4_GUARDED: int = 4      # auto-apply only if config flag elevates max level
     LEVEL_5_MANUAL: int = 5       # NEVER auto-apply — log only
 
+    # ORPHANED-ACTION QUARANTINE (2026-07-21)
+    # -------------------------------------------------------------------
+    # Every handler below writes to a target the LIVE lane does not read.
+    # The live lane is the OANDA practice trend lane
+    # (``src/equity/oanda_trend.py``); its sizing comes from
+    # ``risk_normalized_units`` + ``evaluate_runtime_risk`` +
+    # ``scale_target_units``, and its ``risk_pct`` comes from a CLI arg /
+    # ``OANDA_RISK_PCT`` env var. Verified by grep: oanda_trend.py contains
+    # ZERO references to config_adjustments.json, agent_weights.json, or any
+    # scanner gate threshold.
+    #
+    # The consumers that DO read those files -- ``src/scanner/engine.py`` and
+    # ``src/core/modular_inference.py`` -- are the directional FX scanner
+    # stack, which LESSONS L-016 retires and whose scanner is not running
+    # (``heartbeat.scanner_alive == False``).
+    #
+    # Symptom this fixes: ``retrain_rl_position_sizer`` fired every ~6h since
+    # 2026-07-07, accumulating 42 unconsumed markers, for an artifact read
+    # only by the retired stack. system_decisions.jsonl showed an
+    # "action_taken" every six hours, which reads as self-healing. It was not.
+    #
+    # DELIBERATELY NOT a deletion. Diagnostics, debounce, daily budgets,
+    # logging and the circuit breaker all still run -- the condition is still
+    # DETECTED and RECORDED, only the orphaned write is suppressed. Re-point
+    # via explicitly mapped trend-lane handlers (condition -> live control
+    # actually consumed -> bounded reversible action -> next-cycle
+    # verification), never by un-quarantining a legacy write.
+    #
+    # Approving the live FX trend lane does NOT revive the retired scanner
+    # stack; reversing any entry here requires explicitly reversing L-016.
+    _QUARANTINED_ACTIONS: Dict[str, str] = {
+        "retrain_gates":
+            "retrains RETIRED directional FX models (L-016); no live consumer",
+        "retrain_rl_position_sizer":
+            "RL sizer is read only by modular_inference.py / engine.py "
+            "(retired stack); the trend lane does not use it",
+        "soft_reset_agent_weight":
+            "writes agent_weights.json, consumed only by the retired scanner agents",
+        "reset_gate_threshold_to_default":
+            "writes scanner gate thresholds; oanda_trend.py reads none",
+        "tighten_gate_threshold":
+            "writes scanner gate thresholds; oanda_trend.py reads none",
+        "reduce_risk_per_trade_pct":
+            "writes config_adjustments.json; the trend lane takes risk_pct from "
+            "a CLI arg / OANDA_RISK_PCT env var, never from that file",
+    }
+
     # Action-type → level. Unknown action types fail-closed to LEVEL_5
     # via ``_check_action_level``. Keep keys aligned with the verbs in
     # ``_dispatch`` (see __init__) — drift triggers
@@ -274,9 +321,26 @@ class SelfHeal:
             level_filtered: List[str] = []
             for action_str in ordered:
                 action_type, _, _ = action_str.partition(":")
-                allowed, reason, level = self._check_action_level(
-                    action_type.strip()
-                )
+                action_type = action_type.strip()
+
+                # Orphaned-action quarantine. Recorded, never executed: the
+                # diagnosis stays visible while the dead write is suppressed.
+                quarantine_reason = self._QUARANTINED_ACTIONS.get(action_type)
+                if quarantine_reason:
+                    logger.info(
+                        "self_heal action QUARANTINED (no live consumer): %s — %s",
+                        action_str, quarantine_reason,
+                    )
+                    actions_taken.append({
+                        "action": action_str,
+                        "success": False,
+                        "detail": "quarantined_no_live_consumer:{0}".format(
+                            quarantine_reason,
+                        ),
+                    })
+                    continue
+
+                allowed, reason, level = self._check_action_level(action_type)
                 if not allowed:
                     logger.info(
                         "self_heal action skipped (level gate): %s — %s",
