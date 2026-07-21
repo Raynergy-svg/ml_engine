@@ -31,7 +31,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Tuple
 
 import pandas as pd
 
@@ -109,7 +109,13 @@ def clamp_leverage(value: float) -> float:
 @dataclass(frozen=True)
 class OandaTrendResult:
     ran: bool
-    reason: str               # "halted" / "no_data" / "no_token" / "executed" / "dry_run"
+    # "executed" / "no_data" / "no_token"
+    # observe-only (decisions ARE captured): "lane_halted" / "dry_run"
+    # fail-closed (nothing captured): "halt_state_unreadable" / "no_nav" /
+    #   "drawdown_halt" / "bracket_repair_failed"
+    # authorization refusals (decisions captured, NO order sent):
+    #   "decision_persist_failed" / "decision_not_persisted"
+    reason: str
     targets: Dict[str, float]  # instrument -> target weight (0 = flat/cash)
     orders_placed: int
 
@@ -362,6 +368,26 @@ def margin_scale(want_units: Dict[str, int], last_px: Dict[str, float], nav: flo
     return {i: int(int(u) * factor) for i, u in want_units.items()}, factor
 
 
+def _extract_broker_ids(resp: Any) -> Dict[str, Optional[str]]:
+    """Pull the REAL OANDA transaction ids out of a create-order response.
+
+    OANDA returns ``orderCreateTransaction`` always, and
+    ``orderFillTransaction`` when the market order filled immediately. Either
+    identifies the order at the broker; a locally-synthesized id does not and
+    cannot be reconciled against the account.
+    """
+    if not isinstance(resp, dict):
+        return {"order_id": None, "fill_id": None}
+    create = resp.get("orderCreateTransaction") or {}
+    fill = resp.get("orderFillTransaction") or {}
+    cancel = resp.get("orderCancelTransaction") or {}
+    order_id = create.get("id") or fill.get("orderID") or cancel.get("orderID")
+    return {
+        "order_id": str(order_id) if order_id else None,
+        "fill_id": str(fill.get("id")) if fill.get("id") else None,
+    }
+
+
 def _iso_now() -> str:
     """UTC ISO-8601 stamp for decision identity. Local time would make the
     cycle_id non-comparable across DST and machines."""
@@ -597,10 +623,23 @@ def run_oanda_trend_cycle(
         "HARD LINE: oanda_environment must be 'practice'"
     root = Path(project_root)
 
+    # Halt state read. UNREADABLE is fail-closed and returns immediately: we
+    # cannot even prove we are allowed to observe. HALTED does NOT return here
+    # -- the cycle continues on a strictly READ-ONLY path so the signal and the
+    # sizing it would have produced are still recorded as candidates. Execution
+    # permission is checked later, after decisions are persisted and before any
+    # broker mutation.
     halted, readable, reason = _lane_halted(root, "oanda_fx")
-    if not readable or halted:
-        logger.warning("OANDA trend cycle REFUSED — halt=%s readable=%s reason=%s", halted, readable, reason)
-        return OandaTrendResult(False, "halted", {}, 0)
+    if not readable:
+        logger.error("OANDA trend cycle REFUSED — halt state UNREADABLE (%s)", reason)
+        return OandaTrendResult(False, "halt_state_unreadable", {}, 0)
+    if halted:
+        logger.warning("OANDA trend lane HALTED (%s) — observe-only cycle: planning "
+                       "and decision capture will run, NO broker mutation", reason)
+
+    # Set once here, consumed at the execution-permission checkpoint below.
+    # Nothing between here and that checkpoint may mutate broker state.
+    _execution_blocked_reason = "lane_halted:oanda_fx" if halted else None
 
     # 1. candles -> close panel -> trend targets
     candles = {}
@@ -620,8 +659,10 @@ def run_oanda_trend_cycle(
     logger.info("OANDA trend targets: %d on / %d flat — on=%s",
                 len(on), len(targets) - len(on), sorted(on))
 
-    if dry_run:
-        return OandaTrendResult(True, "dry_run", targets, 0)
+    if dry_run and _execution_blocked_reason is None:
+        _execution_blocked_reason = "dry_run"
+        logger.info("dry_run — observe-only cycle: planning and decision capture "
+                    "will run, NO broker mutation")
 
     # 2. NAV + current positions -> delta orders (long-or-flat)
     summary = client.get_account_summary() or {}
@@ -735,6 +776,78 @@ def run_oanda_trend_cycle(
         if inst:
             current[inst] = net
 
+    # ══ DECISION CAPTURE + EXECUTION PERMISSION CHECKPOINT ═══════════════
+    # Everything above this line is READ-ONLY: candles, NAV, positions,
+    # targets, risk scaling, sizing. Everything below can mutate broker state
+    # (bracket repair, stop movement, order submission).
+    #
+    # Decisions are persisted HERE so that:
+    #   * a halted or dry_run cycle still records the full candidate set with
+    #     the signal and intended sizing as they actually stood, and
+    #   * a persistence failure is discovered BEFORE the first order rather
+    #     than halfway through a sequential book.
+    from src.equity.fx_decision_capture import (
+        build_fx_cycle_decisions,
+        persist_fx_decisions,
+    )
+    from src.learning.decision_ledger import existing_digests
+
+    _fx_cycle_id = f"oanda_fx:{_iso_now()}"
+    _fx_disposition = (
+        Disposition.NO_ACT if _execution_blocked_reason else Disposition.EXECUTE
+    )
+    _fx_reasons = (
+        (_execution_blocked_reason,) if _execution_blocked_reason
+        else ("trend_sma", f"risk_scale={risk_decision.scale:.4f}")
+    )
+    fx_decisions = build_fx_cycle_decisions(
+        cycle_id=_fx_cycle_id,
+        decision_timestamp=_iso_now(),
+        targets=targets,
+        want_units=want,
+        current_units=current,
+        nav=nav,
+        gross_leverage=gross_leverage,
+        last_px=last_px,
+        atr=atr,
+        disposition=_fx_disposition,
+        reason_codes=_fx_reasons,
+        strategy_version=f"trend_sma{sma_window}",
+        market_data_asof=_iso_now(),
+    )
+    _fx_persisted, _fx_stats = persist_fx_decisions(fx_decisions)
+    logger.info("FX decision capture: %d decision(s) %s for cycle %s (%s)",
+                len(fx_decisions),
+                "persisted" if _fx_persisted else "FAILED TO PERSIST",
+                _fx_cycle_id, _fx_disposition.value)
+
+    # Observe-only cycles stop here — BEFORE bracket repair, stop movement and
+    # order submission. The candidate record is the deliverable.
+    if _execution_blocked_reason:
+        return OandaTrendResult(False, _execution_blocked_reason.split(":")[0]
+                                if ":" in _execution_blocked_reason
+                                else _execution_blocked_reason, targets, 0)
+
+    # AUTHORIZATION: no order may be submitted unless its decision is ON DISK.
+    # Verified for the WHOLE book up front, because orders are placed
+    # sequentially -- discovering this mid-loop would leave the book partly
+    # rebalanced with unattributable fills.
+    if not _fx_persisted:
+        logger.error("OANDA trend cycle REFUSED — decision persistence failed; "
+                     "no order may be submitted unattributable")
+        return OandaTrendResult(False, "decision_persist_failed", targets, 0)
+
+    _fx_digest_by_instrument = {d.instrument: d.digest() for d in fx_decisions}
+    _on_disk = existing_digests()
+    _missing = [
+        inst for inst, dig in _fx_digest_by_instrument.items()
+        if dig not in _on_disk and int(want.get(inst, 0)) != int(current.get(inst, 0))
+    ]
+    if _missing:
+        logger.error("OANDA trend cycle REFUSED — executable decision(s) not on disk "
+                     "for %s; refusing to submit unattributable orders", _missing)
+        return OandaTrendResult(False, "decision_not_persisted", targets, 0)
+
     # Single OPEN-trades snapshot shared by the bracket repair, the RISK GATE,
     # and winner management — one API round-trip, one consistent view per cycle.
     open_trades = (client.get_trades(state="OPEN") or {}).get("trades", []) or []
@@ -845,53 +958,6 @@ def run_oanda_trend_cycle(
     if risk_state_dirty:
         save_risk_state(risk_state_path, risk_state)
 
-    # ── Decision capture (2026-07-21) ────────────────────────────────
-    # Record the intention BEFORE any order leaves. This lane is the only one
-    # with a working broker, so it is the only source of broker-realized
-    # closes -- and until now every one of its fills was unattributable (all
-    # 124 realized closes in the journal carry no decision_id).
-    #
-    # Non-blocking by design: orders are placed one-by-one inside the loop
-    # below with risk gates already applied, so aborting mid-loop could leave
-    # the book half-rebalanced -- worse than an unattributed fill. The equity
-    # seam aborts instead because nothing has been sent at that point.
-    fx_decisions = []
-    try:
-        from src.equity.fx_decision_capture import (
-            build_fx_cycle_decisions,
-            persist_fx_decisions,
-        )
-
-        fx_cycle_id = f"oanda_fx:{_iso_now()}"
-        fx_decisions = build_fx_cycle_decisions(
-            cycle_id=fx_cycle_id,
-            decision_timestamp=_iso_now(),
-            targets=targets,
-            want_units=want,
-            current_units=current,
-            nav=nav,
-            gross_leverage=gross_leverage,
-            last_px=last_px,
-            atr=atr,
-            disposition=Disposition.EXECUTE,
-            reason_codes=("trend_sma", f"risk_scale={risk_decision.scale:.4f}"),
-            strategy_version=f"trend_sma{sma_window}",
-            market_data_asof=_iso_now(),
-        )
-        persist_fx_decisions(fx_decisions)
-        logger.info("FX decision capture: %d decision(s) recorded for cycle %s",
-                    len(fx_decisions), fx_cycle_id)
-    except Exception as _cap_exc:  # noqa: BLE001 - capture must never break the cycle
-        logger.error("FX_DECISION_CAPTURE_FAILED: %r -- this cycle's fills will be "
-                     "UNATTRIBUTABLE", _cap_exc)
-
-    _fx_digest_by_instrument = {}
-    for _d in fx_decisions:
-        try:
-            _fx_digest_by_instrument[_d.instrument] = _d.digest()
-        except Exception:  # noqa: BLE001
-            pass
-
     placed = 0
     for inst in instruments:
         delta = rebalance_delta(want.get(inst, 0), current.get(inst, 0))
@@ -979,23 +1045,58 @@ def run_oanda_trend_cycle(
                              "SLd=%s TPd=%s atr=%s",
                              inst, sl_dist, tp_dist, atr.get(inst))
                 continue
-        client.create_market_order(instrument=inst, units=delta,
-                                   stop_loss_distance=sl_dist, take_profit_distance=tp_dist,
-                                   client_tag="ml_engine_trend_demo")
+        # Capture the broker's RESPONSE. The earlier version discarded it and
+        # linked a synthesized "{instrument}:{local timestamp}" id, which
+        # resolves to nothing at OANDA -- the linkage existed but could not be
+        # reconciled against the account.
+        _order_resp = client.create_market_order(
+            instrument=inst, units=delta,
+            stop_loss_distance=sl_dist, take_profit_distance=tp_dist,
+            client_tag="ml_engine_trend_demo")
         placed += 1
-        # Append-only linkage: the decision row is never rewritten, and every
-        # later lifecycle event resolves to this same decision digest.
+
+        _broker_ids = _extract_broker_ids(_order_resp)
         _fx_dig = _fx_digest_by_instrument.get(inst)
-        if _fx_dig:
+        if _fx_dig and _broker_ids.get("order_id"):
             try:
                 from src.learning.decision_ledger import link_broker_order
 
-                link_broker_order(_fx_dig,
-                                  broker_order_id=f"{inst}:{_iso_now()}",
-                                  client_order_id="ml_engine_trend_demo")
-            except Exception as _lnk:  # noqa: BLE001 - order is away; do not roll back
-                logger.error("FX_DECISION_CAPTURE_FAILED: could not link order for %s: %r",
-                             inst, _lnk)
+                # Append-only: the decision row is never rewritten, and every
+                # later lifecycle event resolves to this same digest.
+                link_broker_order(
+                    _fx_dig,
+                    broker_order_id=str(_broker_ids["order_id"]),
+                    client_order_id=str(_broker_ids.get("fill_id") or "") or None,
+                )
+            except Exception as _lnk:  # noqa: BLE001 - order is AWAY; never roll back
+                # The broker holds an order with no durable local linkage.
+                # Do not cancel (a blind cancel can race a fill) and do not
+                # keep submitting -- each further order could add another
+                # unlinked position to an unreconciled book.
+                from src.learning.execution_context_builder import SubmissionGate
+
+                logger.critical(
+                    "UNLINKED_BROKER_ORDER_INCIDENT %s order=%s decision=%s: %r "
+                    "— closing submissions for this cycle; reconcile linkage from "
+                    "broker state before reopening",
+                    inst, _broker_ids.get("order_id"), _fx_dig, _lnk,
+                )
+                try:
+                    SubmissionGate().raise_unlinked_incident(
+                        broker_order_id=str(_broker_ids.get("order_id")),
+                        decision_id=f"{_fx_cycle_id}:{inst}",
+                        detail=f"FX linkage write failed after broker acceptance: {_lnk!r}",
+                        at=_iso_now(),
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.critical("could not even record the unlinked-order incident")
+                break
+        elif _fx_dig:
+            logger.error(
+                "FX_DECISION_CAPTURE_FAILED: broker returned no usable order id for %s "
+                "(resp keys=%s) — fill will be UNATTRIBUTABLE",
+                inst, sorted(_order_resp)[:8] if isinstance(_order_resp, dict) else type(_order_resp).__name__,
+            )
         _dec = 3 if str(inst).endswith("_JPY") else 5
         logger.info("OANDA PAPER order: %s units=%+d (target=%d current=%d) SLdist=%s TPdist=%s",
                     inst, delta, want.get(inst, 0), current.get(inst, 0),
