@@ -30,6 +30,8 @@ from typing import Any, Dict, List, Optional
 
 import structlog
 
+from src.utils.claude_cli import augmented_path_env, resolve_claude_cli
+
 logger = structlog.get_logger(__name__)
 
 # Default Claude CLI invocation — matches existing patterns in the repo
@@ -656,6 +658,17 @@ def invoke_claude_reflection(
         _append_reflection_log(result, prompt)
         return result
 
+    # Resolve the claude binary before doing any staging work. Callers may run
+    # under a daemon with a minimal PATH (see src/utils/claude_cli.py) where a
+    # bare `shutil.which("claude")` would falsely report the CLI missing.
+    cli_path = resolve_claude_cli(CLAUDE_CLI)
+    if not cli_path:
+        result.error = "claude CLI not found on PATH"
+        result.duration_seconds = time.time() - start
+        logger.error("claude_reflection.cli_missing")
+        _append_reflection_log(result, prompt)
+        return result
+
     # Rewrite .claude/ paths in the prompt to staging directory.
     # Claude CLI blocks writes to .claude/ (sensitive-path guard), so we redirect
     # to logs/reflection_staging/ and merge after the subprocess exits.
@@ -681,16 +694,18 @@ def invoke_claude_reflection(
             timeout=timeout_seconds,
         )
 
+        child_env = os.environ.copy()
+        child_env["PATH"] = augmented_path_env(child_env)
         with open(prompt_file, "r") as stdin_f:
             proc = subprocess.run(
-                [CLAUDE_CLI, *DEFAULT_FLAGS],
+                [cli_path, *DEFAULT_FLAGS],
                 stdin=stdin_f,
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
                 cwd=str(cwd) if cwd else None,
-                # Inherit env so Claude can find its config / auth
-                env=os.environ.copy(),
+                # Inherit env (augmented PATH) so Claude can find its config / auth
+                env=child_env,
             )
         result.returncode = proc.returncode
         stdout = proc.stdout or ""
@@ -835,7 +850,7 @@ def _parse_repair_result(stdout: str) -> Dict[str, Any]:
     raw = match.group(1).strip()
     # Strip code fences
     if "```" in raw:
-        lines = [l for l in raw.splitlines() if not l.strip().startswith("```")]
+        lines = [line for line in raw.splitlines() if not line.strip().startswith("```")]
         raw = "\n".join(lines).strip()
     # Try JSON
     try:
@@ -1123,7 +1138,6 @@ def invoke_code_repair(
         else:
             # Parse repair result block
             repair_data = _parse_repair_result(stdout)
-            promise_found = bool(REPAIR_PROMISE_RE.search(stdout))
 
             if repair_data:
                 result.files_edited = repair_data.get("files_edited", [])

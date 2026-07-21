@@ -1,12 +1,12 @@
 {
-  "trained_at": "2026-06-15T21:51:47.969607+00:00",
+  "trained_at": "2026-07-08T13:26:15.979952+00:00",
   "timesteps": 256,
   "training_samples": 120,
   "stats": {
     "total_timesteps": 256,
-    "final_equity": 9993.042282682462,
-    "total_trades": 206,
-    "win_rate": 0.5194174757281553,
+    "final_equity": 9984.317158215545,
+    "total_trades": 210,
+    "win_rate": 0.5190476190476191,
     "model_path": "trained_data/models/rl_position_sizer.zip",
     "scaler_path": "trained_data/models/rl_scaler.pkl"
   },

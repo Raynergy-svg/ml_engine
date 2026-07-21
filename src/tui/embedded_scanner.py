@@ -667,21 +667,26 @@ class EmbeddedScanner:
         # despite halt set at 14:30. Closes the loop: when halted, skip
         # the cycle entirely, emit ONE brain message, and let the heartbeat
         # tick keep updating so the TUI stays alive for operator un-halt.
+        # 2026-07-02 (operator decision): fail-CLOSED, matching execute_trade/
+        # close_trade's mid-cycle guards. A broken/unreadable halt check must
+        # never let a cycle proceed silently — it skips the cycle instead.
         try:
             from src.scanner.automation.state_engine import StateEngine
-            if StateEngine().get_halted():
-                if not getattr(self, "_halt_message_emitted", False):
-                    self._brain(
-                        "[bold red]◈ SCANNER HALTED — auto-halt active. "
-                        "Toggle halted=false in state.json or via TUI 'u' "
-                        "key to resume.[/]"
-                    )
-                    self._halt_message_emitted = True
-                return None
-            # Reset the latch so a re-halt fires a fresh brain message.
-            self._halt_message_emitted = False
+            _halted = StateEngine().get_halted_strict(lane="oanda_fx")
         except Exception as _halt_err:
-            logger.debug("Halted check error (non-blocking): %s", _halt_err)
+            logger.error("Halted check FAILED (%s) — fail-closed, skipping cycle", _halt_err)
+            _halted = True
+        if _halted:
+            if not getattr(self, "_halt_message_emitted", False):
+                self._brain(
+                    "[bold red]◈ SCANNER HALTED — auto-halt active. "
+                    "Toggle halted=false in state.json or via TUI 'u' "
+                    "key to resume.[/]"
+                )
+                self._halt_message_emitted = True
+            return None
+        # Reset the latch so a re-halt fires a fresh brain message.
+        self._halt_message_emitted = False
 
         self._persist_next_scan_count()
         # T3: cycle boundary — increment cumulative cycles counter.
@@ -947,24 +952,35 @@ class EmbeddedScanner:
             logger.debug("embedded_scanner.meta_route_failed err=%r", e)
 
     def _reload_config_now(self) -> None:
-        """Invalidate the ConfigAdjuster cache and re-apply pending adjustments.
+        """Consume approved adjustments through the durable overlay.
 
         Tier 2 T8: triggered when `_consume_config_dirty_flag` returns True
         at the top of `run_one_cycle`. Pair with `AdjustmentApprover._save_approved`
         which sets the flag on every successful approval write.
 
-        Uses Tier 1 T5's `ConfigAdjuster._invalidate_cache` so the next
-        `apply_adjustments` call re-reads `config_adjustments.json` from disk
-        instead of serving stale in-memory state. Best-effort — adjuster /
-        config may be None during tests or early init.
+        2026-07-03 (verifier two-consumer gap fix): previously called
+        `ConfigAdjuster.apply_adjustments` directly, which mutated only this
+        session's in-memory `ScannerConfig` while marking the adjustment
+        consumed on disk — a restart lost it permanently even though it could
+        never be re-offered. Routing through `config_overlay` makes the TUI
+        consumer land in the same durable store the headless supervisor uses,
+        so every approval survives a restart regardless of which consumer
+        applied it first. `_invalidate_cache` keeps `self._config_adjuster`'s
+        own view consistent with the disk state the overlay just wrote (its
+        every-cycle `apply_adjustments` call sees old_value == new_value and
+        skips, per config_adjuster.py:224). Best-effort — adjuster / config
+        may be None during tests or early init.
         """
         if self._config_adjuster is None or self._config is None:
             return
         try:
-            self._config_adjuster._invalidate_cache()
-            applied = self._config_adjuster.apply_adjustments(
-                self._config, current_cycle=self._scan_count,
+            from src.scanner.automation.config_overlay import (
+                apply_overlay,
+                consume_approved_adjustments,
             )
+            consume_approved_adjustments(self._project_root)
+            applied = apply_overlay(self._config, self._project_root)
+            self._config_adjuster._invalidate_cache()
             if applied:
                 names = [a.get("key", "?") for a in applied]
                 logger.info(
@@ -1246,6 +1262,20 @@ class EmbeddedScanner:
                     )
             except Exception as e:
                 logger.debug("RL sync error: %s", e)
+
+            # 2026-07-04: score journal entries whose outcome was stamped by
+            # OutcomeBackfill/TrendJournalSync (not sync_closed_trades_rl
+            # itself) — these were silently skipping agent-weight learning
+            # since 2026-04-16 (see apply_pending_rl_weight_updates docstring).
+            try:
+                backfill_result = em.apply_pending_rl_weight_updates(scanner=self._scanner)
+                applied = int(backfill_result.get("applied", 0) or 0)
+                if applied:
+                    self._brain(
+                        f"[dim]  RL backfill sync: {applied} previously-unscored outcome(s) → agent weights[/]"
+                    )
+            except Exception as e:
+                logger.debug("RL backfill sync error: %s", e)
 
         except Exception as e:
             logger.debug("Smart loop error: %s", e)

@@ -72,7 +72,8 @@ export interface Trade {
   id: string;
   time: string;
   type: string;
-  status: "FILLED" | "ACTIVE" | "CANCELLED" | "REJECTED" | "POSTED" | "RECORDED";
+  status:
+    "FILLED" | "ACTIVE" | "CANCELLED" | "REJECTED" | "POSTED" | "RECORDED";
   instrument: string | null;
   units: number;
   side: "BUY" | "SELL";
@@ -100,7 +101,10 @@ export interface Trades {
   trades: Trade[];
 }
 
-export interface EquityPoint { time: string; balance: number; }
+export interface EquityPoint {
+  time: string;
+  balance: number;
+}
 export interface Equity {
   connected: boolean;
   source: string;
@@ -119,7 +123,11 @@ export interface Signal {
   distance_pct: number;
 }
 export interface Candle {
-  time: number; open: number; high: number; low: number; close: number;
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
   volume?: number | null; // real OANDA tick-count volume when reported; null if absent
 }
 export interface CandleResponse {
@@ -152,7 +160,10 @@ export interface Sentiment {
   strategy_agent?: string;
   agent_weight?: number;
   note: string;
-  books: Record<string, { price: string; longCountPercent: string; shortCountPercent: string }[]>;
+  books: Record<
+    string,
+    { price: string; longCountPercent: string; shortCountPercent: string }[]
+  >;
   features?: Record<string, Record<string, number>>;
   source: string;
 }
@@ -176,7 +187,7 @@ export interface Tier7MetaEvent {
 export interface Tier7SelfHealEvent {
   ts?: string;
   cycle?: number;
-  status?: string;        // "degraded" | "ok" | ... (bounded-autonomy state)
+  status?: string; // "degraded" | "ok" | ... (bounded-autonomy state)
   degraded?: boolean;
   halted?: boolean;
   n_actions?: number;
@@ -235,7 +246,12 @@ export interface LaneOracle {
   tier7_pid_alive?: boolean;
   error?: string;
 }
-export interface GateCheck { name: string; ok: boolean; hard_no?: boolean; detail?: string }
+export interface GateCheck {
+  name: string;
+  ok: boolean;
+  hard_no?: boolean;
+  detail?: string;
+}
 export interface Gates {
   available: boolean;
   all_ok: boolean;
@@ -261,9 +277,17 @@ export interface Alerts {
   max_severity: string | null;
   last_updated: string | null;
 }
-export interface SystemHealth { lanes: LaneOracle; gates: Gates; alerts: Alerts }
+export interface SystemHealth {
+  lanes: LaneOracle;
+  gates: Gates;
+  alerts: Alerts;
+}
 
-export interface DiagnosticCheck { label: string; ok: boolean | null; metric: string | null }
+export interface DiagnosticCheck {
+  label: string;
+  ok: boolean | null;
+  metric: string | null;
+}
 export interface Tier7Diagnostics {
   checks: DiagnosticCheck[];
   score: number | null;
@@ -288,6 +312,10 @@ export interface ControlState {
   ok: boolean;
   environment: string;
   halted: boolean;
+  /** Per-lane halted status (oanda_fx / equity / brain), fed by StateEngine.get_lane_status().
+   * The legacy global `halted` flag above still ORs over every lane — a lane can never
+   * show running while `halted` is true. */
+  lanes?: Record<string, boolean>;
   gross_leverage: number | null;
   override_updated_at: string | null;
   leverage_cap: number;
@@ -299,9 +327,881 @@ export interface ControlState {
   armed_by: string | null;
 }
 
+// GET /api/lanes — always-on per-lane halt read (visible even with AXIOM_CONTROL_ENABLED off).
+export interface LaneStatus {
+  readable: boolean;
+  global_halted: boolean;
+  lanes: Record<string, boolean>;
+  known_lanes: string[];
+}
+
+// GET /api/equity_sleeve — equity-harvester lane status.
+export interface EquityShipGate {
+  available: boolean;
+  gate_pass?: boolean;
+  net_sharpe?: number | null;
+  max_dd?: number | null;
+  asof?: string | null;
+  recommendation?: string | null;
+  universe_hash?: string | null;
+}
+export interface EquityLiveGate {
+  available: boolean;
+  armed: boolean;
+  universe_hash?: string | null;
+  initial_nav_fraction?: number | null;
+  max_portfolio_risk_fraction?: number | null;
+  armed_at_ts?: number | null;
+  disarmed_at_ts?: number | null;
+  last_event?: string | null;
+  last_event_reason?: string | null;
+  last_event_ts?: number | null;
+}
+export interface EquityCycleRecord {
+  seq: number;
+  asof: string;
+  decision: string;
+  actionable: boolean;
+  gross: number;
+  n_orders: number;
+  reasons: string[];
+}
+export interface EquityGateDecision {
+  available: boolean;
+  decision?: "refuse" | "halt" | "no_act" | "abstain" | "continue";
+  reasons?: string[];
+  actionable?: boolean;
+  error?: string;
+}
+export interface EquitySleeve {
+  connected: boolean;
+  dormant: boolean;
+  mode: "live" | "shadow";
+  asof: string | null;
+  rebalance_id: string | null;
+  target_weights: Record<string, number>;
+  actual_weights: Record<string, number>;
+  source: string;
+  live_gate: EquityLiveGate;
+  ship_gate: EquityShipGate;
+  last_cycles: EquityCycleRecord[];
+  gate_decision: EquityGateDecision;
+}
+
+// GET /api/brain_loop — Sonnet brain-loop status (has not run in production yet; every
+// field below is an honest empty until it does).
+export interface BrainLoopPromotionRequest {
+  hypothesis_id: string;
+  target: "shadow" | "live";
+  status: string; // "APPROVED_SHADOW" | "PENDING_OPERATOR"
+  requires_operator_arm: boolean;
+  decision: Record<string, unknown>;
+  created_at: string;
+}
+export interface BrainLoopLedgerEvent {
+  seq?: number;
+  ts?: string;
+  kind?: string; // "register" | "result" | "gate_verdict"
+  hypothesis_id?: string;
+  name?: string;
+  status?: string;
+  decision?: string;
+  reasons?: string[];
+}
+export interface BrainLoopAuditEvent {
+  ts: string;
+  actor: string;
+  action: string; // "halt" | "tighten_risk_config"
+  reason?: string;
+  risk_pct?: number;
+  prior_risk_pct?: number;
+}
+export interface BrainLoop {
+  has_run: boolean;
+  last_event: BrainLoopLedgerEvent | null;
+  recent_ledger: BrainLoopLedgerEvent[];
+  promotion_requests: BrainLoopPromotionRequest[];
+  pending_operator_count: number;
+  derisk_audit: BrainLoopAuditEvent[];
+  source: Record<string, string>;
+}
+
+// GET /api/learning_loop — market-closed continual-learning readout. Backing
+// job scripts/offline_learning_cycle.py drains Tier-7 retrain_requests
+// markers and walk-forward-gates a risk/calibration model update
+// (never directional alpha — see src/training/incremental/risk_calibration_learner.py).
+export interface LearningLoopCycle {
+  timestamp?: string;
+  markers_drained?: number;
+  new_outcomes?: number;
+  decision: string; // "accepted" | "rejected" | "no_new_data"
+  incumbent_brier?: number | null;
+  candidate_brier?: number | null;
+  max_size_multiplier?: number | null;
+  summary?: string;
+}
+export interface LearningLoop {
+  has_run: boolean;
+  pending_retrain_markers: number;
+  last_cycle: LearningLoopCycle | null;
+  recent_cycles: LearningLoopCycle[];
+  scope: string;
+  // SHADOW/advisory: no live sizing path consumes the learned model yet.
+  consumed_by_live_sizing: boolean;
+  source: Record<string, string>;
+}
+
+export interface ActivityEvent {
+  timestamp?: string;
+  level?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+}
+export interface ActivityItem {
+  id: string;
+  kind: string;
+  title: string;
+  source: string;
+  status: string;
+  started_at?: string | null;
+  updated_at?: string | null;
+  ended_at?: string | null;
+  summary?: string | null;
+  error?: string | null;
+  metadata?: Record<string, unknown>;
+  events?: ActivityEvent[];
+}
+export interface BackgroundActivity {
+  updated_at?: string | null;
+  active_count: number;
+  history_count: number;
+  active: ActivityItem[];
+  history: ActivityItem[];
+  error?: string;
+}
+export interface ActivityLogFeed {
+  id: string;
+  title: string;
+  path: string;
+  exists: boolean;
+  updated_at?: string | null;
+  age_s?: number | null;
+  size_bytes?: number | null;
+  lines: string[];
+}
+export interface ActivitySnapshot {
+  updated_at: string;
+  background: BackgroundActivity;
+  log_feeds: ActivityLogFeed[];
+}
+
+// GET /api/axiom_operator — subscription-backed Claude Code operator session.
+export interface AxiomOperatorSession {
+  session_id?: string;
+  status:
+    | "idle"
+    | "running"
+    | "acted"
+    | "held"
+    | "waiting"
+    | "handoff"
+    | "unavailable"
+    | string;
+  provider: string;
+  epoch: number;
+  context_budget_chars?: number;
+  rollover_threshold?: number;
+  context_used_chars?: number;
+  context_used_pct?: number;
+  handoff_summary?: string | null;
+  open_incidents: string[];
+  last_tools: string[];
+  blocked_reasons: string[];
+  next_action?: string | null;
+  last_action?: string | null;
+  last_reasoning?: string | null;
+  last_error?: string | null;
+  last_effect?: Record<string, unknown> | null;
+  last_started_at?: string | null;
+  last_completed_at?: string | null;
+  updated_at?: string | null;
+  api_key_refused?: boolean;
+  cli_available?: boolean | null;
+  mcp_config?: string | null;
+  mode?: string;
+}
+export interface AxiomOperatorDecision {
+  ts?: string;
+  epoch?: number;
+  status?: string;
+  action?: string;
+  params?: Record<string, unknown>;
+  policy?: {
+    allowed?: boolean;
+    tier?: string;
+    requires_human?: boolean;
+    reason?: string;
+  };
+  tools_called?: string[];
+  blocked_reasons?: string[];
+  context_used_chars?: number;
+  context_used_pct?: number;
+  rollover?: boolean;
+  duration_seconds?: number;
+  returncode?: number;
+  handoff_summary?: string;
+  next_action?: string;
+}
+export interface AxiomOperator {
+  has_run: boolean;
+  session: AxiomOperatorSession;
+  last_decision: AxiomOperatorDecision | null;
+  recent_decisions: AxiomOperatorDecision[];
+  source: Record<string, string>;
+}
+
+export interface AxiomOperatorRunResult {
+  ok: boolean;
+  status: string;
+  epoch: number;
+  action: string;
+  error?: string | null;
+  decision?: AxiomOperatorDecision;
+  session?: AxiomOperatorSession;
+}
+
+// GET /api/crypto_momentum — crypto XS-momentum SHADOW lane (no live path exists;
+// this signal FAILED the ship gate on significance — see docs/experiment-crypto-
+// edge-hunt-round2-2026-06-29.md — the panel exists to show the accumulating
+// live-forward-OOS record, not a verified edge).
+export interface CryptoMomentumBook {
+  longs: Record<string, number>;
+  shorts: Record<string, number>;
+}
+export interface CryptoMomentumCycle {
+  cycle_ts: string;
+  asof_date: string;
+  n_longs: number;
+  n_shorts: number;
+  gross_leverage: number;
+  today_net_return: number;
+  today_price_return: number;
+  today_carry_return: number;
+  today_cost: number;
+  today_turnover: number;
+  cumulative_shadow_return: number;
+  forward_cycle_seq: number;
+  orders_placed: number;
+}
+export interface CryptoMomentumConstruction {
+  signal: string;
+  direction: number;
+  quintile: number;
+  vol_target_ann: number;
+  vol_window_d: number;
+  max_leverage: number;
+  rebalance_days: number;
+  cost_bps: number;
+  source_doc: string;
+  pre_registered_oos_sharpe: number;
+  gate_verdict: string;
+}
+export interface CryptoMomentumLiveGate {
+  available: boolean;
+  armed: boolean;
+  last_event?: string | null;
+  last_event_reason?: string | null;
+}
+export interface ShadowLaneFreshness {
+  status: "fresh" | "stale" | "unavailable";
+  last_evaluated_at: string | null;
+  age_s: number | null;
+  expected_interval_s: number;
+  stale_after_s: number;
+}
+export interface CryptoMomentum {
+  has_run: boolean;
+  n_forward_cycles: number;
+  current_book: CryptoMomentumBook | null;
+  current_asof: string | null;
+  current_gross_leverage: number | null;
+  cumulative_shadow_return: number;
+  forward_sharpe_annualized: number | null;
+  first_asof_date: string | null;
+  last_asof_date: string | null;
+  recent_cycles: CryptoMomentumCycle[];
+  construction: CryptoMomentumConstruction | null;
+  freshness: ShadowLaneFreshness;
+  live_gate: CryptoMomentumLiveGate;
+  mode: "live" | "shadow";
+  source: Record<string, string>;
+}
+
+// GET /api/crypto_carry — crypto cash-and-carry SHADOW lane (long spot proxy /
+// short perpetual, positive-funding-only, delta-neutral by construction; no
+// live path exists). This signal FAILED the ship gate on turnover cost — see
+// docs/prereg-crypto-cash-and-carry-shadow-2026-07-06.md — the panel exists to
+// show the accumulating live-forward-OOS record, not a verified edge. This is
+// a risk premium with a real exchange-solvency/liquidation tail, not free
+// money — see `risk_premium_note`.
+export interface CryptoCarryBook {
+  longs: Record<string, number>;
+  shorts: Record<string, number>;
+}
+export interface CryptoCarryCycle {
+  cycle_ts: string;
+  asof_date: string;
+  n_longs: number;
+  n_shorts: number;
+  gross_leverage: number;
+  today_net_return: number;
+  today_price_return: number;
+  today_carry_return: number;
+  today_cost: number;
+  today_turnover: number;
+  cumulative_shadow_return: number;
+  forward_cycle_seq: number;
+  orders_placed: number;
+}
+export interface CryptoCarryConstruction {
+  signal: string;
+  lookback_d: number;
+  cost_bps_roundtrip: number;
+  vol_target_ann: number;
+  vol_window_d: number;
+  max_leverage: number;
+  rebalance_days: number;
+  source_doc: string;
+  gate_verdict: string;
+  risk_premium_note: string;
+}
+export interface CryptoCarryLiveGate {
+  available: boolean;
+  armed: boolean;
+  last_event?: string | null;
+  last_event_reason?: string | null;
+}
+export interface CryptoCarry {
+  has_run: boolean;
+  n_forward_cycles: number;
+  current_book: CryptoCarryBook | null;
+  current_asof: string | null;
+  current_gross_leverage: number | null;
+  cumulative_shadow_return: number;
+  forward_sharpe_annualized: number | null;
+  first_asof_date: string | null;
+  last_asof_date: string | null;
+  recent_cycles: CryptoCarryCycle[];
+  construction: CryptoCarryConstruction | null;
+  freshness: ShadowLaneFreshness;
+  risk_premium_note: string | null;
+  live_gate: CryptoCarryLiveGate;
+  mode: "live" | "shadow";
+  source: Record<string, string>;
+}
+
+// GET /api/track_b — SEC filing-text research-alpha SHADOW lane (no live path
+// exists; this signal is self-labeled overall_verdict=INSUFFICIENT — UNDERPOWERED,
+// not a measured NO EDGE, see docs/adversarial-review-no-edge-verdicts-2026-07-02.md
+// — the panel exists to show the accumulating live-forward-OOS record against the
+// frozen construction, not a verified edge).
+export interface TrackBBook {
+  longs: Record<string, number>;
+  shorts: Record<string, number>;
+}
+export interface TrackBCycle {
+  cycle_ts: string;
+  asof_date: string;
+  n_scored_filings: number;
+  n_longs: number;
+  n_shorts: number;
+  gross_leverage: number;
+  today_net_return: number;
+  today_gross_return: number;
+  today_cost: number;
+  today_turnover: number;
+  cumulative_shadow_return: number;
+  forward_cycle_seq: number;
+  orders_placed: number;
+}
+export interface TrackBConstruction {
+  signal: string;
+  composite_weights: Record<string, number>;
+  book: string;
+  quintile_divisor: number;
+  min_names_for_quintile: number;
+  rebalance_step_days: number;
+  vol_target_ann: number;
+  dd_soft: number;
+  dd_hard: number;
+  max_leverage: number;
+  cost_bps: number;
+  model_cutoff: string;
+  n_scored_filings: number;
+  power_required_n_filings: number;
+  source_prereg_doc: string;
+  source_scaleup_doc: string;
+  source_adversarial_review_doc: string;
+  gate_verdict: string;
+  coverage_note: string;
+}
+export interface TrackBLiveGate {
+  available: boolean;
+  armed: boolean;
+  last_event?: string | null;
+  last_event_reason?: string | null;
+}
+export interface TrackB {
+  has_run: boolean;
+  n_forward_cycles: number;
+  n_scored_filings: number | null;
+  current_book: TrackBBook | null;
+  current_asof: string | null;
+  current_gross_leverage: number | null;
+  cumulative_shadow_return: number;
+  forward_sharpe_annualized: number | null;
+  first_asof_date: string | null;
+  last_asof_date: string | null;
+  recent_cycles: TrackBCycle[];
+  construction: TrackBConstruction | null;
+  freshness: ShadowLaneFreshness;
+  live_gate: TrackBLiveGate;
+  mode: "live" | "shadow";
+  source: Record<string, string>;
+}
+
+// GET /api/hedge — AXIOM Hedge Layer readout, SHADOW / ANALYSIS-ONLY (places no
+// orders, unhalts nothing, mutates no broker; every row carries paper_only /
+// runtime_allowed flags from its writer). Backed by data_sources.read_hedge():
+//   - live_fx_exposure: computed live each request from the open OANDA trend
+//     book (persist=False) — the "one USD bet wearing three outfits" detector;
+//     null when the book is flat / stale / uncomputable (honest empty state).
+//   - exposure_history: the training bridge counter (0 until the capture loop
+//     starts — an explicit "not started" state, not an error).
+//   - recent_cycles: raw-vs-hedged ledger rows; FX hedged return_basis is often
+//     "unresolved" (no FX forward-price source yet — surfaced, not hidden).
+// Every nested value below that is an object/array is rendered field-extracted
+// or .map()ed, NEVER dropped into JSX directly ("Objects are not valid as a
+// React child" has crashed this dashboard before — see HedgePanel guards).
+export interface HedgeLeg {
+  instrument: string;
+  direction: string; // "long" | "short"
+  risk_home: number;
+}
+export interface HedgeProposal {
+  style: string; // "direct_offset" | "relative_value" | "market" | "sector"
+  legs: HedgeLeg[];
+  neutralizes: string; // which exposure bucket this targets, e.g. "currency:USD"
+  isolates: string; // one-line narrative: what view survives the hedge
+  exposure_reduction: number; // dollar risk_home removed from the flagged bucket
+  exposure_reduction_pct: number | null;
+  correlation_to_target: number | null;
+  cost_known: boolean;
+  cost_estimate_dollars: number | null;
+  cost_to_reduction_ratio: number | null;
+  cost_source: string;
+  cost_confidence: number;
+  fail_closed: boolean;
+  reasons: string[];
+}
+export interface HedgeLiveFxExposure {
+  asof_date: string | null;
+  nav: number | null;
+  net_currency_exposure: Record<string, number>; // signed home-$ notional per currency
+  net_correlation_bucket_exposure: Record<string, number>;
+  concentration_warnings: string[];
+  narrative: string[];
+  position_count: number | null;
+  resolved_position_count: number | null;
+  raw_net_return: number | null;
+  raw_return_basis: string | null;
+  hedge_status: string | null; // "applied" | "no_valid_hedge" | "fail_closed" | "unsupported_asset_class"
+  hedge_decision: string | null;
+  applied_hedge: HedgeProposal | null; // OBJECT — never render raw; extract named fields
+  hedged_return_basis: string; // often "unresolved" for FX (no forward-price source yet)
+}
+export interface HedgeExposureHistory {
+  n_snapshots: number;
+  first_captured_at: string | null;
+  last_captured_at: string | null;
+  last_nav: number | null;
+  last_net_currency: Record<string, number> | null; // OBJECT — never render raw
+  note: string;
+}
+// One raw-vs-hedged ledger row. raw/hedge/hedged/exposure are OBJECTS — only the
+// named scalar fields below get rendered; the rest stay opaque on purpose.
+export interface HedgeLedgerCycle {
+  cycle_ts: string;
+  strategy: string;
+  asset_class: string;
+  asof_date: string;
+  notional: number;
+  raw: { net_return: number | null; gross_return?: number | null };
+  hedge: { status: string | null; decision: string | null };
+  hedged: {
+    return_basis: string;
+    net_return: number | null;
+    gross_return: number | null;
+  };
+  exposure: Record<string, unknown>;
+  paper_only?: boolean;
+  runtime_allowed?: boolean;
+  human_review_required?: boolean;
+}
+export interface Hedge {
+  live_fx_exposure: HedgeLiveFxExposure | null;
+  scorecards: Record<string, unknown>; // per-strategy objects — not rendered raw
+  strategies_with_history: string[];
+  recent_cycles: HedgeLedgerCycle[];
+  n_ledger_cycles: number;
+  exposure_history: HedgeExposureHistory;
+  paper_only: boolean;
+  runtime_allowed: boolean;
+  human_review_required: boolean;
+  source: Record<string, string>;
+}
+
+export interface RiskTrimBucket {
+  bucket: string;
+  currency: string;
+  direction: string;
+  risk_home: number;
+  cap_home: number;
+  over_home: number;
+  pct_of_cap: number | null;
+  instruments: string[];
+}
+export interface RiskTrimCandidate {
+  instrument: string;
+  trade_id: string;
+  current_units: number;
+  reduce_units: number;
+  remaining_units: number;
+  risk_home: number;
+  risk_per_unit_home: number;
+  estimated_risk_reduction_home: number;
+  covered_buckets: string[];
+  clears_buckets: string[];
+}
+export interface RiskTrim {
+  connected: boolean;
+  status: "clear" | "over_cap" | "unavailable" | "error" | string;
+  reason?: string;
+  asof?: string;
+  cap_home?: number;
+  open_trade_count?: number;
+  over_cap_buckets: RiskTrimBucket[];
+  candidates: RiskTrimCandidate[];
+  recommended?: RiskTrimCandidate | null;
+  order_mutation: boolean;
+  runtime_allowed: boolean;
+  note?: string;
+}
+
+// GET /api/mind_window — resident reasoning loop (src/agent_runtime/loop.py)
+// "mind-window": what the loop NOTICED (observations), BELIEVES (diagnosis),
+// DID-OR-WOULD-DO (outcomes), and NEEDS FROM THE OPERATOR (pending_operator_
+// proposals). Has not run in production yet (has_run=false) — render the
+// honest empty state, never fabricate a cycle.
+export type MindWindowTier =
+  "operational" | "deescalation" | "escalation" | string;
+
+export interface MindWindowObservation {
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+}
+export interface MindWindowProposedAction {
+  action: string;
+  params?: Record<string, unknown>;
+  rationale?: string;
+  tier?: MindWindowTier;
+}
+export interface MindWindowDiagnosis {
+  available: boolean;
+  reasoning?: string | null;
+  beliefs?: string | null;
+  proposed_actions?: MindWindowProposedAction[];
+}
+export interface MindWindowOutcome {
+  action: string;
+  tier?: MindWindowTier;
+  executed: boolean;
+  shadow: boolean;
+  proposal: boolean;
+  denied: boolean;
+  detail?: Record<string, unknown>;
+  proposal_id?: string | null;
+}
+export interface ProposalDisposition {
+  proposal_id: string;
+  status: "accepted" | "denied";
+  actor: string;
+  reason?: string;
+  detail?: Record<string, unknown>;
+  decided_at: string;
+}
+export interface MindWindowCycle {
+  cycle_id: string;
+  ts: string;
+  actor?: string;
+  cli_available?: boolean;
+  autonomy_enabled?: boolean;
+  observations: Record<string, MindWindowObservation>;
+  diagnosis: MindWindowDiagnosis;
+  proposed_actions?: MindWindowProposedAction[];
+  outcomes: MindWindowOutcome[];
+  verified?: boolean;
+  verify_detail?: Record<string, unknown>;
+}
+// pending_operator_proposals flattens every escalation outcome with proposal=true
+// across recent_cycles, deduped by proposal_id (same proposal re-surfacing across
+// cycles shows once), prefixed with cycle_id/ts. resolved_proposals holds the ones
+// the operator has already accepted/denied (joined disposition, not hidden).
+export interface MindWindowPendingProposal extends MindWindowOutcome {
+  cycle_id?: string;
+  ts?: string;
+  disposition?: ProposalDisposition | null;
+}
+export interface MindWindow {
+  has_run: boolean;
+  autonomy_enabled: boolean;
+  recent_cycles: MindWindowCycle[];
+  last_cycle: MindWindowCycle | null;
+  pending_operator_proposals: MindWindowPendingProposal[];
+  resolved_proposals?: MindWindowPendingProposal[];
+  error?: string;
+  source: Record<string, string>;
+}
+
 export interface StreamPayload {
   ts: number;
   account: Account;
   status: Status;
   prices: Prices;
+}
+
+// GET /api/axiom_training — Phase-M evidence cockpit. All fields are factual
+// projections; nullable monitoring metrics mean the lane is not reporting.
+export interface TrainingDataTier {
+  tier: string;
+  manifest_count: number;
+  partition_count: number;
+  object_count: number;
+  latest_manifest: string | null;
+  latest_manifest_at: string | null;
+  freshness_age_seconds: number | null;
+  latest_object: string | null;
+  latest_object_at: string | null;
+  object_freshness_age_seconds: number | null;
+}
+export interface TrainingDataDomain {
+  domain: string;
+  available: boolean;
+  status: "versioned" | "captured" | "source_only" | "empty";
+  data_present: boolean;
+  source_file_count: number;
+  source_locations: string[];
+  latest_source_at: string | null;
+  source_freshness_age_seconds: number | null;
+  published_manifest_count: number;
+  canonical_object_count: number;
+  latest_data_age_seconds: number | null;
+  tiers: TrainingDataTier[];
+}
+export interface P2Readiness {
+  available: boolean;
+  ready: boolean;
+  minimum_trading_days?: number;
+  exposure_trading_days?: number;
+  required_pairs?: string[];
+  tick_trading_days_by_pair?: Record<string, number>;
+  generated_at_utc?: string;
+  age_seconds?: number | null;
+  blocking_reasons?: string[];
+  error?: string;
+}
+export interface TrainingCaptureStatus {
+  tick: {
+    status: string;
+    writer_status: string;
+    canonical_batches: number;
+    pairs_with_records: number;
+    pairs_current: number;
+    required_pairs: number;
+    last_canonical_at?: string | null;
+    last_canonical_age_seconds?: number | null;
+    health_updated_at?: string | null;
+    health_age_seconds?: number | null;
+    ticks_received_session?: number | null;
+    ticks_written_session?: number | null;
+    buffered_ticks?: number | null;
+    ticks_per_minute?: number | null;
+    flushes?: number | null;
+    flush_errors?: number | null;
+    last_flush_at?: string | null;
+    last_flush_error?: { at_utc?: string; type?: string; message?: string } | null;
+  };
+  exposure: {
+    status: string;
+    canonical_snapshots: number;
+    last_canonical_at?: string | null;
+    last_canonical_age_seconds?: number | null;
+  };
+}
+export interface EvidenceCheck {
+  check_id?: string;
+  passed?: boolean;
+  details?: string | null;
+}
+export interface EvidencePackageView {
+  family: string;
+  lane_id: string;
+  package_id?: string | null;
+  package_digest: string;
+  state?: string | null;
+  sequence?: number | null;
+  disposition_head_digest?: string | null;
+  job_manifest_digest?: string | null;
+  derived_from_package_digests?: string[];
+  created_at?: string | null;
+  negative_result?: boolean;
+  is_champion?: boolean;
+  gate_results?: EvidenceCheck[];
+  lineage_object_count?: number;
+  lineage_expected_count?: number;
+  lineage_complete?: boolean;
+  evaluation_resource_usage?: {
+    wall_seconds?: number | null;
+    scope?: string | null;
+    allocation?: string | null;
+    head_count?: number | null;
+  };
+  evaluation_cost?: {
+    amount?: number | null;
+    currency?: string | null;
+    basis?: string | null;
+    rate_per_hour?: number | null;
+    scope?: string | null;
+    allocation?: string | null;
+  };
+  verification?: {
+    decision?: string | null;
+    rejection_reason?: string | null;
+    failed_checks?: string[];
+  };
+}
+export interface EvidenceLaneView {
+  lane_id: string;
+  family: string;
+  current: EvidencePackageView;
+  champion?: Record<string, unknown> | null;
+  prior_champion?: EvidencePackageView | null;
+  package_count: number;
+  negative_count: number;
+}
+export interface TrainingJobView {
+  job_id: string;
+  status: string;
+  source?: string;
+  lane?: string;
+  program?: string;
+  lanes?: string[];
+  manifest_digest?: string | null;
+  git_commit?: string | null;
+  container_digest?: string | null;
+  configuration_digest?: string | null;
+  feature_pipeline_version?: string | null;
+  assigned_unit?: string | null;
+  trial_budget?: number | null;
+  resource_class?: string | null;
+  resource_usage?: { wall_seconds?: number | null } | null;
+  cost?: number | null;
+  cost_currency?: string | null;
+  cost_basis?: string | null;
+  cost_rate_per_hour?: number | null;
+  submitted_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error?: string | null;
+}
+export interface ForwardLaneMonitor {
+  lane_id: string;
+  package_digest?: string | null;
+  state?: string | null;
+  available: boolean;
+  status?: string;
+  shadow_started_at?: string | null;
+  shadow_age_seconds?: number | null;
+  updated_at?: string | null;
+  forward_sharpe?: number | null;
+  drawdown?: number | null;
+  turnover?: number | null;
+  cost?: number | null;
+  exposure?: number | null;
+  baseline_deviation?: number | null;
+  retirement_warnings?: string[];
+}
+export interface TrainingControlReadiness {
+  enabled: boolean;
+  operator_trust_configured: boolean;
+  dataset_configured: boolean;
+  dataset_sha256?: string | null;
+  runtime_identity: {
+    available: boolean;
+    clean: boolean;
+    git_commit?: string | null;
+    error?: string | null;
+  };
+  run_ready: boolean;
+  run_request_template?: Record<string, unknown> | null;
+  run_subject_digest?: string | null;
+  operator_private_key_on_server: boolean;
+  programs?: Record<string, {
+    label: string;
+    phase: string;
+    trainable: boolean;
+    p2_features_included: boolean;
+    eligibility: string;
+    minimum_forward_trading_days?: number | null;
+    description: string;
+  }>;
+  actions: string[];
+  invariants: string[];
+}
+export interface AxiomTrainingCockpit {
+  connected: boolean;
+  generated_at?: string;
+  error?: string;
+  data: {
+    data_root: string;
+    source_root: string;
+    domains: TrainingDataDomain[];
+    quality_failure_count: number;
+    quality_failures: { kind: string; path: string }[];
+    quality_failures_truncated: boolean;
+    p2_readiness: P2Readiness;
+    capture: TrainingCaptureStatus;
+  };
+  jobs: {
+    jobs: TrainingJobView[];
+    counts: Record<string, number>;
+    total: number;
+    source: string;
+  };
+  evidence: {
+    available: boolean;
+    readers: { family: string; available: boolean; reason?: string | null }[];
+    packages: EvidencePackageView[];
+    lanes: EvidenceLaneView[];
+    state_counts: Record<string, number>;
+    negative_result_count: number;
+    champions: Record<string, Record<string, unknown>>;
+  };
+  forward_monitoring: {
+    lanes: ForwardLaneMonitor[];
+    reporting_count: number;
+    total: number;
+  };
+  controls: TrainingControlReadiness;
 }

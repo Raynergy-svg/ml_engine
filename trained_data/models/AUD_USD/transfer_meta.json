@@ -1,13 +1,51 @@
 {
-  "type": "master",
-  "pair": "AUD_USD",
-  "group_id": "AUD_USD",
-  "correlated_pairs": [
-    "AUD_USD",
-    "NZD_USD",
-    "AUD_JPY",
-    "EUR_AUD"
-  ],
-  "correlation_threshold": 0.7,
-  "saved_at": "2026-05-13T21:19:08.687234"
+  "type": "transferred",
+  "source_pair": "EUR_USD",
+  "target_pair": "AUD_USD",
+  "correlation": 0.7363804573385923,
+  "transfer_config": {
+    "lr_factor": 0.03,
+    "encoder_layers_frozen": 2,
+    "epochs": 50,
+    "use_ewc": true,
+    "ewc_lambda": 100.0
+  },
+  "metrics": {
+    "momentum": {
+      "momentum_mae": 0.02174554874424008,
+      "acceleration_accuracy": 0.8423513694054776,
+      "model_type": "lightgbm"
+    },
+    "risk": {
+      "drawdown_mae_pct": 0.0009215519024706953,
+      "drawdown_mae_bps": 9.215519024706953,
+      "streak_prob_mae": 0.02430472747275144,
+      "model_type": "lightgbm"
+    },
+    "confidence": {
+      "confidence_mae": 36.526677967448634,
+      "r2_score": -0.07798366752427022,
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 14,
+      "n_total_features": 15,
+      "label_mode": "blend",
+      "n_real_labels": 12,
+      "n_pseudo_labels": 6460,
+      "class_balance_real": 0.3333333333333333,
+      "class_balance_pseudo": 0.5756965944272446,
+      "class_balance": 0.5730684326710817,
+      "expected_r2_band": [
+        0.05,
+        0.3
+      ],
+      "score_range": [
+        20.0,
+        95.0
+      ],
+      "score_formula": "score = 20 + 75 * binary_label",
+      "leak_fix_version": "2026-04-30"
+    }
+  },
+  "saved_at": "2026-07-03T14:37:18.810830"
 }

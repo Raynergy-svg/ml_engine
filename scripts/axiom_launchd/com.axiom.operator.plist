@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.axiom.operator</string>
+  <!-- AXIOM resident reasoning loop (OBSERVE->DIAGNOSE->PROPOSE->ACT->VERIFY->LOG).
+       Starts in whatever autonomy state trained_data/axiom/loop_autonomy.json says
+       (fail-closed default FALSE if the file is missing/corrupt/non-boolean -- see
+       src/agent_runtime/loop.py::is_autonomy_enabled). ESCALATION actions (unhalt,
+       arm, leverage increase, model/strategy/code promotion) are ALWAYS proposal-only
+       regardless of that flag -- enforced structurally in src/agent_runtime/policy.py,
+       not by this plist or any runtime flag. SELF_IMPROVE actions are additionally
+       bounded by src/agent_runtime/self_improve.py's own allow/deny + test/verify/
+       commit-or-revert gate. Every cycle re-derives the practice pin from disk and
+       refuses to let any ESCALATION action execute (src/agent_runtime/loop.py::_verify).
+       KeepAlive = process resilience only, NOT a halt or autonomy-bound bypass -- same
+       invariant as com.buddy.tier7 / com.buddy.trend. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin/python3</string>
+    <string>scripts/run_agent_runtime_loop.py</string>
+    <string>--loop</string>
+    <string>--interval</string>
+    <string>300</string>
+    <string>--max-cycles</string>
+    <string>105120</string>
+    <string>--timeout</string>
+    <string>90</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/buddy/Documents/ml_engine</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <!-- StandardOutPath/StandardErrorPath deliberately point OUTSIDE ~/Documents (a
+       TCC-protected folder). com.buddy.tier7 previously crash-looped because
+       xpcproxy's pre-exec stdout redirect hit a Sandbox file-read-data denial on
+       a brand-new file under ~/Documents with no com.apple.macl grant yet -- see
+       NOTES.md "Root cause (HIGH confidence)" 2026-07-03. resident_loop.out has
+       never been created, so it would hit the identical failure mode. -->
+  <key>StandardOutPath</key>
+  <string>/Users/buddy/Library/Logs/com.axiom.operator.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/buddy/Library/Logs/com.axiom.operator.log</string>
+</dict>
+</plist>

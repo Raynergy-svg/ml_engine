@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -35,6 +36,7 @@ from fastapi.responses import StreamingResponse  # noqa: E402
 
 from dashboard.server import data_sources as ds  # noqa: E402
 from dashboard.server.safety import build_readonly_client  # noqa: E402
+from dashboard.server.training_api import router as training_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("axiom.app")
@@ -51,6 +53,7 @@ async def lifespan(app_: FastAPI):
 
 app = FastAPI(title="AXIOM data layer", version="1.0",
               description="Read-only terminal API for the Buddy trading engine", lifespan=lifespan)
+app.include_router(training_router)
 app.add_middleware(
     CORSMiddleware,
     # No cross-origin browser access: the browser talks ONLY to the authed Next origin,
@@ -106,7 +109,10 @@ def root() -> Dict[str, Any]:
     return {"service": "AXIOM data layer", "read_only": True, "environment": "practice",
             "endpoints": ["/api/account", "/api/status", "/api/trades", "/api/equity",
                           "/api/strategy", "/api/sentiment", "/api/tier7", "/api/system_health",
-                          "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream"]}
+                          "/api/prices", "/api/candles/{instrument}", "/api/instruments", "/api/stream",
+                          "/api/equity_sleeve", "/api/lanes", "/api/brain_loop",
+                          "/api/crypto_momentum", "/api/track_b", "/api/crypto_carry", "/api/risk_trim", "/api/learning_loop",
+                          "/api/activity", "/api/axiom_operator", "/api/axiom_training", "/api/mind_window"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -119,6 +125,10 @@ if _CONTROL_ENABLED:
     from dashboard.server.control import router as control_router
     app.include_router(control_router)
     logger.warning("AXIOM CONTROL ROUTER MOUNTED (write path ACTIVE) — AXIOM_CONTROL_ENABLED is set.")
+
+    from dashboard.server.axiom_proposals import router as axiom_proposals_router
+    app.include_router(axiom_proposals_router)
+    logger.warning("AXIOM PROPOSALS ROUTER MOUNTED (Activity panel accept/deny ACTIVE).")
 else:
     logger.info("AXIOM control router NOT mounted (read-only). Set AXIOM_CONTROL_ENABLED=1 to enable.")
 
@@ -159,14 +169,112 @@ def equity_sleeve() -> Dict[str, Any]:
     return ds.read_equity_sleeve()
 
 
-@app.get("/api/tier7")
-def tier7() -> Dict[str, Any]:
-    return ds.read_tier7()
+@app.get("/api/lanes")
+def lanes() -> Dict[str, Any]:
+    return ds.read_lane_status()
+
+
+@app.get("/api/brain_loop")
+def brain_loop() -> Dict[str, Any]:
+    return ds.read_brain_loop()
+
+
+@app.get("/api/axiom_operator")
+def axiom_operator() -> Dict[str, Any]:
+    return ds.read_axiom_operator()
+
+
+_axiom_operator_run_lock = threading.Lock()
+
+
+@app.post("/api/axiom_operator/run")
+def axiom_operator_run() -> Dict[str, Any]:
+    from src.axiom_operator.runner import AxiomOperator
+
+    # This call can hold a worker for up to AXIOM_OPERATOR_TIMEOUT_SECONDS
+    # (120s default). Without this guard, repeated clicks (or a slow first
+    # request plus an impatient retry) could stack up overlapping epochs and
+    # exhaust the bounded threadpool, starving unrelated blocking routes.
+    if not _axiom_operator_run_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="axiom_operator epoch already in progress")
+    try:
+        result = AxiomOperator(project_root=REPO_ROOT).run_once(
+            observation={
+                "source": "dashboard",
+                "trigger": "operator_requested_epoch",
+                "activity": ds.read_activity(line_limit=4),
+                "health": ds.read_health(),
+                "control_enabled": _CONTROL_ENABLED,
+            },
+            timeout_seconds=int(os.environ.get("AXIOM_OPERATOR_TIMEOUT_SECONDS", "120")),
+        )
+    finally:
+        _axiom_operator_run_lock.release()
+    return {
+        "ok": result.ok,
+        "status": result.status,
+        "epoch": result.epoch,
+        "action": result.action,
+        "error": result.error,
+        "decision": result.decision,
+        "session": result.session,
+    }
+
+
+@app.get("/api/crypto_momentum")
+def crypto_momentum() -> Dict[str, Any]:
+    return ds.read_crypto_momentum()
+
+
+@app.get("/api/track_b")
+def track_b() -> Dict[str, Any]:
+    return ds.read_track_b()
+
+
+@app.get("/api/crypto_carry")
+def crypto_carry() -> Dict[str, Any]:
+    return ds.read_crypto_carry()
+
+
+@app.get("/api/hedge")
+def hedge() -> Dict[str, Any]:
+    return ds.read_hedge()
+
+
+@app.get("/api/risk_trim")
+def risk_trim() -> Dict[str, Any]:
+    key = "risk_trim"
+    cached = _cache.get(key, ttl=10.0)
+    if cached is not None:
+        return cached
+    return _cache_if_live(key, ds.live_risk_trim(_client()))
+
+
+@app.get("/api/learning_loop")
+def learning_loop() -> Dict[str, Any]:
+    return ds.read_learning_loop()
 
 
 @app.get("/api/risk_target_evidence")
 def risk_target_evidence() -> Dict[str, Any]:
     return ds.read_risk_target_evidence()
+
+
+@app.get("/api/activity")
+@app.get("/api/background_activity")
+@app.get("/api/background-activity")
+def activity() -> Dict[str, Any]:
+    return ds.read_activity()
+
+
+@app.get("/api/mind_window")
+def mind_window() -> Dict[str, Any]:
+    return ds.read_mind_window()
+
+
+@app.get("/api/tier7")
+def tier7() -> Dict[str, Any]:
+    return ds.read_tier7()
 
 
 @app.get("/api/tier7_diagnostics")
@@ -243,19 +351,57 @@ def strategy(sma: int = Query(100, ge=2, le=400), granularity: str = "D") -> Dic
 # --------------------------------------------------------------------------- #
 # SSE — push file-backed snapshot frequently + live prices periodically
 # --------------------------------------------------------------------------- #
+_prices_fetch_lock = asyncio.Lock()
+
+
+async def _shared_live_prices() -> Dict[str, Any]:
+    """Single-flight cached price fetch shared by every SSE connection.
+
+    The TTL cache alone still lets a "cache stampede" through: when it expires,
+    every currently-ticking SSE connection sees a miss in the same instant and
+    each independently fires a real OANDA call — reproduced under load-test with
+    ~86 concurrent streams (urllib3 "Connection pool is full, discarding
+    connection" warnings, pool size 10). The lock ensures only the first miss
+    performs the fetch; everyone else re-checks the (now-fresh) cache instead of
+    also calling the broker.
+    """
+    price_key = "prices:" + ",".join(ds.FX_MAJORS)
+    cached = _cache.get(price_key, ttl=2.0)
+    if cached is not None:
+        return cached
+    async with _prices_fetch_lock:
+        cached = _cache.get(price_key, ttl=2.0)  # re-check: another task may have just filled it
+        if cached is not None:
+            return cached
+        fresh = await asyncio.to_thread(ds.live_prices, _client(), ds.FX_MAJORS)
+        return _cache_if_live(price_key, fresh)
+
+
 async def _event_stream():
     tick = 0
     last_prices: Dict[str, Any] = {"connected": False, "prices": {}}
     try:
         while True:
+            # Offload to a thread: read_status() calls the live-lane oracle, which
+            # can shell out to `ps` (see _cached_live_lane_running) — with ~86
+            # concurrent SSE connections doing this every tick, running it inline
+            # would block the single event loop for every connection in turn and
+            # stall other requests (e.g. /api/control/state). Same reasoning that
+            # already applied to live_prices below.
+            account, status = await asyncio.gather(
+                asyncio.to_thread(ds.read_account),
+                asyncio.to_thread(ds.read_status),
+            )
             payload: Dict[str, Any] = {
                 "ts": time.time(),
-                "account": ds.read_account(),     # cheap file reads
-                "status": ds.read_status(),
+                "account": account,
+                "status": status,
             }
-            # Refresh prices every ~4s (network) without blocking the event loop.
+            # Refresh prices every ~4s via the shared single-flight cache — see
+            # _shared_live_prices for why a plain TTL cache wasn't enough under
+            # ~86 concurrent SSE connections.
             if tick % 2 == 0:
-                last_prices = await asyncio.to_thread(ds.live_prices, _client(), ds.FX_MAJORS)
+                last_prices = await _shared_live_prices()
             payload["prices"] = last_prices
             yield f"data: {json.dumps(payload)}\n\n"
             tick += 1

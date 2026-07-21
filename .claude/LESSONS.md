@@ -45,6 +45,10 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 | a backtest fails the gate on drawdown / cost-fragility / turnover, OR you're tempted to blame "our harsh cost model / daily rebalance" (or to fix infra and call it edge) | **L-020** infra tuning moves the COSMETIC gate-failures (DD/cost/turnover) but NOT significance — significance is gated by effective-N + history (structural, untunable) |
 | a trend / TS-momentum book posts strong Sharpe + low DD + beats buy-hold and you're tempted to call it "edge"/"alpha"; any plan to deploy/scale trend | **L-021** trend/TS-momentum = reproducible drawdown-controlled RISK-PREMIUM, not alpha — report on both axes; never call a non-significance-clearing trend book "alpha" |
 | ANY free-data daily-bar return/direction alpha hunt ("test signal X", "more data/news/sentiment/a new model will find edge", a fresh edge-hunt without a materially new input) | **L-022** no free-data small-operator-accessible return-ALPHA exists (whole campaign + 5-source literature sweep) — don't re-run the exhausted hunt without a MATERIALLY new input |
+| changing the shape of guarded code (halt guard / env pin / gap constant), or a gate that false-FAILs on stronger code or passes via a comment | **L-023** co-update enforcement matchers in the same change |
+| about to run `git stash` / `git stash pop` just to A/B-test whether something (a test failure, a behavior) predates your current uncommitted changes. | **L-024** never `git stash` for exploratory checks on a repo with live daemons |
+| reusing a numeric transform/label/feature helper from one model family in another ("reuse, don't fork"), or any model-vs-baseline comparison where target and baseline come from different code paths | **L-025** a reused numeric helper imports the donor's normalization contract — assert the borrower's invariances as a test; units-consistency check before any verdict |
+| more than one autonomous session (or session + Ralph/daemon) on the same checkout; about to `git add -A`/`commit -a`; your uncommitted diff "disappears" mid-session | **L-026** concurrent sessions co-mingle commits — stage explicit paths, check `git log` for foreign commits, no unverified claims in commit messages |
 
 ---
 
@@ -438,3 +442,101 @@ a trigger, open that lesson **before** you act. This is the memory-retrieval hoo
 - Source: 2026-06-29 crypto Round-2 + the whole campaign; 5-source literature sweep (Harvey-Liu-Zhu,
   Hou-Xue-Zhang, McLean-Pontiff, Meese-Rogoff, Muravyev-Pearson-Pollet 2025, Novy-Marx-Velikov,
   Han-Kang-Ryu 2024); verdict docs in `docs/`. Builds on L-016 (FX retired) + L-021.
+
+## L-023 — hardening guarded code desyncs its enforcement matchers; co-update them in the same change   [ACTIVE]
+- Trigger: any change to the SHAPE of a guarded/enforced pattern (halt-guard form, env-pin
+  assignment, gap-constant read) — or a gate that false-FAILs on stronger code, or stays green
+  only because a comment/docstring contains the matched string.
+- Root cause: gate scripts encode the guarded code's shape (AST pattern / grep string). The
+  2026-07-02 per-lane halt hardening (get_halted() in the if-test → assign-then-branch
+  get_halted_strict()) left BOTH matchers stale: verify_gate._halt_guard_violation false-FAILED
+  the STRONGER guard (blocking STOP-DONE on honest work), while risk_monitor.sh's literal
+  "get_halted()" grep stayed satisfied only by a comment at execution.py:2096 (false floor — a
+  gutted guard keeping the comment would read GREEN). A matcher drifts toward BOTH failure
+  polarities when the code it mirrors changes without it.
+- Rule: a change to guarded/enforced code MUST, in the same commit: (1) re-run every gate script
+  against the live repo; (2) update stale matchers to the new shape WITHOUT weakening (old form
+  still accepted where valid, inverted/neutered cases still rejected); (3) add regression
+  fixtures for the new shape (accept + reject); (4) regenerate gate_manifest.json; (5) have the
+  SEPARATE verifier adversarially confirm no-weakening (L-006). A string grep satisfiable by a
+  comment is not enforcement — prefer structural/AST matchers for load-bearing checks.
+- Scope: execution.py guards, config env pin, HARD_MAX_GAP, and every matcher in verify_gate.py /
+  risk_monitor.sh / loop_gate.py / stop_gate.sh.
+- Source: 2026-07-03 audit session — verify_gate false-FAIL fixed in aa5e9fd (separate verifier
+  PASS, suite 111/111); comment-satisfied risk_monitor grep found same session (background task
+  task_89450a16); original stale-grep false-ALARM flagged 2026-07-02.
+
+## L-024 — never `git stash` for exploratory checks on a repo with live daemons   [ACTIVE]
+- Trigger: about to run `git stash` / `git stash pop` just to A/B-test whether something (a test
+  failure, a behavior) predates your current uncommitted changes.
+- Root cause: this repo runs live launchd daemons (com.buddy.tier7, com.buddy.trend) that write to
+  TRACKED files (`.claude/self_heal_action_budget.json`, `.claude/self_heal_debounce.json`,
+  possibly others) on their own schedule, independent of any interactive session. A stash captures
+  the working tree at one instant; if a live daemon writes to a stashed-and-since-reverted file
+  before you pop, the pop CONFLICTS, and ALL uncommitted work (not just the file in question) sits
+  stranded in `stash@{0}` — one `stash drop` / `git checkout .` away from being silently lost. Hit
+  2026-07-04: a stash-for-A/B conflicted on the two self_heal files because com.buddy.tier7 wrote a
+  real `reduce_risk_per_trade_pct` action (14:25:02Z) mid-stash; recovered by hand, no loss.
+- Rule: NEVER `git stash` to answer "does X predate my changes" — use `git show HEAD:<path>` (or a
+  scratch `cp` of the working file) to read the pre-change state without touching the working tree.
+  If a stash pop ever DOES conflict, treat it exactly like a merge conflict: diff both sides, copy
+  anything live/authoritative aside BEFORE resolving, and never `git stash drop` / discard until
+  you've confirmed nothing of value is stash-only.
+- Scope: this repo (or any repo with autonomous background writers to tracked files). A repo with no
+  live daemons touching tracked files does not have this trap.
+- Source: 1 near-miss, 2026-07-04 session (recovered without loss) — RL feedback-loop fix commit
+  51b85bf; see NOTES.md "Near-miss during the session".
+
+## L-025 — a reused numeric helper imports the donor's normalization contract   [ACTIVE]
+- Trigger: reusing a numeric transform/label/feature helper from one model family in another
+  ("reuse, don't fork"), OR any model-vs-baseline comparison where the target and the baseline are
+  computed by different code paths.
+- Root cause: numeric helpers carry IMPLICIT normalizations calibrated to the donor's invariances.
+  The binned vol-regime label's `/mean(close)` division is harmless where per-pair percentile cuts
+  absorb scale, but reused as a pooled cross-pair regression target it shrank JPY-pair targets
+  ~150x vs the pre-registered baseline's units — the reported "22x QLIKE win" was a units
+  artifact, and pooled R² 0.775 was mostly cross-pair scale separation. The consistency-with-donor
+  test ENFORCED the bug rather than catching it; only the independent verifier's numeric
+  re-derivation caught it, after the wrong verdict had already been reported. This is the THIRD
+  hit of the normalization-contract class in this repo (L-001 anchored features, C1 scaler
+  double-fit, now cross-family units) — the CLASS meets the 3-observation bar even though this
+  specific form is 1 observation.
+- Rule: when reusing a numeric helper across model families: (1) enumerate the donor's implicit
+  normalizations (divisions, anchorings, scalings) and assert the BORROWER's invariance
+  requirements as a test (e.g. scale-invariance under a 150x price-level shift); (2) any
+  model-vs-baseline verdict requires a units-consistency check FIRST (per-group target mean vs
+  baseline mean must be ~O(1) ratio) before reading the result; (3) a consistency-with-donor test
+  is NOT a correctness test — it pins the donor's contract in, bug included (L-009 cousin:
+  structural ≠ semantic).
+- Scope: all training/label/feature code reuse across model families; every pre-registered
+  model-vs-baseline claim.
+- Source: 2026-07-08 risk-target session — Model QA verifier BLOCK + retraction
+  (`docs/prereg-risk-target-vol-drawdown-2026-07-08.md` §6 "SECOND CORRECTION NOTE"); fix commits
+  02c9712 + 82f13fe; scale-invariance regression test in
+  `tests/test_forward_realized_volatility_continuous_label.py` (test_formula_is_pure_log_return_stddev).
+
+## L-026 — concurrent sessions on one working tree co-mingle commits (`git add -A` sweeps foreign work)   [ACTIVE]
+- Trigger: more than one autonomous session (or session + Ralph/daemon) working the same checkout;
+  OR about to run `git add -A` / `git commit -a`; OR your uncommitted diff "disappears"
+  mid-session.
+- Root cause: git has no session isolation. On 2026-07-08 a concurrent session's
+  `git add -A && commit` swept this session's in-flight files into ITS commits
+  (85e847e..032e035) — including an UNVERIFIED results claim ("LEARNABLE, 22x") into a durable
+  commit message the committing session had no way to know was wrong (later retracted in
+  82f13fe). Nothing was lost (byte-identical, verified), but commit scope/attribution was
+  polluted and a false number entered git history. Both sessions observed the mechanism
+  independently the same day (2 observations). Builds on L-024 (live daemons write tracked files —
+  same shared-tree root cause, commit-time variant).
+- Rule: on a shared working tree: (1) NEVER `git add -A` / `git commit -a` — stage explicit paths
+  you touched this session; (2) before claiming "my diff is what's on disk" or committing, check
+  `git log` for foreign mid-session commits (`git status` alone lies by omission — your work may
+  already be inside someone else's commit); (3) commit early and small to shrink the exposure
+  window; (4) results claims go into commit messages only AFTER independent verification — an
+  unverified number in a commit message is a false record you cannot amend after a push; (5)
+  prefer worktree isolation (`EnterWorktree` / `git worktree`) for parallel sessions when the
+  operator can arrange it.
+- Scope: this repo whenever >1 writer is active (interactive sessions, Ralph, resident loops,
+  daemons).
+- Source: 2 independent observations, 2026-07-08 — both sessions' NOTES.md entries ("Process
+  anomaly" in the trend-lane session's entry; the risk-target session's L-018 event entry);
+  commits 85e847e (co-mingled, wrong claim in message) and 82f13fe (retraction).

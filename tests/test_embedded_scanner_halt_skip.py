@@ -15,6 +15,10 @@ did not.
 The fix: check StateEngine.get_halted() at the top of run_one_cycle,
 return None to skip the cycle, emit a single brain log on first
 halt-skip + reset latch on un-halt so operator sees state changes.
+
+2026-07-02: the pre-cycle check switched to the fail-closed
+``get_halted_strict()`` (operator decision — see StateEngine docstring);
+mocks below target that method now.
 """
 from __future__ import annotations
 
@@ -43,7 +47,7 @@ def testrun_one_cycle_skips_when_halted():
     with patch(
         "src.scanner.automation.state_engine.StateEngine"
     ) as MockSE:
-        MockSE.return_value.get_halted.return_value = True
+        MockSE.return_value.get_halted_strict.return_value = True
         result = es.run_one_cycle()
 
     assert result is None
@@ -59,7 +63,7 @@ def testrun_one_cycle_emits_brain_message_once_per_halt(monkeypatch):
     with patch(
         "src.scanner.automation.state_engine.StateEngine"
     ) as MockSE:
-        MockSE.return_value.get_halted.return_value = True
+        MockSE.return_value.get_halted_strict.return_value = True
         es.run_one_cycle()
         es.run_one_cycle()
         es.run_one_cycle()
@@ -84,8 +88,8 @@ def test_unhalt_resets_latch_so_re_halt_fires_again():
     with patch(
         "src.scanner.automation.state_engine.StateEngine"
     ) as MockSE:
-        # Provide fresh instance per call so get_halted() advances through halted_states
-        MockSE.return_value.get_halted.side_effect = halted_states
+        # Provide fresh instance per call so get_halted_strict() advances through halted_states
+        MockSE.return_value.get_halted_strict.side_effect = halted_states
         es.run_one_cycle()  # halted → emit message
         # Cycle 2 will run scan but our scanner mock returns MagicMock — fine.
         es.run_one_cycle()  # unhalted → resets latch, runs scan
@@ -118,16 +122,18 @@ def testrun_one_cycle_proceeds_when_not_halted():
     with patch(
         "src.scanner.automation.state_engine.StateEngine"
     ) as MockSE:
-        MockSE.return_value.get_halted.return_value = False
+        MockSE.return_value.get_halted_strict.return_value = False
         es.run_one_cycle()
 
     assert es._scan_count == 1
     es._scanner.scan.assert_called_once()
 
 
-def test_state_engine_failure_does_not_block_scanning():
-    """Defensive: if StateEngine itself fails, fall through to normal
-    scan rather than locking up the TUI on a degraded state-engine."""
+def test_state_engine_failure_blocks_scanning():
+    """2026-07-02 (operator decision): fail-CLOSED. If StateEngine itself
+    fails (disk error, degraded state-engine), the cycle must be SKIPPED,
+    not proceed — a broken halt check can no longer be interpreted as
+    "not halted". Must not raise either way."""
     es = _make_embedded(halted_value=False)
     es._scanner.scan.return_value = MagicMock(tradeable=[], analyses=[])
     es._auto_execute = False
@@ -143,8 +149,9 @@ def test_state_engine_failure_does_not_block_scanning():
         "src.scanner.automation.state_engine.StateEngine",
         side_effect=OSError("disk error"),
     ):
-        # Must not raise; scan should still proceed.
-        es.run_one_cycle()
+        # Must not raise; cycle should be skipped (fail-closed).
+        result = es.run_one_cycle()
 
-    assert es._scan_count == 1
-    es._scanner.scan.assert_called_once()
+    assert result is None
+    assert es._scan_count == 0
+    es._scanner.scan.assert_not_called()

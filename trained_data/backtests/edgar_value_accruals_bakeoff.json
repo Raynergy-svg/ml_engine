@@ -1,0 +1,136 @@
+{
+  "common_window": {
+    "end": "2026-06-24",
+    "start": "2012-01-03"
+  },
+  "data_honesty": {
+    "fundamentals": "TRUE-PIT (SEC EDGAR XBRL, filing-date-aligned); pit=True. Extended dump adds CashFlowFromOps/Assets/SharesOutstanding (dei cover-page) -> accruals ratio + raw equity/net_income/shares_outstanding exports.",
+    "membership": "survivorship-aware S&P500 reconstruction (Wikipedia change-log)",
+    "prices": "yfinance adjusted close (PRICES ONLY; reused cached parquet, not re-fetched)",
+    "residual_bias_labelled": [
+      "delisting returns UNDERSTATED (forward-fill flattens final gap)",
+      "price-availability survivorship: yfinance lacks some delisted tickers -> dropped",
+      "EDGAR XBRL floor ~2010 -> clean window ~2012-2026",
+      "value/accruals need MORE simultaneous inputs than quality (3-4 vs 2-3 concepts) -> lower realized coverage than the quality bake-off, reported honestly below",
+      "FUNDAMENTALS-SIDE survivorship gap (independent verifier finding, 2026-07-02): load_cik_map() sources SEC's CURRENT-tickers-only registry (company_tickers.json) -- a delisted/acquired/renamed constituent (confirmed: TWX) loses CIK resolvability entirely and silently drops out of the fundamentals-covered universe even though it remains correctly present in the price panel. since_removed_included below counts index-membership removals, NOT delistings covered by fundamentals -- treat as a joint-panel survivorship gap in addition to the price-side one above, biasing toward SEC-current names.",
+      "STALENESS GUARD (independent verifier finding, 2026-07-02, fixed same day): shares_outstanding forward-fill is now capped at value_data._MAX_STALENESS_DAYS=730 days past its own last real filing -- an earlier unbounded-ffill version let >=12 large-cap names (incl. Berkshire Hathaway, dei tag dormant since 2011) carry a years-stale share count against a live price, inflating book_to_market by ~1500x for those names. This run reflects the fix; NaN replaces the stale value beyond the cap rather than fabricating a market cap."
+    ],
+    "shares_outstanding_dei_finding": "dei:EntityCommonStockSharesOutstanding is a 10-K cover-page fact whose 'end' date is NOT the fiscal year-end (verified empirically against live EDGAR for AAPL + MSFT, 2026-07-02) -- e.g. AAPL FY2009: Assets.end=2009-09-26 but dei.end=2009-10-16 (same accession, filed=2009-10-27). Fixed by keying shares-outstanding on its OWN filed date (src.equity.edgar_fundamentals._shares_outstanding_by_filing) and matching to each period's own filed date via the co-filed us-gaap concepts, never by 'end'."
+  },
+  "full_sample": {
+    "accruals": {
+      "gate_pass": false,
+      "max_dd": 0.663,
+      "net_sharpe": 0.217,
+      "positive_years": 8,
+      "total_years": 15
+    },
+    "accruals_beats_baseline": false,
+    "accruals_net_sharpe_margin": -0.52,
+    "baseline_ew": {
+      "gate_pass": true,
+      "max_dd": 0.194,
+      "net_sharpe": 0.737,
+      "positive_years": 12,
+      "total_years": 15
+    },
+    "value": {
+      "gate_pass": false,
+      "max_dd": 0.502,
+      "net_sharpe": 0.541,
+      "positive_years": 10,
+      "total_years": 15
+    },
+    "value_beats_baseline": false,
+    "value_net_sharpe_margin": -0.196
+  },
+  "generated_at": "2026-07-02T13:20:00Z",
+  "out_of_sample": {
+    "accruals": {
+      "gate_pass": false,
+      "max_dd": 0.511,
+      "net_sharpe": -0.08,
+      "positive_years": 3,
+      "total_years": 6
+    },
+    "accruals_beats_baseline": false,
+    "accruals_net_sharpe_margin": -0.441,
+    "baseline_ew": {
+      "gate_pass": false,
+      "max_dd": 0.194,
+      "net_sharpe": 0.361,
+      "positive_years": 5,
+      "total_years": 6
+    },
+    "end": "2026-06-24",
+    "fraction": 0.34,
+    "start": "2021-07-20",
+    "value": {
+      "gate_pass": false,
+      "max_dd": 0.366,
+      "net_sharpe": 0.575,
+      "positive_years": 4,
+      "total_years": 6
+    },
+    "value_beats_baseline": true,
+    "value_net_sharpe_margin": 0.214
+  },
+  "pre_registered": {
+    "accruals": "accruals_score = z of {-accruals}; accruals=(NetIncomeLoss_PIT-CashFlowFromOps_PIT)/TotalAssets_PIT, all annual filing-date PIT, tilt=1.0",
+    "multiple_testing": "N_TRIALS=3 (quality=trial1 already run+negative, value=trial2, accruals=trial3); Bonferroni alpha=0.05/3~=0.0167; DSR>=0.95 AND bootstrap_p<alpha required for 'statistically significant'",
+    "test": "value-tilt / accruals-tilt vs EW baseline net Sharpe, full + OOS, same canonical ship gate as the quality bake-off",
+    "value": "value_score = mean available cross-sectional z of {+book_to_market, +earnings_yield}; book_to_market=equity_PIT/market_cap, earnings_yield=net_income_PIT/market_cap, market_cap=shares_PIT*price(t), tilt=1.0"
+  },
+  "robustness_sensitivities": {
+    "accruals_winsorized_z_clip3": {
+      "full_sample": {
+        "margin_vs_ew": -0.513,
+        "net_sharpe": 0.224
+      },
+      "out_of_sample": {
+        "margin_vs_ew": -0.441,
+        "net_sharpe": -0.08
+      },
+      "purpose": "is the accruals result driven by extreme working-capital-shock outliers?"
+    },
+    "value_earnings_yield_only": {
+      "full_sample": {
+        "margin_vs_ew": -0.047,
+        "net_sharpe": 0.69
+      },
+      "out_of_sample": {
+        "margin_vs_ew": 0.165,
+        "net_sharpe": 0.526
+      },
+      "purpose": "is book-to-market dragged by bank/REIT-style outliers, mirroring the quality factor's debt_to_equity artifact?"
+    }
+  },
+  "running": "NO (offline backtest evaluation)",
+  "significance": {
+    "accruals_oos": {
+      "bar": "DSR >= 0.95 AND bootstrap_p < bonferroni_alpha",
+      "benchmark_sr0_annualized": 0.3851,
+      "block_bootstrap_p": 0.5584,
+      "bonferroni_alpha": 0.01667,
+      "deflated_sharpe_ratio": 0.1513,
+      "n_trials": 3,
+      "significant_at_bar": false
+    },
+    "value_oos": {
+      "bar": "DSR >= 0.95 AND bootstrap_p < bonferroni_alpha",
+      "benchmark_sr0_annualized": 0.3851,
+      "block_bootstrap_p": 0.1,
+      "bonferroni_alpha": 0.01667,
+      "deflated_sharpe_ratio": 0.6625,
+      "n_trials": 3,
+      "significant_at_bar": false
+    }
+  },
+  "universe": {
+    "accruals_panel_coverage": 0.9222,
+    "evaluated_with_price_and_pit_fundamentals": 629,
+    "ever_members_in_window": 874,
+    "since_removed_included": 110,
+    "value_panel_coverage": 0.8707
+  }
+}

@@ -165,6 +165,7 @@ def run_shadow_rebalance(
         data_asof=data_asof,
         now=now,
         snapshot_universe_hash=snapshot.universe_hash,
+        lane="equity",
     )
     if not decision.actionable:
         logger.warning(

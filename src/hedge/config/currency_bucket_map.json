@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "purpose": "Per-currency exposure tags for the AXIOM Hedge Layer (src/hedge/exposure_tags.py).",
+    "note": "Currency IS the correlation bucket for FX (matches src/equity/trend_risk_gates.py currency_legs — single source of truth, not forked). risk_class draws on the same safe-haven set already encoded in src/intelligence/macro_knowledge_graph.py (usd/jpy/chf safe_haven_flow relations) for consistency across subsystems.",
+    "fail_closed": "A currency absent from this map is treated as UNKNOWN by exposure_tags.tag_fx_exposure — the caller fails closed (does not assume zero exposure)."
+  },
+  "USD": { "tags": ["safe_haven"] },
+  "JPY": { "tags": ["safe_haven"] },
+  "CHF": { "tags": ["safe_haven"] },
+  "EUR": { "tags": ["risk_on"] },
+  "GBP": { "tags": ["risk_on"] },
+  "AUD": { "tags": ["risk_on", "commodity_linked"] },
+  "NZD": { "tags": ["risk_on", "commodity_linked"] },
+  "CAD": { "tags": ["risk_on", "commodity_linked"] },
+  "XAU": { "tags": ["safe_haven", "commodity_linked"] }
+}

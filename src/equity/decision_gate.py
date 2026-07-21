@@ -79,6 +79,9 @@ def _global_halt(root: Path) -> Tuple[bool, bool]:
     Read directly (not via the fail-OPEN ``StateEngine.get_halted``) so a
     present-but-corrupt halt file is reported NOT readable -> the caller fails
     CLOSED (REFUSE). An absent file is a readable "no halt set".
+
+    Unchanged by per-lane support: this is the exact global-only check every
+    existing caller (``decide_cycle(lane=None)``) still gets.
     """
     path = root / ".claude" / "state.json"
     if not path.exists():
@@ -90,6 +93,36 @@ def _global_halt(root: Path) -> Tuple[bool, bool]:
     if not isinstance(payload, dict):
         return (False, False)
     return (bool(payload.get("halted", False)), True)
+
+
+def _lane_halted(root: Path, lane: str) -> Tuple[bool, bool, str]:
+    """Return ``(halted, readable, reason)`` for one lane at
+    ``<root>/.claude/state.json``.
+
+    Mirrors ``_global_halt``'s direct, fail-closed-on-corruption read (never
+    goes through the fail-OPEN ``StateEngine``), but strengthens the
+    "absent state" default: unlike ``_global_halt``'s "absent file -> not
+    halted" bootstrap convention, a lane that was never explicitly told
+    "not halted" — via a missing file, a missing ``halted_lanes`` dict, or a
+    missing/non-bool entry for this lane — is treated as HALTED. A lane must
+    be explicitly unhalted; it is never assumed safe to run by omission.
+    """
+    path = root / ".claude" / "state.json"
+    if not path.exists():
+        return (True, True, "lane_not_configured")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return (True, False, "state_unreadable")
+    if not isinstance(payload, dict):
+        return (True, False, "state_unreadable")
+    if bool(payload.get("halted", False)):
+        return (True, True, "global_halt")
+    lanes = payload.get("halted_lanes")
+    if not isinstance(lanes, dict) or not isinstance(lanes.get(lane), bool):
+        return (True, True, "lane_not_configured")
+    lane_value = bool(lanes[lane])
+    return (lane_value, True, f"lane_halted:{lane}" if lane_value else "")
 
 
 def _drawdown_breach(root: Path, dd_hard: float) -> Optional[str]:
@@ -158,8 +191,16 @@ def decide_cycle(
     data_asof: "Optional[pd.Timestamp]" = None,
     now: Optional[datetime] = None,
     snapshot_universe_hash: Optional[str] = None,
+    lane: Optional[str] = None,
 ) -> CycleDecision:
-    """Re-derive the cycle decision from disk (most-severe rail wins)."""
+    """Re-derive the cycle decision from disk (most-severe rail wins).
+
+    ``lane`` (default ``None``): every existing caller keeps getting the
+    exact legacy global-only halt check (``_global_halt``, unreadable/absent
+    handled as documented there). Passing a lane name (e.g. ``"equity"``)
+    switches the halt rail to the fail-closed per-lane check (``_lane_halted``)
+    — see that function's docstring for the fail-closed defaults.
+    """
     root = Path(project_root)
     now = now or datetime.now(timezone.utc)
     dd_hard = float(getattr(config, "equity_harvester_dd_hard", _DEFAULT_DD_HARD))
@@ -170,12 +211,16 @@ def decide_cycle(
         config, "equity_harvester_ship_gate_path", _DEFAULT_SHIP_GATE_REL
     )
 
-    # 1. global halt — most severe; fail CLOSED on a corrupt halt file.
-    halted, readable = _global_halt(root)
+    # 1. global/lane halt — most severe; fail CLOSED on a corrupt halt file.
+    if lane is None:
+        halted, readable = _global_halt(root)
+        reason = "global_halt"
+    else:
+        halted, readable, reason = _lane_halted(root, lane)
     if not readable:
         return CycleDecision(EquityDecision.REFUSE, ("state_unreadable",))
     if halted:
-        return CycleDecision(EquityDecision.REFUSE, ("global_halt",))
+        return CycleDecision(EquityDecision.REFUSE, (reason,))
 
     # 2. drawdown breach — emergency stop (operator must intervene).
     dd_reason = _drawdown_breach(root, dd_hard)

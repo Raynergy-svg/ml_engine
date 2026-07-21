@@ -1,13 +1,13 @@
 {
-  "avg_confidence": 0.4528,
-  "avg_top_score": 0.6465,
-  "diagnostic_summary": "OK: Gate pass rate=100.0% over 1 scans. Avg confidence=0.453.",
+  "avg_confidence": 1.0,
+  "avg_top_score": 1.0,
+  "diagnostic_summary": "OK: Gate pass rate=100.0% over 1 scans. Avg confidence=1.000.",
   "gate_pass_rate_pct": 100.0,
-  "pairs_with_direction_pct": 100.0,
+  "pairs_with_direction_pct": 0.0,
   "scans_since_last_report": 10,
   "scans_since_last_trade": 0,
   "stalled": false,
-  "timestamp": "2026-04-09T18:16:20.987619+00:00",
-  "total_scans": 160,
+  "timestamp": "2026-07-02T23:39:19.389198+00:00",
+  "total_scans": 170,
   "window_size": 1
 }

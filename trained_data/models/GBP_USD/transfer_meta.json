@@ -2,7 +2,7 @@
   "type": "transferred",
   "source_pair": "EUR_USD",
   "target_pair": "GBP_USD",
-  "correlation": 0.7954368541502137,
+  "correlation": 0.8046344561839701,
   "transfer_config": {
     "lr_factor": 0.03,
     "encoder_layers_frozen": 2,
@@ -12,29 +12,29 @@
   },
   "metrics": {
     "momentum": {
-      "momentum_mae": 0.01792066283055221,
-      "acceleration_accuracy": 0.8236472945891784,
+      "momentum_mae": 0.020917164442498578,
+      "acceleration_accuracy": 0.8256513026052105,
       "model_type": "lightgbm"
     },
     "risk": {
-      "drawdown_mae_pct": 0.0006683715619941719,
-      "drawdown_mae_bps": 6.683715619941719,
-      "streak_prob_mae": 0.02405867242751501,
+      "drawdown_mae_pct": 0.000730938077226586,
+      "drawdown_mae_bps": 7.30938077226586,
+      "streak_prob_mae": 0.026062771659786804,
       "model_type": "lightgbm"
     },
     "confidence": {
-      "confidence_mae": 35.87759612819151,
-      "r2_score": -0.05746957217156701,
+      "confidence_mae": 36.3826953634001,
+      "r2_score": -0.05210571696127131,
       "model_type": "lightgbm",
       "n_estimators": 100,
       "n_important_features": 14,
       "n_total_features": 15,
       "label_mode": "blend",
-      "n_real_labels": 0,
-      "n_pseudo_labels": 6376,
-      "class_balance_real": null,
-      "class_balance_pseudo": 0.580771643663739,
-      "class_balance": 0.5809993278064083,
+      "n_real_labels": 4,
+      "n_pseudo_labels": 6236,
+      "class_balance_real": 1.0,
+      "class_balance_pseudo": 0.5644644002565747,
+      "class_balance": 0.5778388278388278,
       "expected_r2_band": [
         0.05,
         0.3
@@ -47,5 +47,5 @@
       "leak_fix_version": "2026-04-30"
     }
   },
-  "saved_at": "2026-05-13T06:10:35.350044"
+  "saved_at": "2026-07-03T14:37:10.247956"
 }

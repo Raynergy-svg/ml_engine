@@ -35,6 +35,7 @@ statsmodels>=0.14.0  # ARIMA hybrid forecasting for ensemble
 # ============================================================
 pyarrow==22.0.0
 h5py==3.15.1
+defusedxml==0.7.1  # hardened XML parsing for S3 listings (src/crypto/data_layer.py); stdlib ElementTree is XXE/billion-laughs vulnerable
 
 # ============================================================
 # Visualization
@@ -109,6 +110,13 @@ opentelemetry-exporter-otlp-proto-http==1.27.0
 # Pydantic (FastAPI/validation)
 # ============================================================
 pydantic==2.12.5
+# Ed25519 signing for the evidence layer (src/evidence/signing.py). Ceiling is
+# mlflow==3.8.1, which requires cryptography<47 — pinning 47.0.0 made the whole
+# requirements.txt unresolvable (pip ResolutionImpossible), so every CI job died
+# at install. 46.0.7 is the newest release satisfying mlflow's <47,>=43.0.0 and
+# carries the same Ed25519/serialization APIs this repo uses. Do not raise past
+# 46.x without first bumping mlflow's cryptography ceiling.
+cryptography==46.0.7
 
 # ============================================================
 # Utilities

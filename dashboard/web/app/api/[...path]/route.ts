@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 // Authed, server-side proxy: browser → (authed) Next → FastAPI on loopback. FastAPI is
 // never exposed to the tunnel/network; only this proxy reaches it, after the session is
 // validated. GET = all read endpoints + SSE. POST = ONLY the bounded control endpoints
-// (/api/control/*), which are themselves guarded server-side (practice-pinned immutables,
-// per-action confirm, audit). Any other POST path is rejected here (405).
+// and the AXIOM operator/evidence request relays. Control routes are themselves
+// guarded server-side (practice-pinned immutables, signatures, nonces, transition
+// policy, audit). Any other POST path is rejected here (405).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ path: strin
 export async function POST(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
   const sub = (path || []).join("/");
-  // Only the bounded control endpoints accept POST. Everything else is read-only.
-  if (!sub.startsWith("control/")) {
+  // Only bounded control endpoints and exact governed request relays accept POST.
+  const governedEvidenceAction = sub === "axiom_training/run" || sub === "axiom_training/promote";
+  if (!sub.startsWith("control/") && sub !== "axiom_operator/run" && !governedEvidenceAction) {
     return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
   }
   const body = await req.text();
@@ -54,6 +56,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ path: stri
         "content-type": req.headers.get("content-type") || "application/json",
         // forward the per-action confirm token the bot's control layer requires
         "x-axiom-confirm": req.headers.get("x-axiom-confirm") || "",
+        "x-axiom-actor": req.headers.get("x-axiom-actor") || "",
       },
       body,
       cache: "no-store",

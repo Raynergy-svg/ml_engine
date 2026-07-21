@@ -4,6 +4,12 @@
 <dict>
   <key>Label</key>
   <string>com.axiom.web</string>
+  <!-- StandardOutPath/StandardErrorPath point OUTSIDE ~/Documents (a TCC-protected
+       folder) -- 2026-07-06: reloading the fleet via load.sh made this service fail
+       to bootstrap ("Load failed: 5: Input/output error") once macOS's per-file
+       com.apple.macl grant for the old log path lapsed. Same failure mode already
+       fixed once for com.axiom.operator (commit 876c291) and for com.buddy.tier7
+       (same day). -->
   <key>ProgramArguments</key>
   <array>
     <string>/Users/buddy/.nvm/versions/node/v22.22.1/bin/node</string>
@@ -26,8 +32,8 @@
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/launchd-web.log</string>
+  <string>/Users/buddy/Library/Logs/com.axiom.web.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/launchd-web.log</string>
+  <string>/Users/buddy/Library/Logs/com.axiom.web.log</string>
 </dict>
 </plist>

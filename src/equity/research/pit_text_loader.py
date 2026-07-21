@@ -48,7 +48,7 @@ import os
 import time
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import requests
 
@@ -56,8 +56,9 @@ from src.equity.research.contracts import FilingText
 
 logger = logging.getLogger(__name__)
 
-# SEC requires a descriptive UA with contact info; 10 req/s ceiling.
-SEC_UA = "ml_engine-research dcertan84@gmail.com"
+# SEC requires a descriptive UA with contact info; 10 req/s ceiling. Contact
+# email is read from env so it isn't a hardcoded personal address in source.
+SEC_UA = "ml_engine-research " + os.environ.get("SEC_EDGAR_CONTACT_EMAIL", "research@example.com")
 _REQUEST_SPACING_S = 0.13          # stay comfortably under 10 req/s
 _TIMEOUT = (5, 30)                 # (connect, read)
 
@@ -75,9 +76,24 @@ class _TextExtractor(HTMLParser):
 
     Dependency-light by design (no bs4 / lxml). Good enough for the blinder /
     scorer, which want readable prose, not a faithful DOM.
+
+    Modern SEC primary documents are Inline XBRL (iXBRL): the visible cover
+    page / narrative is preceded by an ``<ix:header>`` element (wrapping
+    ``ix:hidden`` + ``ix:references`` + ``ix:resources`` — context/unit
+    definitions for every tagged fact in the filing) that is NEVER rendered
+    by a browser but IS plain text content by HTML-parser standards. For a
+    filer the size of Apple this block runs ~98K characters BEFORE the
+    "UNITED STATES SECURITIES AND EXCHANGE COMMISSION" cover page even
+    appears — without skipping it, a head-truncated extract is 100% XBRL
+    tag-value noise and 0% analyst-readable prose (2026-07-01 Track B
+    discovery). All four are skipped defensively; only ``ix:header`` is
+    required to also cover its children in one shot.
     """
 
-    _SKIP_TAGS = {"script", "style", "head", "title"}
+    _SKIP_TAGS = {
+        "script", "style", "head", "title",
+        "ix:header", "ix:hidden", "ix:references", "ix:resources",
+    }
     _BLOCK_TAGS = {
         "p", "div", "br", "tr", "li", "table", "h1", "h2", "h3", "h4",
         "h5", "h6", "section", "article", "ul", "ol", "thead", "tbody",
@@ -301,6 +317,8 @@ def load_pit_filing(
         return None
 
     # Walk recent + (lazily) older blocks; keep the best PIT row across blocks.
+    # Blocks are yielded newest-first, so once a candidate is found no later
+    # (older) block can beat it — stop paging immediately to save requests.
     best: Optional[dict] = None
     for block in _candidate_blocks(sess, submissions, cik10, as_of):
         cand = select_pit_filing(_iter_recent_rows(block), as_of, forms)
@@ -308,6 +326,7 @@ def load_pit_filing(
             best is None or cand["filingDate"] > best["filingDate"]
         ):
             best = cand
+            break
     if best is None:
         logger.warning(
             "load_pit_filing: no %s filing for %s with filed <= %s",
@@ -342,7 +361,7 @@ def load_pit_filing(
         _write_cache(cache_dir, cik10, acc_nodash, best["primaryDocument"], text)
 
     # FilingText re-asserts filed <= as_of; a logic slip here raises, not lies.
-    return FilingText(
+    filing = FilingText(
         ticker=str(ticker),
         cik=cik10,
         as_of=str(as_of),
@@ -350,6 +369,26 @@ def load_pit_filing(
         filed=best["filingDate"],
         text=text,
     )
+    # Phase D: preserve the original filing bytes and accession lineage in the
+    # canonical capture plane. Older PIT research fetches are explicitly
+    # labeled backfill by the capture service; only newly observed filings may
+    # become forward-eligible.
+    try:
+        from src.data_platform.forward_capture import capture_best_effort
+        capture_best_effort(
+            "capture_track_b_filing",
+            ticker=filing.ticker,
+            cik=filing.cik,
+            accession=str(best["accessionNumber"]),
+            form=filing.form,
+            filed=filing.filed,
+            as_of=filing.as_of,
+            document_url=doc_url,
+            text=filing.text,
+        )
+    except Exception as capture_error:
+        logger.warning("Track B canonical filing capture setup failed: %s", capture_error)
+    return filing
 
 
 def load_pit_filings(
@@ -358,19 +397,53 @@ def load_pit_filings(
     forms: Sequence[str] = DEFAULT_FORMS,
     session: Optional[requests.Session] = None,
     cache_dir: Optional[Path] = None,
+    max_items_per_worker: int = 64,
 ) -> Dict[Tuple[str, str, str], Optional[FilingText]]:
     """Batch helper over ``(ticker, cik, as_of)`` tuples — reuses one session.
 
     Returns ``{(ticker, cik, as_of): FilingText | None}``. A failure for one item
     is recorded as ``None`` (logged), never aborting the whole batch.
     """
+    bounded_items = tuple(items)
+    if max_items_per_worker < 1:
+        raise ValueError("max_items_per_worker must be positive")
+    if len(bounded_items) > max_items_per_worker:
+        raise ValueError(
+            f"filing worker received {len(bounded_items)} items; maximum is "
+            f"{max_items_per_worker}. Use iter_load_pit_filing_batches()."
+        )
     sess = session or requests.Session()
     out: Dict[Tuple[str, str, str], Optional[FilingText]] = {}
-    for ticker, cik, as_of in items:
+    for ticker, cik, as_of in bounded_items:
         out[(ticker, cik, as_of)] = load_pit_filing(
             ticker, cik, as_of, forms=forms, session=sess, cache_dir=cache_dir
         )
     return out
+
+
+def iter_load_pit_filing_batches(
+    items: Iterable[Tuple[str, str, str]],
+    *,
+    forms: Sequence[str] = DEFAULT_FORMS,
+    session: Optional[requests.Session] = None,
+    cache_dir: Optional[Path] = None,
+    batch_size: int = 32,
+) -> Iterator[Dict[Tuple[str, str, str], Optional[FilingText]]]:
+    """Load bounded SEC batches; no worker can receive the full filing corpus."""
+    from src.equity.research.partitioned_store import iter_filing_worker_batches
+
+    sess = session or requests.Session()
+    for batch in iter_filing_worker_batches(items, batch_size=batch_size):
+        typed_batch = tuple(
+            (str(ticker), str(cik), str(as_of)) for ticker, cik, as_of in batch
+        )
+        yield load_pit_filings(
+            typed_batch,
+            forms=forms,
+            session=sess,
+            cache_dir=cache_dir,
+            max_items_per_worker=batch_size,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -381,7 +454,7 @@ def _cache_path(
 ) -> Optional[Path]:
     if cache_dir is None:
         return None
-    safe_doc = doc.replace("/", "_")
+    safe_doc = Path(doc).name.replace("/", "_") or "unknown"
     return Path(cache_dir) / cik10 / f"{acc_nodash}__{safe_doc}.txt"
 
 

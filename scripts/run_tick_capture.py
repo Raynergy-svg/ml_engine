@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """CLI: Capture OANDA real-time tick stream.
 
+PRACTICE-ONLY, read-only: this script never constructs an order/trade path —
+it only pulls quotes off ``/pricing/stream`` via
+:func:`src.data.tick_capture.build_practice_stream_client`, which hard-pins
+the OANDA environment to practice regardless of ``OANDA_ENVIRONMENT``
+(Hard NO #1). There is no ``--env`` flag: a flag that could point this
+capture process at the live stream is exactly the kind of scaffolding
+Hard NO #1 forbids, so the choice isn't exposed at all.
+
 Examples:
     python scripts/run_tick_capture.py --pairs EUR_USD GBP_USD
     python scripts/run_tick_capture.py --pairs ALL_FX --buffer 5000
-    python scripts/run_tick_capture.py --pairs EUR_USD --daemon
+    python scripts/run_tick_capture.py --pairs EUR_USD --max-seconds 60   # bounded smoke test
+    nohup python scripts/run_tick_capture.py --pairs ALL_FX >> logs/tick_capture.out 2>&1 &
 """
 
 from __future__ import annotations
@@ -13,14 +22,15 @@ import argparse
 import logging
 import signal
 import sys
+import threading
 from pathlib import Path
 from typing import List
 
 # Add repo root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data.tick_capture import TickCaptureDaemon
-from src.utils.oanda_streaming import OandaStreamClient
+from src.data.tick_capture import TickCaptureDaemon, TickPersister, build_practice_stream_client
+from src.data_platform.forward_capture import get_default_forward_capture
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +43,7 @@ ALL_MAJOR_PAIRS = [
     "AUD_USD", "USD_CAD", "NZD_USD",
     "EUR_GBP", "EUR_JPY", "GBP_JPY",
     "EUR_CHF", "GBP_CHF", "AUD_JPY", "EUR_AUD", "GBP_AUD",
+    "AUD_NZD", "CAD_JPY", "CHF_JPY", "EUR_CAD", "NZD_JPY",
 ]
 
 
@@ -75,11 +86,17 @@ def main(argv: List[str] | None = None) -> None:
         help="Skip initial snapshot",
     )
     parser.add_argument(
-        "--env",
-        type=str,
-        default="practice",
-        choices=["practice", "live"],
-        help="OANDA environment (default: practice)",
+        "--retention-days",
+        type=int,
+        default=180,
+        help="Prune tick partitions older than this many days (default: 180; 0 disables pruning)",
+    )
+    parser.add_argument(
+        "--max-seconds",
+        type=float,
+        default=None,
+        help="Auto-shutdown after this many seconds (bounded smoke-test runs). "
+             "Omit for an unbounded headless daemon.",
     )
     args = parser.parse_args(argv)
 
@@ -92,11 +109,19 @@ def main(argv: List[str] | None = None) -> None:
     logger.info(f"Tick capture starting for {len(pairs)} pair(s): {pairs}")
     logger.info(f"Output root: {args.output}")
 
-    client = OandaStreamClient.from_env()
+    client = build_practice_stream_client()
+    logger.info(
+        "PRACTICE-ONLY, read-only pricing stream confirmed (base_url=%s)", client.base_url
+    )
     daemon = TickCaptureDaemon(
         client=client,
         buffer_size=args.buffer,
         flush_interval_sec=args.flush_interval,
+        retention_days=args.retention_days or None,
+        persister=TickPersister(
+            root=args.output,
+            forward_capture=get_default_forward_capture(),
+        ),
     )
 
     # Graceful shutdown on SIGINT/SIGTERM
@@ -107,6 +132,12 @@ def main(argv: List[str] | None = None) -> None:
 
     signal.signal(signal.SIGINT, _handler)
     signal.signal(signal.SIGTERM, _handler)
+
+    if args.max_seconds:
+        timer = threading.Timer(args.max_seconds, daemon.shutdown)
+        timer.daemon = True
+        timer.start()
+        logger.info(f"Bounded run: will auto-shutdown after {args.max_seconds}s")
 
     try:
         daemon.start(pairs)

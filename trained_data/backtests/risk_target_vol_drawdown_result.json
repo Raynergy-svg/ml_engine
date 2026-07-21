@@ -1,0 +1,945 @@
+{
+  "run_at_utc": "2026-07-08T22:06:30.962065+00:00",
+  "pre_registration": "docs/prereg-risk-target-vol-drawdown-2026-07-08.md",
+  "universe": [
+    "AUD_JPY",
+    "AUD_NZD",
+    "AUD_USD",
+    "CAD_JPY",
+    "CHF_JPY",
+    "EUR_AUD",
+    "EUR_CAD",
+    "EUR_CHF",
+    "EUR_GBP",
+    "EUR_JPY",
+    "EUR_USD",
+    "GBP_AUD",
+    "GBP_JPY",
+    "GBP_USD",
+    "NZD_JPY",
+    "NZD_USD",
+    "USD_CAD",
+    "USD_CHF",
+    "USD_JPY"
+  ],
+  "horizon_bars": 20,
+  "oos_start": "2024-01-01",
+  "risk_target_feature_pipeline_version": "2026-07-08-v2",
+  "n_train": 38036,
+  "n_val": 9526,
+  "n_test": 11685,
+  "validation_metrics": {
+    "val_qlike": 0.03889634056796403,
+    "val_pinball_median": 0.009105664115032207,
+    "val_r2": 0.3629248622985266,
+    "val_mae": 0.018211328230064414,
+    "val_auc_drawdown": 0.5864014681426948,
+    "val_brier_drawdown": 0.249232739454953,
+    "n_train": 38036,
+    "n_val": 9526,
+    "instrument": "pooled_19_fx_pairs",
+    "fold_id": null
+  },
+  "target_forward_volatility": {
+    "metric": "QLIKE (lower=better) + pinball@median + R2 + MAE",
+    "oos_model_qlike": 0.050527933200788,
+    "oos_naive_persistence_qlike": 0.07121976543337732,
+    "oos_model_pinball_median": 0.00837219320220871,
+    "oos_naive_persistence_pinball_median": 0.010080120034243405,
+    "oos_model_r2": 0.3536152153982456,
+    "oos_naive_persistence_r2": 0.041380660640488065,
+    "oos_model_mae": 0.01674438640441742,
+    "learnable_bar": "model_qlike < naive_qlike AND model_r2 > 0",
+    "learnable": true,
+    "per_pair_oos": {
+      "AUD_JPY": {
+        "n": 615,
+        "model_qlike": 0.06204048390266384,
+        "naive_qlike": 0.0972771488106602,
+        "model_r2": 0.07779649966484414,
+        "naive_r2": -0.44656392270081136
+      },
+      "AUD_NZD": {
+        "n": 615,
+        "model_qlike": 0.05623913753712623,
+        "naive_qlike": 0.07058129427712521,
+        "model_r2": -0.2756929261166694,
+        "naive_r2": -0.5673939721704244
+      },
+      "AUD_USD": {
+        "n": 615,
+        "model_qlike": 0.047279788839228246,
+        "naive_qlike": 0.06941930205534533,
+        "model_r2": -0.0052788492697699585,
+        "naive_r2": -0.59002559679428
+      },
+      "CAD_JPY": {
+        "n": 615,
+        "model_qlike": 0.047751473311967364,
+        "naive_qlike": 0.07889807063683606,
+        "model_r2": 0.10530966658556651,
+        "naive_r2": -0.3341345816874526
+      },
+      "CHF_JPY": {
+        "n": 615,
+        "model_qlike": 0.047150294233010294,
+        "naive_qlike": 0.06785705430523838,
+        "model_r2": -0.2964888897763367,
+        "naive_r2": -0.969883343038511
+      },
+      "EUR_AUD": {
+        "n": 615,
+        "model_qlike": 0.06034964086873586,
+        "naive_qlike": 0.09064806132274898,
+        "model_r2": -0.021800277315522143,
+        "naive_r2": -0.6721738290639125
+      },
+      "EUR_CAD": {
+        "n": 615,
+        "model_qlike": 0.04575037597993481,
+        "naive_qlike": 0.05323674939050996,
+        "model_r2": 0.06732609148822077,
+        "naive_r2": 0.05173931563216572
+      },
+      "EUR_CHF": {
+        "n": 615,
+        "model_qlike": 0.05740022215246692,
+        "naive_qlike": 0.06579991535359532,
+        "model_r2": 0.03556511350521996,
+        "naive_r2": -0.12186330497255904
+      },
+      "EUR_GBP": {
+        "n": 615,
+        "model_qlike": 0.06785565896732042,
+        "naive_qlike": 0.06990920233164778,
+        "model_r2": -0.4488763977504928,
+        "naive_r2": -0.5485144816531315
+      },
+      "EUR_JPY": {
+        "n": 615,
+        "model_qlike": 0.04571460695976462,
+        "naive_qlike": 0.07142207582832304,
+        "model_r2": 0.17482177509746077,
+        "naive_r2": -0.33208693881853657
+      },
+      "EUR_USD": {
+        "n": 615,
+        "model_qlike": 0.05404207489166535,
+        "naive_qlike": 0.07982261746567428,
+        "model_r2": 0.10926632763309696,
+        "naive_r2": -0.19895970764987259
+      },
+      "GBP_AUD": {
+        "n": 615,
+        "model_qlike": 0.05180081709457999,
+        "naive_qlike": 0.0721622048244738,
+        "model_r2": -0.14234831539188741,
+        "naive_r2": -0.7220188550677547
+      },
+      "GBP_JPY": {
+        "n": 615,
+        "model_qlike": 0.04684640117932347,
+        "naive_qlike": 0.0834428587873705,
+        "model_r2": 0.08125932563925742,
+        "naive_r2": -0.4819893323767277
+      },
+      "GBP_USD": {
+        "n": 615,
+        "model_qlike": 0.03055336413939179,
+        "naive_qlike": 0.04334626700938862,
+        "model_r2": -0.23927158272440474,
+        "naive_r2": -0.6423427842134739
+      },
+      "NZD_JPY": {
+        "n": 615,
+        "model_qlike": 0.042821366119020744,
+        "naive_qlike": 0.06975350633923369,
+        "model_r2": 0.06890198977743389,
+        "naive_r2": -0.47771949207707953
+      },
+      "NZD_USD": {
+        "n": 615,
+        "model_qlike": 0.032520565222943644,
+        "naive_qlike": 0.04363251214330709,
+        "model_r2": -0.022059638119209746,
+        "naive_r2": -0.406588452114621
+      },
+      "USD_CAD": {
+        "n": 615,
+        "model_qlike": 0.03276328297748088,
+        "naive_qlike": 0.04142976035358218,
+        "model_r2": -0.019077939369557928,
+        "naive_r2": -0.2163910385413932
+      },
+      "USD_CHF": {
+        "n": 615,
+        "model_qlike": 0.061023821664261714,
+        "naive_qlike": 0.08090322266554423,
+        "model_r2": -0.13551454946312091,
+        "naive_r2": -0.6400955449089725
+      },
+      "USD_JPY": {
+        "n": 615,
+        "model_qlike": 0.07012735477408585,
+        "naive_qlike": 0.10363371933356444,
+        "model_r2": -0.08175701188590279,
+        "naive_r2": -0.6590684047801785
+      }
+    },
+    "n_pairs_model_beats_naive_qlike": 19,
+    "n_pairs_model_r2_positive": 8,
+    "n_pairs_evaluated": 19
+  },
+  "target_drawdown_state": {
+    "metric": "AUC-ROC + Brier (lower=better)",
+    "oos_model_auc": 0.62521919670658,
+    "oos_baseline_auc": 0.5,
+    "oos_model_brier": 0.23201921650346474,
+    "oos_baseline_brier": 0.14315770570731748,
+    "train_stressed_base_rate": 0.2504732358817962,
+    "learnable_bar": "model_auc >= 0.55 AND model_brier < baseline_brier",
+    "learnable": false
+  },
+  "label_meta_by_pair": {
+    "AUD_JPY": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3236,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.03718795257615554,
+        "n_train_used_for_cut": 2057,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7823383084577115,
+            "stressed": 0.21766169154228857
+          },
+          "train": {
+            "calm": 0.7501215362177929,
+            "stressed": 0.2498784637822071
+          },
+          "val": {
+            "calm": 0.814595660749507,
+            "stressed": 0.1854043392504931
+          },
+          "test": {
+            "calm": 0.8504065040650407,
+            "stressed": 0.14959349593495935
+          }
+        },
+        "n_total": 3236
+      }
+    },
+    "AUD_NZD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3232,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.021125450961431244,
+        "n_train_used_for_cut": 2057,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.791095890410959,
+            "stressed": 0.2089041095890411
+          },
+          "train": {
+            "calm": 0.7501215362177929,
+            "stressed": 0.2498784637822071
+          },
+          "val": {
+            "calm": 0.7964071856287425,
+            "stressed": 0.20359281437125748
+          },
+          "test": {
+            "calm": 0.9105691056910569,
+            "stressed": 0.08943089430894309
+          }
+        },
+        "n_total": 3232
+      }
+    },
+    "AUD_USD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3229,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.03276267951914637,
+        "n_train_used_for_cut": 2056,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7432221875973823,
+            "stressed": 0.25677781240261766
+          },
+          "train": {
+            "calm": 0.7504863813229572,
+            "stressed": 0.2495136186770428
+          },
+          "val": {
+            "calm": 0.6127744510978044,
+            "stressed": 0.3872255489021956
+          },
+          "test": {
+            "calm": 0.8260162601626017,
+            "stressed": 0.17398373983739837
+          }
+        },
+        "n_total": 3229
+      }
+    },
+    "CAD_JPY": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3231,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.03297593743027265,
+        "n_train_used_for_cut": 2058,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7549050140143257,
+            "stressed": 0.24509498598567425
+          },
+          "train": {
+            "calm": 0.750242954324587,
+            "stressed": 0.24975704567541301
+          },
+          "val": {
+            "calm": 0.6666666666666666,
+            "stressed": 0.3333333333333333
+          },
+          "test": {
+            "calm": 0.8276422764227642,
+            "stressed": 0.17235772357723578
+          }
+        },
+        "n_total": 3231
+      }
+    },
+    "CHF_JPY": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3232,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.02403412963304526,
+        "n_train_used_for_cut": 2059,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7503113325031133,
+            "stressed": 0.24968866749688667
+          },
+          "train": {
+            "calm": 0.7498785818358427,
+            "stressed": 0.25012141816415734
+          },
+          "val": {
+            "calm": 0.6846307385229541,
+            "stressed": 0.3153692614770459
+          },
+          "test": {
+            "calm": 0.791869918699187,
+            "stressed": 0.208130081300813
+          }
+        },
+        "n_total": 3232
+      }
+    },
+    "EUR_AUD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3231,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.028875799363187953,
+        "n_train_used_for_cut": 2058,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7832450949859857,
+            "stressed": 0.21675490501401432
+          },
+          "train": {
+            "calm": 0.749757045675413,
+            "stressed": 0.250242954324587
+          },
+          "val": {
+            "calm": 0.7964071856287425,
+            "stressed": 0.20359281437125748
+          },
+          "test": {
+            "calm": 0.8715447154471545,
+            "stressed": 0.12845528455284552
+          }
+        },
+        "n_total": 3231
+      }
+    },
+    "EUR_CAD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3230,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.025625744934445794,
+        "n_train_used_for_cut": 2057,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.795638629283489,
+            "stressed": 0.2043613707165109
+          },
+          "train": {
+            "calm": 0.7501215362177929,
+            "stressed": 0.2498784637822071
+          },
+          "val": {
+            "calm": 0.7984031936127745,
+            "stressed": 0.20159680638722555
+          },
+          "test": {
+            "calm": 0.9398373983739837,
+            "stressed": 0.06016260162601626
+          }
+        },
+        "n_total": 3230
+      }
+    },
+    "EUR_CHF": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3231,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.013803709399492445,
+        "n_train_used_for_cut": 2058,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.6895048271566491,
+            "stressed": 0.310495172843351
+          },
+          "train": {
+            "calm": 0.750242954324587,
+            "stressed": 0.24975704567541301
+          },
+          "val": {
+            "calm": 0.3932135728542914,
+            "stressed": 0.6067864271457086
+          },
+          "test": {
+            "calm": 0.7398373983739838,
+            "stressed": 0.2601626016260163
+          }
+        },
+        "n_total": 3231
+      }
+    },
+    "EUR_GBP": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3232,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.024521495963999173,
+        "n_train_used_for_cut": 2059,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.8240971357409713,
+            "stressed": 0.17590286425902865
+          },
+          "train": {
+            "calm": 0.7508499271491015,
+            "stressed": 0.2491500728508985
+          },
+          "val": {
+            "calm": 0.8982035928143712,
+            "stressed": 0.10179640718562874
+          },
+          "test": {
+            "calm": 1.0,
+            "stressed": 0.0
+          }
+        },
+        "n_total": 3232
+      }
+    },
+    "EUR_JPY": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3231,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.026356883200862168,
+        "n_train_used_for_cut": 2058,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7274992214263469,
+            "stressed": 0.27250077857365307
+          },
+          "train": {
+            "calm": 0.749757045675413,
+            "stressed": 0.250242954324587
+          },
+          "val": {
+            "calm": 0.5209580838323353,
+            "stressed": 0.47904191616766467
+          },
+          "test": {
+            "calm": 0.8048780487804879,
+            "stressed": 0.1951219512195122
+          }
+        },
+        "n_total": 3231
+      }
+    },
+    "EUR_USD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3230,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.02494682807477661,
+        "n_train_used_for_cut": 2057,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.746417445482866,
+            "stressed": 0.25358255451713396
+          },
+          "train": {
+            "calm": 0.7510938259601361,
+            "stressed": 0.24890617403986387
+          },
+          "val": {
+            "calm": 0.5708582834331337,
+            "stressed": 0.4291417165668663
+          },
+          "test": {
+            "calm": 0.8601626016260162,
+            "stressed": 0.13983739837398373
+          }
+        },
+        "n_total": 3230
+      }
+    },
+    "GBP_AUD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3229,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.0288591889522584,
+        "n_train_used_for_cut": 2056,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7790588968526021,
+            "stressed": 0.22094110314739795
+          },
+          "train": {
+            "calm": 0.75,
+            "stressed": 0.25
+          },
+          "val": {
+            "calm": 0.7265469061876247,
+            "stressed": 0.27345309381237526
+          },
+          "test": {
+            "calm": 0.9056910569105691,
+            "stressed": 0.0943089430894309
+          }
+        },
+        "n_total": 3229
+      }
+    },
+    "GBP_JPY": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3235,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.03547297297297294,
+        "n_train_used_for_cut": 2062,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7807153965785381,
+            "stressed": 0.2192846034214619
+          },
+          "train": {
+            "calm": 0.7521823472356935,
+            "stressed": 0.2478176527643065
+          },
+          "val": {
+            "calm": 0.8003992015968064,
+            "stressed": 0.1996007984031936
+          },
+          "test": {
+            "calm": 0.8471544715447155,
+            "stressed": 0.15284552845528454
+          }
+        },
+        "n_total": 3235
+      }
+    },
+    "GBP_USD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3234,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.029066756040340005,
+        "n_train_used_for_cut": 2061,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7613565650280025,
+            "stressed": 0.2386434349719975
+          },
+          "train": {
+            "calm": 0.7506065016982048,
+            "stressed": 0.24939349830179525
+          },
+          "val": {
+            "calm": 0.6027944111776448,
+            "stressed": 0.3972055888223553
+          },
+          "test": {
+            "calm": 0.9121951219512195,
+            "stressed": 0.08780487804878048
+          }
+        },
+        "n_total": 3234
+      }
+    },
+    "NZD_JPY": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3249,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.03637966807171609,
+        "n_train_used_for_cut": 2074,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7751625890368535,
+            "stressed": 0.2248374109631465
+          },
+          "train": {
+            "calm": 0.7497589199614272,
+            "stressed": 0.2502410800385728
+          },
+          "val": {
+            "calm": 0.7904191616766467,
+            "stressed": 0.20958083832335328
+          },
+          "test": {
+            "calm": 0.8390243902439024,
+            "stressed": 0.16097560975609757
+          }
+        },
+        "n_total": 3249
+      }
+    },
+    "NZD_USD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3245,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.03419536000899055,
+        "n_train_used_for_cut": 2068,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7454263565891472,
+            "stressed": 0.2545736434108527
+          },
+          "train": {
+            "calm": 0.75,
+            "stressed": 0.25
+          },
+          "val": {
+            "calm": 0.6235059760956175,
+            "stressed": 0.37649402390438247
+          },
+          "test": {
+            "calm": 0.8276422764227642,
+            "stressed": 0.17235772357723578
+          }
+        },
+        "n_total": 3245
+      }
+    },
+    "USD_CAD": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3255,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.02343507700962875,
+        "n_train_used_for_cut": 2082,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7789799072642968,
+            "stressed": 0.22102009273570325
+          },
+          "train": {
+            "calm": 0.7497598463016331,
+            "stressed": 0.25024015369836694
+          },
+          "val": {
+            "calm": 0.7864271457085829,
+            "stressed": 0.21357285429141717
+          },
+          "test": {
+            "calm": 0.8845528455284553,
+            "stressed": 0.11544715447154472
+          }
+        },
+        "n_total": 3255
+      }
+    },
+    "USD_CHF": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3238,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.02359187343452298,
+        "n_train_used_for_cut": 2065,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7144188937228092,
+            "stressed": 0.2855811062771908
+          },
+          "train": {
+            "calm": 0.7530266343825666,
+            "stressed": 0.2469733656174334
+          },
+          "val": {
+            "calm": 0.5768463073852296,
+            "stressed": 0.4231536926147705
+          },
+          "test": {
+            "calm": 0.697560975609756,
+            "stressed": 0.3024390243902439
+          }
+        },
+        "n_total": 3238
+      }
+    },
+    "USD_JPY": {
+      "vol_meta": {
+        "vol_horizon_bars": 20,
+        "annualization_factor": 15.874507866387544,
+        "formula": "stddev_log_returns_annualized",
+        "leak_fix_version": "2026-05-06",
+        "units_fix_version": "2026-07-08",
+        "n_total": 3247,
+        "n_nan_dropped": 20
+      },
+      "dd_meta": {
+        "drawdown_horizon_bars": 20,
+        "stressed_quantile": 0.75,
+        "formula": "max_running_peak_to_trough_decline_in_forward_window",
+        "cut_value": 0.02414982319814896,
+        "n_train_used_for_cut": 2074,
+        "n_nan_dropped": 20,
+        "class_balance": {
+          "all": {
+            "calm": 0.7118066315463278,
+            "stressed": 0.28819336845367216
+          },
+          "train": {
+            "calm": 0.7526518804243009,
+            "stressed": 0.24734811957569913
+          },
+          "val": {
+            "calm": 0.6666666666666666,
+            "stressed": 0.3333333333333333
+          },
+          "test": {
+            "calm": 0.6016260162601627,
+            "stressed": 0.3983739837398374
+          }
+        },
+        "n_total": 3247
+      }
+    }
+  },
+  "artifact_gate": {
+    "verdict": "PASSED",
+    "written": true,
+    "vol_gate": {
+      "n_test": 9526,
+      "candidate_mae": 0.03889634056796403,
+      "existing_mae": null,
+      "verdict": "PASSED",
+      "reason": "no_scorable_existing_model_candidate_sane"
+    },
+    "drawdown_gate": {
+      "n_test": 9526,
+      "candidate_mae": 0.249232739454953,
+      "existing_mae": null,
+      "verdict": "PASSED",
+      "reason": "no_scorable_existing_model_candidate_sane"
+    }
+  }
+}

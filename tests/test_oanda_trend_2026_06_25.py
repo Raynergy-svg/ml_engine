@@ -18,6 +18,7 @@ from src.equity.oanda_trend import (
     target_units,
     trend_targets,
 )
+from src.scanner.automation.state_engine import StateEngine
 
 
 def test_compute_atr_from_ohlc_candles():
@@ -183,7 +184,34 @@ def test_repair_missing_trade_brackets_fails_closed_without_atr():
     assert client.bracket_repairs == []
 
 
+def _seed_real_fill_history(root, instrument="EUR_USD", n=3):
+    """Real ORDER_FILL transaction records (no mocks) so the 2026-07-08
+    cost-aware gate has genuine spread/slippage data to evaluate — a tight,
+    realistic 2-pip spread with zero slippage, well inside the 30% of 1R cost
+    budget. Mirrors the real production transactions.jsonl shape exactly
+    (fullPrice.bids/asks + fill price + halfSpreadCost)."""
+    import json as _json
+
+    path = root / "trained_data" / "oanda" / "transactions.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for i in range(n):
+        lines.append(_json.dumps({
+            "type": "ORDER_FILL",
+            "instrument": instrument,
+            "time": f"2026-06-{i + 1:02d}T00:00:00Z",
+            "price": "1.10010",
+            "units": "1000",
+            "requestedUnits": "1000",
+            "halfSpreadCost": "0.075",
+            "fullPrice": {"bids": [{"price": "1.10000"}], "asks": [{"price": "1.10020"}]},
+        }))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def test_trend_cycle_sends_sl_and_tp_on_new_long(tmp_path):
+    StateEngine(tmp_path / ".claude" / "state.json").set_halted(False)
+    _seed_real_fill_history(tmp_path)
     closes = list(np.linspace(1.05, 1.20, 160))
     client = _FakeClient({"EUR_USD": _ohlc_candles(closes)})
 
@@ -214,6 +242,7 @@ def test_trend_cycle_sends_sl_and_tp_on_new_long(tmp_path):
 
 
 def test_trend_cycle_refuses_new_long_when_required_brackets_missing(tmp_path):
+    StateEngine(tmp_path / ".claude" / "state.json").set_halted(False)
     closes = list(np.linspace(1.05, 1.20, 80))
     client = _FakeClient({"EUR_USD": _candles(closes)})
 

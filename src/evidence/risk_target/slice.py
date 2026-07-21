@@ -120,7 +120,11 @@ class SliceResult:
     outcomes: Mapping[str, HeadImportOutcome] = field(default_factory=dict)
 
 
-def _config_digest(params: EvaluationParams, feature_version: str) -> str:
+def _config_digest(
+    params: EvaluationParams,
+    feature_version: str,
+    cost_rate_per_hour: float,
+) -> str:
     payload = {
         "params": {
             "horizon_bars": params.horizon_bars,
@@ -134,6 +138,10 @@ def _config_digest(params: EvaluationParams, feature_version: str) -> str:
             "seed": params.seed,
         },
         "feature_pipeline_version": feature_version,
+        "cost_policy": {
+            "currency": "USD",
+            "local_cpu_rate_per_hour": cost_rate_per_hour,
+        },
     }
     return sha256_bytes(canonical_bytes(payload))
 
@@ -153,6 +161,7 @@ def produce_worker_output(
     evaluator=evaluate_partitions,
     registry_publish=_fail_open_registry,
     feature_pipeline_version: str | None = None,
+    cost_rate_per_hour: float = 0.0,
 ) -> Produced:
     """Build+sign the manifests and run the authority-free worker (no import)."""
     params = params or EvaluationParams()
@@ -184,7 +193,9 @@ def produce_worker_output(
         capability_profile=capability_profile,
         git_commit=git_commit,
         container_digest=container_digest,
-        configuration_digest=_config_digest(params, feature_pipeline_version),
+        configuration_digest=_config_digest(
+            params, feature_pipeline_version, cost_rate_per_hour
+        ),
         feature_pipeline_version=feature_pipeline_version,
         random_seeds=(params.seed,),
         created_at=created_at,
@@ -203,6 +214,7 @@ def produce_worker_output(
         params=params,
         evaluator=evaluator,
         registry_publish=registry_publish,
+        cost_rate_per_hour=cost_rate_per_hour,
     )
     return Produced(job=job, capability_profile=capability_profile, worker_output=worker_output)
 
@@ -224,7 +236,7 @@ def import_worker_output(
         outcomes[head.lane_id] = import_head(
             store,
             head,
-            job=produced.job,
+            job_envelope=produced.worker_output.job_envelope,
             capability_profile_envelope=produced.worker_output.capability_profile_envelope,
             dataset_manifest_envelope=produced.worker_output.dataset_manifest_envelope,
             partitions=partitions,
@@ -256,6 +268,7 @@ def run_risk_target_evidence_slice(
     evaluator=evaluate_partitions,
     registry_publish=_fail_open_registry,
     feature_pipeline_version: str | None = None,
+    cost_rate_per_hour: float = 0.0,
 ) -> SliceResult:
     """Run the full dataset -> job -> worker -> import flow for one job."""
     params = params or EvaluationParams()
@@ -265,6 +278,7 @@ def run_risk_target_evidence_slice(
         retrieved_at=retrieved_at, created_at=created_at, git_commit=git_commit,
         job_id=job_id, params=params, evaluator=evaluator,
         registry_publish=registry_publish, feature_pipeline_version=feature_pipeline_version,
+        cost_rate_per_hour=cost_rate_per_hour,
     )
     outcomes = import_worker_output(
         store, identities, produced, partitions,

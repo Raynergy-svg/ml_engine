@@ -45,10 +45,12 @@ past positions.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 
 from src.equity.backtest import (
     BacktestError,
@@ -62,6 +64,7 @@ from src.equity.research.contracts import (
     ARM_PLACEBO,
     ARM_POST_CUTOFF,
     ARM_PRE_CUTOFF,
+    BONFERRONI_ALPHA,
     N_TRIALS,
     PRIMARY_WEIGHTS,
     ResearchScore,
@@ -186,6 +189,50 @@ def _latest_scores_asof(
                 chosen_ts = s_ts
         if chosen is not None:
             latest[ticker] = chosen
+    return latest
+
+
+def _presort_scores_by_ticker(
+    scores_by_ticker: Dict[str, List[ResearchScore]],
+) -> Dict[str, tuple]:
+    """Pre-parse + sort each ticker's scores by ``as_of`` ascending, once.
+
+    Feeds :func:`_latest_scores_asof_presorted` so ``_build_weight_panel``'s
+    per-rebalance loop does an O(log n) bisect instead of re-parsing every ISO
+    date string and linear-scanning on every rebalance (see
+    :func:`_latest_scores_asof` docstring — that O(n) path is fine for Track
+    B's sparse per-filing scores but is intractable for a DENSE per-day score
+    panel, e.g. an alt-data z-score signal with one score per ticker per day).
+    """
+    presorted: Dict[str, tuple] = {}
+    for ticker, ticker_scores in scores_by_ticker.items():
+        if not ticker_scores:
+            continue
+        parsed = sorted(
+            ((_to_utc_ts(s.as_of), s) for s in ticker_scores), key=lambda x: x[0]
+        )
+        ts_list, s_list = zip(*parsed)
+        presorted[ticker] = (list(ts_list), list(s_list))
+    return presorted
+
+
+def _latest_scores_asof_presorted(
+    presorted: Dict[str, tuple],
+    asof: pd.Timestamp,
+) -> Dict[str, ResearchScore]:
+    """Latest score per ticker with ``as_of <= asof``, via bisect on pre-sorted lists.
+
+    Byte-for-byte equivalent to :func:`_latest_scores_asof` given the same
+    inputs (both pick the score with the maximal ``as_of <= asof``); this is
+    purely a performance path for callers with large/dense score sets.
+    """
+    from bisect import bisect_right
+
+    latest: Dict[str, ResearchScore] = {}
+    for ticker, (ts_list, s_list) in presorted.items():
+        idx = bisect_right(ts_list, asof) - 1
+        if idx >= 0:
+            latest[ticker] = s_list[idx]
     return latest
 
 
@@ -337,8 +384,13 @@ def _build_weight_panel(
     # Mark which rows are rebalance rows so we can ffill ONLY from them.
     stamped_rows: List[pd.Timestamp] = []
 
+    # Pre-parse/sort once (O(n log n)) so the per-rebalance lookup below is an
+    # O(log n) bisect rather than re-parsing every score's ISO date on every
+    # rebalance (O(n) per lookup) — see _presort_scores_by_ticker docstring.
+    presorted = _presort_scores_by_ticker(scores_by_ticker)
+
     for rb in rebalance_dates:
-        latest = _latest_scores_asof(scores_by_ticker, rb)
+        latest = _latest_scores_asof_presorted(presorted, rb)
         if not latest:
             continue
         composites = {
@@ -473,6 +525,153 @@ def _effective_n(
     return float(active.mean())
 
 
+# ---------------------------------------------------------------------------
+# §4.5 — Deflated Sharpe Ratio (DSR-OOS, N=22) + Bonferroni block-bootstrap.
+# ---------------------------------------------------------------------------
+
+# Minimum realised bars below which neither statistic is meaningful. Below this
+# floor we report None with an explicit reason rather than a noise-driven number
+# (mirrors the inference-contract "abstain, never fabricate" rule).
+_MIN_BARS_FOR_SIGNIFICANCE = 10
+
+# Fixed block-bootstrap knobs. A block length of 21 (one rebalance cycle) keeps
+# the autocorrelation structure the causal overlay induces; a fixed RNG seed
+# makes the p-value reproducible byte-for-bit across runs on the same input,
+# matching the module's "no RNG" determinism discipline in spirit — the
+# resampling scheme itself needs randomness, but the SEED is frozen so two runs
+# on the same returns produce the identical bootstrap distribution.
+_BOOTSTRAP_BLOCK_SIZE = 21
+_BOOTSTRAP_N_REPS = 5000
+_BOOTSTRAP_SEED = 20260630  # frozen with the prereg date; never tuned per-result
+
+_EULER_MASCHERONI = 0.5772156649015329
+
+
+def _deflated_sharpe_ratio(
+    returns: pd.Series, n_trials: int
+) -> Optional[Dict[str, float]]:
+    """Bailey & Lopez de Prado (2014) DSR, adjusted for ``n_trials`` multiple testing.
+
+    Works in PER-PERIOD (daily, un-annualised) Sharpe units throughout — DSR is a
+    probability (in [0, 1]), not itself annualised. Returns ``None`` when there
+    are too few bars to estimate skew/kurtosis/variance meaningfully (honest
+    abstention, never a noise-driven number).
+
+    ``sr0`` is the expected maximum Sharpe ratio across ``n_trials`` independent
+    trials under a true-zero-Sharpe null (the multiple-testing benchmark the
+    observed Sharpe must clear); ``dsr`` is the probability the observed Sharpe
+    exceeds that benchmark once skew/kurtosis/sample-size are accounted for.
+    The trial-to-trial Sharpe variance (``sr_std``) is approximated by this
+    trial's own PSR denominator — the standard practical substitution used when
+    the actual empirical Sharpe distribution of the other N-1 trials is not
+    available (see e.g. mlfinlab's deflated-Sharpe implementation).
+    """
+    ret = returns.dropna()
+    t = len(ret)
+    if t < _MIN_BARS_FOR_SIGNIFICANCE:
+        return None
+    std = float(ret.std(ddof=1))
+    if std <= 1e-12:
+        return None
+    sr = float(ret.mean() / std)
+    skew = float(ret.skew())
+    kurt = float(ret.kurtosis()) + 3.0  # pandas kurtosis() is EXCESS; formula wants Pearson's
+    if pd.isna(skew) or pd.isna(kurt):
+        return None
+    variance_term = 1.0 - skew * sr + (kurt - 1.0) / 4.0 * sr**2
+    if variance_term <= 0:
+        return None
+    sr_std = math.sqrt(variance_term / (t - 1))
+    if sr_std <= 1e-12:
+        return None
+    sr0 = sr_std * (
+        (1.0 - _EULER_MASCHERONI) * norm.ppf(1.0 - 1.0 / n_trials)
+        + _EULER_MASCHERONI * norm.ppf(1.0 - 1.0 / (n_trials * math.e))
+    )
+    dsr = float(norm.cdf((sr - sr0) / sr_std))
+    return {
+        "sr_hat_per_period": sr,
+        "sr0_benchmark_per_period": float(sr0),
+        "sr_std_per_period": sr_std,
+        "skew": skew,
+        "kurtosis_pearson": kurt,
+        "n_obs": t,
+        "dsr": dsr,
+    }
+
+
+def _circular_block_bootstrap_sharpe_pvalue(
+    returns: pd.Series,
+    *,
+    block_size: int = _BOOTSTRAP_BLOCK_SIZE,
+    n_reps: int = _BOOTSTRAP_N_REPS,
+    seed: int = _BOOTSTRAP_SEED,
+) -> Optional[Dict[str, float]]:
+    """One-sided block-bootstrap p-value that the true (per-period) Sharpe <= 0.
+
+    Circular block bootstrap: resamples overlapping blocks of ``block_size``
+    consecutive returns (wrapping at the series end) to preserve the
+    autocorrelation the causal overlay induces, unlike an iid bootstrap. The RNG
+    is seeded so the same input returns always yield the identical p-value.
+    Returns ``None`` below :data:`_MIN_BARS_FOR_SIGNIFICANCE` bars.
+    """
+    ret = returns.dropna().to_numpy()
+    t = len(ret)
+    if t < _MIN_BARS_FOR_SIGNIFICANCE:
+        return None
+    block = max(1, min(block_size, t))
+    n_blocks = math.ceil(t / block)
+    rng = np.random.default_rng(seed)
+    starts = rng.integers(0, t, size=(n_reps, n_blocks))
+    boot_sharpes = np.empty(n_reps, dtype=float)
+    for i in range(n_reps):
+        pieces = [
+            ret[np.arange(s, s + block) % t] for s in starts[i]
+        ]
+        sample = np.concatenate(pieces)[:t]
+        sd = sample.std(ddof=1)
+        boot_sharpes[i] = (sample.mean() / sd) if sd > 1e-12 else 0.0
+    p_le_zero = float(np.mean(boot_sharpes <= 0.0))
+    return {
+        "p_oos_sharpe_le_zero": p_le_zero,
+        "block_size": block,
+        "n_bootstrap_reps": n_reps,
+        "seed": seed,
+        "boot_sharpe_mean": float(np.mean(boot_sharpes)),
+        "boot_sharpe_std": float(np.std(boot_sharpes, ddof=1)),
+    }
+
+
+def _dsr_oos_n22(
+    arm_returns: pd.Series, n_trials: int = N_TRIALS
+) -> Dict[str, object]:
+    """Prereg §4.5 criterion: DSR-OOS(N=22) >= 0.95 AND Bonferroni p-OOS < alpha.
+
+    Combines :func:`_deflated_sharpe_ratio` and
+    :func:`_circular_block_bootstrap_sharpe_pvalue` into the single dict the
+    harness reports per arm. ``passes_significance`` is ``None`` (not False)
+    when either component could not be computed (too few bars) — an uncomputed
+    criterion is never silently treated as failed OR passed.
+    """
+    dsr_block = _deflated_sharpe_ratio(arm_returns, n_trials)
+    boot_block = _circular_block_bootstrap_sharpe_pvalue(arm_returns)
+    passes: Optional[bool] = None
+    if dsr_block is not None and boot_block is not None:
+        passes = bool(
+            dsr_block["dsr"] >= 0.95
+            and boot_block["p_oos_sharpe_le_zero"] < BONFERRONI_ALPHA
+        )
+    return {
+        "dsr": dsr_block["dsr"] if dsr_block else None,
+        "bonferroni_alpha": BONFERRONI_ALPHA,
+        "p_oos_bootstrap": boot_block["p_oos_sharpe_le_zero"] if boot_block else None,
+        "passes_significance": passes,
+        "n_trials": n_trials,
+        "detail": {"dsr": dsr_block, "bootstrap": boot_block},
+        "insufficient_data": dsr_block is None or boot_block is None,
+    }
+
+
 def _run_one_arm(
     scores_by_ticker: Dict[str, List[ResearchScore]],
     prices: pd.DataFrame,
@@ -543,22 +742,24 @@ def _run_one_arm(
             f"{arm_returns.index.max().date()}"
         ),
     }
+    dsr_result = _dsr_oos_n22(arm_returns)
     return {
         "report": report,
         "gate": verdict_to_dict(verdict),
         "gate_passed": bool(verdict.passed),
         "equity_curve_summary": equity_summary,
         "effective_n": eff_n,
-        # DSR-OOS(N=22) is a deliberate, clearly-labelled TODO — a full deflated
-        # Sharpe / Bonferroni block-bootstrap OOS test is out of scope for this
-        # first build. We report net Sharpe, maxDD and positive-years for REAL
-        # (above) and the multiple-testing budget, but do NOT fake a DSR number.
-        "dsr_oos_n22": None,  # TODO(prereg §4.5): block-bootstrap DSR-OOS(N=22)
+        # §4.5 significance extension: DSR-OOS(N=22) + Bonferroni block-bootstrap
+        # p-OOS, computed for REAL (see _dsr_oos_n22). `passes_significance` is
+        # None (not False) when too few bars exist to estimate it — an
+        # uncomputed criterion is never silently treated as passed or failed.
+        "dsr_oos_n22": dsr_result,
         "n_trials": N_TRIALS,
         "bonferroni_note": (
-            f"multiple-testing budget N_TRIALS={N_TRIALS}; DSR-OOS / Bonferroni "
-            "p-OOS not yet computed (TODO §4.5) — gate verdict above reflects "
-            "criteria 1-4 only, not the significance extension §4.5"
+            f"multiple-testing budget N_TRIALS={N_TRIALS}, alpha="
+            f"{BONFERRONI_ALPHA:.5f}; dsr_oos_n22.passes_significance reflects "
+            "criterion 5 (§4.5) and is SEPARATE from gate_passed (criteria 1-4); "
+            "both must hold for a full clear."
         ),
         "is_clean_arm": False,  # set by caller for the post-cutoff arm
     }
@@ -573,6 +774,7 @@ def run_research_backtest(
     rebalance_step_days: int = 21,
     vol_target: float = 0.10,
     cost_bps: float = 2.0,
+    blinding_audit_clean: Optional[bool] = None,
 ) -> dict:
     """Evaluate the research book across the four pre-registered arms.
 
@@ -684,7 +886,7 @@ def run_research_backtest(
             arm_result["is_clean_arm"] = True
         results[arm] = arm_result
 
-    summary = _build_summary(results)
+    summary = _build_summary(results, blinding_audit_clean=blinding_audit_clean)
     return {
         **results,
         "summary": summary,
@@ -700,13 +902,24 @@ def run_research_backtest(
     }
 
 
-def _build_summary(results: Dict[str, object]) -> Dict[str, object]:
+def _build_summary(
+    results: Dict[str, object],
+    *,
+    blinding_audit_clean: Optional[bool] = None,
+) -> Dict[str, object]:
     """Top-level cross-arm summary + the frozen control decision rule (§1).
 
     The prereg decision rule: reportable as a real edge ONLY IF the post-cutoff
     OOS arm is directionally consistent with full AND the placebo is ≈0
     (|Sharpe| < 0.15). We expose the booleans; the gate verdict per arm is also
     returned so a verifier can re-derive this.
+
+    ``blinding_audit_clean`` wires prereg §8's deferred item 5 (the human/LLM
+    re-identification audit result) into the binding verdict. It defaults to
+    ``None`` — preserving the original fail-closed behaviour (REAL unreachable)
+    for any caller that does not supply it — and must be produced by an actual
+    audit run OUTSIDE this pure/deterministic module (this harness never reads
+    filing text or makes an identity judgement itself).
     """
     def _sharpe(arm: str) -> Optional[float]:
         a = results.get(arm)
@@ -738,22 +951,33 @@ def _build_summary(results: Dict[str, object]) -> Dict[str, object]:
     }
 
     # §4.7 BINDING verdict — controls OVERRIDE any arm gate pass. The blinding
-    # audit (§1.1) is a separate human/LLM verifier step not computed here, so it
-    # is an INPUT we cannot assert True from code: until it is wired, the binding
-    # verdict can never be REAL on its own (fail-closed — an uncomputed control is
-    # treated as not-yet-satisfied, never as passed).
-    blinding_audit_clean = None  # not computed in-harness (§1.1, MEDIUM-2)
+    # audit (§1.1) is a separate human/LLM verifier step not computed here; it
+    # is an INPUT the caller supplies (see ``blinding_audit_clean`` param) — an
+    # uncomputed control (None, the default) is treated as not-yet-satisfied,
+    # never as passed (fail-closed).
     controls_satisfied = (
         placebo_clean
         and post_consistent
         and blinding_audit_clean is True
     )
+    # §4.5 significance extension (DSR-OOS(N=22) + Bonferroni p-OOS), computed
+    # for the FULL arm. None (uncomputed / too few bars) counts as not-satisfied
+    # — same fail-closed discipline as every other control here.
+    full_result = results.get(ARM_FULL)
+    full_dsr = (
+        full_result.get("dsr_oos_n22") if isinstance(full_result, dict) else None
+    )
+    full_significance_passes = bool(
+        isinstance(full_dsr, dict) and full_dsr.get("passes_significance") is True
+    )
     full_gate = arm_gate_passed.get(ARM_FULL, False)
-    if controls_satisfied and full_gate:
+    full_clears_criteria_1_5 = full_gate and full_significance_passes
+    if controls_satisfied and full_clears_criteria_1_5:
         overall_verdict = "REAL"
-    elif full_gate and not controls_satisfied:
+    elif full_gate and not (controls_satisfied and full_significance_passes):
         # The dangerous case the §1 apparatus exists to catch: a contaminated
-        # full-sample arm clears the gate but the controls do not confirm it.
+        # full-sample arm clears criteria 1-4 but the §1 controls and/or the
+        # §4.5 significance extension do not confirm it.
         overall_verdict = "LOOKAHEAD_CONTAMINATED"
     else:
         overall_verdict = "INSUFFICIENT"  # no full-arm gate pass to adjudicate
@@ -769,14 +993,17 @@ def _build_summary(results: Dict[str, object]) -> Dict[str, object]:
         "placebo_is_clean": bool(placebo_clean),
         "post_cutoff_consistent_with_full": bool(post_consistent),
         "blinding_audit_clean": blinding_audit_clean,
-        # THE single field a consumer must read. Fuses gate + §1 controls; a
-        # contaminated full-arm pass can NEVER read as REAL here.
+        "full_significance_passes": full_significance_passes,
+        # THE single field a consumer must read. Fuses gate + §1 controls + the
+        # §4.5 significance extension; a contaminated full-arm pass can NEVER
+        # read as REAL here.
         "overall_verdict": overall_verdict,
         "controls_note": (
             "overall_verdict is BINDING (§4.7): REAL requires full-arm gate pass "
-            "AND placebo ~0 (|Sharpe|<0.15) AND post-cutoff confirms the edge "
-            "(full>0 and post>0) AND a clean blinding audit (§1.1, human verifier "
-            "— uncomputed here, so REAL is unreachable until it is wired). "
+            "(criteria 1-4) AND dsr_oos_n22.passes_significance on the full arm "
+            "(criterion 5) AND placebo ~0 (|Sharpe|<0.15) AND post-cutoff "
+            "confirms the edge (full>0 and post>0) AND a clean blinding audit "
+            "(§1.1 — caller-supplied; None/unset is treated as not satisfied). "
             "Read overall_verdict, NOT any single arm's gate_passed."
         ),
     }

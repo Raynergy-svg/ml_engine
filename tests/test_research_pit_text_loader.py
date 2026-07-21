@@ -90,6 +90,34 @@ def test_html_to_text_strips_tags_and_collapses():
     assert "<" not in out and ">" not in out
 
 
+def test_html_to_text_strips_ixbrl_header_block():
+    """Regression (2026-07-01 Track B discovery): a real 10-K's `ix:header`
+    (hidden/references/resources — XBRL context+unit definitions for every
+    tagged fact) precedes the visible cover page and is NOT rendered by a
+    browser. Without skipping it, a head-truncated extract is 100% tag-value
+    noise and 0% analyst-readable prose — the exact failure that produced
+    garbage input for the entire first Track B pilot fetch."""
+    html = (
+        "<html><body>"
+        "<ix:header>"
+        "<ix:hidden><ix:nonNumeric contextRef=\"c-1\" name=\"dei:AmendmentFlag\">"
+        "false</ix:nonNumeric></ix:hidden>"
+        "<ix:references><link:schemaRef xlink:href=\"foo.xsd\"/></ix:references>"
+        "<ix:resources><xbrli:context id=\"c-1\">2023-09-30</xbrli:context></ix:resources>"
+        "</ix:header>"
+        "<div>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</div>"
+        "<div><ix:nonNumeric name=\"dei:EntityRegistrantName\">Apple Inc.</ix:nonNumeric></div>"
+        "</body></html>"
+    )
+    out = html_to_text(html)
+    assert "UNITED STATES SECURITIES AND EXCHANGE COMMISSION" in out
+    assert "Apple Inc." in out  # visible ix:nonNumeric OUTSIDE ix:header is kept
+    assert "AmendmentFlag" not in out
+    assert "false" not in out
+    assert "schemaRef" not in out
+    assert "2023-09-30" not in out
+
+
 def test_html_to_text_empty():
     assert html_to_text("") == ""
     assert html_to_text(None) == ""  # type: ignore[arg-type]

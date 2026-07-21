@@ -50,13 +50,14 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from src.equity.research.contracts import (
     RESEARCH_PIPELINE_VERSION,
     BlindedText,
     FilingText,
     ResearchScore,
+    ResearchScorer,
 )
 from src.equity.research.entity_blinder import IssuerBundle, blind_filing
 
@@ -489,6 +490,36 @@ class BaselineScorer:
         return score
 
 
+def score_prepared_batch(
+    tasks: Sequence[ScoringTask],
+    scorer: ResearchScorer,
+    *,
+    max_batch_size: int = 32,
+) -> Tuple[List[ResearchScore], Dict[str, str]]:
+    """Score one bounded task batch; malformed tasks abstain without growing a corpus."""
+    if max_batch_size < 1:
+        raise ValueError("max_batch_size must be positive")
+    if len(tasks) > max_batch_size:
+        raise ValueError(
+            f"scoring worker received {len(tasks)} tasks; maximum is {max_batch_size}"
+        )
+    scores: List[ResearchScore] = []
+    failures: Dict[str, str] = {}
+    for task in tasks:
+        blinded = BlindedText(
+            as_of=task.as_of,
+            form=task.form,
+            filed=task.as_of,
+            text=task.text_to_score,
+            audit=dict(task.audit or {}),
+        )
+        try:
+            scores.append(scorer.score(blinded, ticker=task.ticker))
+        except (ValueError, ScoreParseError) as exc:
+            failures[f"{task.ticker}@{task.as_of}"] = str(exc)
+    return scores, failures
+
+
 # --------------------------------------------------------------------------- #
 # 5. Scores artifact I/O — versioned, atomic, version-refusing.
 # --------------------------------------------------------------------------- #
@@ -633,6 +664,7 @@ __all__ = [
     "scoring_task_to_prompt",
     "research_score_from_json",
     "BaselineScorer",
+    "score_prepared_batch",
     "write_scores_artifact",
     "read_scores_artifact",
     "ScoreParseError",

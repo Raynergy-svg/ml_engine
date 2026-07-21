@@ -1,0 +1,7 @@
+{
+  "autonomy_level": "L5",
+  "bounded": true,
+  "max_autonomy": 5,
+  "pid": 22421,
+  "updated_at": "2026-07-02T14:50:54.735906+00:00"
+}

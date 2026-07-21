@@ -1,0 +1,132 @@
+{
+  "human_review_required": true,
+  "paper_only": true,
+  "runtime_allowed": false,
+  "scorecards": {
+    "crypto_momentum": {
+      "asof_range": [
+        "2026-05-31",
+        "2026-05-31"
+      ],
+      "cost_unmodeled_for_venue": false,
+      "decision": {
+        "basis": "n/a",
+        "reason": "no cycle in this history had an applied hedge (status(es): ['unsupported_asset_class']) \u2014 raw and hedged lanes are identical by construction; no alpha-vs-beta read is possible from this history.",
+        "verdict": "insufficient_history"
+      },
+      "exposure_drift": {
+        "any_fail_closed": true,
+        "avg_concentration_warnings": 0.0,
+        "net_beta_mean": 0.0,
+        "net_beta_std": null
+      },
+      "hedge_unavailable": true,
+      "hedged_gross": null,
+      "hedged_net": {
+        "after_cost_expectancy": null,
+        "hit_rate": null,
+        "max_drawdown": null,
+        "n": 0,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "human_review_required": true,
+      "n_cycles": 1,
+      "paper_only": true,
+      "raw": {
+        "after_cost_expectancy": 0.010242292477929321,
+        "hit_rate": 1.0,
+        "max_drawdown": 0.0,
+        "n": 1,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "runtime_allowed": false
+    },
+    "equity_harvester": {
+      "asof_range": [
+        "2026-07-01",
+        "2026-07-01"
+      ],
+      "cost_unmodeled_for_venue": true,
+      "decision": {
+        "basis": "net",
+        "reason": "only 0 logged cycle(s) (< 3) \u2014 no verdict forced on this thin a sample.",
+        "verdict": "insufficient_history"
+      },
+      "exposure_drift": {
+        "any_fail_closed": false,
+        "avg_concentration_warnings": 0.0,
+        "net_beta_mean": 103000.0,
+        "net_beta_std": null
+      },
+      "hedge_unavailable": false,
+      "hedged_gross": null,
+      "hedged_net": {
+        "after_cost_expectancy": null,
+        "hit_rate": null,
+        "max_drawdown": null,
+        "n": 0,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "human_review_required": true,
+      "n_cycles": 1,
+      "paper_only": true,
+      "raw": {
+        "after_cost_expectancy": null,
+        "hit_rate": null,
+        "max_drawdown": null,
+        "n": 0,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "runtime_allowed": false
+    },
+    "track_b": {
+      "asof_range": [
+        "2026-06-24",
+        "2026-06-24"
+      ],
+      "cost_unmodeled_for_venue": false,
+      "decision": {
+        "basis": "n/a",
+        "reason": "no cycle in this history had an applied hedge (status(es): ['fail_closed']) \u2014 raw and hedged lanes are identical by construction; no alpha-vs-beta read is possible from this history.",
+        "verdict": "insufficient_history"
+      },
+      "exposure_drift": {
+        "any_fail_closed": true,
+        "avg_concentration_warnings": 0.0,
+        "net_beta_mean": 6301.963635942387,
+        "net_beta_std": null
+      },
+      "hedge_unavailable": true,
+      "hedged_gross": null,
+      "hedged_net": {
+        "after_cost_expectancy": null,
+        "hit_rate": null,
+        "max_drawdown": null,
+        "n": 0,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "human_review_required": true,
+      "n_cycles": 1,
+      "paper_only": true,
+      "raw": {
+        "after_cost_expectancy": 0.0012642806625314416,
+        "hit_rate": 1.0,
+        "max_drawdown": 0.0,
+        "n": 1,
+        "sharpe_annualized": null,
+        "sortino_annualized": null
+      },
+      "runtime_allowed": false
+    }
+  },
+  "strategies_with_history": [
+    "crypto_momentum",
+    "equity_harvester",
+    "track_b"
+  ]
+}

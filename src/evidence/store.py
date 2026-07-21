@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from .canonical import canonical_bytes
 from .contracts import (
+    ArtifactRef,
     AuthorityRole,
     ChampionPointer,
     DispositionEvent,
@@ -310,6 +311,43 @@ class EvidenceStore:
         with self._locked():
             package, _ = self._load_package_unlocked(package_digest)
             return package
+
+    @staticmethod
+    def _read_verified_member(path: Path, ref: ArtifactRef) -> bytes:
+        """Read one declared member and bind the returned bytes to its ref."""
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise StoreCorruptionError(
+                f"missing package file {ref.relative_path!r}"
+            ) from exc
+        if len(data) != ref.size_bytes or sha256_bytes(data) != ref.digest:
+            raise StoreCorruptionError(
+                f"stored artifact mismatch: {ref.relative_path!r}"
+            )
+        return data
+
+    def load_package_file(self, package_digest: str, relative_path: str) -> bytes:
+        """Return one verified immutable package member.
+
+        The full package is revalidated first, so callers never receive bytes
+        from an incomplete or checksum-inconsistent directory.  This is the
+        durable read path used for signed manifests and evaluation reports.
+        """
+        with self._locked():
+            package, _ = self._load_package_unlocked(package_digest)
+            declared = {
+                ref.relative_path: ref for ref in package.artifacts + package.logs
+            }
+            ref = declared.get(relative_path)
+            if ref is None:
+                raise FileNotFoundError(
+                    f"package {package_digest} has no declared member {relative_path!r}"
+                )
+            path = self._safe_package_path(
+                self.root / "packages" / package_digest, relative_path
+            )
+            return self._read_verified_member(path, ref)
 
     def write_verdict(self, envelope: SignedEnvelope) -> str:
         verdict = self._verify_typed_envelope(envelope, LocalImportVerdict)
@@ -613,6 +651,15 @@ class EvidenceStore:
                     trust_store=self.trust_store,
                     authorities=self.authorities,
                 )
+                # The package directory is content-addressed, so its name must equal the
+                # digest the ledger reconstructs to. Divergence means the ledger under
+                # this directory describes a different package, and indexing it would
+                # silently attribute one package's state to another's digest.
+                if state.package_digest != package_digest:
+                    raise StoreCorruptionError(
+                        f"ledger under package directory {package_digest!r} reconstructs to "
+                        f"package {state.package_digest!r}"
+                    )
             packages[package_digest] = {
                 "artifact_digests": {
                     artifact.artifact_id: artifact.digest for artifact in package.artifacts

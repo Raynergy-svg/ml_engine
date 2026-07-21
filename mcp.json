@@ -30,6 +30,14 @@
       "command": "python",
       "args": ["src/mcp/buddy_server.py"],
       "_comment_audit_2026_04_28": "Removed env block — Claude Code MCP config does not expand ${VAR} placeholders, so the literal string was being injected and broke OANDA URL construction. The buddy_server.py now self-loads .env.local at module init."
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      },
+      "_comment_security_2026_07_06": "Moved from a stray top-level mcp.servers.context7 block (never read by Claude Code — mcpServers is the only schema key it consumes) into mcpServers, and replaced a literal committed API key with an env-var reference. See docs/incidents.md."
     }
   },
   "entityTypes": {
@@ -47,17 +55,6 @@
       "description": "Current model state and version tracking",
       "ttlDays": null,
       "fields": ["model_name", "accuracy", "trained_pairs", "version", "last_updated"]
-    }
-  },
-  "mcp": {
-    "servers": {
-      "context7": {
-        "type": "http",
-        "url": "https://mcp.context7.com/mcp",
-        "headers": {
-          "CONTEXT7_API_KEY": "ctx7sk-8a6a8955-6ae2-4755-a1aa-1fe88ece54c8"
-        }
-      }
     }
   }
 }

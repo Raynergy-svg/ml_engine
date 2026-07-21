@@ -1,0 +1,297 @@
+{
+  "full": {
+    "report": {
+      "net_sharpe": 0.563,
+      "positive_years": 1,
+      "total_years": 2,
+      "max_drawdown": 0.054,
+      "walk_forward": false,
+      "span_years": 0.654,
+      "per_year": {
+        "2025": 0.0,
+        "2026": 0.0248
+      }
+    },
+    "gate": {
+      "passed": false,
+      "criteria": {
+        "net_sharpe": {
+          "value": 0.563,
+          "threshold": 0.4,
+          "passed": true
+        },
+        "positive_years": {
+          "value": 1,
+          "threshold": 6,
+          "passed": false
+        },
+        "history_length": {
+          "value": 2,
+          "threshold": 10,
+          "passed": false
+        },
+        "max_drawdown": {
+          "value": 0.054,
+          "threshold": 0.25,
+          "passed": true
+        },
+        "walk_forward": {
+          "value": false,
+          "threshold": true,
+          "passed": false
+        }
+      },
+      "summary": "FAIL \u2014 failing criteria: positive_years, history_length, walk_forward. No deployable edge at the pre-registered bar."
+    },
+    "gate_passed": false,
+    "equity_curve_summary": {
+      "final_equity": 1.0247727877360437,
+      "n_bars": 164,
+      "avg_turnover": 0.02419005232097053,
+      "avg_cost": 1.209502616048527e-05,
+      "span": "2025-11-04->2026-07-01"
+    },
+    "effective_n": 44.65,
+    "dsr_oos_n22": {
+      "dsr": 0.06812744643346029,
+      "bonferroni_alpha": 0.002272727272727273,
+      "p_oos_bootstrap": 0.2582,
+      "passes_significance": false,
+      "n_trials": 22,
+      "detail": {
+        "dsr": {
+          "sr_hat_per_period": 0.03546344716344623,
+          "sr0_benchmark_per_period": 0.1522394478946521,
+          "sr_std_per_period": 0.07837928759329395,
+          "skew": 0.06685875959733469,
+          "kurtosis_pearson": 12.866570156347684,
+          "n_obs": 164,
+          "dsr": 0.06812744643346029
+        },
+        "bootstrap": {
+          "p_oos_sharpe_le_zero": 0.2582,
+          "block_size": 21,
+          "n_bootstrap_reps": 5000,
+          "seed": 20260630,
+          "boot_sharpe_mean": 0.04080285575096961,
+          "boot_sharpe_std": 0.06132606332318328
+        }
+      },
+      "insufficient_data": false
+    },
+    "n_trials": 22,
+    "bonferroni_note": "multiple-testing budget N_TRIALS=22, alpha=0.00227; dsr_oos_n22.passes_significance reflects criterion 5 (\u00a74.5) and is SEPARATE from gate_passed (criteria 1-4); both must hold for a full clear.",
+    "is_clean_arm": false
+  },
+  "pre_cutoff": {
+    "report": null,
+    "gate": null,
+    "gate_passed": false,
+    "equity_curve_summary": null,
+    "effective_n": null,
+    "dsr_oos_n22": null,
+    "n_trials": 22,
+    "skipped": true,
+    "skip_reason": "no rebalance produced a non-empty book \u2014 check scores vs prices coverage (need >= 5 priced, scored names on a rebalance bar)"
+  },
+  "post_cutoff": {
+    "report": {
+      "net_sharpe": 0.706,
+      "positive_years": 1,
+      "total_years": 1,
+      "max_drawdown": 0.054,
+      "walk_forward": false,
+      "span_years": 0.408,
+      "per_year": {
+        "2026": 0.0248
+      }
+    },
+    "gate": {
+      "passed": false,
+      "criteria": {
+        "net_sharpe": {
+          "value": 0.706,
+          "threshold": 0.4,
+          "passed": true
+        },
+        "positive_years": {
+          "value": 1,
+          "threshold": 6,
+          "passed": false
+        },
+        "history_length": {
+          "value": 1,
+          "threshold": 10,
+          "passed": false
+        },
+        "max_drawdown": {
+          "value": 0.054,
+          "threshold": 0.25,
+          "passed": true
+        },
+        "walk_forward": {
+          "value": false,
+          "threshold": true,
+          "passed": false
+        }
+      },
+      "summary": "FAIL \u2014 failing criteria: positive_years, history_length, walk_forward. No deployable edge at the pre-registered bar."
+    },
+    "gate_passed": false,
+    "equity_curve_summary": {
+      "final_equity": 1.0247727877360437,
+      "n_bars": 104,
+      "avg_turnover": 0.03814585173691508,
+      "avg_cost": 1.9072925868457538e-05,
+      "span": "2026-02-02->2026-07-01"
+    },
+    "effective_n": 44.65,
+    "dsr_oos_n22": {
+      "dsr": 0.0678779398375995,
+      "bonferroni_alpha": 0.002272727272727273,
+      "p_oos_bootstrap": 0.264,
+      "passes_significance": false,
+      "n_trials": 22,
+      "detail": {
+        "dsr": {
+          "sr_hat_per_period": 0.04447079027931796,
+          "sr0_benchmark_per_period": 0.1917118046664507,
+          "sr_std_per_period": 0.09870132137748627,
+          "skew": 0.0038298995910507026,
+          "kurtosis_pearson": 8.263677992038316,
+          "n_obs": 104,
+          "dsr": 0.0678779398375995
+        },
+        "bootstrap": {
+          "p_oos_sharpe_le_zero": 0.264,
+          "block_size": 21,
+          "n_bootstrap_reps": 5000,
+          "seed": 20260630,
+          "boot_sharpe_mean": 0.049627187331631864,
+          "boot_sharpe_std": 0.07665731116519658
+        }
+      },
+      "insufficient_data": false
+    },
+    "n_trials": 22,
+    "bonferroni_note": "multiple-testing budget N_TRIALS=22, alpha=0.00227; dsr_oos_n22.passes_significance reflects criterion 5 (\u00a74.5) and is SEPARATE from gate_passed (criteria 1-4); both must hold for a full clear.",
+    "is_clean_arm": true
+  },
+  "placebo": {
+    "report": {
+      "net_sharpe": 1.218,
+      "positive_years": 1,
+      "total_years": 2,
+      "max_drawdown": 0.039,
+      "walk_forward": false,
+      "span_years": 0.654,
+      "per_year": {
+        "2025": 0.0,
+        "2026": 0.0734
+      }
+    },
+    "gate": {
+      "passed": false,
+      "criteria": {
+        "net_sharpe": {
+          "value": 1.218,
+          "threshold": 0.4,
+          "passed": true
+        },
+        "positive_years": {
+          "value": 1,
+          "threshold": 6,
+          "passed": false
+        },
+        "history_length": {
+          "value": 2,
+          "threshold": 10,
+          "passed": false
+        },
+        "max_drawdown": {
+          "value": 0.039,
+          "threshold": 0.25,
+          "passed": true
+        },
+        "walk_forward": {
+          "value": false,
+          "threshold": true,
+          "passed": false
+        }
+      },
+      "summary": "FAIL \u2014 failing criteria: positive_years, history_length, walk_forward. No deployable edge at the pre-registered bar."
+    },
+    "gate_passed": false,
+    "equity_curve_summary": {
+      "final_equity": 1.0734100756789047,
+      "n_bars": 164,
+      "avg_turnover": 0.030876980054526916,
+      "avg_cost": 1.543849002726346e-05,
+      "span": "2025-11-04->2026-07-01"
+    },
+    "effective_n": 44.65,
+    "dsr_oos_n22": {
+      "dsr": 0.18876987001549284,
+      "bonferroni_alpha": 0.002272727272727273,
+      "p_oos_bootstrap": 0.104,
+      "passes_significance": false,
+      "n_trials": 22,
+      "detail": {
+        "dsr": {
+          "sr_hat_per_period": 0.07675050815605523,
+          "sr0_benchmark_per_period": 0.14065023627277418,
+          "sr_std_per_period": 0.07241267274246183,
+          "skew": 2.470210476996706,
+          "kurtosis_pearson": 31.078849768197777,
+          "n_obs": 164,
+          "dsr": 0.18876987001549284
+        },
+        "bootstrap": {
+          "p_oos_sharpe_le_zero": 0.104,
+          "block_size": 21,
+          "n_bootstrap_reps": 5000,
+          "seed": 20260630,
+          "boot_sharpe_mean": 0.07336885483703667,
+          "boot_sharpe_std": 0.05291599734779724
+        }
+      },
+      "insufficient_data": false
+    },
+    "n_trials": 22,
+    "bonferroni_note": "multiple-testing budget N_TRIALS=22, alpha=0.00227; dsr_oos_n22.passes_significance reflects criterion 5 (\u00a74.5) and is SEPARATE from gate_passed (criteria 1-4); both must hold for a full clear.",
+    "is_clean_arm": false
+  },
+  "summary": {
+    "arm_net_sharpe": {
+      "full": 0.563,
+      "pre_cutoff": null,
+      "post_cutoff": 0.706,
+      "placebo": 1.218
+    },
+    "arm_gate_passed": {
+      "full": false,
+      "pre_cutoff": false,
+      "post_cutoff": false,
+      "placebo": false
+    },
+    "placebo_is_clean": false,
+    "post_cutoff_consistent_with_full": true,
+    "blinding_audit_clean": null,
+    "full_significance_passes": false,
+    "overall_verdict": "INSUFFICIENT",
+    "controls_note": "overall_verdict is BINDING (\u00a74.7): REAL requires full-arm gate pass (criteria 1-4) AND dsr_oos_n22.passes_significance on the full arm (criterion 5) AND placebo ~0 (|Sharpe|<0.15) AND post-cutoff confirms the edge (full>0 and post>0) AND a clean blinding audit (\u00a71.1 \u2014 caller-supplied; None/unset is treated as not satisfied). Read overall_verdict, NOT any single arm's gate_passed."
+  },
+  "params": {
+    "model_cutoff": "2026-02-01",
+    "weights": {
+      "fundamental_quality": 0.5,
+      "accounting_red_flags": -0.5,
+      "forward_outlook": 0.0
+    },
+    "rebalance_step_days": 21,
+    "vol_target": 0.1,
+    "cost_bps": 5.0,
+    "n_scores": 419,
+    "n_tickers": 419
+  }
+}

@@ -175,12 +175,112 @@ genuine idiosyncratic ALPHA vs disguised beta/smart-beta.
 
 ---
 
-## 7. Results (appended after the fact — SEPARATE commit from §0–§6)
+## 7. Results (2026-07-01 — SEPARATE commit from §0–§6)
 
-_To be filled by the run. Will record: research model + cutoff, universe_hash, N members, OOS_start
-(= max(EDGAR floor, model cutoff) for the clean arm), per-arm {full / pre-cutoff / post-cutoff / placebo}
-net Sharpe, maxDD, positive years, DSR-OOS(N=22), p-OOS, effective-N, blinding-audit verdict, L-021
-decomposition, and the frozen prompt/blinding hashes. Verifier verdict attached on any clear._
+**Research model + cutoff:** claude-sonnet-5, acting AS the scorer directly in-session (no
+`ANTHROPIC_API_KEY` configured for an automated LLM fan-out — see §7.0). Stated knowledge cutoff
+January 2026; `model_cutoff="2026-02-01"` used to split pre/post arms.
+
+**§7.0 — Scale-down from the frozen universe (disclosed, not hidden).** §2's frozen universe is
+"all PIT S&P 500 members, ~2012-01 → as-of." Hand-scoring that at LLM-reading throughput (one
+session, one sitting) is infeasible — thousands of filings. This run is a **bounded pilot**, decided
+BEFORE any fetch or score: 12 systematically-chosen (not outcome-chosen) mega-cap names spanning
+sectors — AAPL, MSFT, GOOGL, AMZN, NVDA, META, JPM, JNJ, XOM, PG, HD, UNH — × 3 annual 10-Ks each
+(FY2023/2024/2025; 36 filings, zero fetch gaps). Universe/window/anchor dates are frozen in
+`scripts/track_b_fetch_and_blind.py` before scoring began. **This is a materially different scale
+than §2** and the verdict below must be read as such: decisive on the lookahead-contamination
+question, underpowered to make the frozen design's "definitive close" claim (see §7.5).
+
+**Pipeline bug found + fixed before any scoring (load-bearing):** the original 12,000-char
+head-truncation (`scorer.py` default) was consumed almost entirely by a modern 10-K's non-visible
+Inline XBRL `<ix:header>` metadata block (~98K characters of context/unit definitions that precede
+the visible cover page but are never rendered by a browser) — the first fetch scored 100% XBRL
+tag-soup, 0% prose. Fixed in `src/equity/research/pit_text_loader.py` (`_TextExtractor._SKIP_TAGS`
+now includes `ix:header`/`ix:hidden`/`ix:references`/`ix:resources`), covered by a new regression
+test, and independently re-verified against the live Apple FY2023 filing by the verifier (§7.6).
+`max_chars` was also raised 12000→45000 (NOT a frozen knob — absent from §3's frozen-knobs list) so
+the scored text reaches real Item 1 Business narrative instead of cover-page/TOC boilerplate.
+
+**§4.5 implemented (was a hardcoded `None`):** DSR-OOS(N=22) + Bonferroni block-bootstrap p-OOS,
+added to `src/equity/research/harness.py` (Bailey & Lopez de Prado deflated-Sharpe formula +
+seeded circular block-bootstrap, block=21, N_TRIALS=22, α=0.05/22=0.00227). `overall_verdict` now
+also requires `dsr_oos_n22.passes_significance` on the full arm, on top of the pre-existing §1
+controls — verified by the independent reviewer to correctly refuse `REAL` even when the mechanical
+gate (criteria 1–4) passes but the significance extension does not.
+
+**§1.1 blinding audit — wired, and NOT clean.** Full write-up: `blinding_audit.json`. The scorer
+(this session) could re-identify the issuer in **36/36 filings** via a mix of: ticker-letter
+concatenation leaks (AAPL), unredacted founders'-letter quotes ("Larry and Sergey" for GOOGL,
+"William Procter and James Gamble" for PG), an unredacted executive-table name ("Jeffrey P. Bezos"
+for AMZN), unredacted product names never added to the deny-list ("Facebook, Instagram, Messenger,
+and WhatsApp" for META; iPhone/Azure/CUDA/AWS/Optum for the others), an unredacted secondary brand
+("Chase" for JPM), and pure domain-knowledge fingerprints no deny-list can catch (NVIDIA's
+GPU/CUDA/AlexNet history). **`blinding_audit_clean = False`.** This is not a surprise — it matches
+§8's own prior finding that the blinder is "moderately leaky by construction... a noise-reducer, not
+the load-bearing control."
+
+**Per-arm results (frozen primary book, cost=2 bps/side):**
+
+| Arm | Net Sharpe | Max DD | Positive yrs | DSR | Bootstrap p-OOS | Gate pass | Effective-N |
+|---|---|---|---|---|---|---|---|
+| Full | 0.489 | 10.9% | 2/4 | 0.137 | 0.189 | No (history<10yr) | 2.0 |
+| Pre-cutoff | 0.724 | 10.9% | 2/4 | 0.217 | 0.105 | No | 2.0 |
+| **Post-cutoff (clean arm)** | **−0.861** | 10.9% | 0/1 | 0.006 | 0.690 | No | 2.0 |
+| Placebo | 0.358 | 12.7% | 1/4 | 0.093 | 0.232 | No | 2.0 |
+
+Post-cutoff span: 2026-02-02 → 2026-06-30 (103 bars, 0.4 years — short, as pre-registered).
+Stress re-run at 5 bps/side moves every number by <0.03 (full 0.471, pre 0.708, post −0.885,
+placebo 0.339) — costs are not the story here.
+
+`placebo_is_clean = False` (0.358 ≫ the frozen 0.15 threshold — the placebo is nearly as large as
+the real full-arm number). `post_cutoff_consistent_with_full = False` (full>0 but post<0 — a sign
+flip, not just a shrinkage). `full_significance_passes = False` (DSR 0.137 ≪ 0.95). Binding
+`overall_verdict = "INSUFFICIENT"` (not `LOOKAHEAD_CONTAMINATED`, because criteria 1–4 do not even
+pass on their own — chiefly `history_length` at 4 years vs the 10-year bar; not `REAL` under any
+reading).
+
+**§7.5 — the verdict.** Reading §1's frozen decision rule literally: the full-sample arm's apparent
+edge (Sharpe 0.489) is decisively **refuted** by both pre-registered controls designed to catch
+exactly this — (a) the post-cutoff arm doesn't just weaken, it **flips sign to strongly negative**
+(the "looks good pre-cutoff, dies post-cutoff" pattern §1.2 calls "lookahead, full stop"), and (b)
+the placebo (scrambled scores) produces nearly as large a positive Sharpe as the real full arm,
+meaning the apparent edge is largely statistically indistinguishable from noise at this N. Given
+effective-N=2 (Q5 on a 12-name universe concentrates to 2 names — not a diversified quintile), this
+is exactly the behavior expected when a small, concentrated subset of 2023–2026 mega-cap/AI-driven
+beta dominates whichever names the composite happens to rank highest, regardless of whether the
+composite carries real signal.
+
+**Blunt bottom line:** **NO EDGE**, at this pilot's bounded scale (12 companies, 36 filings,
+~3 years). The clean/load-bearing arm (post-cutoff) is not just flat, it is negative and the
+placebo control that should read ~0 does not. Both pre-registered lookahead controls independently
+kill the apparent full-sample result — this is not a data availability or power problem, it is the
+signature the pre-reg's own apparatus was built to catch. **What this run does NOT establish:** it
+does not, by itself, close the door on the hypothesis at the frozen design's actual scale (~500
+names, ~14 years) — N=12/Q5=2 is a genuinely underpowered test of "does a diversified qualitative
+quality/red-flag cross-section carry alpha." The honest label is closer to "the lookahead-
+contamination question is answered decisively (no residual pretraining-driven fake alpha survives
+the clean arm), but the underlying alpha question at full scale remains untested" than a full
+closure of the lever. Re-running at meaningfully larger N (which requires either an
+`ANTHROPIC_API_KEY`-driven automated fan-out or materially more scoring sessions) is the only way to
+raise power; re-running at this same small N with different prompts/weights would be dredging and
+is explicitly ruled out by §5.
+
+**§7.6 — independent verifier sign-off.** A Model QA Specialist agent re-derived this run cold from
+disk: independently re-implemented and checked the DSR formula, constructed adversarial test cases
+against `_build_summary`'s gating logic (confirmed `REAL` is unreachable when the significance
+extension fails even if the mechanical gate passes), re-fetched the live Apple FY2023 10-K from SEC
+EDGAR and confirmed the `<ix:header>` block spans exactly to where the visible cover page begins
+(byte 98965), confirmed the regression test would fail on the pre-fix code, spot-checked 4 `as_of`/
+`filed` dates against EDGAR's live submissions API, spot-checked 3 of 8 cited blinding leaks
+verbatim in the blinded task files, confirmed no frozen knob (weights/quintile/cadence/vol-target)
+was altered, and ran the full research test suite (111/111 pass). **Sign-off: the verdict holds.
+No wrong math, no PIT leak, no frozen-knob change, no fabricated audit claim found.** One
+verifier-flagged caveat carried into §7.5 above: the N=12/Q5=2 scale cannot distinguish "no
+orthogonal alpha" from "underpowered test" at the frozen design's actual scale.
+
+**Artifacts:** `trained_data/research/track_b_pilot_2026_07_01/{raw_scores.json, _index.json,
+scores_artifact.json, blinding_audit.json, harness_result_primary_2bps.json,
+harness_result_stress_5bps.json, fetch_log.json, blinded_tasks/, edgar_cache/, price_cache/}`.
 
 ---
 

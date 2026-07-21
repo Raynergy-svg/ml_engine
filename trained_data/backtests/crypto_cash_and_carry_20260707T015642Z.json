@@ -1,0 +1,72 @@
+{
+  "blocks": {
+    "full_IS_pre2024": {
+      "avg_turnover": 0.471,
+      "carry_ann_ret": 0.5109,
+      "cost_ann": 0.344,
+      "label": "full_IS_pre2024",
+      "max_drawdown": -0.517,
+      "n_days": 1461,
+      "net_ann_ret": 0.1669,
+      "net_sharpe": 2.621
+    },
+    "full_OOS_2024+": {
+      "avg_turnover": 0.577,
+      "carry_ann_ret": 0.2666,
+      "cost_ann": 0.4211,
+      "label": "full_OOS_2024+",
+      "max_drawdown": -0.465,
+      "n_days": 912,
+      "net_ann_ret": -0.1545,
+      "net_sharpe": -4.482
+    },
+    "full_all": {
+      "avg_turnover": 0.512,
+      "carry_ann_ret": 0.417,
+      "cost_ann": 0.3737,
+      "label": "full_all",
+      "max_drawdown": -0.64,
+      "n_days": 2373,
+      "net_ann_ret": 0.0434,
+      "net_sharpe": 0.789
+    }
+  },
+  "btc_beta_oos": 0.005,
+  "clears_ex_history": false,
+  "elapsed_s": 57.2,
+  "experiment": "crypto_cash_and_carry_positive_funding_only",
+  "frozen_params": {
+    "cost_bps_roundtrip": 20.0,
+    "lookback_d": 3,
+    "max_leverage": 3.0,
+    "min_adv_usd": 10000000,
+    "min_history_d": 90,
+    "n_trials": 3,
+    "oos_start": "2024-01-01",
+    "vol_target_ann": 0.1,
+    "vol_window_d": 30
+  },
+  "gate": {
+    "btc_beta_neutral(|b|<=0.15)": true,
+    "history_depth>=10y": false,
+    "max_drawdown<=0.25": false,
+    "multiple_testing(DSR>=.95 & p<.0167)": false,
+    "oos_confirmed": false,
+    "oos_net_sharpe>=0.40": false
+  },
+  "pre_registered": "docs/prereg-crypto-cash-and-carry-shadow-2026-07-06.md",
+  "significance_oos": {
+    "bonferroni_alpha": 0.0167,
+    "bootstrap_p_mean_le0": 0.9998,
+    "deflated_sr": 0.0,
+    "dsr_bench_ann_sharpe": 0.54,
+    "psr_gt0": 0.0
+  },
+  "universe": {
+    "ever_liquid": 703,
+    "span": [
+      "2020-01-01",
+      "2026-06-30"
+    ]
+  }
+}

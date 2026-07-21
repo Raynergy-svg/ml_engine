@@ -19,7 +19,20 @@ ever REDUCES risk relative to the previous stage — never loosens):
       -> leverage_cap_scale()  (top-down ceiling on total exposure)
       -> margin_scale()  (existing margin/liquidation rail, unchanged)
       -> one_position_gate() / pyramid_gate()  (per-order block, rules 1+6)
+      -> cost_aware_gate()  (per-order block, rule 7 — 2026-07-08 addition)
+      -> [exposure-engine bucket check, oanda_trend.py — ADDITIONAL,
+          alongside bucket_cap_gate, never instead of it]
       -> bucket_cap_gate()  (per-order block, rule 2)
+
+Rule 7 (2026-07-08, operator-directed wiring pass): ``cost_aware_gate`` is a
+NEW, purely ADDITIVE block — it can only refuse a candidate the prior rules
+already approved, never approve one they blocked. It consumes
+``src.data.execution_cost_model``'s realistic spread/slippage estimate (real
+OANDA fills + captured ticks, never fabricated) and refuses a candidate whose
+modeled round-trip cost eats too much of its own 1R stop budget. Missing/
+insufficient cost data fails CLOSED (refuse), matching this module's existing
+no-fabrication discipline (``risk_normalized_units`` already refuses rather
+than fabricate a size) — never assumed free.
 """
 from __future__ import annotations
 
@@ -29,9 +42,12 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from src.equity.fx_rates import base_to_home_rate
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime import cost
+    from src.data.execution_cost_model import CostEstimate
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +71,21 @@ DEFAULT_TRAIL_START_R = 1.5
 DEFAULT_PYRAMID_MAX_LAYERS = 3
 DEFAULT_PYRAMID_CUM_RISK_R_CAP = 1.0
 
+# --- Rule 7: cost-awareness (2026-07-08, execution_cost_model wiring) --------
+# A candidate's modeled round-trip cost (spread + 2*|slippage|, from real OANDA
+# fills/ticks — src.data.execution_cost_model) may consume at most this
+# fraction of its own 1R stop budget. 0.30 is a conservative, documented
+# constant (not fit/tuned): the trend lane's brackets are a fixed 4:2 ATR
+# multiple (nominal 2.0 R:R, comfortably above the 1.2 R:R trading invariant
+# in CLAUDE.md); a cost tax of up to 30% of the SL leg still leaves room above
+# that floor. NEVER raise without explicit operator approval (same discipline
+# as HARD_MAX_GAP in .claude/rules/improvement.md).
+DEFAULT_MAX_COST_R_FRACTION = 0.30
+
 
 @dataclass(frozen=True)
 class RiskGateConfig:
-    """All six rules' knobs in one place. Every field independently overridable
+    """All seven rules' knobs in one place. Every field independently overridable
     via CLI/env in scripts/run_oanda_trend.py (mirrors the existing gross_leverage
     dial pattern)."""
     risk_pct: float = DEFAULT_RISK_PCT
@@ -69,6 +96,7 @@ class RiskGateConfig:
     trail_start_r: float = DEFAULT_TRAIL_START_R
     pyramid_max_layers: int = DEFAULT_PYRAMID_MAX_LAYERS
     pyramid_cum_risk_r_cap: float = DEFAULT_PYRAMID_CUM_RISK_R_CAP
+    max_cost_r_fraction: float = DEFAULT_MAX_COST_R_FRACTION
     home_ccy: str = "USD"
 
 
@@ -300,6 +328,61 @@ def bias_detector(bucket_risk_home: Dict[Tuple[str, str], float],
                 f"bias_one_sided_book: bucket={key[0]}_{key[1]} share={share:.0%} "
                 f"of total open risk across {len(insts)} instruments {sorted(insts)}")
     return warnings
+
+
+# --------------------------------------------------------------------- #
+# Rule 7: cost-awareness — refuse a candidate its own modeled execution #
+# cost would eat too much of (ADDITIVE; can only refuse, never approve  #
+# something the prior rules already blocked)                            #
+# --------------------------------------------------------------------- #
+def cost_aware_gate(*, instrument: str, r_distance_quote: float,
+                    cost_estimate: Optional["CostEstimate"],
+                    max_cost_r_fraction: float = DEFAULT_MAX_COST_R_FRACTION
+                    ) -> Tuple[bool, str]:
+    """Rule 7 — refuse a candidate whose modeled round-trip cost (real spread +
+    slippage from ``src.data.execution_cost_model``, never fabricated) eats more
+    than ``max_cost_r_fraction`` of its own 1R stop budget.
+
+    Fail-closed, matching this module's existing no-fabrication discipline
+    (``risk_normalized_units`` already refuses rather than fabricate a size):
+    a missing estimate, a ``source="insufficient_data"`` estimate, or an
+    estimate with either half (spread OR slippage) still ``None`` is treated
+    as UNKNOWN cost -> refuse. Unknown is never assumed free.
+
+    Round-trip cost = spread_raw + 2*|slippage_raw| (one spread crossing to
+    enter, slippage realized on both the entry AND the eventual exit fill —
+    slippage_raw is signed-adverse per fill, so doubling it is the honest
+    round-trip estimate, not spread doubled).
+    """
+    if not (r_distance_quote and r_distance_quote > 0):
+        return False, "cost_gate_no_r_distance"
+    if cost_estimate is None or getattr(cost_estimate, "source", None) == "insufficient_data":
+        return False, "cost_unknown_fail_closed"
+    spread = getattr(cost_estimate, "spread_raw", None)
+    slippage = getattr(cost_estimate, "slippage_raw", None)
+    if spread is None or slippage is None:
+        return False, "cost_partial_data_fail_closed"
+    try:
+        spread = float(spread)
+        slippage = float(slippage)
+    except (TypeError, ValueError):
+        return False, "cost_invalid_data_fail_closed"
+    import math
+    if not (math.isfinite(spread) and math.isfinite(slippage)):
+        return False, "cost_non_finite_fail_closed"
+    if spread < 0:
+        # A real OANDA fill always has ask >= bid; a negative spread can only
+        # come from corrupt/crossed cached data. Reject it directly rather
+        # than let it be masked by an offsetting slippage term below (code
+        # reviewer finding, 2026-07-08).
+        return False, "cost_negative_spread_invalid"
+    round_trip_cost = spread + 2.0 * abs(slippage)
+    if round_trip_cost < 0:
+        return False, "cost_negative_invalid"
+    cost_r_fraction = round_trip_cost / float(r_distance_quote)
+    if cost_r_fraction > max_cost_r_fraction:
+        return False, f"cost_exceeds_edge:{cost_r_fraction:.3f}>{max_cost_r_fraction:.3f}"
+    return True, "cost_aware_ok"
 
 
 # --------------------------------------------------------------------- #

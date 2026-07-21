@@ -318,3 +318,22 @@ class TestWeightValidation:
         if result is not None:
             global_trend = result.get("_global", {}).get("trend")
             assert global_trend is None or not math.isinf(global_trend)
+
+    def test_validate_drops_unknown_agent_keys(self):
+        """A persisted weight key that isn't in the canonical _BASE_WEIGHTS
+        roster (e.g. an orphan like 'invalid_agent_xyz') must be dropped at
+        load-time validation, not silently carried forward."""
+        team = self._make_team()
+        data = {
+            "_global": {"trend": 1.0, "invalid_agent_xyz": 0.4893},
+            "NORMAL": {"trend": 1.15, "invalid_agent_xyz": 0.15},
+            "HIGH": {},
+            "EXTREME": {},
+            "_meta": {},
+        }
+        result = team._validate_weights(data)
+        assert result is not None
+        assert "invalid_agent_xyz" not in result["_global"]
+        assert "invalid_agent_xyz" not in result["NORMAL"]
+        assert result["_global"]["trend"] == 1.0
+        assert result["NORMAL"]["trend"] == 1.15

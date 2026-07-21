@@ -34,6 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_ROOT = REPO_ROOT / "axiom-data"
 DEFAULT_CONTROL_ROOT = REPO_ROOT / "trained_data" / "forward_capture"
 DEFAULT_P2_MIN_TRADING_DAYS = 60
+MAX_SOURCE_CLOCK_SKEW_SECONDS = 5.0
 
 Identifier = Annotated[str, StringConstraints(min_length=1, max_length=240)]
 Sha256Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
@@ -190,8 +191,17 @@ class ForwardCaptureService:
         context_complete: bool = True,
         dedupe_key: str | None = None,
     ) -> ForwardCaptureRecord | None:
-        captured_at = _utc(self._clock())
-        observed = _utc(observed_at or captured_at)
+        clock_at = _utc(self._clock())
+        observed = _utc(observed_at or clock_at)
+        # Provider timestamps can lead the local wall clock by milliseconds.
+        # Preserve the causal ordering contract for bounded skew while still
+        # rejecting materially future observations.
+        observed_skew = (observed - clock_at).total_seconds()
+        captured_at = (
+            observed
+            if 0 < observed_skew <= MAX_SOURCE_CLOCK_SKEW_SECONDS
+            else clock_at
+        )
         event_time = _parse_time(source_event_time)
         payload_dict = dict(payload)
         payload_digest = content_digest(payload_dict)
@@ -301,6 +311,14 @@ class ForwardCaptureService:
                 spreads.append(spread)
         event_time = max(times)
         observed = _utc(observed_at or self._clock())
+        event_skew = (event_time - observed).total_seconds()
+        if 0 < event_skew <= MAX_SOURCE_CLOCK_SKEW_SECONDS:
+            observed = event_time
+        elif event_skew > MAX_SOURCE_CLOCK_SKEW_SECONDS:
+            # Reject before publishing the immutable Parquet version; a
+            # materially future provider row must not leave an orphaned
+            # normalized partition when its history record is refused.
+            raise ValueError("source_event_time_utc cannot be later than observation")
         mode = (
             CaptureMode.FORWARD
             if 0 <= (observed - event_time).total_seconds() <= 3600

@@ -170,7 +170,15 @@ class TestMonitoringContinuesWhenPaused:
     def test_drawdown_guardian_called_even_when_paused(self, tmp_path):
         """apply_drawdown_guardian is invoked regardless of pause state."""
         state_file = tmp_path / "state.json"
-        state_file.write_text(json.dumps({"scanner_paused": True, "halted": False, "schema_version": "2"}))
+        # halted_lanes must be explicit — _run_smart_loop's pre-cycle check
+        # switched to the fail-closed get_halted_strict() 2026-07-02 (operator
+        # decision); an absent halted_lanes entry now fails closed (blocked).
+        state_file.write_text(json.dumps({
+            "scanner_paused": True,
+            "halted": False,
+            "halted_lanes": {"oanda_fx": False, "equity": False, "brain": False},
+            "schema_version": "2",
+        }))
 
         mock_em = MagicMock()
         mock_em.monitor_open_trades.return_value = [

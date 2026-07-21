@@ -158,6 +158,47 @@ def test_risk_monitor(tmp_path: Path):
     r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(mll)})
     check("ALARM exit 2 on mode=live + env=live (real-money execution stays hard)", r.returncode == 2, f"rc={r.returncode} {r.stdout}")
 
+    # per-lane halt visibility (2026-07-02 hardening): status line must never be blind to halted_lanes
+    lanes_ok = build_repo(tmp / "rm_lanes_ok", mode="live", extra_files={".claude/state.json": json.dumps(
+        {"halted": False, "mode": "live",
+         "halted_lanes": {"oanda_fx": True, "equity": False, "brain": False, "crypto_momentum": True,
+                          "track_b": True, "crypto_carry": True}})})
+    r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(lanes_ok)})
+    check("GREEN exit 0 with well-formed halted_lanes", r.returncode == 0, f"rc={r.returncode} {r.stdout}")
+    check("status line reports oanda_fx_halted=True", "oanda_fx_halted=True" in r.stdout, r.stdout)
+    check("status line reports equity_halted=False", "equity_halted=False" in r.stdout, r.stdout)
+    check("status line reports brain_halted=False", "brain_halted=False" in r.stdout, r.stdout)
+    check("status line reports crypto_momentum_halted=True", "crypto_momentum_halted=True" in r.stdout, r.stdout)
+    check("status line reports track_b_halted=True", "track_b_halted=True" in r.stdout, r.stdout)
+    check("status line reports crypto_carry_halted=True", "crypto_carry_halted=True" in r.stdout, r.stdout)
+
+    # halted_lanes entirely absent = valid legacy/global-only state (StateEngine.get_halted() defers
+    # to global) -> must NOT alarm on its own, but must show "?" rather than a cheerful "False"
+    lanes_absent = build_repo(tmp / "rm_lanes_absent", mode="live")  # default fixture has no halted_lanes key
+    r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(lanes_absent)})
+    check("GREEN exit 0 when halted_lanes entirely absent (legacy state, not an anomaly)",
+          r.returncode == 0, f"rc={r.returncode} {r.stdout}")
+    check("absent halted_lanes shown as '?' not silently 'False'", "oanda_fx_halted=?" in r.stdout, r.stdout)
+
+    # halted_lanes PRESENT but missing a known lane's entry = corruption, not legacy absence -> ALARM
+    lanes_incomplete = build_repo(tmp / "rm_lanes_incomplete", mode="live", extra_files={".claude/state.json": json.dumps(
+        {"halted": False, "mode": "live", "halted_lanes": {"oanda_fx": True, "equity": False}})})  # brain missing
+    r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(lanes_incomplete)})
+    check("ALARM exit 2 when halted_lanes present but missing a known lane entry",
+          r.returncode == 2, f"rc={r.returncode} {r.stdout}")
+    check("alarm names the incomplete lane 'brain'", "brain" in r.stdout, r.stdout)
+
+    # global halted=True must force every lane to read True regardless of halted_lanes contents
+    lanes_global = build_repo(tmp / "rm_lanes_global_halt", extra_files={".claude/state.json": json.dumps(
+        {"halted": True, "mode": "dry_run",
+         "halted_lanes": {"oanda_fx": False, "equity": False, "brain": False, "crypto_momentum": False,
+                          "track_b": False, "crypto_carry": False}})})
+    r = run(["bash", str(RISK)], env_extra={"RISK_MONITOR_REPO": str(lanes_global)})
+    check("GREEN exit 0 with global halted=True", r.returncode == 0, f"rc={r.returncode} {r.stdout}")
+    check("global halt forces all lanes True regardless of halted_lanes",
+          all(f"{lane}_halted=True" in r.stdout
+              for lane in ("oanda_fx", "equity", "brain", "crypto_momentum", "track_b", "crypto_carry")), r.stdout)
+
 
 def test_verify_gate(tmp_path: Path):
     tmp = tmp_path
@@ -254,6 +295,39 @@ def test_verify_gate(tmp_path: Path):
     r = run([sys.executable, str(VERIFY), "--repo", str(commented), "--out", str(outp)])
     v = json.loads(outp.read_text())
     check("AST halt-guard FAIL on commented/dead guard", r.returncode == 2 and v["hard_no_ok"] is False, v)
+
+    # 2026-07-03: form (b) — the fail-closed assign-then-branch guard now live in execution.py
+    # (`_halted = ...get_halted_strict()` in a try; except sets True; `if _halted: return`) must PASS
+    formb = build_repo(tmp / "vg_halt_formb", extra_files={
+        "src/scanner/execution.py":
+        "def execute_trade(self):\n"
+        "    try:\n"
+        "        _halted = StateEngine(lane='oanda_fx').get_halted_strict()\n"
+        "    except Exception:\n"
+        "        _halted = True\n"
+        "    if _halted:\n"
+        "        logger.warning('execute_trade BLOCKED — state.halted=True')\n"
+        "        return None\n"})
+    outp = tmp / "vg_halt_formb/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(formb), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    check("AST halt-guard PASS on assign-then-branch get_halted_strict form",
+          r.returncode == 0 and v["hard_no_ok"] is True, v)
+
+    # inverted form (b): Return only in the ELSE branch must NOT pass (same rule as form (a))
+    formb_inv = build_repo(tmp / "vg_halt_formb_inverted", extra_files={
+        "src/scanner/execution.py":
+        "def execute_trade(self):\n"
+        "    _halted = StateEngine(lane='oanda_fx').get_halted_strict()\n"
+        "    if _halted:\n"
+        "        proceed()\n"
+        "    else:\n"
+        "        return None\n"})
+    outp = tmp / "vg_halt_formb_inverted/v.json"
+    r = run([sys.executable, str(VERIFY), "--repo", str(formb_inv), "--out", str(outp)])
+    v = json.loads(outp.read_text())
+    check("AST halt-guard FAIL on inverted assign-then-branch guard",
+          r.returncode == 2 and v["hard_no_ok"] is False, v)
 
     # memory enforcement: a lesson with no recall-trigger row fails the gate (integrity, not Hard-NO)
     orphan = build_repo(tmp / "vg_orphan_lesson", extra_files={

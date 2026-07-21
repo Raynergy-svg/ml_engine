@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.buddy.learning_loop</string>
+  <!-- Market-closed offline continual-learning cycle (research/infra only).
+       Drains trained_data/retrain_requests/ markers, runs the headless RL
+       agent-weight sync (apply_pending_rl_weight_updates, commit 51b85bf —
+       this is the ONLY non-TUI caller), and walk-forward-gates a risk/
+       calibration model update (scripts/offline_learning_cycle.py). The
+       script itself refuses to do anything while the FX market is open
+       (is_fx_market_closed()) — this schedule is a coarse "roughly weekend"
+       window, not the safety boundary. Never touches OANDA, halt/arm state,
+       or any broker order endpoint — see script docstring. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin/python3</string>
+    <string>scripts/offline_learning_cycle.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/buddy/Documents/ml_engine</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/Caskroom/miniforge/base/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <!-- Saturday 06:00 / 12:00 / 18:00 UTC — well inside the FX weekend close. -->
+    <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>KeepAlive</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/learning_loop.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/learning_loop.out</string>
+</dict>
+</plist>

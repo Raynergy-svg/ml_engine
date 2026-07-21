@@ -2087,23 +2087,31 @@ class ExecutionManager:
         # BEFORE the cycle starts, but a halt set MID-cycle (the common case
         # when auto_halt_loss_streak or AlertManager fires during scanning)
         # was being bypassed — see trade 1306 (2026-05-12T20:39 UTC, opened
-        # while halted=True). Read-only check; never raises out of this guard.
+        # while halted=True). Read-only check.
+        #
+        # 2026-07-02 (operator decision): fail-CLOSED, not fail-open. This is
+        # the last guard before an OANDA order fires, so a broken/unreadable
+        # halt check must never be interpreted as "not halted" — it blocks,
+        # same as an explicit halted_lanes entry. Uses get_halted_strict()
+        # (see StateEngine docstring) instead of the fail-open get_halted().
         try:
             from src.scanner.automation.state_engine import StateEngine
-            if StateEngine().get_halted():
-                logger.warning(
-                    "execute_trade BLOCKED — state.halted=True (mid-cycle re-check); pair=%s",
-                    pair,
-                )
-                return ExecutionResult(
-                    success=False,
-                    error="BLOCKED: state.halted=True",
-                )
+            _halted = StateEngine(lane="oanda_fx").get_halted_strict()
         except Exception as _halt_exc:  # noqa: BLE001
-            # Halt-check should never block execution due to its own failure.
-            # Log and proceed; circuit breaker + submit_trade are still in place
-            # for callers that route through them.
-            logger.warning("execute_trade halt re-check failed (%s); proceeding", _halt_exc)
+            logger.error(
+                "execute_trade halt re-check FAILED (%s) — fail-closed, blocking; pair=%s",
+                _halt_exc, pair,
+            )
+            _halted = True
+        if _halted:
+            logger.warning(
+                "execute_trade BLOCKED — state.halted=True (mid-cycle re-check); pair=%s",
+                pair,
+            )
+            return ExecutionResult(
+                success=False,
+                error="BLOCKED: state.halted=True",
+            )
 
         # Phase 84 (US-P84-004): CircuitBreaker — reject if API is degraded
         _cb = getattr(self, "_api_circuit_breaker", None)
@@ -2158,7 +2166,7 @@ class ExecutionManager:
         if not ctx.get("agent_passed", False):
             return ExecutionResult(
                 success=False,
-                error=f"BLOCKED: agent_passed=False (agents voted NO)",
+                error="BLOCKED: agent_passed=False (agents voted NO)",
             )
         # 2026-04-20: Re-check agent-team circuit breakers at execution boundary.
         # Promoted rules (trading.md 2026-04-15):
@@ -2799,7 +2807,6 @@ class ExecutionManager:
         # Fail-open: any exception in a filter returns PASS so no broken filter blocks trading.
         if self._filter_chain is not None and self._filter_chain.get_filter_names():
             try:
-                from src.scanner.execution_filters import FilterResult as _FR
                 _fc_context = {
                     "pair": pair,
                     "direction": direction,
@@ -3092,7 +3099,6 @@ class ExecutionManager:
         try:
             open_trades = self.monitor_open_trades(evaluate_exits=False)
             if open_trades:
-                _CORR_THRESHOLD = 0.80
                 _CORR_PAIRS = {
                     "EUR_USD": {"GBP_USD", "EUR_GBP", "EUR_CHF"},
                     "GBP_USD": {"EUR_USD", "EUR_GBP", "GBP_JPY"},
@@ -3424,8 +3430,6 @@ class ExecutionManager:
                     # Phase 56 (US-349): TCA fill feedback — record fill metrics to ExecutionQualityTracker
                     if self._exec_quality_tracker is not None:
                         try:
-                            import time as _time_mod
-                            _fill_pip_value = _get_pip_value(pair, 0.0001)
                             _fill_slippage_abs = abs(slippage) if slippage is not None else 0.0
                             _fill_status_str = "filled" if fill_status == "FULL" else (
                                 "partial" if fill_status == "RETRIED" else "rejected"
@@ -3545,7 +3549,7 @@ class ExecutionManager:
                             success=False,
                             error=f"Order rejected twice: {order_result.error_message}",
                             fill_status="REJECTED",
-                )
+                        )
 
         except Exception as e:
             # Phase 84 (US-P84-004): Record API failure on exception
@@ -3581,7 +3585,6 @@ class ExecutionManager:
         """
         import json
         import os
-        import threading
         import uuid
         from datetime import datetime, timezone
         from pathlib import Path
@@ -5319,8 +5322,17 @@ class ExecutionManager:
             logger.debug("US-178: Journal parse failed in sync_closed_trades_rl: %s", e)
             return {"trades_synced": 0, "weights_updated": False, "detail": f"journal parse error: {e}"}
 
-        # Find entries without outcomes
-        pending = [e for e in entries if e.get("outcome") is None]
+        # Find entries without outcomes. Trend-lane entries are explicitly
+        # rl_eligible=False (trend_journal_sync._build_open_entry docstring:
+        # "the explicit signal that sync_closed_trades_rl ... must skip this
+        # trade") and carry regime=None (bare, not a dict) — .get("regime",
+        # {}).get(...) below raises AttributeError on a None value (the
+        # dict.get default only applies when the key is ABSENT). Scanner-lane
+        # entries never set this key, so the default keeps them included.
+        pending = [
+            e for e in entries
+            if e.get("outcome") is None and e.get("rl_eligible", True)
+        ]
         if not pending:
             return {"trades_synced": 0, "weights_updated": False, "detail": "no pending trades"}
 
@@ -5367,9 +5379,6 @@ class ExecutionManager:
             )
             if trade_state != "closed" or not ct:
                 continue
-
-            # Phase 90: Extract pair from entry — was undefined, causing NameError downstream
-            pair = entry.get("pair", entry.get("instrument", ""))
 
             realized_pl = float(ct.get("realizedPL", 0))
             trade_won = realized_pl > 0
@@ -5517,6 +5526,10 @@ class ExecutionManager:
                     "shaped_reward": _shaped_reward,
                     # US-515: trade id carried through so sync_rl_weights can tag snapshot rows
                     "trade_id": tid,
+                    # 2026-07-04 (review #4): carry the entry ref so
+                    # rl_weights_applied is set AFTER the weight update
+                    # succeeds, never before — see the weight-update block.
+                    "entry": entry,
                 })
 
         # Tier 7: Expectancy, PairTracker, Attribution, DriftDetector, FeatureHealth,
@@ -5653,6 +5666,15 @@ class ExecutionManager:
                     except Exception as _wh_err:
                         logger.debug(f"US-515 weight_history append skipped: {_wh_err}")
 
+                    # 2026-07-04 (review #4): mark scored ONLY now that this
+                    # trade's weight update actually succeeded, so a failure
+                    # mid-loop leaves it retryable (unflagged) rather than
+                    # stranded as "handled" with no weights moved. Persisted
+                    # to disk after the loop (see below).
+                    _upd_entry = upd.get("entry")
+                    if isinstance(_upd_entry, dict):
+                        _upd_entry["rl_weights_applied"] = True
+
                     # Restore boost after each trade (penalty restored below or in trailing logic)
                     if _rl_config is not None:
                         setattr(_rl_config, "weight_boost_on_win", _orig_boost)
@@ -5660,6 +5682,21 @@ class ExecutionManager:
                 # Restore original penalty
                 if _rl_config is not None:
                     setattr(_rl_config, "weight_penalty_on_loss", _orig_penalty)
+
+                # 2026-07-04 (review #4): re-persist the journal so the
+                # rl_weights_applied flags set above (AFTER weights moved) land
+                # on disk. The earlier write (before this block) persisted the
+                # outcomes; this one persists the scored-flags. On a crash
+                # between agent_weights.json (written per-call inside
+                # update_weights_from_outcome) and this write, the trade is
+                # re-scored next cycle — a bounded, decaying double-count, never
+                # a permanent strand (the safe failure direction).
+                if any(isinstance(u.get("entry"), dict) for u in rl_updates):
+                    try:
+                        from src.scanner.automation.safe_json import safe_json_write
+                        safe_json_write(journal_path, entries)
+                    except ImportError:
+                        journal_path.write_text(json.dumps(entries, indent=2, default=str))
 
                 weights_updated = True
                 # Log weight changes for observability
@@ -5791,6 +5828,137 @@ class ExecutionManager:
             "new_weights": new_weights,
             "detail": f"synced {synced} trades, {len(rl_updates)} RL updates",
             "tier7_dispatched": _t7_dispatched,
+        }
+
+    def apply_pending_rl_weight_updates(self, scanner: Any = None) -> Dict[str, Any]:
+        """Score journal entries whose outcome was resolved by a writer OTHER
+        than ``sync_closed_trades_rl`` (i.e. ``OutcomeBackfill`` or
+        ``TrendJournalSync``) but never fed into agent-weight learning.
+
+        Root cause (2026-07-04): ``sync_closed_trades_rl``'s pending filter
+        is ``entry.get("outcome") is None``. ``OutcomeBackfill._apply_closure``
+        (src/scanner/automation/outcome_backfill.py) stamps a plain string
+        outcome directly onto the journal at boot, independent of
+        ``sync_closed_trades_rl``. Once that happens, the entry looks
+        "already handled" and ``sync_closed_trades_rl`` never scores it — the
+        last live trade that ever passed through the real weight-update path
+        was trade_id 1261 (2026-04-16). This method is outcome-shape-agnostic
+        (handles both the plain string shape and the dict shape
+        ``sync_closed_trades_rl`` itself writes) and tracks its own
+        ``rl_weights_applied`` flag, so it is idempotent and safe to call from
+        both the live per-cycle loop and an offline batch job without
+        double-scoring a trade.
+
+        Never touches OANDA, never places or closes a trade, never reads or
+        writes halt/arm state — pure journal-in, weights-out.
+        """
+        import json
+        from pathlib import Path
+
+        journal_path = Path("trained_data/trade_journal_rl.json")
+        if not journal_path.exists():
+            return {"applied": 0, "weights_updated": False, "detail": "no journal"}
+
+        try:
+            entries = json.loads(journal_path.read_text())
+        except Exception as e:
+            logger.debug("apply_pending_rl_weight_updates: journal parse failed: %s", e)
+            return {"applied": 0, "weights_updated": False, "detail": f"journal parse error: {e}"}
+
+        if not isinstance(entries, list):
+            return {"applied": 0, "weights_updated": False, "detail": "journal not a list"}
+
+        candidates = []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            if e.get("outcome") is None:
+                continue
+            if not e.get("rl_eligible", True):
+                continue
+            if e.get("rl_weights_applied"):
+                continue
+            agents_field = e.get("agents")
+            if not isinstance(agents_field, dict) or not agents_field.get("agent_reasons"):
+                continue
+            candidates.append(e)
+
+        if not candidates:
+            return {"applied": 0, "weights_updated": False, "detail": "no pending backfilled outcomes"}
+
+        try:
+            from src.scanner.agents import ScannerAgentTeam
+            _rl_config = getattr(scanner, "config", None) if scanner is not None else None
+            if _rl_config is None:
+                from src.scanner.config import ScannerConfig
+                _rl_config = ScannerConfig()
+            agent_team = ScannerAgentTeam(config=_rl_config)
+        except Exception as e:
+            logger.warning("apply_pending_rl_weight_updates: agent team init failed: %s", e)
+            return {"applied": 0, "weights_updated": False, "detail": f"agent team init failed: {e}"}
+
+        def _persist_journal() -> None:
+            try:
+                from src.scanner.automation.safe_json import safe_json_write
+                safe_json_write(journal_path, entries)
+            except ImportError:
+                journal_path.write_text(json.dumps(entries, indent=2, default=str))
+
+        applied = 0
+        for entry in candidates:
+            outcome = entry.get("outcome")
+            if isinstance(outcome, dict):
+                trade_won = bool(outcome.get("trade_won", False))
+                pnl_raw = outcome.get("realized_pl", 0.0)
+            else:
+                trade_won = str(outcome).strip().lower() == "win"
+                pnl_raw = entry.get("realized_pl", 0.0)
+            try:
+                pnl = float(pnl_raw or 0.0)
+            except (TypeError, ValueError):
+                pnl = 0.0
+
+            regime_field = entry.get("regime")
+            regime = regime_field.get("volatility_regime") if isinstance(regime_field, dict) else None
+            regime = regime or "NORMAL"
+
+            agent_verdicts = entry["agents"]["agent_reasons"]
+            try:
+                _before = dict(agent_team._learned_weights.get("_global", agent_team._BASE_WEIGHTS))
+                new_weights = agent_team.update_weights_from_outcome(
+                    agent_verdicts=agent_verdicts,
+                    trade_won=trade_won,
+                    regime=regime,
+                )
+                try:
+                    self.sync_rl_weights(
+                        weights_before=_before,
+                        weights_after=new_weights,
+                        trade_id=str(entry.get("trade_id", "")),
+                        pnl=pnl,
+                        reason="trade_closed_win" if trade_won else "trade_closed_loss",
+                    )
+                except Exception as _wh_err:
+                    logger.debug("apply_pending_rl_weight_updates: weight_history append skipped: %s", _wh_err)
+                entry["rl_weights_applied"] = True
+                applied += 1
+                # 2026-07-04 (review #5): persist the flag PER ENTRY, right
+                # after its weights moved, so a crash caps the double-count
+                # window at ONE trade instead of the whole batch. This path is
+                # rare (steady-state has ~0-1 pending/cycle); the one-time
+                # backfill drain of many entries pays a bounded re-serialize
+                # cost, worth it for crash-consistency.
+                _persist_journal()
+            except Exception as e:
+                logger.warning(
+                    "apply_pending_rl_weight_updates: weight update failed for trade %s: %s",
+                    entry.get("trade_id"), e,
+                )
+
+        return {
+            "applied": applied,
+            "weights_updated": applied > 0,
+            "detail": f"{applied} backfilled outcome(s) scored",
         }
 
     def _fetch_oanda_trade_snapshots(
@@ -6073,7 +6241,8 @@ class ExecutionManager:
             # M-4: Fallback atomic write
             _perf_tmp = perf_path.with_suffix(".tmp")
             _perf_tmp.write_text(json.dumps(dict(stats), indent=2), encoding="utf-8")
-            import os as _os; _os.replace(str(_perf_tmp), str(perf_path))
+            import os as _os
+            _os.replace(str(_perf_tmp), str(perf_path))
 
     def get_pair_performance(self, pair: Optional[str] = None) -> Dict[str, Any]:
         """Read per-pair performance stats.
@@ -6132,7 +6301,10 @@ class ExecutionManager:
                 continue
             pair = e.get("pair", "UNKNOWN")
             total[pair] += 1
-            if outcome.get("trade_won"):
+            # Trend-lane/backfilled entries store outcome as a plain "win"/"loss"
+            # string; scanner-lane entries store a dict with a trade_won key.
+            won = outcome.get("trade_won") if isinstance(outcome, dict) else str(outcome).strip().lower() == "win"
+            if won:
                 wins[pair] += 1
 
         return {
@@ -6488,30 +6660,36 @@ class ExecutionManager:
         # guard (~2093). A halt means "no new exposure"; a close is risk-REDUCING, so an EXPLICIT
         # operator-initiated close may pass via operator_override=True (e.g. the TUI's halt-aware
         # confirm). AUTONOMOUS/programmatic closes (default operator_override=False) are BLOCKED while
-        # halted — fail-closed; the operator can also use the sanctioned unhalt-then-close flow. This
-        # can only make close MORE restrictive, never less. Read-only; never raises out of the guard.
+        # halted. This can only make close MORE restrictive, never less.
+        #
+        # 2026-07-02 (operator decision): fail-CLOSED, matching execute_trade. A broken/unreadable
+        # halt check blocks the autonomous close rather than silently permitting it; an explicit
+        # operator_override=True still bypasses the guard entirely regardless.
         if not operator_override:
             try:
                 from src.scanner.automation.state_engine import StateEngine
-                if StateEngine().get_halted():
-                    logger.warning(
-                        "close_trade BLOCKED — state.halted=True (autonomous close); trade_id=%s "
-                        "(operator may pass operator_override=True after explicit confirm, or "
-                        "unhalt-then-close)",
-                        trade_id,
-                    )
-                    return {
-                        "success": False,
-                        "trade_id": trade_id,
-                        "error": "BLOCKED: state.halted=True",
-                    }
+                _halted = StateEngine(lane="oanda_fx").get_halted_strict()
             except Exception as _halt_exc:  # noqa: BLE001
-                # Halt-check must never block a close due to its own failure (matches execute_trade).
-                logger.warning("close_trade halt re-check failed (%s); proceeding", _halt_exc)
+                logger.error(
+                    "close_trade halt re-check FAILED (%s) — fail-closed, blocking; trade_id=%s",
+                    _halt_exc, trade_id,
+                )
+                _halted = True
+            if _halted:
+                logger.warning(
+                    "close_trade BLOCKED — state.halted=True (autonomous close); trade_id=%s "
+                    "(operator may pass operator_override=True after explicit confirm, or "
+                    "unhalt-then-close)",
+                    trade_id,
+                )
+                return {
+                    "success": False,
+                    "trade_id": trade_id,
+                    "error": "BLOCKED: state.halted=True",
+                }
 
         import json
         import random
-        import time
         import requests as _requests
         from pathlib import Path
 

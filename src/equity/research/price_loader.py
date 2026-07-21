@@ -140,6 +140,13 @@ def parse_chart_payload(
     adj_values = adj_block[0].get("adjclose") if isinstance(adj_block[0], dict) else None
     if not adj_values:
         return [], []
+    if len(timestamps) != len(adj_values):
+        logger.warning(
+            "parse_chart_payload: timestamp/adjclose length mismatch (%d vs %d) — "
+            "dropping malformed payload",
+            len(timestamps), len(adj_values),
+        )
+        return [], []
 
     dates: List[pd.Timestamp] = []
     closes: List[float] = []

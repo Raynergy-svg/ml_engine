@@ -4,12 +4,21 @@ import { usePoll } from "@/lib/api";
 import { useStream } from "@/lib/stream";
 import { control, type ControlResult } from "@/lib/control";
 import type { ControlState, SystemHealth, Tier7 } from "@/lib/types";
-import { Card, SectionTitle, Badge, StatusDot } from "./ui";
+import { LANE_META } from "@/lib/lanes";
+import { Card, SectionTitle, Badge, Loading, NotConnected, StatusDot } from "./ui";
 import { ago, shortTime } from "@/lib/format";
 
 interface AuditEntry {
-  ts: string; action: string; allowed?: boolean; reason?: string; result?: string;
+  // `result`/`reason` are typed loosely on purpose: the audit log stores tool-call
+  // outputs here, which are frequently OBJECTS (e.g. a shadow-lane snapshot), NOT
+  // just strings. Declaring them `string` was a lie that let an object reach JSX
+  // and crash the whole cockpit ("Objects are not valid as a React child"). Keep
+  // them `unknown` so every render site is forced to coerce to a scalar.
+  ts: string; action: string; allowed?: boolean; reason?: unknown; result?: unknown;
   params?: Record<string, unknown>;
+  /** Attribution (2026-07-01+): absent on entries written before the actor-attribution
+   * fix — render "—" rather than a fabricated identity for those older rows. */
+  actor?: string;
 }
 interface AuditResp { entries: AuditEntry[]; count: number }
 
@@ -33,7 +42,7 @@ function ConfirmButton({
   if (armed) {
     return (
       <span className="inline-flex items-center gap-1">
-        <button onClick={go} disabled={busy}
+        <button onClick={go} disabled={disabled || busy}
           className="rounded-md px-2.5 py-1 font-mono text-[11px] font-semibold text-base"
           style={{ background: color }}>
           {busy ? "…" : "Confirm"}
@@ -62,23 +71,25 @@ function ConfirmButton({
 
 export function ControlPanel() {
   const { data: audit } = usePoll<AuditResp>("/api/control/audit?limit=25", 4000);
-  const { data: polledControlState, error: stateError } = usePoll<ControlState>("/api/control/state", 3000);
+  const { data: controlState, error: stateError, loading: stateLoading, reload: reloadControlState } = usePoll<ControlState>("/api/control/state", 3000);
   const { data: tier7 } = usePoll<Tier7>("/api/tier7", 4000);
   const { data: health } = usePoll<SystemHealth>("/api/system_health", 5000);
   const { payload } = useStream();
-  const [actionControlState, setActionControlState] = useState<ControlState | null>(null);
   const [pendingLev, setPendingLev] = useState<number | null>(null);
 
   async function runControl(action: string, params: Record<string, unknown> = {}) {
     const result = await control(action, params);
-    if (result.data.state) {
-      setActionControlState(result.data.state);
-      if (typeof result.data.state.gross_leverage === "number") setPendingLev(null);
-    }
+    // An action response is a receipt, not the long-lived source of truth. Always
+    // re-read the persisted control state so the page and a browser refresh agree.
+    if (result.ok && typeof result.data.state?.gross_leverage === "number") setPendingLev(null);
+    reloadControlState();
     return result;
   }
 
-  const controlState = polledControlState ?? actionControlState;
+  // Never keep a successful action response as a fallback when state polling later
+  // fails: that turns an old receipt into a misleading live claim. Settings fails
+  // closed until the backend's current persisted state is readable again.
+  const controlUnavailable = Boolean(stateError) || !controlState;
   const halted = controlState?.halted ?? payload?.status?.halted ?? null;
   const laneRunning = controlState?.loops?.trend?.running ?? health?.lanes?.running === true;
   const tier7Proc = controlState?.loops?.tier7;
@@ -89,20 +100,28 @@ export function ControlPanel() {
   const tier7Mismatch = tier7SnapshotConnected && tier7ProcRunning !== (tier7?.running === true);
   const tier7LatestHeal = [...(tier7?.self_heal?.recent_events ?? [])].reverse()[0];
   const tier7StatusColor = tier7Mismatch ? "#f5b14c" : tier7Running ? "#2bd17e" : "#ff4d6d";
-  const disabled = !!stateError && /404/.test(stateError);
   const leverageCap = controlState?.leverage_cap ?? 15;
   const persistedLeverage = typeof controlState?.gross_leverage === "number" ? controlState.gross_leverage : null;
   const lev = pendingLev ?? persistedLeverage ?? 3;
   const armed = controlState?.armed === true;
 
-  if (disabled) {
+  if (stateLoading && !controlState) {
     return (
       <Card className="p-5">
-        <SectionTitle right={<Badge color="#5a6677" dot>CONTROL DISABLED</Badge>}>Operator Control</SectionTitle>
-        <div className="py-6 text-center font-mono text-[12px] text-dim">
-          The control layer is built but <span className="text-warn">disabled</span> (AXIOM_CONTROL_ENABLED off).
-          <div className="mt-1 text-[11px] text-faint">Start the data layer with AXIOM_CONTROL_ENABLED=1 to operate the bot.</div>
-        </div>
+        <SectionTitle right={<Badge color="#5a6677" dot>READING BACKEND STATE</Badge>}>Operator Control</SectionTitle>
+        <Loading label="Reading persisted control state…" />
+      </Card>
+    );
+  }
+
+  if (controlUnavailable) {
+    return (
+      <Card className="p-5">
+        <SectionTitle right={<Badge color="#ff4d6d" dot>CONTROL STATE UNAVAILABLE</Badge>}>Operator Control</SectionTitle>
+        <NotConnected
+          label="Settings actions are disabled until persisted control state is readable"
+          hint={stateError ?? "No authoritative control-state response received."}
+        />
       </Card>
     );
   }
@@ -115,14 +134,16 @@ export function ControlPanel() {
         </SectionTitle>
 
         {/* ARM lockdown (2026-07-01): the server REFUSES flatten / leverage-change /
-            start_loop / unhalt as a structural no-op unless armed — this banner
+            start_loop / unhalt unless armed — this banner
             reflects that, it doesn't itself enforce anything. Default DISARMED. */}
         <div className="mb-3 flex items-center justify-between rounded-md border p-2.5 hairline"
              style={{ borderColor: armed ? "#ff4d6d55" : undefined }}>
           <div className="flex items-center gap-2 font-mono text-[11px]">
             <StatusDot color={armed ? "#ff4d6d" : "#5a6677"} pulse={armed} />
             <span className={armed ? "text-warn font-semibold" : "text-dim"}>
-              {armed ? "ARMED — live-order actions enabled" : "DISARMED — flatten/leverage/start/unhalt are no-ops"}
+              {armed
+                ? "ARMED — guarded dashboard requests enabled (unhalt, start, leverage, flatten)"
+                : "DISARMED — guarded dashboard requests are refused server-side"}
             </span>
             {armed && controlState?.arm_expires_at && (
               <span className="text-faint">· expires {shortTime(controlState.arm_expires_at)}</span>
@@ -163,6 +184,31 @@ export function ControlPanel() {
               <div className="font-mono text-[10px] text-faint">gated: drawdown &lt; 20% · gates GREEN · practice</div></div>
             <ConfirmButton label="UNHALT" color="#2bd17e" onRun={() => runControl("unhalt")} disabled={halted === false || !armed} />
           </div>
+          <div className="rounded-md border p-3 hairline sm:col-span-2">
+            <div className="mb-2 flex items-center justify-between font-mono text-[11px] text-dim">
+              <span>Per-lane halt / unhalt</span>
+              <span className="text-faint">global HALT above overrides every lane</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {Object.entries(LANE_META).map(([lane, meta]) => {
+                const laneHalted = controlState?.lanes?.[lane] ?? null;
+                return (
+                  <div key={lane} className="flex flex-col gap-1.5 rounded-md border p-2.5 hairline">
+                    <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                      <StatusDot color={laneHalted === true ? "#ff4d6d" : laneHalted === false ? "#2bd17e" : "#5a6677"} />
+                      <span className="text-text">{meta.label}</span>
+                    </div>
+                    <div className="font-mono text-[10px] text-faint">{meta.hint}</div>
+                    <div className="mt-0.5 flex gap-1.5">
+                      <ConfirmButton label="HALT" color="#ff4d6d" onRun={() => runControl("halt", { lane })} disabled={laneHalted === true} />
+                      <ConfirmButton label="UNHALT" color="#2bd17e" onRun={() => runControl("unhalt", { lane })} disabled={laneHalted === false || !armed} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between rounded-md border p-3 hairline">
             <div><div className="font-mono text-[12px] text-text">Trend loop</div>
               <div className="font-mono text-[10px] text-faint">start / stop the OANDA trend lane</div></div>
@@ -185,7 +231,7 @@ export function ControlPanel() {
                 </div>
               </div>
               <span className="flex shrink-0 gap-1.5">
-                <ConfirmButton label="START" color="#2bd17e" onRun={() => runControl("start_loop", { loop: "tier7" })} disabled={tier7ProcRunning} />
+                <ConfirmButton label="START" color="#2bd17e" onRun={() => runControl("start_loop", { loop: "tier7" })} disabled={tier7ProcRunning || !armed} />
                 <ConfirmButton label="STOP" color="#ff4d6d" onRun={() => runControl("stop_loop", { loop: "tier7" })} disabled={!tier7ProcRunning} />
               </span>
             </div>
@@ -251,8 +297,9 @@ export function ControlPanel() {
                 <StatusDot color={e.allowed ? "#2bd17e" : "#ff4d6d"} />
                 <div className="min-w-0 flex-1">
                   <span className="text-text">{e.action}</span>
-                  <span className="text-faint"> · {e.result ?? (e.allowed ? "ok" : "denied")}</span>
-                  {e.reason && e.allowed === false && <div className="truncate text-[10px] text-neg" title={e.reason}>{e.reason}</div>}
+                  <span className="text-faint"> · {typeof e.result === "string" ? e.result : (e.allowed ? "ok" : "denied")}</span>
+                  <span className="text-faint"> · by {e.actor ?? "—"}</span>
+                  {typeof e.reason === "string" && e.reason && e.allowed === false && <div className="truncate text-[10px] text-neg" title={e.reason}>{e.reason}</div>}
                 </div>
                 <span className="shrink-0 text-[10px] text-faint tnum">{shortTime(e.ts)}</span>
               </div>

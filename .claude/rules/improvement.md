@@ -78,6 +78,7 @@ Source: 1 catastrophic observation — see `docs/incidents.md` "No-Mock catastro
 - NEVER trust "passes: true" on wiring phases without verifying call sites exist in production files — unit tests mock boundaries and will pass even when the production call is missing
 - ALWAYS check that methods defined for integration are actually CALLED, not just defined — grep for the method name outside its own class to confirm at least one live call site exists
 - ALWAYS test new feature flag propagation end-to-end: set flag in profile dict → verify it reaches the dataclass field → verify consumer reads True → verify module activates (log line appears)
+- ALWAYS treat "two writers touch the same 'is this done?' guard field" as a dead-write risk equal to the missing-consumer pattern above. Confirmed 4x on `trade_journal_rl.json`'s `outcome` field (2026-05-12 obs 1967, 2026-07-02 obs 14959, 2026-07-03 obs 15342, 2026-07-04 fix commit 51b85bf): `OutcomeBackfill`/`TrendJournalSync` stamp `outcome` as a bare value; `sync_closed_trades_rl`'s pending-check is `outcome is None` — the SECOND writer's touch permanently satisfies the FIRST writer's "already handled" guard, so the real consumer (`update_weights_from_outcome`) never fires. Fix pattern: track completion with a field DEDICATED to that consumer (e.g. `rl_weights_applied`), never share value/timestamp presence as a done-guard across two independent writers.
 
 ## Anti-Patterns
 - Never create new .claude/ files without justification — edit existing ones

@@ -6,9 +6,14 @@ structural guards in ``control_safety.enforce`` BEFORE any effect, and audit-log
 attempt (allowed AND denied). See dashboard/CONTROL_DESIGN.md.
 
 Functional actions (all practice-pinned + bounded by control_safety):
-  halt               — StateEngine.set_halted(True) (fail-safe; always allowed).
+  halt               — StateEngine.set_halted(True) (fail-safe; always allowed). An
+                       optional ``lane`` param (oanda_fx | equity | brain) halts only
+                       that lane; omitted -> legacy global halt (halts every lane).
   unhalt             — StateEngine.set_halted(False) ONLY after assert_unhalt_eligible
                        passes (practice + drawdown<20% + gates GREEN + models fresh).
+                       Same optional ``lane`` param as halt; the legacy global
+                       ``halted`` flag still wins over any per-lane unhalt (a lane
+                       unhalt only takes effect once the global flag is also False).
   set_gross_leverage — writes a clamped [0,15] override; the trend loop sizes to it
                        and OANDA scanner execution enforces it as a gross cap.
   start_loop/stop_loop — fixed-WHITELIST process control (no arbitrary exec): trend ->
@@ -30,6 +35,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -116,6 +122,30 @@ def _loop_pids(loop: str) -> list[int]:
     return pids
 
 
+_pid_cache: Dict[str, Any] = {}
+_PID_CACHE_TTL_S = 2.0
+
+
+def _loop_pids_cached(loop: str) -> list[int]:
+    """Read-only-path variant of ``_loop_pids`` with a short TTL cache.
+
+    GET /api/control/state is polled every ~3s per dashboard client and calls
+    ``_loop_pids`` once per whitelisted loop; each call shells out to `ps -axo`.
+    Under many concurrent clients that becomes frequent blocking subprocess calls
+    contending with the SSE stream's own subprocess use (see app.py's
+    ``_event_stream`` / data_sources._cached_live_lane_running). A 2s cache keeps
+    the read path fast without touching the mutating start/stop paths, which
+    MUST see the true, uncached pid list to make correct start/stop decisions.
+    """
+    now = time.time()
+    hit = _pid_cache.get(loop)
+    if hit and (now - hit[0]) < _PID_CACHE_TTL_S:
+        return hit[1]
+    pids = _loop_pids(loop)
+    _pid_cache[loop] = (now, pids)
+    return pids
+
+
 def _start_loop(loop: str) -> Dict[str, Any]:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     # C-B3: serialize check-and-spawn under a per-loop file lock. Without it, two
@@ -186,13 +216,15 @@ def _state() -> Dict[str, Any]:
     overrides = cs.read_overrides()
     loops = {}
     for loop in sorted(LOOP_CMDS):
-        pids = _loop_pids(loop)
+        pids = _loop_pids_cached(loop)
         loops[loop] = {"running": bool(pids), "pids": pids}
     arm_state = cs.read_arm_state()
+    eng = StateEngine()
     return {
         "ok": True,
         "environment": cs.assert_practice(),
-        "halted": StateEngine().get_halted(),
+        "halted": eng.get_halted(),
+        "lanes": eng.get_lane_status(),
         "gross_leverage": overrides.get("gross_leverage"),
         "override_updated_at": overrides.get("_updated_at"),
         "leverage_cap": cs.LEVERAGE_CAP,
@@ -225,19 +257,23 @@ def _run(action: str, params: Dict[str, Any], *, actor: str):
             # C-B2: idempotent check-and-set — report already_halted instead of blindly
             # re-flipping on a double-submit (UI disable lags the 3s poll).
             eng = StateEngine()
-            if eng.get_halted():
-                result: Dict[str, Any] = {"result": "already_halted", "changed": False}
+            lane = normalized.get("lane")
+            if eng.get_halted(lane=lane):
+                result: Dict[str, Any] = {
+                    "result": "already_halted", "changed": False, "lane": lane or "global",
+                }
             else:
-                eng.set_halted(True)
-                result = {"result": "halted", "changed": True}
+                eng.set_halted(True, lane=lane)
+                result = {"result": "halted", "changed": True, "lane": lane or "global"}
         elif action == "unhalt":
             eng = StateEngine()  # eligibility already enforced above
-            if not eng.get_halted():
-                result = {"result": "already_unhalted", "changed": False,
+            lane = normalized.get("lane")
+            if not eng.get_halted(lane=lane):
+                result = {"result": "already_unhalted", "changed": False, "lane": lane or "global",
                           "eligibility": normalized.get("eligibility")}
             else:
-                eng.set_halted(False)
-                result = {"result": "unhalted", "changed": True,
+                eng.set_halted(False, lane=lane)
+                result = {"result": "unhalted", "changed": True, "lane": lane or "global",
                           "eligibility": normalized.get("eligibility")}
         elif action == "set_gross_leverage":
             ov = cs.set_override("gross_leverage", normalized["gross_leverage"])

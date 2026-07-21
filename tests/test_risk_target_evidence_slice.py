@@ -34,15 +34,27 @@ import pytest
 
 from src.evidence.contracts import (
     AuthorityRole,
+    CapabilityProfile,
+    DatasetManifest,
     DispositionEvent,
     DispositionState,
+    EvaluationReport,
     GateResult,
     GateStatus,
     ImportDecision,
+    JobManifest,
+    SignedEnvelope,
 )
 from src.evidence.signing import verify_envelope
 from src.evidence.risk_target.evaluation import EvaluationParams, assemble_frame, evaluate_frame
+from src.evidence.risk_target.local_import import _policy_checks
 from src.evidence.risk_target.models import DRAWDOWN_HEAD_ID, VOLATILITY_HEAD_ID, HeadResult
+from src.evidence.risk_target.models import (
+    CAPABILITY_PROFILE_PATH,
+    DATASET_MANIFEST_PATH,
+    EVALUATION_REPORT_PATH,
+    JOB_MANIFEST_PATH,
+)
 from src.evidence.risk_target.slice import (
     build_evidence_store,
     build_slice_identities,
@@ -264,6 +276,104 @@ def test_local_metric_replay_reproduces_via_importer(tmp_path):
         checks = {c.check_id: c.passed for c in outcome.verdict.checks}
         assert checks["metric_replay_reproduces"] is True
         assert checks["gate_verdict_reproduces"] is True
+        assert checks["evaluation_cost_accounted"] is True
+
+
+def test_cost_policy_changes_the_signed_configuration_identity(tmp_path):
+    identities, _ = _fresh(tmp_path)
+    common = {
+        **SLICE_KW,
+        "evaluator": _fixed_evaluator(),
+        "registry_publish": _noop_registry,
+    }
+    free = produce_worker_output(
+        identities, _dummy_partitions(), cost_rate_per_hour=0.0, **common
+    )
+    metered = produce_worker_output(
+        identities, _dummy_partitions(), cost_rate_per_hour=0.40, **common
+    )
+
+    assert free.job.configuration_digest != metered.job.configuration_digest
+    report = verify_envelope(
+        metered.worker_output.heads[0].evaluation_report_envelope,
+        EvaluationReport,
+        identities.trust_store,
+    )
+    assert report.cost["rate_per_hour"] == 0.4
+    assert report.cost["basis"] == "configured_local_cpu_hourly_rate"
+
+
+def test_tampered_evaluation_cost_amount_fails_importer_policy(tmp_path):
+    identities, _ = _fresh(tmp_path)
+    produced = produce_worker_output(
+        identities,
+        _dummy_partitions(),
+        evaluator=_fixed_evaluator(),
+        registry_publish=_noop_registry,
+        cost_rate_per_hour=0.40,
+        **SLICE_KW,
+    )
+    head = produced.worker_output.heads[0]
+    report = verify_envelope(
+        head.evaluation_report_envelope,
+        EvaluationReport,
+        identities.trust_store,
+    )
+    tampered_report = report.model_copy(
+        update={"cost": {**report.cost, "amount": float(report.cost["amount"]) + 1.0}}
+    )
+
+    checks = _policy_checks(
+        head,
+        produced.job,
+        produced.capability_profile,
+        tampered_report,
+    )
+
+    by_id = {check.check_id: check for check in checks}
+    assert by_id["evaluation_cost_accounted"].passed is False
+
+
+@pytest.mark.parametrize(
+    ("cost_update", "usage_update"),
+    [
+        ({"amount": 10**400}, {}),
+        ({}, {"head_count": 2.0}),
+    ],
+)
+def test_invalid_evaluation_cost_metadata_fails_closed(
+    tmp_path, cost_update, usage_update
+):
+    identities, _ = _fresh(tmp_path)
+    produced = produce_worker_output(
+        identities,
+        _dummy_partitions(),
+        evaluator=_fixed_evaluator(),
+        registry_publish=_noop_registry,
+        **SLICE_KW,
+    )
+    head = produced.worker_output.heads[0]
+    report = verify_envelope(
+        head.evaluation_report_envelope,
+        EvaluationReport,
+        identities.trust_store,
+    )
+    invalid_report = report.model_copy(
+        update={
+            "cost": {**report.cost, **cost_update},
+            "resource_usage": {**report.resource_usage, **usage_update},
+        }
+    )
+
+    checks = _policy_checks(
+        head,
+        produced.job,
+        produced.capability_profile,
+        invalid_report,
+    )
+
+    by_id = {check.check_id: check for check in checks}
+    assert by_id["evaluation_cost_accounted"].passed is False
 
 
 @pytest.mark.slow
@@ -317,6 +427,52 @@ def test_indexes_rebuild_to_byte_equivalent_state(tmp_path):
     shutil.rmtree(store.root / "indexes")
     rebuilt = store.rebuild_indexes()
     assert rebuilt == before
+
+
+def test_signed_lineage_objects_survive_store_restart(tmp_path):
+    identities, store, result = _run(
+        tmp_path, _fixed_evaluator(vol_passed=True, dd_passed=False)
+    )
+    restarted = build_evidence_store(store.root, identities, clock_now=NOW)
+    expected_types = {
+        JOB_MANIFEST_PATH: JobManifest,
+        DATASET_MANIFEST_PATH: DatasetManifest,
+        CAPABILITY_PROFILE_PATH: CapabilityProfile,
+        EVALUATION_REPORT_PATH: EvaluationReport,
+    }
+
+    for outcome in result.outcomes.values():
+        package = restarted.load_package(outcome.package_digest)
+        assert {ref.relative_path for ref in package.logs} == set(expected_types)
+        for relative_path, payload_type in expected_types.items():
+            raw = restarted.load_package_file(outcome.package_digest, relative_path)
+            envelope = SignedEnvelope.model_validate_json(raw, strict=True)
+            verified = verify_envelope(envelope, payload_type, identities.trust_store)
+            assert isinstance(verified, payload_type)
+
+        job_envelope = SignedEnvelope.model_validate_json(
+            restarted.load_package_file(outcome.package_digest, JOB_MANIFEST_PATH),
+            strict=True,
+        )
+        report_envelope = SignedEnvelope.model_validate_json(
+            restarted.load_package_file(outcome.package_digest, EVALUATION_REPORT_PATH),
+            strict=True,
+        )
+        assert job_envelope.payload_digest == package.job_manifest_digest
+        assert report_envelope.payload_digest in package.evaluation_report_digests
+        report = verify_envelope(
+            report_envelope, EvaluationReport, identities.trust_store
+        )
+        assert report.resource_usage["scope"] == "producer_evaluation"
+        assert report.resource_usage["allocation"] == "equal_share_of_job_evaluator_wall_time"
+        assert report.cost == {
+            "allocation": "equal_share_of_job_evaluator_wall_time",
+            "amount": 0.0,
+            "basis": "local_unmetered_no_incremental_provider_charge",
+            "currency": "USD",
+            "rate_per_hour": 0.0,
+            "scope": "producer_evaluation",
+        }
 
 
 def test_evidence_view_reports_per_lane_dispositions(tmp_path):

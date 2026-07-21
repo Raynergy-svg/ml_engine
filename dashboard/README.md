@@ -55,7 +55,11 @@ set in `web/.env.local`).
 | Trend strategy grid (long/flat per pair) | `trend_targets` (the bot's actual rule) | ✅ real, needs token |
 | Halt / running / mode | `.claude/state.json` + lane snapshot freshness | ✅ real |
 | **Tier 7 autonomous loop** (running/offline + reason, current action, last meta-pipeline event, self-heal actions, last cycle) | `.claude/tier7_state.json` (`tier7_state.py`) | ✅ real |
-| **Position TP/SL** (table columns + chart lines + distance) | `account_state.json` positions `take_profit`/`stop_loss` | 🟡 **pending backend** — fields not in the data/contract yet; renders `—` + note |
+| **Position TP/SL** (table columns + chart lines + distance) | `account_state.json` positions `take_profit`/`stop_loss` (`src/brokers/oanda_v20.py:_position_brackets`) | ✅ real |
+| **Per-lane halt status** (oanda_fx / equity / brain) | `StateEngine.get_lane_status()` | ✅ real |
+| **Equity harvester lane** (armed/live-vs-shadow, ship gate, cycle-ledger, live risk-gate verdict) | `live_gate_state.json` + `SHIP_GATE.json` + `cycle_ledger.jsonl` + `decision_gate.decide_cycle()` | ✅ real |
+| **Brain loop** (last cycle, pending promotions, de-risk/halt audit) | `trained_data/brain_loop/*` + `.claude/brain_loop_audit.jsonl` | ✅ real — honest "not yet run" until the loop executes once |
+| System health (lane oracle, verify_gate Hard-NO checks, active alerts) | `read_health()` (Risk tab) | ✅ real |
 | Order-book sentiment | `trained_data/oanda/sentiment_snapshot.json` | 🟡 **placeholder** — tagged `DATA-ONLY; not wired` |
 
 When the broker is unreachable (e.g. stale token) or a source file is absent, views show
@@ -68,12 +72,6 @@ verbatim — it never recomputes a rosier liveness. It also distinguishes **snap
 fresh snapshot can honestly read `loop OFFLINE`. The header's "RUNNING" is the *trend lane*;
 the Tier 7 "OFFLINE" is the *meta self-healing loop* — two separate processes, both truthful.
 
-### Pending on the backend contract
-- **TP/SL bracket levels** (TASK A): the dashboard already consumes optional
-  `take_profit`/`stop_loss` on each position (table columns, chart price-lines, pip distance).
-  They render `—` until the bot writes those additive fields into `account_state.json` and
-  records them in `docs/dashboard-data-contract.md`.
-
 ### Honesty cross-check
 The trend signal the dashboard recomputes (`/api/strategy`) matches the bot's actual
 open positions — two independent paths that agree.
@@ -82,7 +80,13 @@ open positions — two independent paths that agree.
 
 `/api/account` · `/api/status` · `/api/trades` · `/api/equity` · `/api/strategy`
 · `/api/tier7` · `/api/prices` · `/api/candles/{instrument}` · `/api/sentiment`
-· `/api/instruments` · `/api/stream` (SSE) · `/api/health`
+· `/api/instruments` · `/api/stream` (SSE) · `/api/health` · `/api/system_health`
+· `/api/equity_sleeve` (harvester lane) · `/api/lanes` (per-lane halt, always-on)
+· `/api/brain_loop`
+
+Control routes (`/api/control/*`) are POST, gated by `AXIOM_CONTROL_ENABLED`, and covered
+separately in `CONTROL_DESIGN.md` — `state` and `audit` sub-routes are GET/read-only but
+live under that same gate today.
 
 ## Adding hosting + auth later (designed for, not yet built)
 

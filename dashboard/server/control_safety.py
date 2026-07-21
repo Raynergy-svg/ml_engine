@@ -259,7 +259,21 @@ def enforce(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         out["gross_leverage"] = validate_leverage((params or {}).get("gross_leverage"))
     elif action in ("start_loop", "stop_loop"):
         out["loop"] = validate_loop((params or {}).get("loop"))
-    elif action in ("halt", "unhalt", "flatten", "arm", "disarm"):
+    elif action in ("halt", "unhalt"):
+        # These take NO parameters except an OPTIONAL, validated ``lane`` — same
+        # default-deny discipline as flatten/arm/disarm below: any other key is
+        # refused outright, never silently ignored.
+        extra = dict(params or {})
+        lane = extra.pop("lane", None)
+        if extra:
+            raise ControlDenied(f"{action} takes no parameters beyond 'lane'; got {sorted(extra)}")
+        if lane is not None:
+            from src.scanner.automation.state_engine import KNOWN_LANES
+
+            if lane not in KNOWN_LANES:
+                raise ControlDenied(f"unknown lane {lane!r}; allowed: {sorted(KNOWN_LANES)}")
+            out["lane"] = lane
+    elif action in ("flatten", "arm", "disarm"):
         # These take NO parameters. Default-deny (not default-allow): any extra key —
         # even one not on the forbidden-smuggle list above — is refused outright. Found
         # by the 2026-07-01 control-safety re-audit: flatten previously accepted+ignored

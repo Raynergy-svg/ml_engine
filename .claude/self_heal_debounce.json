@@ -1,4 +1,0 @@
-{
-  "Retrain core models: python main.py train-joint --instruments EUR_USD,GBP_USD,USD_JPY": "2026-06-15T21:51:55.388157+00:00",
-  "reduce_risk_per_trade_pct": "2026-06-15T21:51:55.388157+00:00"
-}

@@ -1,0 +1,295 @@
+name: Code Graph
+
+# Non-blocking code-intelligence indexing + PR impact analysis via
+# codebase-memory-mcp (github.com/DeusData/codebase-memory-mcp; the operator's
+# fork is Raynergy-svg/codebase-memory-mcp — an unmodified fork with no
+# releases of its own, so binaries are pulled from the upstream DeusData
+# release which the fork tracks).
+#
+# CI/dev-plane ONLY. This job:
+#   - never runs on the live trading host (it only exists here, as a GitHub
+#     Actions runner job)
+#   - never touches src/, runtime, execution, halt, or config code — it only
+#     READS source files to build a structural graph and WRITES to its own
+#     cache dir + .codebase-memory/ snapshot, both scoped to the ephemeral
+#     CI workspace
+#   - never runs the `install` subcommand (which would register MCP config
+#     into agent files) — only `cli <tool>` one-shot invocations
+#   - is fail-soft end-to-end: install/index/impact-analysis failures are
+#     caught, summarized, and the job still exits 0. This workflow is
+#     advisory-only and must never be added as a required status check.
+#
+# See docs/code-graph-ci.md for local usage, troubleshooting, and how
+# operators consume the shared graph snapshot off the live host.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  CBM_VERSION: v0.8.1
+  CBM_RELEASE_REPO: DeusData/codebase-memory-mcp
+  CBM_SHA256_LINUX_AMD64: dbd3b92ea870ef240b63059f26bda15015f76ef9978931bebc3a0f9d09470973
+
+jobs:
+  code-graph:
+    name: Code Graph (index + PR impact)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Belt-and-suspenders: even if a step-level guard is missed, the job
+    # itself can never fail a required check or block a merge.
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write # only to post/update the impact-analysis PR comment
+
+    steps:
+      - name: Checkout (code paths only — no market/model data)
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # detect_changes needs base-branch history
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/trained_data/
+            !/market_data/
+            !/logs/
+            !/notebooks/
+            !/legacy_quarantine/
+            !/bug_reports/
+            !/tmp/
+          sparse-checkout-cone-mode: false
+
+      - name: Fetch base branch ref (PRs only)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin \
+            "${BASE_REF}:refs/remotes/origin/${BASE_REF}" \
+            2>&1 || echo "::warning::could not fetch base ref; impact diff may be incomplete"
+
+      - name: Install codebase-memory-mcp (pinned release, checksum-verified)
+        id: install
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          ASSET="codebase-memory-mcp-linux-amd64.tar.gz"
+          URL="https://github.com/${CBM_RELEASE_REPO}/releases/download/${CBM_VERSION}/${ASSET}"
+          echo "Downloading ${URL}"
+          if ! curl -fsSL -o cbm.tar.gz "$URL"; then
+            echo "install_ok=false" >> "$GITHUB_OUTPUT"
+            echo "reason=download failed from ${URL} (release/asset may have moved — see docs/code-graph-ci.md)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! echo "${CBM_SHA256_LINUX_AMD64}  cbm.tar.gz" | sha256sum -c -; then
+            echo "install_ok=false" >> "$GITHUB_OUTPUT"
+            echo "reason=checksum mismatch on cbm.tar.gz — refusing to run an unverified binary. Update CBM_SHA256_LINUX_AMD64 if CBM_VERSION was bumped intentionally." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! tar xzf cbm.tar.gz codebase-memory-mcp || ! chmod +x codebase-memory-mcp || ! ./codebase-memory-mcp --version; then
+            echo "install_ok=false" >> "$GITHUB_OUTPUT"
+            echo "reason=extracted binary failed to run (corrupt archive or exec failure) — see step logs" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "install_ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Index repository
+        id: index
+        if: steps.install.outputs.install_ok == 'true'
+        continue-on-error: true
+        env:
+          CBM_CACHE_DIR: ${{ github.workspace }}/.cbm-cache
+          REPO_PATH: ${{ github.workspace }}
+        run: |
+          set -uo pipefail
+          mkdir -p "$CBM_CACHE_DIR"
+          RAW=$(./codebase-memory-mcp cli --json index_repository \
+            "{\"repo_path\":\"${REPO_PATH}\",\"mode\":\"fast\",\"persistence\":true}" 2>index.err)
+          RC=$?
+          if [ $RC -ne 0 ] || [ -z "$RAW" ]; then
+            echo "index_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::index_repository failed (exit $RC)"
+            cat index.err || true
+            exit 0
+          fi
+          PAYLOAD=$(printf '%s' "$RAW" | tail -1 | jq -r '.content[0].text // empty' 2>/dev/null || true)
+          if [ -z "$PAYLOAD" ]; then
+            echo "index_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::index_repository returned no parseable payload"
+            printf '%s\n' "$RAW" | tail -5
+            exit 0
+          fi
+          STATUS=$(printf '%s' "$PAYLOAD" | jq -r '.status // "unknown"')
+          NODES=$(printf '%s' "$PAYLOAD" | jq -r '.nodes // 0')
+          EDGES=$(printf '%s' "$PAYLOAD" | jq -r '.edges // 0')
+          PROJECT=$(printf '%s' "$PAYLOAD" | jq -r '.project // empty')
+          if [ "$STATUS" = "error" ]; then
+            echo "index_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::index_repository reported status=error"
+            exit 0
+          fi
+          {
+            echo "index_ok=true"
+            echo "status=${STATUS}"
+            echo "nodes=${NODES}"
+            echo "edges=${EDGES}"
+            echo "project=${PROJECT}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Indexed: status=${STATUS} nodes=${NODES} edges=${EDGES} project=${PROJECT}"
+
+      - name: PR impact analysis (detect_changes)
+        id: impact
+        if: github.event_name == 'pull_request' && steps.index.outputs.index_ok == 'true' && steps.index.outputs.project != ''
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          CBM_PROJECT: ${{ steps.index.outputs.project }}
+        run: |
+          set -uo pipefail
+          BASE="origin/${BASE_REF}"
+          RAW=$(./codebase-memory-mcp cli --json detect_changes \
+            "{\"project\":\"${CBM_PROJECT}\",\"base_branch\":\"${BASE}\",\"depth\":2}" 2>impact.err)
+          RC=$?
+          if [ $RC -ne 0 ] || [ -z "$RAW" ]; then
+            echo "impact_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::detect_changes failed (exit $RC)"
+            cat impact.err || true
+            exit 0
+          fi
+          PAYLOAD=$(printf '%s' "$RAW" | tail -1 | jq -r '.content[0].text // empty' 2>/dev/null || true)
+          if [ -z "$PAYLOAD" ] || ! printf '%s' "$PAYLOAD" | jq -e . >/dev/null 2>&1; then
+            echo "impact_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::detect_changes returned no parseable JSON payload"
+            exit 0
+          fi
+          printf '%s' "$PAYLOAD" > impact.json
+          CHANGED_COUNT=$(jq -r '.changed_count // 0' impact.json 2>/dev/null || echo 0)
+          IMPACTED_COUNT=$(jq -r '(.impacted_symbols // []) | length' impact.json 2>/dev/null || echo 0)
+          {
+            echo "impact_ok=true"
+            echo "changed_count=${CHANGED_COUNT}"
+            echo "impacted_count=${IMPACTED_COUNT}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build impact comment body
+        id: comment_body
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          INSTALL_OK: ${{ steps.install.outputs.install_ok }}
+          INSTALL_REASON: ${{ steps.install.outputs.reason }}
+          INDEX_OK: ${{ steps.index.outputs.index_ok }}
+          IMPACT_OK: ${{ steps.impact.outputs.impact_ok }}
+          CHANGED: ${{ steps.impact.outputs.changed_count }}
+          IMPACTED: ${{ steps.impact.outputs.impacted_count }}
+        run: |
+          {
+            echo "### 🕸️ Code Graph — PR impact"
+            echo
+            if [ "${INSTALL_OK}" != "true" ]; then
+              echo "> ⚠️ codebase-memory-mcp could not be installed on this run: ${INSTALL_REASON}"
+              echo ">"
+              echo "> This is advisory-only and does not block the PR. See \`docs/code-graph-ci.md\`."
+            elif [ "${INDEX_OK}" != "true" ]; then
+              echo "> ⚠️ Indexing failed — see the \`code-graph\` job logs. Advisory-only, does not block the PR."
+            elif [ "${IMPACT_OK}" != "true" ]; then
+              echo "> ⚠️ Impact analysis failed — see the \`code-graph\` job logs. Advisory-only, does not block the PR."
+            else
+              echo "**${CHANGED}** files changed vs \`${BASE_REF}\`, touching **${IMPACTED}** indexed symbols."
+              echo
+              echo "<details><summary>Impacted symbols (what to retest)</summary>"
+              echo
+              echo '```'
+              jq -r '(.impacted_symbols // [])[:40] | .[] | "\(.label // "?"): \(.name // "?")  (\(.file // "?"))"' impact.json 2>/dev/null || echo "(none)"
+              TOTAL=$(jq -r '(.impacted_symbols // []) | length' impact.json 2>/dev/null || echo 0)
+              if [ "${TOTAL:-0}" -gt 40 ]; then
+                echo "... and $((TOTAL - 40)) more"
+              fi
+              echo '```'
+              echo
+              echo "</details>"
+              echo
+              echo "Full graph snapshot: see the \`codebase-memory-graph\` artifact on this run."
+            fi
+            echo
+            echo "<sub>codebase-memory-mcp \`${CBM_VERSION}\` · CI/dev-plane only, never runs on the live trading host</sub>"
+            echo "<!-- code-graph-ci-marker -->"
+          } > comment_body.md
+
+      - name: Post/update PR impact comment
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('comment_body.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const marker = '<!-- code-graph-ci-marker -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Upload graph snapshot artifact
+        if: steps.index.outputs.index_ok == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: codebase-memory-graph-${{ github.sha }}
+          path: .codebase-memory/graph.db.zst
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Job summary
+        if: always()
+        continue-on-error: true
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INSTALL_OK: ${{ steps.install.outputs.install_ok }}
+          INSTALL_REASON: ${{ steps.install.outputs.reason }}
+          INDEX_OK: ${{ steps.index.outputs.index_ok }}
+          NODES: ${{ steps.index.outputs.nodes }}
+          EDGES: ${{ steps.index.outputs.edges }}
+          PROJECT: ${{ steps.index.outputs.project }}
+          IMPACT_OK: ${{ steps.impact.outputs.impact_ok }}
+          CHANGED: ${{ steps.impact.outputs.changed_count }}
+          IMPACTED: ${{ steps.impact.outputs.impacted_count }}
+        run: |
+          {
+            echo "## Code Graph"
+            if [ "${INSTALL_OK}" != "true" ]; then
+              echo "- ⚠️ **Install failed**: ${INSTALL_REASON}"
+              echo "- Advisory-only — never blocks merges. See \`docs/code-graph-ci.md\` for the fallback / fix."
+            elif [ "${INDEX_OK}" != "true" ]; then
+              echo "- ⚠️ **Indexing failed** — see the \`Index repository\` step logs."
+            else
+              echo "- ✅ Indexed: \`${NODES}\` nodes, \`${EDGES}\` edges"
+              echo "- Project: \`${PROJECT}\`"
+              if [ "${EVENT_NAME}" = "pull_request" ]; then
+                if [ "${IMPACT_OK}" = "true" ]; then
+                  echo "- Impact: \`${CHANGED}\` files changed, \`${IMPACTED}\` indexed symbols touched"
+                else
+                  echo "- ⚠️ Impact analysis did not complete — see logs"
+                fi
+              fi
+            fi
+            echo
+            echo "_CI/dev-plane only. Never runs on the live trading host; touches no runtime/trade/halt/config code._"
+          } >> "$GITHUB_STEP_SUMMARY"

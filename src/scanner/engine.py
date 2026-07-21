@@ -1359,6 +1359,25 @@ class Scanner:
         # Load config
         self._load_yaml_config()
 
+        # Durable config overlay (P1, operator-approved 2026-07-03): replay
+        # approved adjustments consumed headlessly by the tier7 supervisor onto
+        # this fresh config. MUST run after _load_yaml_config (which calls
+        # apply_profile) — profile dicts would otherwise clobber overlay values.
+        # Fail-open by design (apply_overlay never raises); protected fields
+        # (oanda_environment) are refused inside apply_overlay (Hard NO, L-003).
+        try:
+            from pathlib import Path as _OverlayPath
+            from src.scanner.automation.config_overlay import apply_overlay
+            _overlay_applied = apply_overlay(self.config, _OverlayPath("."))
+            if _overlay_applied:
+                logger.info(
+                    "config_overlay: %d adjustment(s) restored at engine init: %s",
+                    len(_overlay_applied),
+                    ", ".join(a["key"] for a in _overlay_applied),
+                )
+        except Exception as _ov_exc:  # noqa: BLE001 — overlay is never fatal
+            logger.warning(f"config_overlay apply failed (non-fatal): {_ov_exc}")
+
         # Phase 74: Restore mutable scan state from last session
         self.load_scan_state()
 
@@ -2148,6 +2167,7 @@ class Scanner:
         except Exception as exc:
             logger.warning("HybridInference init failed: %s", exc)
             return False
+
     def _init_causal_feature_selector(self) -> bool:
         """Initialize CausalFeatureSelector (US-015)."""
         if self._causal_feature_selector is not None:
@@ -2162,7 +2182,6 @@ class Scanner:
         except Exception as exc:
             logger.debug("CausalFeatureSelector init deferred: %s", exc)
             return False
-
 
     def _init_causal_discovery(self) -> bool:
         """Initialize CausalDiscovery (US-013)."""
@@ -2933,7 +2952,6 @@ class Scanner:
                     return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, details
             except Exception as _hybrid_err:
                 logger.debug("%s: HybridInference error: %s", pair, _hybrid_err)
-
 
         # === SECOND: Legacy fallback volatility gate ===
         vol_allowed, volatility_regime = self._check_volatility_regime(df_feat, pair)
@@ -5226,7 +5244,7 @@ class Scanner:
             elif "No module" in error_msg or "cannot import" in error_msg.lower():
                 friendly = f"Missing dependency: {error_msg}"
             elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                friendly = f"Data fetch timeout — check OANDA connection"
+                friendly = "Data fetch timeout — check OANDA connection"
             elif "401" in error_msg or "403" in error_msg or "Unauthorized" in error_msg:
                 friendly = "OANDA auth failed — check API token in env"
             elif "connection" in error_msg.lower() or "refused" in error_msg.lower():
@@ -7851,7 +7869,7 @@ class Scanner:
                             reason=gm_result.reason,
                         )
                     except Exception as e:
-                        logger.debug("%s: group_momentum block observation log skipped: %s", trade.get('pair','?'), e)
+                        logger.debug("%s: group_momentum block observation log skipped: %s", trade.get('pair', '?'), e)
                         pass
                     continue
                 elif gm_result.action == "boost":
@@ -7873,7 +7891,7 @@ class Scanner:
                             reason=gm_result.reason,
                         )
                     except Exception as e:
-                        logger.debug("%s: group_momentum boost observation log skipped: %s", trade.get('pair','?'), e)
+                        logger.debug("%s: group_momentum boost observation log skipped: %s", trade.get('pair', '?'), e)
                         pass
                 filtered_trades.append(trade)
             trades = filtered_trades

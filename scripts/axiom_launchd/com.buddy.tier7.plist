@@ -6,7 +6,15 @@
   <string>com.buddy.tier7</string>
   <!-- The Tier 7 bounded self-heal supervisor (L5-clamped). Respects state.json halt
        and the practice pin every cycle. KeepAlive = process resilience, NOT a halt or
-       autonomy-bound bypass. -->
+       autonomy-bound bypass.
+
+       StandardOutPath/StandardErrorPath point OUTSIDE ~/Documents (a TCC-protected
+       folder) -- 2026-07-06: reloading the fleet via load.sh made this exact service
+       crash-loop again (exit 78, no output ever reached tier7_loop.out) once macOS's
+       per-file com.apple.macl grant for that path lapsed. Confirmed by running the
+       entrypoint directly (bypassing xpcproxy's sandboxed pre-exec redirect): it
+       started cleanly. See com.axiom.operator.plist's original fix for the same
+       failure mode (commit 876c291). -->
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/Caskroom/miniforge/base/bin/python3</string>
@@ -26,8 +34,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/tier7_loop.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.tier7.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buddy/Documents/ml_engine/trained_data/axiom/tier7_loop.out</string>
+  <string>/Users/buddy/Library/Logs/com.buddy.tier7.log</string>
 </dict>
 </plist>

@@ -23,11 +23,14 @@ registry outage cannot stop a local verdict.
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Mapping
 
+from src.evidence.canonical import canonical_bytes
 from src.evidence.contracts import (
     AuthorityRole,
     CapabilityProfile,
@@ -38,6 +41,7 @@ from src.evidence.contracts import (
     ImportCheck,
     JobManifest,
     LocalImportVerdict,
+    SignedEnvelope,
 )
 from src.evidence.hashing import content_digest, sha256_bytes
 from src.evidence.importer import build_import_verdict
@@ -45,7 +49,14 @@ from src.evidence.signing import Ed25519Signer, TrustStore, verify_envelope
 from src.evidence.store import EvidenceStore
 
 from .evaluation import EvaluationParams, evaluate_partitions
-from .models import HeadImportOutcome, PackagedHead
+from .models import (
+    CAPABILITY_PROFILE_PATH,
+    DATASET_MANIFEST_PATH,
+    EVALUATION_REPORT_PATH,
+    JOB_MANIFEST_PATH,
+    HeadImportOutcome,
+    PackagedHead,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +85,16 @@ def _first_failure(checks: tuple[ImportCheck, ...], fallback: str) -> str:
     return fallback
 
 
+def _finite_float_candidate(value: object) -> float:
+    """Convert JSON numeric metadata without letting oversized ints abort import."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return math.nan
+    try:
+        return float(value)
+    except (OverflowError, TypeError, ValueError):
+        return math.nan
+
+
 def _partitions_match_manifest(
     dataset_manifest: DatasetManifest, partitions: Mapping[str, bytes]
 ) -> bool:
@@ -90,7 +111,10 @@ def _partitions_match_manifest(
 def _hash_checks(
     head: PackagedHead,
     job: JobManifest,
+    job_envelope: SignedEnvelope,
     report: EvaluationReport,
+    capability_profile_envelope: SignedEnvelope,
+    dataset_manifest_envelope: SignedEnvelope,
     dataset_manifest: DatasetManifest,
     partitions: Mapping[str, bytes],
 ) -> tuple[ImportCheck, ...]:
@@ -110,6 +134,16 @@ def _hash_checks(
     report_bound = (
         head.evaluation_report_envelope.payload_digest in package.evaluation_report_digests
     )
+    signed_lineage = {
+        JOB_MANIFEST_PATH: job_envelope,
+        DATASET_MANIFEST_PATH: dataset_manifest_envelope,
+        CAPABILITY_PROFILE_PATH: capability_profile_envelope,
+        EVALUATION_REPORT_PATH: head.evaluation_report_envelope,
+    }
+    signed_lineage_durable = all(
+        head.files.get(relative_path) == canonical_bytes(envelope)
+        for relative_path, envelope in signed_lineage.items()
+    )
     lineage_ok = (
         tuple(package.dataset_manifest_digests) == tuple(job.dataset_manifest_digests)
         and report.job_manifest_digest == package.job_manifest_digest
@@ -124,6 +158,8 @@ def _hash_checks(
         _check("artifact_hashes_match", artifact_ok, "artifact bytes match declared digest"),
         _check("evaluation_report_bound_to_package", report_bound,
                "evaluation report digest is bound in the package"),
+        _check("signed_lineage_objects_persisted", signed_lineage_durable,
+               "signed job, dataset, capability and evaluation envelopes are immutable package members"),
         _check("dataset_lineage_matches_job", lineage_ok, "package binds the signed job's dataset lineage"),
         _check("dataset_partitions_match_manifest", partitions_ok,
                "supplied partitions match the signed dataset manifest hashes"),
@@ -153,10 +189,62 @@ def _policy_checks(
     completeness_ok = (
         len(report.gates) >= 1 and report.trial_count >= 1 and report.effective_sample_size > 0
     )
+    cost = report.cost
+    usage = report.resource_usage
+    amount = cost.get("amount")
+    rate = cost.get("rate_per_hour")
+    wall_seconds = usage.get("wall_seconds")
+    numeric_amount = _finite_float_candidate(amount)
+    numeric_rate = _finite_float_candidate(rate)
+    numeric_wall_seconds = _finite_float_candidate(wall_seconds)
+    head_count = usage.get("head_count")
+    expected_amount = None
+    if (
+        math.isfinite(numeric_rate)
+        and numeric_rate >= 0.0
+        and math.isfinite(numeric_wall_seconds)
+        and numeric_wall_seconds >= 0.0
+    ):
+        expected_amount = float(
+            (
+                Decimal(str(numeric_wall_seconds))
+                * Decimal(str(numeric_rate))
+                / Decimal("3600")
+            ).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        )
+    expected_basis = (
+        "local_unmetered_no_incremental_provider_charge"
+        if numeric_rate == 0.0
+        else "configured_local_cpu_hourly_rate"
+    )
+    cost_ok = (
+        math.isfinite(numeric_amount)
+        and numeric_amount >= 0.0
+        and math.isfinite(numeric_rate)
+        and numeric_rate >= 0.0
+        and math.isfinite(numeric_wall_seconds)
+        and numeric_wall_seconds >= 0.0
+        and expected_amount is not None
+        and numeric_amount == expected_amount
+        and cost.get("currency") == "USD"
+        and cost.get("basis") == expected_basis
+        and cost.get("scope") == "producer_evaluation"
+        and cost.get("allocation") == "equal_share_of_job_evaluator_wall_time"
+        and usage.get("scope") == "producer_evaluation"
+        and usage.get("allocation") == "equal_share_of_job_evaluator_wall_time"
+        and isinstance(head_count, int)
+        and not isinstance(head_count, bool)
+        and head_count == len(job.expected_outputs)
+    )
     return (
         _check("no_forbidden_capabilities", cap_ok, "worker capability profile grants no authority"),
         _check("safety_assertions_present_and_passed", safety_ok, "all package safety assertions passed"),
         _check("evaluation_completeness", completeness_ok, "report has gates, a trial count and a holdout"),
+        _check(
+            "evaluation_cost_accounted",
+            cost_ok,
+            "signed report records allocated producer compute and USD cost basis",
+        ),
     )
 
 
@@ -253,9 +341,9 @@ def import_head(
     store: EvidenceStore,
     head: PackagedHead,
     *,
-    job: JobManifest,
-    capability_profile_envelope,
-    dataset_manifest_envelope,
+    job_envelope: SignedEnvelope,
+    capability_profile_envelope: SignedEnvelope,
+    dataset_manifest_envelope: SignedEnvelope,
     partitions: Mapping[str, bytes],
     trust_store: TrustStore,
     importer: Ed25519Signer,
@@ -283,6 +371,8 @@ def import_head(
     params = params or EvaluationParams()
     package_digest = store.write_package(head.package_envelope, dict(head.files))
 
+    job = verify_envelope(job_envelope, JobManifest, trust_store)
+    assert isinstance(job, JobManifest)
     report = verify_envelope(head.evaluation_report_envelope, EvaluationReport, trust_store)
     assert isinstance(report, EvaluationReport)
     capability_profile = verify_envelope(capability_profile_envelope, CapabilityProfile, trust_store)
@@ -291,7 +381,16 @@ def import_head(
     assert isinstance(dataset_manifest, DatasetManifest)
 
     checks = _StageChecks(
-        hash_checks=_hash_checks(head, job, report, dataset_manifest, partitions),
+        hash_checks=_hash_checks(
+            head,
+            job,
+            job_envelope,
+            report,
+            capability_profile_envelope,
+            dataset_manifest_envelope,
+            dataset_manifest,
+            partitions,
+        ),
         policy_checks=_policy_checks(head, job, capability_profile, report),
         replay_checks=_replay_checks(head, report, partitions, params, evaluator),
         gate_check=_check(

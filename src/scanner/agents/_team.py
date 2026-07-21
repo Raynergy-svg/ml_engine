@@ -504,6 +504,16 @@ class ScannerAgentTeam:
 
             regime_weights = data[regime]
             for agent_name in list(regime_weights.keys()):
+                if agent_name not in self._BASE_WEIGHTS:
+                    logger.warning(
+                        f"Unknown agent key {agent_name!r} in {regime} weights (not in "
+                        "_BASE_WEIGHTS). Dropping -- persisted weight data should only ever "
+                        "contain the canonical agent roster."
+                    )
+                    del regime_weights[agent_name]
+                    issues_found = True
+                    continue
+
                 val = regime_weights[agent_name]
 
                 # Check for NaN or inf
@@ -936,7 +946,7 @@ class ScannerAgentTeam:
 
         logger.info(
             f"apply_proposed_weights: applied {len(changes)} changes in regime {regime}: "
-            f"{ {k: (v['old'], v['new']) for k, v in changes.items()} }"
+            f"{({k: (v['old'], v['new']) for k, v in changes.items()})}"
         )
         result["applied"] = True
         result["changes"] = changes
@@ -1502,8 +1512,10 @@ class ScannerAgentTeam:
         # Canonical toggle: enable_devil_advocate_agent (new _agent-suffixed name).
         # Legacy toggle: enable_devil_advocate (kept for backward compatibility).
         # Both default True; disabling requires explicit False on the canonical flag.
-        _da_enabled = getattr(self.config, "enable_devil_advocate_agent", True) and \
-                      getattr(self.config, "enable_devil_advocate", True)
+        _da_enabled = (
+            getattr(self.config, "enable_devil_advocate_agent", True)
+            and getattr(self.config, "enable_devil_advocate", True)
+        )
         if _da_enabled:
             try:
                 from src.scanner.agents.agent_da import DevilsAdvocateAgent
@@ -3405,7 +3417,7 @@ class ScannerAgentTeam:
 
         Always advisory (passed=True) — never blocks a trade.
         """
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
 
         pair = ctx.analysis.pair
         direction = ctx.analysis.direction

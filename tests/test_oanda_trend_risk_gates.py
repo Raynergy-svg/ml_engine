@@ -23,7 +23,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from src.data.execution_cost_model import CostEstimate  # noqa: E402
 from src.equity.trend_risk_gates import (  # noqa: E402
+    DEFAULT_MAX_COST_R_FRACTION,
     RiskGateConfig,
     accumulate_bucket_risk,
     bias_detector,
@@ -31,6 +33,7 @@ from src.equity.trend_risk_gates import (  # noqa: E402
     buckets_over_cap,
     clamp_risk_pct,
     compute_bucket_risk,
+    cost_aware_gate,
     currency_legs,
     evaluate_winner_stop,
     leverage_cap_scale,
@@ -41,6 +44,16 @@ from src.equity.trend_risk_gates import (  # noqa: E402
     risk_normalized_units,
     save_risk_state,
 )
+
+
+def _cost_estimate(*, source="fills", spread_raw=0.0002, slippage_raw=0.0,
+                   instrument="EUR_USD") -> CostEstimate:
+    return CostEstimate(
+        instrument=instrument, source=source, spread_raw=spread_raw,
+        spread_pips=None, slippage_raw=slippage_raw, slippage_pips=None,
+        half_spread_cost_per_unit=None, sample_count_fills=5, sample_count_ticks=0,
+        confidence=0.5, as_of="2026-07-08T00:00:00+00:00", notes=[])
+
 
 NAV = 102818.5912
 LAST_PX = {
@@ -465,6 +478,97 @@ def test_risk_state_load_survives_corrupt_json(tmp_path):
 
 
 # --------------------------------------------------------------------- #
+# Rule 7 (2026-07-08) — cost-awareness: ADDITIVE, fail-closed on missing #
+# execution-cost data (src.data.execution_cost_model wiring)            #
+# --------------------------------------------------------------------- #
+def test_cost_aware_gate_refuses_when_estimate_missing():
+    """No fabrication: an instrument with no CostEstimate at all (never
+    looked up / never in the traded universe) must REFUSE, exactly like
+    risk_normalized_units refuses on a missing ATR."""
+    allow, reason = cost_aware_gate(
+        instrument="EUR_USD", r_distance_quote=0.004, cost_estimate=None)
+    assert allow is False
+    assert reason == "cost_unknown_fail_closed"
+
+
+def test_cost_aware_gate_refuses_on_insufficient_data_source():
+    est = _cost_estimate(source="insufficient_data", spread_raw=None, slippage_raw=None)
+    allow, reason = cost_aware_gate(
+        instrument="EUR_USD", r_distance_quote=0.004, cost_estimate=est)
+    assert allow is False
+    assert reason == "cost_unknown_fail_closed"
+
+
+def test_cost_aware_gate_refuses_on_partial_data_spread_known_slippage_unknown():
+    """Ticks cleared the sample bar (spread known) but fills didn't (no
+    slippage signal yet) — never assume the missing half is free."""
+    est = _cost_estimate(source="ticks", spread_raw=0.0002, slippage_raw=None)
+    allow, reason = cost_aware_gate(
+        instrument="EUR_USD", r_distance_quote=0.004, cost_estimate=est)
+    assert allow is False
+    assert reason == "cost_partial_data_fail_closed"
+
+
+def test_cost_aware_gate_refuses_on_non_finite_cost_fields():
+    est = _cost_estimate(spread_raw=float("nan"), slippage_raw=0.0)
+    allow, reason = cost_aware_gate(
+        instrument="EUR_USD", r_distance_quote=0.004, cost_estimate=est)
+    assert allow is False
+    assert reason == "cost_non_finite_fail_closed"
+
+
+def test_cost_aware_gate_refuses_on_negative_spread():
+    """Code reviewer finding (2026-07-08): a corrupt/crossed-book negative
+    spread must be rejected directly, not masked by an offsetting slippage
+    term in the combined round_trip_cost sum."""
+    est = _cost_estimate(spread_raw=-0.0005, slippage_raw=0.001)  # sum still >= 0
+    allow, reason = cost_aware_gate(
+        instrument="EUR_USD", r_distance_quote=0.004, cost_estimate=est)
+    assert allow is False
+    assert reason == "cost_negative_spread_invalid"
+
+
+def test_cost_aware_gate_allows_cheap_cost_relative_to_r():
+    """2-pip spread, zero slippage, against a realistic 40-pip (0.004) stop:
+    cost_r_fraction = 0.0002/0.004 = 0.05, well under the 0.30 default cap."""
+    est = _cost_estimate(spread_raw=0.0002, slippage_raw=0.0)
+    allow, reason = cost_aware_gate(
+        instrument="EUR_USD", r_distance_quote=0.004, cost_estimate=est)
+    assert allow is True
+    assert reason == "cost_aware_ok"
+
+
+def test_cost_aware_gate_blocks_when_cost_eats_the_edge():
+    """A wide/illiquid spread against a tight stop eats too much of the R
+    budget — must block even though the estimate itself is real, not missing."""
+    est = _cost_estimate(spread_raw=0.0015, slippage_raw=0.0005)  # round-trip 0.0025
+    allow, reason = cost_aware_gate(
+        instrument="EUR_USD", r_distance_quote=0.004,  # 0.0025/0.004 = 0.625 > 0.30
+        cost_estimate=est)
+    assert allow is False
+    assert reason.startswith("cost_exceeds_edge:")
+
+
+def test_cost_aware_gate_refuses_on_missing_r_distance():
+    est = _cost_estimate()
+    assert cost_aware_gate(instrument="EUR_USD", r_distance_quote=0.0,
+                           cost_estimate=est)[0] is False
+    assert cost_aware_gate(instrument="EUR_USD", r_distance_quote=None,
+                           cost_estimate=est)[0] is False
+
+
+def test_cost_aware_gate_respects_custom_max_cost_r_fraction():
+    """Same numbers as the 'blocks' case above, but a looser caller-supplied
+    cap (documents the knob is real, not hardcoded) — never changes the
+    DEFAULT, which stays conservative."""
+    est = _cost_estimate(spread_raw=0.0015, slippage_raw=0.0005)  # cost_r = 0.625
+    allow, _ = cost_aware_gate(instrument="EUR_USD", r_distance_quote=0.004,
+                               cost_estimate=est, max_cost_r_fraction=0.70)
+    assert allow is True
+    assert DEFAULT_MAX_COST_R_FRACTION == 0.30  # documents the conservative default is untouched
+
+
+# --------------------------------------------------------------------- #
 # Config defaults / clamping sanity                                     #
 # --------------------------------------------------------------------- #
 def test_risk_gate_config_defaults_are_within_operator_specified_ranges():
@@ -473,3 +577,4 @@ def test_risk_gate_config_defaults_are_within_operator_specified_ranges():
     assert cfg.max_bucket_risk_r > 0
     assert cfg.pyramid_cum_risk_r_cap <= 1.0
     assert cfg.breakeven_trigger_r == 1.0
+    assert 0.0 < cfg.max_cost_r_fraction <= 1.0

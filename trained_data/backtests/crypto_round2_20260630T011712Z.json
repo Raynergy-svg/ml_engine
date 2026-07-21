@@ -1,0 +1,86 @@
+{
+  "H4": {
+    "avg_turnover": 0.093,
+    "bonferroni_alpha_N15": 0.0033,
+    "clears_ex_history": false,
+    "full_max_dd": -0.232,
+    "gate": {
+      "btc_neutral(|b|<=0.15)": true,
+      "history>=10y": false,
+      "max_dd<=0.25": true,
+      "mt(DSR_N15>=.95 & p<.0033)": false,
+      "oos_confirmed": false,
+      "oos_sharpe>=0.40": true
+    },
+    "is_net_sharpe": -0.074,
+    "label": "H4_infra_corrected_xs_momentum",
+    "oos_bootstrap_p": 0.0994,
+    "oos_btc_beta": -0.036,
+    "oos_cost_ann": 0.0324,
+    "oos_dsr_N15": 0.298,
+    "oos_gross_sharpe": 1.098,
+    "oos_max_dd": -0.115,
+    "oos_net_ann": 0.087,
+    "oos_net_sharpe": 0.8
+  },
+  "H5": {
+    "avg_turnover": 0.029,
+    "bonferroni_alpha_N15": 0.0033,
+    "clears_ex_history": false,
+    "full_max_dd": -0.162,
+    "gate": {
+      "btc_neutral(|b|<=0.15)": true,
+      "history>=10y": false,
+      "max_dd<=0.25": true,
+      "mt(DSR_N15>=.95 & p<.0033)": false,
+      "oos_confirmed": true,
+      "oos_sharpe>=0.40": true
+    },
+    "is_net_sharpe": 0.913,
+    "label": "H5_ts_trend_momentum",
+    "oos_bootstrap_p": 0.0306,
+    "oos_btc_beta": -0.073,
+    "oos_cost_ann": 0.0113,
+    "oos_dsr_N15": 0.496,
+    "oos_gross_sharpe": 1.229,
+    "oos_max_dd": -0.069,
+    "oos_net_ann": 0.1332,
+    "oos_net_sharpe": 1.133
+  },
+  "H5_risk_control_axis": {
+    "buyhold_btc_oos_maxDD": -0.496,
+    "buyhold_btc_oos_sharpe": 0.716,
+    "ew_longonly_oos_maxDD": -0.886,
+    "ew_longonly_oos_sharpe": -0.3,
+    "h5_full_maxDD": -0.162,
+    "h5_oos_btc_beta": -0.073,
+    "h5_oos_sharpe": 1.133
+  },
+  "bonferroni_alpha": 0.0033333333333333335,
+  "elapsed_s": 51.9,
+  "experiment": "crypto_round2_H4_H5",
+  "frozen_params": {
+    "H4": {
+      "cost_bps": 10,
+      "rebalance_days": 7,
+      "signal": "xs_momentum_14d",
+      "vol_target": 0.1
+    },
+    "H5": {
+      "cost_bps": 10,
+      "rebalance_days": 7,
+      "signal": "ts_trend_sign_30d",
+      "sizing": "inverse_vol",
+      "vol_target": 0.1
+    }
+  },
+  "n_trials": 15,
+  "pre_registered": "docs/experiment-crypto-edge-hunt-round2-2026-06-29.md",
+  "universe": {
+    "ever_liquid": 693,
+    "span": [
+      "2020-01-01",
+      "2026-05-31"
+    ]
+  }
+}

@@ -282,15 +282,19 @@ def test_causality_positions_depend_only_on_past():
     pd.testing.assert_frame_equal(past_a, past_b)
 
 
-def test_full_result_shape_and_dsr_todo():
-    """The returned dict has all four arms, a summary, and the honest DSR TODO."""
+def test_full_result_shape_and_dsr_computed():
+    """The returned dict has all four arms, a summary, and a real §4.5 DSR/Bonferroni block."""
     scores, prices, cutoff = _build_world()
     out = run_research_backtest(scores, prices, cutoff)
     for arm in (ARM_FULL, ARM_PRE_CUTOFF, ARM_POST_CUTOFF, ARM_PLACEBO):
         assert arm in out
     assert "summary" in out and "params" in out
-    # DSR-OOS is an explicit None TODO, never a faked number.
-    assert out[ARM_FULL]["dsr_oos_n22"] is None
+    # DSR-OOS(N=22) is now computed for real (prereg §4.5) — never faked, but no
+    # longer a hardcoded TODO None either. It abstains (None) only when there
+    # are too few bars to estimate skew/kurtosis/variance meaningfully.
+    dsr = out[ARM_FULL]["dsr_oos_n22"]
+    assert dsr is not None
+    assert "dsr" in dsr and "p_oos_bootstrap" in dsr and "passes_significance" in dsr
     assert out[ARM_FULL]["n_trials"] == N_TRIALS
     # effective-N is reported for a holding book.
     assert out[ARM_FULL]["effective_n"] is not None
@@ -383,3 +387,83 @@ def test_consistency_false_when_both_arms_negative():
     summary = H._build_summary(results)
     assert summary["post_cutoff_consistent_with_full"] is False
     assert summary["overall_verdict"] == "INSUFFICIENT"
+
+
+# ---------------------------------------------------------------------------
+# §4.5 — DSR-OOS(N=22) + Bonferroni block-bootstrap (real computation, not TODO)
+# ---------------------------------------------------------------------------
+
+
+def _daily_returns(mean: float, std: float, n: int, *, seed: int) -> pd.Series:
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2020-01-01", periods=n, freq="D", tz="UTC")
+    return pd.Series(rng.normal(mean, std, size=n), index=idx)
+
+
+def test_dsr_abstains_below_minimum_bars():
+    """Too few bars -> None, never a noise-driven number."""
+    ret = _daily_returns(0.01, 0.01, 5, seed=1)
+    assert H._deflated_sharpe_ratio(ret, 22) is None
+    assert H._circular_block_bootstrap_sharpe_pvalue(ret) is None
+    result = H._dsr_oos_n22(ret)
+    assert result["dsr"] is None
+    assert result["p_oos_bootstrap"] is None
+    assert result["passes_significance"] is None
+    assert result["insufficient_data"] is True
+
+
+def test_dsr_high_for_strong_persistent_edge():
+    """A strongly positive, low-noise return stream clears both DSR>=0.95 and
+    the Bonferroni bootstrap p-value comfortably."""
+    ret = _daily_returns(0.004, 0.003, 1000, seed=2)  # SR ~ 0.004/0.003*sqrt(252) ~ huge
+    result = H._dsr_oos_n22(ret, n_trials=N_TRIALS)
+    assert result["dsr"] is not None and result["dsr"] > 0.95
+    assert result["p_oos_bootstrap"] is not None and result["p_oos_bootstrap"] < H.BONFERRONI_ALPHA
+    assert result["passes_significance"] is True
+
+
+def test_dsr_low_for_zero_mean_noise():
+    """Pure zero-mean noise must NOT clear the multiple-testing bar."""
+    ret = _daily_returns(0.0, 0.01, 1000, seed=3)
+    result = H._dsr_oos_n22(ret, n_trials=N_TRIALS)
+    assert result["dsr"] is not None and result["dsr"] < 0.95
+    assert result["passes_significance"] is False
+
+
+def test_dsr_bootstrap_deterministic_same_seed():
+    """The block bootstrap is reproducible: identical input -> identical p-value."""
+    ret = _daily_returns(0.002, 0.01, 500, seed=4)
+    a = H._circular_block_bootstrap_sharpe_pvalue(ret)
+    b = H._circular_block_bootstrap_sharpe_pvalue(ret)
+    assert a == b
+
+
+def test_build_summary_real_requires_significance_pass():
+    """REAL requires the §4.5 significance extension on top of the gate + §1
+    controls — a full-arm gate pass with dsr_oos_n22 UNSET (no significance
+    result at all) must NOT read REAL even with every other control clean."""
+    results = {
+        ARM_FULL: _arm(2.0, True),
+        ARM_POST_CUTOFF: _arm(1.5, False),
+        ARM_PLACEBO: _arm(0.05, False),
+        ARM_PRE_CUTOFF: _arm(2.0, False),
+    }
+    summary = H._build_summary(results, blinding_audit_clean=True)
+    assert summary["full_significance_passes"] is False
+    assert summary["overall_verdict"] != "REAL"
+
+
+def test_build_summary_real_when_all_controls_and_significance_clear():
+    """The one case that SHOULD read REAL: gate pass + clean placebo + confirming
+    post-cutoff + clean blinding audit + a clearing §4.5 significance result."""
+    full_arm = _arm(2.0, True)
+    full_arm["dsr_oos_n22"] = {"dsr": 0.99, "passes_significance": True}
+    results = {
+        ARM_FULL: full_arm,
+        ARM_POST_CUTOFF: _arm(1.5, False),
+        ARM_PLACEBO: _arm(0.05, False),
+        ARM_PRE_CUTOFF: _arm(2.0, False),
+    }
+    summary = H._build_summary(results, blinding_audit_clean=True)
+    assert summary["full_significance_passes"] is True
+    assert summary["overall_verdict"] == "REAL"

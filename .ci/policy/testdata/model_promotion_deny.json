@@ -1,0 +1,9 @@
+{
+  "pr": {"number": "9005", "base_ref": "main", "head_ref": "feature/promotion-tweak"},
+  "changed_files": [
+    "src/brain_loop/promotion.py"
+  ],
+  "diff_signals": {"risky_live_patterns_found": []},
+  "review_evidence": {"checklist_file_changed": false, "labels": []},
+  "gate_evidence": {"ship_gate_files_changed": [], "eval_report_files_changed": []}
+}

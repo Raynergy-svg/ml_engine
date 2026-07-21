@@ -1,0 +1,8 @@
+{
+  "excluded_no_price_series": [],
+  "excluded_nan_bars": [
+    "FISV"
+  ],
+  "rule": "pre-reg \u00a72 price-coverage exclusion; frozen backtest refuses to forward-fill NaN bars (no-fill contract). Content-blind: excluded on price-data completeness, not score value.",
+  "n_scores_after_exclusion": 419
+}

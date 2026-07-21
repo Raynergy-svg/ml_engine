@@ -64,6 +64,14 @@ _EQUITY = (
     "StockholdersEquity",
     "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
 )
+_CFO_CONCEPTS = (
+    "NetCashProvidedByUsedInOperatingActivities",
+    "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+)
+_TOTAL_ASSETS = ("Assets",)
+# dei cover-page concept (primary) + us-gaap fallback for shares outstanding.
+_SHARES_DEI = ("EntityCommonStockSharesOutstanding",)
+_SHARES_USGAAP_FALLBACK = ("CommonStockSharesOutstanding",)
 
 
 def _get_json(session: requests.Session, url: str, *, retries: int = 4) -> Optional[dict]:
@@ -152,6 +160,65 @@ def _earliest_filed(obs_list: Sequence[dict], *, annual: bool, flow: bool) -> Di
     return best
 
 
+def _shares_outstanding_by_filing(
+    dei: dict, usgaap: dict,
+) -> Dict[str, Tuple[str, float]]:
+    """PIT annual shares-outstanding series, keyed by 10-K ``filed`` date.
+
+    EMPIRICAL FINDING (2026-07-02, verified against live EDGAR for AAPL + MSFT):
+    the ``dei:EntityCommonStockSharesOutstanding`` fact is a 10-K COVER-PAGE
+    value. Its ``end`` is the date the cover page was signed (days-to-weeks
+    AFTER the fiscal year end embedded in ``end`` for ``us-gaap:Assets`` /
+    ``StockholdersEquity`` in the SAME filing) — e.g. AAPL FY2009 10-K
+    (accn 0001193125-09-214859, filed 2009-10-27): ``Assets.end=2009-09-26``
+    but ``dei:EntityCommonStockSharesOutstanding.end=2009-10-16``. The existing
+    ``_earliest_filed``/``_merge_concepts`` pattern keys observations by
+    ``end`` so it cannot align a dei cover-page fact with its us-gaap peers
+    for the same fiscal year — doing so naively would either drop every dei
+    observation (no ``end`` match) or, worse, silently mis-key it to the
+    WRONG fiscal year if a coincidental ``end`` match occurred.
+
+    FIX: key shares-outstanding by its OWN 10-K ``filed`` date instead of
+    ``end``. Downstream (``_period_records``), each ratio's ``fiscal-year
+    end`` (from the flow/stock concepts that DO carry a real FY-end) picks up
+    the most-recently-filed shares count AS OF that ratio's own filing window
+    via forward-fill on the availability grid — never an ``end``-keyed join.
+    This is still true-PIT: the returned ``filed`` date is real, and a shares
+    count is only used once its OWN accession is public. Only 10-K filings are
+    kept (dei is also filed on 10-Q cover pages, but we want the same annual
+    cadence as the other concepts); earliest-filed wins per filed-date bucket
+    (10-K/A amendments filed the same day as the original are deduped by
+    keeping the earliest).
+    """
+    best: Dict[str, Tuple[str, float]] = {}
+
+    def _harvest(node: Optional[dict]) -> None:
+        if not node:
+            return
+        units = node.get("units", {}).get("shares")
+        if not units:
+            return
+        for o in units:
+            form = str(o.get("form", ""))
+            if not form.startswith("10-K"):
+                continue
+            filed = o.get("filed")
+            val = o.get("val")
+            if filed is None or not isinstance(val, (int, float)):
+                continue
+            # key on filed date; earliest-reported value wins if duplicated
+            prev = best.get(filed)
+            if prev is None:
+                best[filed] = (filed, float(val))
+
+    for name in _SHARES_DEI:
+        _harvest(dei.get(name))
+    if not best:
+        for name in _SHARES_USGAAP_FALLBACK:
+            _harvest(usgaap.get(name))
+    return best
+
+
 def _merge_concepts(usgaap: dict, names: Sequence[str], *, flow: bool) -> Dict[str, Tuple[str, float]]:
     """MERGE all synonym tags into one PIT annual series — for each period end take
     the EARLIEST-filed value across ANY synonym. (Filers switch tags across eras,
@@ -176,17 +243,33 @@ def quality_records_from_facts(facts: dict) -> List[dict]:
     """Build PIT annual quality records from one company's companyfacts payload.
 
     Each record: {report_period (FY end), filed (PIT date = latest input filing for
-    that year), source, pit, gross_margin?, net_margin?, debt_to_equity?}. A ratio
-    is NaN when an input is missing; its availability is the LATEST filing among its
-    inputs (a ratio is knowable only once every input is public — no lookahead).
+    that year), source, pit, gross_margin?, net_margin?, debt_to_equity?, accruals?,
+    equity?, net_income?, shares_outstanding?}. A ratio/raw field is NaN (absent)
+    when an input is missing; its availability is the LATEST filing among its
+    inputs (a field is knowable only once every input is public — no lookahead).
+
+    Raw (non-ratio) exports ``equity``/``net_income``/``shares_outstanding`` feed
+    the VALUE factor's price join (``src.equity.value_data``), which needs the
+    underlying levels, not a pre-computed ratio, because it must be joined to a
+    DAILY price series rather than combined at the same period-end as the other
+    ratio inputs.
     """
     usgaap = facts.get("facts", {}).get("us-gaap", {})
+    dei = facts.get("facts", {}).get("dei", {})
     rev = _merge_concepts(usgaap, _REVENUE_CONCEPTS, flow=True)
     gp = _merge_concepts(usgaap, _GROSS_PROFIT, flow=True)
     cost = _merge_concepts(usgaap, _COST_CONCEPTS, flow=True)
     ni = _merge_concepts(usgaap, _NET_INCOME, flow=True)
     liab = _merge_concepts(usgaap, _LIABILITIES, flow=False)
     eq = _merge_concepts(usgaap, _EQUITY, flow=False)
+    cfo = _merge_concepts(usgaap, _CFO_CONCEPTS, flow=True)
+    assets = _merge_concepts(usgaap, _TOTAL_ASSETS, flow=False)
+    # Shares outstanding: keyed by ITS OWN filed date (see _shares_outstanding_by_filing
+    # docstring for why an end-keyed join is wrong here). We fold it into the
+    # per-period record by matching to the nearest FY-end period whose OWN filing
+    # was filed on the same date (same 10-K accession -> same filed date for both
+    # the us-gaap facts and the dei cover-page fact in that filing).
+    shares_by_filed = _shares_outstanding_by_filing(dei, usgaap)
 
     # Gross profit: direct GrossProfit tag, else derive Revenues - CostOfRevenue
     # (most filers report cost, not a GrossProfit line). Availability = later filing.
@@ -196,13 +279,24 @@ def quality_records_from_facts(facts: dict) -> List[dict]:
             cf, cv = cost[end]
             gp_eff[end] = (max(rf, cf), rv - cv)
 
-    ends = set(rev) | set(gp_eff) | set(ni) | set(liab) | set(eq)
+    # Build end -> shares(filed, val) by matching each stock/flow concept's own
+    # filed date for that period (liab/eq/assets are all filed alongside the 10-K
+    # cover page, so their filed date equals the dei fact's filed date exactly).
+    def _shares_for(end: str, *sources: Dict[str, Tuple[str, float]]) -> Optional[Tuple[str, float]]:
+        for src in sources:
+            if end in src:
+                filed_at = src[end][0]
+                if filed_at in shares_by_filed:
+                    return shares_by_filed[filed_at]
+        return None
+
+    ends = set(rev) | set(gp_eff) | set(ni) | set(liab) | set(eq) | set(cfo) | set(assets)
     records: List[dict] = []
     for end in sorted(ends):
         comp: Dict[str, float] = {}
         fileds: List[str] = []
 
-        def _ratio(numkey, num, den, label):
+        def _ratio(num, den, label):
             if end in num and end in den:
                 nf, nv = num[end]
                 df, dv = den[end]
@@ -210,9 +304,36 @@ def quality_records_from_facts(facts: dict) -> List[dict]:
                     comp[label] = nv / dv
                     fileds.extend([nf, df])
 
-        _ratio("gm", gp_eff, rev, "gross_margin")
-        _ratio("nm", ni, rev, "net_margin")
-        _ratio("de", liab, eq, "debt_to_equity")
+        _ratio(gp_eff, rev, "gross_margin")
+        _ratio(ni, rev, "net_margin")
+        _ratio(liab, eq, "debt_to_equity")
+
+        # Accruals (Sloan 1996): (NetIncome - CFO) / TotalAssets. All three
+        # annual, filing-date PIT; filed = max of the three inputs' filed dates.
+        if end in ni and end in cfo and end in assets:
+            nif, niv = ni[end]
+            cff, cfv = cfo[end]
+            af, av = assets[end]
+            if av not in (0, 0.0):
+                comp["accruals"] = (niv - cfv) / av
+                fileds.extend([nif, cff, af])
+
+        # Raw (non-ratio) exports for the VALUE factor's price join. Each is
+        # gated on its own real filed date — never fabricated.
+        if end in eq:
+            ef, ev = eq[end]
+            comp["equity"] = ev
+            fileds.append(ef)
+        if end in ni:
+            nif, niv = ni[end]
+            comp["net_income"] = niv
+            fileds.append(nif)
+        sh = _shares_for(end, eq, assets, ni)
+        if sh is not None:
+            shf, shv = sh
+            comp["shares_outstanding"] = shv
+            fileds.append(shf)
+
         if not comp or not fileds:
             continue
         records.append({

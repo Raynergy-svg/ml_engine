@@ -807,3 +807,77 @@ def test_artifact_corruption_blocks_index_reconstruction(tmp_path: Path) -> None
     shutil.rmtree(context.store.root / "indexes")
     with pytest.raises(StoreCorruptionError, match="stored artifact mismatch"):
         context.store.rebuild_indexes()
+
+
+def test_package_member_reread_rechecks_declared_bytes(tmp_path: Path) -> None:
+    context = build_store(tmp_path)
+    ref = context.package.artifacts[0]
+    isolated_read = tmp_path / "member-reread.bin"
+    original = context.store.load_package_file(
+        context.package_digest, ref.relative_path
+    )
+    tampered = bytearray(original)
+    tampered[-1] ^= 0x01
+    isolated_read.write_bytes(bytes(tampered))
+    assert isolated_read.stat().st_size == ref.size_bytes
+
+    with pytest.raises(StoreCorruptionError, match="stored artifact mismatch"):
+        context.store._read_verified_member(isolated_read, ref)
+
+def test_ledger_reconstructing_to_a_different_package_is_rejected(tmp_path: Path) -> None:
+    """A package directory must not be indexed with another package's ledger.
+
+    The directory name is content-addressed, so it must equal the digest the ledger
+    under it reconstructs to. Without this rail the projection would silently
+    attribute one package's disposition state to another package's digest.
+
+    This is defence in depth. A ledger that has reached QUARANTINED is already
+    caught by the verdict cross-check in _load_ledger_unlocked ("referenced local
+    import verdict belongs to another package"), but that rail only fires when the
+    ledger happens to reference a verdict. A CREATED-only ledger references none,
+    and reaches the projection unchallenged.
+    """
+    first = build_store(tmp_path)
+    created = signed_event(
+        first,
+        sequence=0,
+        previous_digest=None,
+        from_state=None,
+        to_state=DispositionState.CREATED,
+        role=AuthorityRole.PRODUCER,
+    )
+    first.store.append_disposition(created, expected_head_digest=None)
+
+    second_artifact_bytes = b"immutable-risk-target-model-v3"
+    second_artifact = ArtifactRef(
+        artifact_id="volatility-head-v3",
+        relative_path="artifacts/volatility-v3.bin",
+        digest=sha256_bytes(second_artifact_bytes),
+        size_bytes=len(second_artifact_bytes),
+        media_type="application/octet-stream",
+    )
+    second_package = first.package.model_copy(
+        update={
+            "package_id": "risk-target-package-v3",
+            "artifacts": (second_artifact,),
+            "checksums": {second_artifact.relative_path: second_artifact.digest},
+        }
+    )
+    package_envelope = first.signers[AuthorityRole.PRODUCER].sign(second_package, created_at=NOW)
+    first.store.write_package(
+        package_envelope, {second_artifact.relative_path: second_artifact_bytes}
+    )
+    second_digest = package_envelope.payload_digest
+    assert second_digest != first.package_digest
+
+    # Both packages are individually valid on disk. Relocate the first package's
+    # signed ledger under the second package's directory: every receipt still
+    # verifies and every filename still matches its payload digest, so only the
+    # container-vs-content cross-check can catch this.
+    source = first.store.root / "dispositions" / first.package_digest
+    destination = first.store.root / "dispositions" / second_digest
+    shutil.rmtree(destination, ignore_errors=True)
+    shutil.move(str(source), str(destination))
+
+    with pytest.raises(StoreCorruptionError, match="reconstructs to package"):
+        first.store.rebuild_indexes()

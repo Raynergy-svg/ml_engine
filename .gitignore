@@ -189,6 +189,7 @@ htmlcov/
 .claude/heartbeat.json
 .claude/alert_state.json
 .claude/last_tx_id.json
+.claude/trend_journal_sync_cursor.json
 .claude/state_drift_log.jsonl
 .claude/ralph/memory.json
 .claude/scheduled_tasks.lock
@@ -268,3 +269,48 @@ trained_data/axiom/
 market_data/oanda_books/
 market_data/multi_asset/
 market_data/factor/
+market_data/equity_alt/
+market_data/crypto/
+market_data/equity/*.csv
+market_data/equity/sec/
+
+# Debug/session scratch artifacts (nohup dumps, screenshots, tool caches — not project data)
+/checkpoint.log.*
+/cli.log.*
+/train.log.*
+/tensorboard.log.*
+/axiom-*.jpeg
+/axiom-*.png
+/overview*.png
+/recon-*.png
+logs/equity_harvester_loop.out
+logs/agent_runtime_loop.out
+logs/brain_loop.out
+logs/crypto_momentum_shadow.out
+logs/track_b_shadow.out
+.playwright-mcp/
+
+# Local git-worktree scratch dirs (created ad hoc for isolated agent work) --
+# never committed. A stale gitlink to .claude/worktrees/meta-rebase (mode
+# 160000, no matching .gitmodules entry) previously broke CI's git checkout
+# cleanup step under persist-credentials:false; removed from tracking and
+# ignored here so it can't recur.
+.claude/worktrees/
+.superpowers/
+
+# Live-process churn (regenerated continuously by the running bot / tick capture) --
+# committing these is whack-a-mole; recover from disk, not git.
+trained_data/ticks/
+logs/tick_capture.out
+logs/crypto_carry_shadow.out
+trained_data/.memory/
+.claude/maintenance_report.json
+.claude/self_heal_action_budget.json
+.claude/self_heal_debounce.json
+trained_data/execution_quality.json
+.claude/ralph/.watcher_state.json
+.claude/ralph/event_log.jsonl
+.claude/ralph/.last-branch
+trained_data/position_management_log.json
+trained_data/module_dispatcher_log.json
+trained_data/scan_diagnostics_state.json

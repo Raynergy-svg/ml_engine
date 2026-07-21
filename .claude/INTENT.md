@@ -52,6 +52,18 @@ verified number — or toward honestly closing a question — **question the tas
    independent re-derivation from disk). No punitive theater. Name whether it was deliberate
    falsification vs honest error/contamination — the structural response is the same either way. Honest,
    sound code is not reverted; the fix targets the false report and the missing gate. (L-018.)
+10. **Memory & brain scaling has two sanctioned external anchors — dev-plane only.** The ML-systems
+   engineering knowledge source is the Harvard *Machine Learning Systems* textbook (operator fork
+   `Raynergy-svg/ML_Training_book`) — consult it for MLOps / data-engineering / train-serve-skew /
+   model-registry / validation-rigor work (it backs the ENGINEERING_BRAIN roadmap's ML-systems items).
+   The code-memory tool is `codebase-memory-mcp` (operator fork of `DeusData/codebase-memory-mcp` — a
+   tree-sitter + Hybrid-LSP knowledge graph, ~120× fewer tokens for structural queries). **Guardrail
+   (hard):** any external memory/index tool stays **dev-plane / CI only, pinned + checksum-verified**,
+   is **read-only w.r.t. the Claude-free runtime hot path**, and is **never given write access to
+   execution / state / config / safety files** — these tools run a downloaded binary AND write agent
+   config, a supply-chain + config-tamper surface (builds on L-005, L-012). Honest status: codebase-
+   memory-mcp is currently wired CI-only for PR impact analysis (`.github/workflows/code-graph.yml`);
+   it is NOT a live runtime memory — never narrate it as one (L-017).
 
 ## Standing roadmap — the north star (drives every /evolve cycle)
 
