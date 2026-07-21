@@ -37,6 +37,7 @@ import pandas as pd
 
 from src.equity import fx_rates
 from src.equity.decision_gate import _lane_halted
+from src.learning.decision_record import Disposition
 from src.equity.trend_risk_gates import (
     DEFAULT_BIAS_MIN_INSTRUMENTS,
     DEFAULT_BIAS_SHARE_THRESHOLD,
@@ -361,6 +362,14 @@ def margin_scale(want_units: Dict[str, int], last_px: Dict[str, float], nav: flo
     return {i: int(int(u) * factor) for i, u in want_units.items()}, factor
 
 
+def _iso_now() -> str:
+    """UTC ISO-8601 stamp for decision identity. Local time would make the
+    cycle_id non-comparable across DST and machines."""
+    from datetime import timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _order_price(order: Optional[dict]) -> Optional[float]:
     try:
         return float((order or {}).get("price"))
@@ -616,7 +625,8 @@ def run_oanda_trend_cycle(
 
     # 2. NAV + current positions -> delta orders (long-or-flat)
     summary = client.get_account_summary() or {}
-    nav = float((summary.get("account") or {}).get("NAV", 0.0) or 0.0)
+    account_summary = summary.get("account") or {}
+    nav = float(account_summary.get("NAV", 0.0) or 0.0)
 
     # NAV glitch guard (verifier rec): a transient summary error -> nav<=0 would size
     # every name to the 1-unit floor (noise orders). Refuse the cycle instead.
@@ -635,6 +645,47 @@ def run_oanda_trend_cycle(
     risk_pct = clamp_risk_pct(risk_pct)
     risk_unit_home = nav * risk_pct
 
+    # Promoted AXIOM risk controller (PRACTICE only). It cannot choose direction
+    # and cannot raise the configured risk budget: its sole output is a [0, 1]
+    # multiplier applied to the already ATR-normalized target below. A missing
+    # promotion preserves legacy sizing; an enabled-but-invalid promotion fails
+    # to zero so artifact tampering can never silently restore full risk.
+    from src.axiom_training.risk_runtime import (
+        evaluate_runtime_risk,
+        scale_target_units,
+    )
+    risk_decision = evaluate_runtime_risk(
+        root=root,
+        environment=getattr(config, "oanda_environment", "practice"),
+        nav=nav,
+        open_trade_count=int(account_summary.get("openTradeCount", 0) or 0),
+        now=now,
+    )
+    if risk_decision.promotion_enabled:
+        log = logger.info if risk_decision.valid else logger.error
+        log(
+            "AXIOM RISK MODEL: valid=%s scale=%.4f reason=%s vol=%s target_vol=%s "
+            "drawdown=%s loss_streak=%s concentration=%s resolved=%s cluster=%s "
+            "strategy_prior=%s transition=%s liquidity=%s confidence_gap=%s "
+            "disagreement=%s hash=%s",
+            risk_decision.valid,
+            risk_decision.scale,
+            risk_decision.reason,
+            risk_decision.trailing_volatility,
+            risk_decision.target_volatility,
+            risk_decision.drawdown,
+            risk_decision.loss_streak,
+            risk_decision.portfolio_concentration,
+            risk_decision.exposure_resolved_fraction,
+            risk_decision.correlation_cluster_stress,
+            risk_decision.strategy_risk_multiplier,
+            risk_decision.regime_transition_risk,
+            risk_decision.liquidity_stress,
+            risk_decision.confidence_shortfall,
+            risk_decision.model_disagreement,
+            risk_decision.model_sha256,
+        )
+
     # RULE 3 — risk-normalized sizing: units = (nav*risk_pct) / (sl_mult*ATR *
     # quote->home rate). Requires a real ATR-based stop distance to be
     # meaningful; an instrument with SL disabled or no ATR is refused (0), not
@@ -650,6 +701,7 @@ def run_oanda_trend_cycle(
         want[inst] = risk_normalized_units(
             instrument=inst, r_distance_quote=sl_dist, nav=nav, risk_pct=risk_pct,
             last_prices=last_px)
+    want = scale_target_units(want, risk_decision.scale)
     # Visibility (verifier rec): an on-signal instrument sized 0 means its ATR or
     # quote->home rate was underivable — surface it so a silently-untraded
     # instrument can't hide as a no-op.
@@ -793,6 +845,53 @@ def run_oanda_trend_cycle(
     if risk_state_dirty:
         save_risk_state(risk_state_path, risk_state)
 
+    # ── Decision capture (2026-07-21) ────────────────────────────────
+    # Record the intention BEFORE any order leaves. This lane is the only one
+    # with a working broker, so it is the only source of broker-realized
+    # closes -- and until now every one of its fills was unattributable (all
+    # 124 realized closes in the journal carry no decision_id).
+    #
+    # Non-blocking by design: orders are placed one-by-one inside the loop
+    # below with risk gates already applied, so aborting mid-loop could leave
+    # the book half-rebalanced -- worse than an unattributed fill. The equity
+    # seam aborts instead because nothing has been sent at that point.
+    fx_decisions = []
+    try:
+        from src.equity.fx_decision_capture import (
+            build_fx_cycle_decisions,
+            persist_fx_decisions,
+        )
+
+        fx_cycle_id = f"oanda_fx:{_iso_now()}"
+        fx_decisions = build_fx_cycle_decisions(
+            cycle_id=fx_cycle_id,
+            decision_timestamp=_iso_now(),
+            targets=targets,
+            want_units=want,
+            current_units=current,
+            nav=nav,
+            gross_leverage=gross_leverage,
+            last_px=last_px,
+            atr=atr,
+            disposition=Disposition.EXECUTE,
+            reason_codes=("trend_sma", f"risk_scale={risk_decision.scale:.4f}"),
+            strategy_version=f"trend_sma{sma_window}",
+            market_data_asof=_iso_now(),
+        )
+        persist_fx_decisions(fx_decisions)
+        logger.info("FX decision capture: %d decision(s) recorded for cycle %s",
+                    len(fx_decisions), fx_cycle_id)
+    except Exception as _cap_exc:  # noqa: BLE001 - capture must never break the cycle
+        logger.error("FX_DECISION_CAPTURE_FAILED: %r -- this cycle's fills will be "
+                     "UNATTRIBUTABLE", _cap_exc)
+
+    _fx_digest_by_instrument = {}
+    for _d in fx_decisions:
+        try:
+            _fx_digest_by_instrument[_d.instrument] = _d.digest()
+        except Exception:  # noqa: BLE001
+            pass
+
     placed = 0
     for inst in instruments:
         delta = rebalance_delta(want.get(inst, 0), current.get(inst, 0))
@@ -884,6 +983,19 @@ def run_oanda_trend_cycle(
                                    stop_loss_distance=sl_dist, take_profit_distance=tp_dist,
                                    client_tag="ml_engine_trend_demo")
         placed += 1
+        # Append-only linkage: the decision row is never rewritten, and every
+        # later lifecycle event resolves to this same decision digest.
+        _fx_dig = _fx_digest_by_instrument.get(inst)
+        if _fx_dig:
+            try:
+                from src.learning.decision_ledger import link_broker_order
+
+                link_broker_order(_fx_dig,
+                                  broker_order_id=f"{inst}:{_iso_now()}",
+                                  client_order_id="ml_engine_trend_demo")
+            except Exception as _lnk:  # noqa: BLE001 - order is away; do not roll back
+                logger.error("FX_DECISION_CAPTURE_FAILED: could not link order for %s: %r",
+                             inst, _lnk)
         _dec = 3 if str(inst).endswith("_JPY") else 5
         logger.info("OANDA PAPER order: %s units=%+d (target=%d current=%d) SLdist=%s TPdist=%s",
                     inst, delta, want.get(inst, 0), current.get(inst, 0),
