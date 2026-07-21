@@ -67,7 +67,15 @@ def _sum(rows: Sequence[Mapping[str, Any]], field: str) -> float:
 def segment_stats(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     """Realized vs at-mid economics for one population of ledger rows."""
     if not rows:
-        return {"n": 0, "verdict": INSUFFICIENT}
+        # Full shape with None, not a 2-key dict: a consumer reading any metric
+        # would otherwise KeyError on an empty segment. None means UNDEFINED --
+        # 0.0 would read as "measured, and it was zero".
+        return {
+            "n": 0, "verdict": INSUFFICIENT,
+            "realized_home": None, "spread_home": None, "at_mid_home": None,
+            "realized_per_trade": None, "spread_per_trade": None,
+            "win_rate": None, "spread_share_of_edge": None,
+        }
 
     realized = _sum(rows, "gross_pl_home")
     spread = _sum(rows, "execution_cost_home")

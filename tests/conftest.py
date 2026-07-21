@@ -1,3 +1,4 @@
+import importlib
 import json
 import os
 import sys
@@ -131,3 +132,50 @@ def evidence_log(request):
     record["finished_at"] = datetime.now(timezone.utc).isoformat()
     with _EVIDENCE_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Production-ledger write guard (2026-07-21)
+#
+# When DecisionRecord capture was added to AutonomousLoop, every existing
+# control-loop test that did NOT set ``decision_ledger_path`` silently began
+# writing real rows into trained_data/learning/decision_ledger.jsonl. 22 fake
+# AAPL/MSFT decisions and 4 broker-link rows reached the PRODUCTION evidence
+# ledger before it was noticed.
+#
+# That is the third instance of the same class this session (global os.environ
+# mutation un-skipping a network test; a test writing the live .claude/state.json).
+# The pattern: a module-level DEFAULT path is correct for production and lethal
+# in tests, and every new writer inherits the hazard.
+#
+# So the guard is central rather than per-fixture: redirect the module-level
+# defaults for the whole test session. A test that forgets to inject a tmp path
+# lands in tmp, not in the evidence store. Individual tests that DO inject a
+# path are unaffected.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _guard_production_ledgers(tmp_path_factory):
+    """Point every learning-ledger default at a throwaway dir for the session."""
+    sandbox = tmp_path_factory.mktemp("ledger_guard")
+    patched: list = []
+
+    targets = [
+        ("src.learning.decision_ledger", "DECISION_LEDGER_PATH", "decision_ledger.jsonl"),
+        ("src.learning.outcome_ledger", "LEDGER_PATH", "outcome_ledger.jsonl"),
+        ("src.learning.execution_context_builder", "SUBMISSION_GATE_PATH", "submission_gate.json"),
+    ]
+    for module_name, attr, filename in targets:
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:  # noqa: BLE001 - optional deps must not break collection
+            continue
+        if hasattr(module, attr):
+            patched.append((module, attr, getattr(module, attr)))
+            setattr(module, attr, sandbox / filename)
+
+    yield sandbox
+
+    for module, attr, original in patched:
+        setattr(module, attr, original)

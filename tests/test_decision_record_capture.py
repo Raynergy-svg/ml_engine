@@ -490,3 +490,25 @@ def test_decision_row_is_never_rewritten_by_linkage(tmp_path):
 
     assert before == after
     assert after[0]["broker_order_id"] is None, "decision row stays as written"
+
+
+def test_production_decision_ledger_is_never_written_by_tests():
+    """Guard the guard.
+
+    A module-level DEFAULT path is correct for production and lethal in tests.
+    22 fake AAPL/MSFT decisions reached the real evidence ledger before the
+    conftest redirect existed. If that redirect is ever removed, this fails.
+    """
+    from src.learning.decision_ledger import DECISION_LEDGER_PATH
+    from src.learning.outcome_ledger import LEDGER_PATH
+
+    repo_ledger = REPO_ROOT / "trained_data" / "learning" / "decision_ledger.jsonl"
+    repo_outcomes = REPO_ROOT / "trained_data" / "learning" / "outcome_ledger.jsonl"
+
+    assert DECISION_LEDGER_PATH != repo_ledger, (
+        "decision ledger default still points at the PRODUCTION evidence store "
+        "during tests — the conftest guard is missing or broken"
+    )
+    assert LEDGER_PATH != repo_outcomes, (
+        "outcome ledger default still points at the PRODUCTION evidence store"
+    )

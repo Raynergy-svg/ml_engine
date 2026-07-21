@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from src.learning.outcome_attribution import OutcomeRecord, attribute
-from src.learning.outcome_ledger import LEDGER_PATH, build_row, load_ledger
+from src.learning.outcome_ledger import build_row, load_ledger
 from src.learning.segment_analysis import (
     EDGE_CONSUMED_BY_COST,
     NO_EDGE_AT_MID,
@@ -162,9 +162,21 @@ def test_malformed_rows_are_skipped_not_fatal():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not LEDGER_PATH.exists(), reason="outcome ledger not present")
 def test_real_ledger_report_is_internally_consistent():
-    rows = load_ledger()
+    """Integration over the REAL corpus.
+
+    Reads the production path EXPLICITLY: the conftest guard redirects the
+    module default to a sandbox so tests cannot write to the evidence store,
+    which would otherwise make this read an empty file.
+    """
+    from pathlib import Path as _Path
+
+    real = _Path(__file__).resolve().parents[1] / "trained_data" / "learning" / "outcome_ledger.jsonl"
+    if not real.exists():
+        pytest.skip("real outcome ledger not present in this checkout")
+    rows = load_ledger(real)
+    if not rows:
+        pytest.skip("real outcome ledger is empty")
     report = segment_report(rows)
     overall = report["overall"]
 
@@ -229,11 +241,13 @@ def test_genuinely_stable_segment_scores_full_stability():
 
 def test_real_usd_chf_is_refused_by_the_stability_gate():
     """Regression: this segment passed the naive midpoint gate and must not."""
-    from src.learning.outcome_ledger import LEDGER_PATH, load_ledger
 
-    if not LEDGER_PATH.exists():
-        pytest.skip("outcome ledger not present")
-    chf = [r for r in load_ledger() if r["outcome"]["instrument"] == "USD_CHF"]
+    from pathlib import Path as _Path
+
+    real = _Path(__file__).resolve().parents[1] / "trained_data" / "learning" / "outcome_ledger.jsonl"
+    if not real.exists():
+        pytest.skip("real outcome ledger not present")
+    chf = [r for r in load_ledger(real) if r["outcome"]["instrument"] == "USD_CHF"]
     if len(chf) < 10:
         pytest.skip("insufficient USD_CHF history in this checkout")
 
