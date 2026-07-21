@@ -285,6 +285,12 @@ class FlattenResult:
     positions_closed: int
     positions_failed: int
     duration_ms: float
+    # Post-sweep verification. `verified_flat` is the ONLY field a caller may
+    # treat as "the book is flat"; the counts above describe what was
+    # attempted, not what is true. Defaulted so existing constructions keep
+    # working, but a False/None here must never be read as success.
+    verified_flat: "Optional[bool]" = None
+    residual_trade_ids: "Optional[List[str]]" = None
 
 
 class KillSwitchPartialFailure(Exception):
@@ -347,7 +353,30 @@ class ExecutionManager:
     - High probability TP bonus
     - Kelly-based position sizing
     - RL position sizer integration
+
+    Flatten seams (testability, added 2026-07-20)
+    ---------------------------------------------
+    ``flatten_all`` is safety-critical and previously could only be exercised
+    by monkeypatching ``asyncio.to_thread``, ``StateEngine.set_halted``,
+    ``builtins.open`` and ``asyncio.sleep``. That forced its tests to assert
+    against an IMAGINED broker response shape -- which is exactly how the
+    HTTP-200-means-closed bug survived: the fixtures encoded the bug.
+
+    These optional attributes let a test drive the real method against REAL
+    recorded broker payloads with no patching. Each defaults to the production
+    path when unset, so runtime behaviour is unchanged.
+
+    * ``flatten_transport``  -- ``async (method, url, **kw) -> response``
+    * ``flatten_state_path`` -- state.json location (tests must NOT touch live halt state)
+    * ``flatten_log_path``   -- strategic-log destination
+    * ``flatten_sleep``      -- ``async (seconds) -> None`` backoff hook
     """
+
+    #: See "Flatten seams" above. None => production behaviour.
+    flatten_transport: Optional[Any] = None
+    flatten_state_path: Optional[Any] = None
+    flatten_log_path: Optional[str] = None
+    flatten_sleep: Optional[Any] = None
 
     def __init__(
         self,
@@ -4062,6 +4091,14 @@ class ExecutionManager:
                 logger.warning("Atomic journal write failed, direct write fallback: %s", _e)
                 journal_path.write_text(_data)
         logger.debug(f"Journal entry appended for trade #{trade_id}")
+        # Phase D: mirror the exact entry-time context into append-only forward
+        # evidence. Incomplete historical/context-starved rows are retained but
+        # marked training_eligible=False by the capture contract.
+        try:
+            from src.data_platform.forward_capture import capture_best_effort
+            capture_best_effort("capture_trade_entry_context", entry_record)
+        except Exception as _capture_error:
+            logger.debug("Forward trade-entry capture setup failed: %s", _capture_error)
 
     def fetch_actual_win_rate(self) -> Tuple[float, int]:
         """Fetch actual win rate from broker closed trades.
@@ -6475,7 +6512,7 @@ class ExecutionManager:
         # ── Step 1: Halt immediately ──────────────────────────────────
         try:
             from src.scanner.automation.state_engine import StateEngine
-            _se = StateEngine()
+            _se = StateEngine(state_path=self.flatten_state_path)
             _se.set_halted(True)
             logger.warning("flatten_all: state.halted=True set (reason=%s)", reason)
         except Exception as _halt_err:
@@ -6497,7 +6534,14 @@ class ExecutionManager:
             last_exc: Optional[Exception] = None
             for attempt in range(4):  # 1 initial + 3 retries
                 try:
-                    resp = await asyncio.to_thread(func, url, headers=headers, timeout=10, **kwargs)
+                    if self.flatten_transport is not None:
+                        resp = await self.flatten_transport(
+                            method, url, headers=headers, timeout=10, **kwargs
+                        )
+                    else:
+                        resp = await asyncio.to_thread(
+                            func, url, headers=headers, timeout=10, **kwargs
+                        )
                     if resp.status_code in (401, 403):
                         # Auth error — no retry
                         logger.warning("flatten_all: auth error %d on %s", resp.status_code, url)
@@ -6516,7 +6560,10 @@ class ExecutionManager:
                             "flatten_all: retry %d/3 in %.1fs after %s on %s",
                             attempt + 1, delay, exc, url,
                         )
-                        await asyncio.sleep(delay)
+                        if self.flatten_sleep is not None:
+                            await self.flatten_sleep(delay)
+                        else:
+                            await asyncio.sleep(delay)
             raise last_exc or RuntimeError(f"All retries exhausted for {url}")
 
         # ── Step 2: Fetch open orders (pending) ──────────────────────
@@ -6533,15 +6580,38 @@ class ExecutionManager:
 
         # ── Step 3: Fetch open trades ────────────────────────────────
         open_trade_ids: List[str] = []
+        # trade_id -> instrument, so closes can be grouped and ordered per
+        # instrument for FIFO. Without it every close is fired in one flat
+        # parallel batch, which is what produced the FIFO_VIOLATION rejections.
+        _trade_instrument: Dict[str, str] = {}
+        _fetch_ok = False
         try:
             resp = await _async_retry("GET", f"{base}/v3/accounts/{acct}/openTrades")
             if resp.status_code == 200:
-                open_trade_ids = [
-                    str(t["id"]) for t in resp.json().get("trades", []) if "id" in t
-                ]
+                _trades = resp.json().get("trades", []) or []
+                open_trade_ids = [str(tr["id"]) for tr in _trades if "id" in tr]
+                _trade_instrument = {
+                    str(tr["id"]): str(tr.get("instrument") or "?")
+                    for tr in _trades if "id" in tr
+                }
+                _fetch_ok = True
                 logger.info("flatten_all: %d open trades to close", len(open_trade_ids))
+            else:
+                logger.error(
+                    "flatten_all: could not fetch open trades: %d %s",
+                    resp.status_code, resp.text[:200],
+                )
         except Exception as _te:
             logger.error("flatten_all: could not fetch open trades: %s", _te)
+
+        if not _fetch_ok:
+            # We do not know what is open, so we cannot flatten and must not
+            # report success. Fail loudly rather than "closing" an empty list.
+            raise KillSwitchPartialFailure(
+                "flatten_all: could not read open trades from the broker -- "
+                "cannot confirm the book; refusing to report success",
+                remaining_trades=["UNKNOWN"],
+            )
 
         # ── Step 4a: Cancel working orders in parallel ───────────────
         async def _cancel_order(order_id: str) -> bool:
@@ -6567,34 +6637,144 @@ class ExecutionManager:
 
         # ── Step 4b: Market-close open positions in parallel ─────────
         async def _close_position(trade_id: str) -> bool:
+            """Close one trade. A close is confirmed by the TRANSACTION, not by HTTP.
+
+            OANDA returns HTTP 200 for a close request it ACCEPTED and then
+            CANCELLED -- e.g. ``orderCancelTransaction.reason == "FIFO_VIOLATION"``.
+            The old code returned True on status 200, so a refused close counted
+            as a success, ``positions_failed_ids`` stayed empty, and no
+            KillSwitchPartialFailure was raised. That is how the book was left
+            non-flat on 2026-05-13 and again on 2026-07-15 with no alarm.
+            """
             try:
                 resp = await _async_retry(
                     "PUT", f"{base}/v3/accounts/{acct}/trades/{trade_id}/close", json={}
                 )
-                if resp.status_code == 200:
-                    logger.info("flatten_all: closed position %s", trade_id)
-                    return True
-                logger.warning("flatten_all: close trade %s failed: %d %s", trade_id, resp.status_code, resp.text[:120])
-                return False
+                if resp.status_code != 200:
+                    logger.warning(
+                        "flatten_all: close trade %s failed: %d %s",
+                        trade_id, resp.status_code, resp.text[:200],
+                    )
+                    return False
+                try:
+                    body = resp.json()
+                except Exception:
+                    logger.error(
+                        "flatten_all: close trade %s returned 200 with unparseable body -- "
+                        "treating as NOT closed", trade_id,
+                    )
+                    return False
+                cancel = body.get("orderCancelTransaction")
+                if cancel:
+                    logger.error(
+                        "flatten_all: close trade %s REFUSED by broker: %s (HTTP 200) -- "
+                        "NOT closed", trade_id, cancel.get("reason"),
+                    )
+                    return False
+                if not body.get("orderFillTransaction"):
+                    logger.error(
+                        "flatten_all: close trade %s returned 200 with no fill transaction -- "
+                        "treating as NOT closed", trade_id,
+                    )
+                    return False
+                logger.info("flatten_all: closed position %s", trade_id)
+                return True
             except Exception as exc:
                 logger.error("flatten_all: close trade %s error: %s", trade_id, exc)
                 return False
 
-        close_results = await asyncio.gather(
-            *[_close_position(tid) for tid in open_trade_ids],
+        # FIFO: a broker enforcing first-in-first-out refuses a close on a newer
+        # trade while an older one in the SAME instrument is still open. Firing
+        # every close in parallel therefore MANUFACTURES the rejection. Close
+        # sequentially, oldest-first, within each instrument; different
+        # instruments have no FIFO relationship and still run concurrently.
+        by_instrument: Dict[str, List[str]] = {}
+        for tid in open_trade_ids:
+            by_instrument.setdefault(_trade_instrument.get(tid, "?"), []).append(tid)
+        for tids in by_instrument.values():
+            # Trade IDs are monotonically increasing, so ascending id == oldest first.
+            tids.sort(key=lambda x: int(x) if str(x).isdigit() else 0)
+
+        async def _close_instrument_sequentially(tids: List[str]) -> List[bool]:
+            out: List[bool] = []
+            for tid in tids:
+                ok = await _close_position(tid)
+                out.append(ok)
+                if not ok:
+                    # The oldest failed; every newer trade in this instrument is
+                    # FIFO-blocked behind it. Recording them as failed is honest
+                    # -- retrying now would only produce more rejections.
+                    out.extend([False] * (len(tids) - len(out)))
+                    logger.error(
+                        "flatten_all: %s close failed on trade %s -- %d newer trade(s) "
+                        "in this instrument remain blocked behind it",
+                        _trade_instrument.get(tid, "?"), tid, len(tids) - len(out) + 1,
+                    )
+                    break
+            return out
+
+        grouped = await asyncio.gather(
+            *[_close_instrument_sequentially(tids) for tids in by_instrument.values()],
             return_exceptions=True,
         )
+        close_map: Dict[str, bool] = {}
+        for tids, res in zip(by_instrument.values(), grouped):
+            if isinstance(res, BaseException):
+                for tid in tids:
+                    close_map[tid] = False
+            else:
+                for tid, ok in zip(tids, res):
+                    close_map[tid] = bool(ok)
+        close_results = [close_map.get(tid, False) for tid in open_trade_ids]
         positions_closed = sum(1 for r in close_results if r is True)
         positions_failed_ids = [
             open_trade_ids[i]
             for i, r in enumerate(close_results)
             if r is not True
         ]
+
+        # ── Step 4c: RE-READ the broker book. This is the only check that
+        # cannot be fooled by a lying response. Success is never inferred from
+        # submitted requests; it is confirmed by observing zero exposure.
+        # Deliberately queries OANDA directly rather than reading
+        # trained_data/oanda/account_state.json -- that mirror is refreshed as a
+        # side effect of an HOURLY loop, so verifying against it could confirm
+        # "flat" from a snapshot written long before this flatten ran.
+        residual_trade_ids: List[str] = []
+        verification_ok = False
+        try:
+            vresp = await _async_retry("GET", f"{base}/v3/accounts/{acct}/openTrades")
+            if vresp.status_code == 200:
+                residual_trade_ids = [
+                    str(tr.get("id")) for tr in (vresp.json().get("trades") or [])
+                ]
+                verification_ok = True
+            else:
+                logger.error(
+                    "flatten_all: post-sweep verification FAILED to read broker book: %d %s",
+                    vresp.status_code, vresp.text[:200],
+                )
+        except Exception as _vexc:
+            logger.error("flatten_all: post-sweep verification error: %s", _vexc)
+
+        if not verification_ok:
+            # Cannot prove flat => must not claim flat.
+            positions_failed_ids = sorted(set(positions_failed_ids) | {"UNVERIFIED"})
+        elif residual_trade_ids:
+            logger.critical(
+                "flatten_all: BOOK NOT FLAT after sweep -- %d trade(s) remain: %s",
+                len(residual_trade_ids), residual_trade_ids,
+            )
+            positions_failed_ids = sorted(set(positions_failed_ids) | set(residual_trade_ids))
+        else:
+            logger.info("flatten_all: post-sweep verification confirms ZERO open trades")
         positions_failed = len(positions_failed_ids)
 
         duration_ms = (time.monotonic() - _start) * 1000.0
 
         result = FlattenResult(
+            verified_flat=(verification_ok and not residual_trade_ids),
+            residual_trade_ids=list(residual_trade_ids),
             orders_cancelled=orders_cancelled,
             orders_failed=orders_failed,
             positions_closed=positions_closed,
@@ -6604,7 +6784,7 @@ class ExecutionManager:
 
         # ── Step 5: Write to strategic_log.md ────────────────────────
         try:
-            _log_path = ".claude/brain/strategic_log.md"
+            _log_path = self.flatten_log_path or ".claude/brain/strategic_log.md"
             _entry = {
                 "actor": "TUI_KILL",
                 "reason": reason,
@@ -6818,6 +6998,19 @@ class ExecutionManager:
                 logger.warning(
                     "close_trade: outcomes ledger append failed for %s: %s",
                     trade_id, _ol_err,
+                )
+            try:
+                from src.scanner.feedback.post_trade_loop import PostTradeLoop
+
+                _ptl_result = PostTradeLoop().run({
+                    "trade_id": trade_id,
+                    "source": "execution_manager.close_trade",
+                })
+                logger.info("close_trade: post_trade_loop result for %s: %s", trade_id, _ptl_result)
+            except Exception as _ptl_err:
+                logger.warning(
+                    "close_trade: post_trade_loop hook failed for %s: %s",
+                    trade_id, _ptl_err,
                 )
         except Exception as _je:
             logger.error("close_trade: journal update failed for %s: %s", trade_id, _je)

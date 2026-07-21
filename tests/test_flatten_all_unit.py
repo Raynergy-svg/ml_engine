@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -36,7 +34,54 @@ def _pending_orders_resp(order_ids: list[str]) -> MagicMock:
 
 
 def _open_trades_resp(trade_ids: list[str]) -> MagicMock:
-    return _make_response(200, {"trades": [{"id": tid} for tid in trade_ids]})
+    return _make_response(200, {"trades": [
+        {"id": tid, "instrument": "EUR_USD"} for tid in trade_ids
+    ]})
+
+
+# ── Correct-contract helpers (2026-07-20) ─────────────────────────────
+#
+# OANDA returns HTTP 200 for a close request it ACCEPTED AND THEN CANCELLED.
+# A close is confirmed by ``orderFillTransaction`` and refuted by
+# ``orderCancelTransaction``. The original fixtures used a bare 200 with an
+# empty body, which encoded the very bug that left the book non-flat on
+# 2026-05-13 and 2026-07-15.
+
+def _close_ok(trade_id: str = "T") -> MagicMock:
+    """A genuinely executed close."""
+    return _make_response(200, {
+        "orderFillTransaction": {"id": f"F-{trade_id}", "type": "ORDER_FILL",
+                                 "tradesClosed": [{"tradeID": trade_id}]},
+    })
+
+
+def _close_fifo_refused(trade_id: str = "T") -> MagicMock:
+    """HTTP 200, but the broker cancelled it. THE Jul-15 shape."""
+    return _make_response(200, {
+        "orderCancelTransaction": {"id": f"C-{trade_id}", "type": "ORDER_CANCEL",
+                                   "reason": "FIFO_VIOLATION"},
+    })
+
+
+def _sequenced_router(call_map: dict, open_trades_sequence: list):
+    """Router whose openTrades GET returns a SEQUENCE.
+
+    The first call is the pre-sweep read; later calls are the post-sweep
+    verification, which must be able to report a different (ideally empty) book.
+    """
+    state = {"i": 0}
+
+    async def _fake_to_thread(func, url, **kwargs):
+        method = {"get": "GET", "put": "PUT", "delete": "DELETE"}[func.__name__]
+        path = url.replace("https://api-fxpractice.oanda.com", "")
+        key = f"{method}:{path}"
+        if key.endswith("/openTrades"):
+            idx = min(state["i"], len(open_trades_sequence) - 1)
+            state["i"] += 1
+            return open_trades_sequence[idx]
+        return call_map[key]
+
+    return _fake_to_thread
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────
@@ -64,17 +109,15 @@ class TestFlattenAllSuccess:
             "GET:/v3/accounts/acct/openTrades": _open_trades_resp(["T1", "T2"]),
             "DELETE:/v3/accounts/acct/orders/O1": _make_response(200),
             "DELETE:/v3/accounts/acct/orders/O2": _make_response(200),
-            "PUT:/v3/accounts/acct/trades/T1/close": _make_response(200),
-            "PUT:/v3/accounts/acct/trades/T2/close": _make_response(200),
+            "PUT:/v3/accounts/acct/trades/T1/close": _close_ok("T1"),
+            "PUT:/v3/accounts/acct/trades/T2/close": _close_ok("T2"),
         }
 
-        async def _fake_to_thread(func, url, **kwargs):
-            method = {
-                "get": "GET", "put": "PUT", "delete": "DELETE",
-            }[func.__name__]
-            path = url.replace("https://api-fxpractice.oanda.com", "")
-            key = f"{method}:{path}"
-            return call_map[key]
+        _fake_to_thread = _sequenced_router(
+            call_map,
+            # pre-sweep: two open; post-sweep verification: flat
+            [_open_trades_resp(["T1", "T2"]), _open_trades_resp([])],
+        )
 
         se_mock = MagicMock()
         bus_mock = MagicMock()
@@ -107,14 +150,18 @@ class TestFlattenAllPartialFailure:
         call_counts: dict[str, int] = {}
 
         async def _fake_to_thread(func, url, **kwargs):
-            method = func.__name__.upper()
             path = url.replace("https://api-fxpractice.oanda.com", "")
             if "pendingOrders" in path:
                 return _pending_orders_resp([])
             if "openTrades" in path:
-                return _open_trades_resp(["T1", "T2"])
+                # pre-sweep sees both; post-sweep verification still sees T2,
+                # which is the honest broker state after T2's close failed.
+                call_counts["openTrades"] = call_counts.get("openTrades", 0) + 1
+                return (_open_trades_resp(["T1", "T2"])
+                        if call_counts["openTrades"] == 1
+                        else _open_trades_resp(["T2"]))
             if "T1/close" in path:
-                return _make_response(200)
+                return _close_ok("T1")
             if "T2/close" in path:
                 call_counts["T2"] = call_counts.get("T2", 0) + 1
                 return _make_response(500)
@@ -149,12 +196,14 @@ class TestFlattenAllRateLimitRetry:
             if "pendingOrders" in url:
                 return _pending_orders_resp([])
             if "openTrades" in url:
-                return _open_trades_resp(["T1"])
+                attempts["openTrades"] = attempts.get("openTrades", 0) + 1
+                return (_open_trades_resp(["T1"]) if attempts["openTrades"] == 1
+                        else _open_trades_resp([]))
             if "T1/close" in url:
                 attempts["T1"] += 1
                 if attempts["T1"] == 1:
                     return _make_response(503)  # first attempt: 5xx → retry
-                return _make_response(200)      # second attempt: success
+                return _close_ok("T1")          # second attempt: real fill
             return _make_response(200)
 
         with (
@@ -271,3 +320,11 @@ class TestFlattenAllEventBus:
         assert event_type == "control.kill"
         assert payload["reason"] == "event-test"
         assert "result" in payload
+
+
+# NOTE: the truthful-flatten acceptance scenarios live in
+# tests/test_flatten_all_truthful.py, which drives the real ExecutionManager
+# against REAL recorded OANDA payloads through injectable seams and uses no
+# mocks. The fixtures below were corrected to the real broker contract (a close
+# is confirmed by orderFillTransaction, not by HTTP 200) but this file remains
+# mock-based for historical reasons; prefer the truthful suite for new coverage.
