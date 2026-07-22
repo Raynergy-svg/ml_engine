@@ -40,6 +40,7 @@ from .dashboard import crypto_momentum_evidence_view
 from .evaluation import EvaluationParams, evaluate_partitions
 from .local_import import import_head
 from .manifests import (
+    FORWARD_LEDGER_PREFIX,
     build_capability_profile,
     build_momentum_evaluation_job_manifest,
     build_momentum_cell_dataset_manifest,
@@ -118,12 +119,23 @@ def build_evidence_store(
 def _expected_cells_by_construction(
     partitions: Mapping[str, bytes],
 ) -> dict[str, tuple[str, ...]]:
-    """Derive the declared expected cell set from partition ids."""
+    """Derive the declared expected cell set from partition ids. Forward-ledger
+    partitions are excluded — they are a separate, orthogonal declaration
+    (see ``_expected_ledger_constructions``)."""
     grouped: dict[str, list[str]] = {}
     for cell_id in partitions:
+        if cell_id.startswith(FORWARD_LEDGER_PREFIX):
+            continue
         construction = cell_id.split("::", 1)[0]
         grouped.setdefault(construction, []).append(cell_id)
     return {construction: tuple(sorted(ids)) for construction, ids in grouped.items()}
+
+
+def _expected_ledger_constructions(partitions: Mapping[str, bytes]) -> tuple[str, ...]:
+    """Derive the declared forward-ledger construction set from partition ids."""
+    return tuple(sorted(
+        pid[len(FORWARD_LEDGER_PREFIX):] for pid in partitions if pid.startswith(FORWARD_LEDGER_PREFIX)
+    ))
 
 
 @dataclass(frozen=True)
@@ -165,16 +177,17 @@ def _config_digest(params: EvaluationParams, scorecard_version: str) -> str:
 def _resolve_params(
     partitions: Mapping[str, bytes], params: EvaluationParams | None
 ) -> EvaluationParams:
-    """Bind the declared expected-fold map into the params if not already set."""
-    base = params or EvaluationParams()
-    if base.expected_cells_by_construction:
-        return base
+    """Bind the declared expected-fold map and forward-ledger construction set
+    into the params if not already set."""
     from dataclasses import replace
 
-    return replace(
-        base,
-        expected_cells_by_construction=_expected_cells_by_construction(partitions),
-    )
+    base = params or EvaluationParams()
+    overrides = {}
+    if not base.expected_cells_by_construction:
+        overrides["expected_cells_by_construction"] = _expected_cells_by_construction(partitions)
+    if not base.expected_ledger_constructions:
+        overrides["expected_ledger_constructions"] = _expected_ledger_constructions(partitions)
+    return replace(base, **overrides) if overrides else base
 
 
 def produce_worker_output(
@@ -225,6 +238,7 @@ def produce_worker_output(
         max_drawdown_limit=params.max_drawdown_limit,
         stress_sharpe_floor=params.stress_sharpe_floor,
         drop_one_sharpe_floor=params.drop_one_sharpe_floor,
+        forward_ledger_constructions=params.expected_ledger_constructions,
     )
     strategy_envelope = producer.sign(strategy_manifest, created_at=created_at)
 

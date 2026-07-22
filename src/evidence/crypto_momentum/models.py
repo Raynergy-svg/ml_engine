@@ -79,6 +79,13 @@ class ConstructionHeadResult:
     fold_ids: tuple[str, ...]
     temporal_holdout: str
     incumbent_comparison: Mapping[str, object] = field(default_factory=dict)
+    # Roadmap §14 standardized strategy-return/exposure contract, sourced from
+    # this construction's REAL forward-shadow ledger (src.crypto.momentum_shadow
+    # record_shadow_cycle) when supplied — empty for constructions with no
+    # forward ledger partition yet (fully backward compatible: the package
+    # looks exactly as it did before this field existed). See
+    # evaluation.py::build_forward_ledger_return_contract for the exact schema.
+    strategy_return_bytes: bytes = b""
 
 
 @dataclass(frozen=True)

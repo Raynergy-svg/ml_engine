@@ -8,7 +8,9 @@ insignificant construction is preserved as an honest negative.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Mapping
@@ -17,7 +19,10 @@ from src.crypto import momentum_scorecard as scorecard
 from src.evidence.canonical import canonical_bytes
 from src.evidence.contracts import GateResult, GateStatus
 
+from .manifests import FORWARD_LEDGER_PREFIX
 from .models import ConstructionHeadResult, lane_id_for_construction
+
+_LEDGER_REQUIRED_FIELDS = ("asof_date", "today_net_return", "gross_leverage", "today_turnover")
 
 
 @dataclass(frozen=True)
@@ -25,6 +30,7 @@ class EvaluationParams:
     """Signed bars and expected cells used by producer and independent replay."""
 
     expected_cells_by_construction: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    expected_ledger_constructions: tuple[str, ...] = ()
     min_oos_folds: int = scorecard.MIN_OOS_FOLDS_FOR_VERDICT
     sharpe_bar: float = scorecard.SHARPE_BAR
     sharpe_tstat_bar: float = scorecard.SHARPE_TSTAT_BAR
@@ -32,6 +38,72 @@ class EvaluationParams:
     stress_sharpe_floor: float = scorecard.STRESS_SHARPE_FLOOR
     drop_one_sharpe_floor: float = scorecard.DROP_ONE_SHARPE_FLOOR
     replay_tolerance: float = 1e-12
+
+
+def _is_forward_ledger_partition(partition_id: str) -> bool:
+    return partition_id.startswith(FORWARD_LEDGER_PREFIX)
+
+
+def _construction_from_ledger_partition_id(partition_id: str) -> str:
+    return partition_id[len(FORWARD_LEDGER_PREFIX):]
+
+
+def _parse_ledger_rows(partition_id: str, data: bytes) -> list[dict[str, Any]]:
+    """Parse one construction's REAL forward-shadow ledger partition (JSONL,
+    src.crypto.momentum_shadow.record_shadow_cycle row shape). Unlike
+    hedge_eval's ledger, every required field is always written by the
+    producer — none are optional here, so a missing/malformed field fails
+    closed rather than degrading to a null."""
+    rows: list[dict[str, Any]] = []
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"forward ledger {partition_id!r} is not valid UTF-8: {exc}") from exc
+    for line_number, raw in enumerate(text.splitlines(), start=1):
+        if not raw.strip():
+            continue
+        try:
+            row = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"forward ledger {partition_id!r} line {line_number} is invalid JSON: {exc}") from exc
+        if not isinstance(row, dict):
+            raise ValueError(f"forward ledger {partition_id!r} line {line_number} is not a JSON object")
+        missing = sorted(set(_LEDGER_REQUIRED_FIELDS) - set(row))
+        if missing:
+            raise ValueError(f"forward ledger {partition_id!r} line {line_number} missing fields {missing}")
+        if not isinstance(row["asof_date"], str) or not row["asof_date"]:
+            raise ValueError(f"forward ledger {partition_id!r} line {line_number} has an invalid asof_date")
+        for name in ("today_net_return", "gross_leverage", "today_turnover"):
+            value = row[name]
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+                raise ValueError(f"forward ledger {partition_id!r} line {line_number} has non-finite {name}")
+        if row["gross_leverage"] < 0 or row["today_turnover"] < 0:
+            raise ValueError(f"forward ledger {partition_id!r} line {line_number} has a negative leverage or turnover")
+        rows.append(row)
+    if not rows:
+        raise ValueError(f"forward ledger {partition_id!r} contains no rows")
+    return rows
+
+
+def build_forward_ledger_return_contract(rows: list[dict[str, Any]]) -> bytes:
+    """Roadmap §14 standardized strategy-return/exposure contract, built from
+    a construction's real forward-shadow ledger rows — one JSONL row per
+    trading day, sorted ascending, deduplicated by ``asof_date``
+    (last-occurrence-wins, mirroring hedge_eval's convention, though this
+    ledger's own no-duplicate-date guarantee at write time makes a real
+    collision unlikely in practice). All four contract fields are populated
+    from real, always-present ledger data — no null turnover here, unlike
+    hedge_eval, since this ledger's producer always records it."""
+    by_date: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        by_date[row["asof_date"]] = {
+            "date": row["asof_date"],
+            "net_return": float(row["today_net_return"]),
+            "gross_exposure": float(row["gross_leverage"]),
+            "turnover": float(row["today_turnover"]),
+        }
+    lines = [json.dumps(by_date[date], sort_keys=True) for date in sorted(by_date)]
+    return ("\n".join(lines) + "\n").encode("utf-8") if lines else b""
 
 
 def _parse_cell(cell_id: str, data: bytes) -> list[dict[str, Any]]:
@@ -188,18 +260,38 @@ def evaluate_partitions(
     *,
     campaign_id: str,
 ) -> tuple[ConstructionHeadResult, ...]:
-    if not partitions:
+    cell_partitions = {k: v for k, v in partitions.items() if not _is_forward_ledger_partition(k)}
+    ledger_partitions = {k: v for k, v in partitions.items() if _is_forward_ledger_partition(k)}
+    if not cell_partitions:
         raise ValueError("no crypto-momentum cell partitions supplied")
     params = params or EvaluationParams()
     cards_by_construction: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for cell_id in sorted(partitions):
+    for cell_id in sorted(cell_partitions):
         construction = _construction_from_cell_id(cell_id)
-        card = scorecard.compute_fold_scorecard(cell_id, _parse_cell(cell_id, partitions[cell_id]))
+        card = scorecard.compute_fold_scorecard(cell_id, _parse_cell(cell_id, cell_partitions[cell_id]))
         if card["construction"] != construction:
             raise ValueError(
                 f"cell {cell_id!r} declares construction {card['construction']!r}, not {construction!r}"
             )
         cards_by_construction[construction].append(card)
+
+    # The forward-ledger partition set is a signed declaration exactly like the
+    # cell set: a construction cannot silently gain or lose its promised
+    # return-contract data relative to what was signed.
+    if len(params.expected_ledger_constructions) != len(set(params.expected_ledger_constructions)):
+        raise ValueError(f"expected_ledger_constructions declares duplicates: {params.expected_ledger_constructions}")
+    declared_ledger = set(params.expected_ledger_constructions)
+    supplied_ledger = {_construction_from_ledger_partition_id(pid) for pid in ledger_partitions}
+    if declared_ledger != supplied_ledger:
+        raise ValueError(
+            f"forward ledger constructions {sorted(supplied_ledger)} do not match "
+            f"the declared set {sorted(declared_ledger)}"
+        )
+    ledger_contract_by_construction: dict[str, bytes] = {}
+    for pid, data in ledger_partitions.items():
+        construction = _construction_from_ledger_partition_id(pid)
+        rows = _parse_ledger_rows(pid, data)
+        ledger_contract_by_construction[construction] = build_forward_ledger_return_contract(rows)
 
     declared = params.expected_cells_by_construction
     results: list[ConstructionHeadResult] = []
@@ -210,11 +302,13 @@ def evaluate_partitions(
             expected = list(declared[construction])
         else:
             expected = sorted(card["fold_id"] for card in cards_by_construction[construction])
-        results.append(
-            evaluate_construction(
-                campaign_id, construction, cards_by_construction[construction], expected, params
-            )
+        head = evaluate_construction(
+            campaign_id, construction, cards_by_construction[construction], expected, params
         )
+        contract_bytes = ledger_contract_by_construction.get(construction)
+        if contract_bytes:
+            head = dataclasses.replace(head, strategy_return_bytes=contract_bytes)
+        results.append(head)
     if declared:
         missing = sorted(set(declared) - set(cards_by_construction))
         if missing:
@@ -222,4 +316,7 @@ def evaluate_partitions(
     return tuple(results)
 
 
-__all__ = ["EvaluationParams", "evaluate_construction", "evaluate_partitions"]
+__all__ = [
+    "EvaluationParams", "evaluate_construction", "evaluate_partitions",
+    "build_forward_ledger_return_contract",
+]

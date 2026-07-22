@@ -73,6 +73,23 @@ def build_capability_profile(
     )
 
 
+FORWARD_LEDGER_PREFIX = "forward_ledger::"
+_RESERVED_ID_SEGMENT = "forward_ledger"  # Code Reviewer finding (crypto_carry sibling), 2026-07-22
+
+
+def _reject_reserved_id(construction: str) -> None:
+    """A construction literally equal to ``"forward_ledger"`` would make
+    ``cell_partition_id(construction, ...)`` start with
+    ``FORWARD_LEDGER_PREFIX``, misclassifying every one of its cells as
+    ledger data in ``evaluate_partitions``. Fails loud (a ValueError from the
+    ledger-set mismatch check), never silently, but is still worth refusing
+    outright."""
+    if construction == _RESERVED_ID_SEGMENT:
+        raise ValueError(
+            f"construction cannot be {_RESERVED_ID_SEGMENT!r} — reserved for forward-ledger partition ids"
+        )
+
+
 def cell_partition_id(construction: str, stress: str, fold_index: int) -> str:
     """Canonical partition id for one cell of one construction under one stress."""
     if not construction or not stress or "::" in construction or "::" in stress:
@@ -81,7 +98,19 @@ def cell_partition_id(construction: str, stress: str, fold_index: int) -> str:
         )
     if isinstance(fold_index, bool) or not isinstance(fold_index, int) or fold_index < 0:
         raise ValueError("fold_index must be a non-negative integer")
+    _reject_reserved_id(construction)
     return f"{construction}::{stress}::fold{fold_index}"
+
+
+def forward_ledger_partition_id(construction: str) -> str:
+    """Canonical partition id for one construction's REAL forward-shadow ledger
+    (roadmap §14 standardized return contract source) — reserved prefix keeps
+    it unambiguously distinct from ``{construction}::{stress}::fold{i}`` cell
+    ids everywhere partitions are classified (evaluation.py, local_import.py)."""
+    if not construction or "::" in construction:
+        raise ValueError("construction must be non-empty and cannot contain '::'")
+    _reject_reserved_id(construction)
+    return f"{FORWARD_LEDGER_PREFIX}{construction}"
 
 
 def build_momentum_cell_dataset_manifest(
@@ -149,24 +178,36 @@ def build_momentum_strategy_manifest(
     drop_one_sharpe_floor: float,
     strategy_id: str = CRYPTO_MOMENTUM_STRATEGY_ID,
     lane_id: str = CRYPTO_MOMENTUM_LANE_ID,
+    forward_ledger_constructions: Sequence[str] = (),
 ) -> StrategyManifest:
     """Freeze the crypto XS-momentum forward-evaluation program.
 
     The declared ``expected_cells_by_construction`` is signed into the manifest
     and is the authority the aggregator refuses incomplete/duplicate aggregations
     against — an omitted cell cannot be silently scored as a complete
-    construction.
+    construction. ``forward_ledger_constructions`` is the SAME kind of signed
+    declaration for which constructions' packages must carry the roadmap §14
+    return contract (built from their real forward-shadow ledger) — a
+    construction can be silently missing its promised ledger data no more than
+    it can be missing a declared cell.
     """
     constructions = sorted(expected_cells_by_construction)
     if not constructions:
         raise ValueError("at least one construction is required")
     for construction in constructions:
+        _reject_reserved_id(construction)
         cells = expected_cells_by_construction[construction]
         if not cells:
             raise ValueError(f"construction {construction!r} declares no expected cells")
         if len(cells) != len(set(cells)):
             raise ValueError(f"construction {construction!r} declares duplicate expected cells")
     declared = {c: sorted(expected_cells_by_construction[c]) for c in constructions}
+    ledger_constructions = sorted(set(forward_ledger_constructions))
+    if len(ledger_constructions) != len(forward_ledger_constructions):
+        raise ValueError("forward_ledger_constructions must not contain duplicates")
+    unknown = set(ledger_constructions) - set(constructions)
+    if unknown:
+        raise ValueError(f"forward_ledger_constructions references undeclared constructions: {sorted(unknown)}")
     return StrategyManifest(
         strategy_id=strategy_id,
         lane_id=lane_id,
@@ -195,6 +236,7 @@ def build_momentum_strategy_manifest(
             "stress_sharpe_floor": stress_sharpe_floor,
             "drop_one_sharpe_floor": drop_one_sharpe_floor,
             "construction": "frozen H4 XS-momentum (src.crypto.momentum_shadow.construction_manifest)",
+            "forward_ledger_constructions": ledger_constructions,
         },
         cost_model={
             "basis": "net Sharpe is computed on funding-aware, cost-deducted per-period returns",
@@ -270,6 +312,8 @@ __all__ = [
     "CRYPTO_MOMENTUM_METRIC_IDS",
     "build_capability_profile",
     "cell_partition_id",
+    "FORWARD_LEDGER_PREFIX",
+    "forward_ledger_partition_id",
     "build_momentum_cell_dataset_manifest",
     "build_momentum_strategy_manifest",
     "build_momentum_evaluation_job_manifest",

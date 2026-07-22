@@ -18,6 +18,7 @@ from src.evidence.crypto_momentum.models import lane_id_for_construction
 from src.evidence.crypto_momentum.slice import (
     build_evidence_store,
     build_slice_identities,
+    import_worker_output,
     produce_worker_output,
     run_crypto_momentum_evidence_slice,
     utc,
@@ -205,6 +206,157 @@ def test_identifiers_refuse_ambiguous_delimiters():
         cell_partition_id("construction::other", "baseline", 0)
     with pytest.raises(ValueError, match="non-negative integer"):
         cell_partition_id(CONSTRUCTION, "baseline", -1)
+
+
+def _ledger_rows(n: int = 10) -> list[dict]:
+    return [
+        {
+            "asof_date": f"2026-06-{i + 1:02d}", "today_net_return": 0.001 * (1 if i % 2 else -1),
+            "gross_leverage": 0.4 + 0.01 * i, "today_turnover": 0.05 + 0.001 * i,
+        }
+        for i in range(n)
+    ]
+
+
+def _ledger_bytes(rows: list[dict]) -> bytes:
+    return b"".join(json.dumps(r, sort_keys=True).encode() + b"\n" for r in rows)
+
+
+def test_forward_ledger_contract_is_present_and_well_formed(tmp_path):
+    """Roadmap §14 standardized strategy-return/exposure contract, retrofitted
+    additively onto crypto_momentum: sourced from the construction's REAL
+    forward-shadow ledger (src.crypto.momentum_shadow.record_shadow_cycle),
+    with all four fields populated (no null turnover — this ledger always
+    records it, unlike hedge_eval's)."""
+    from src.evidence.crypto_momentum.manifests import forward_ledger_partition_id
+
+    parts = _partitions()
+    rows = _ledger_rows()
+    parts_with_ledger = {**parts, forward_ledger_partition_id(CONSTRUCTION): _ledger_bytes(rows)}
+    identities, store = _fresh(tmp_path)
+    result = run_crypto_momentum_evidence_slice(store, identities, parts_with_ledger, **_slice_kwargs())
+    package_digest = result.outcomes[LANE].package_digest
+    payload = store.load_package_file(package_digest, "artifacts/strategy_returns.jsonl")
+    contract_rows = [json.loads(line) for line in payload.decode().splitlines() if line.strip()]
+    assert len(contract_rows) == len(rows)
+    dates = [r["date"] for r in contract_rows]
+    assert dates == sorted(dates)
+    for contract_row, source_row in zip(contract_rows, rows):
+        assert set(contract_row) == {"date", "net_return", "gross_exposure", "turnover"}
+        assert contract_row["net_return"] == pytest.approx(source_row["today_net_return"])
+        assert contract_row["gross_exposure"] == pytest.approx(source_row["gross_leverage"])
+        assert contract_row["turnover"] == pytest.approx(source_row["today_turnover"])
+
+
+def test_construction_without_forward_ledger_is_unaffected(tmp_path):
+    """Purely additive: a construction with NO forward-ledger partition gets
+    exactly the same single-artifact package as before this retrofit."""
+    identities, store = _fresh(tmp_path)
+    result = run_crypto_momentum_evidence_slice(store, identities, _partitions(), **_slice_kwargs())
+    package_digest = result.outcomes[LANE].package_digest
+    package = store.load_package(package_digest)
+    assert [a.relative_path for a in package.artifacts] == ["artifacts/construction_scorecard.json"]
+
+
+def test_import_rejects_doctored_forward_ledger_contract(tmp_path):
+    import dataclasses
+
+    from src.evidence.crypto_momentum.evaluation import evaluate_partitions as _eval
+    from src.evidence.crypto_momentum.manifests import forward_ledger_partition_id
+
+    parts = _partitions()
+    parts_with_ledger = {**parts, forward_ledger_partition_id(CONSTRUCTION): _ledger_bytes(_ledger_rows())}
+
+    def tamper_evaluator(partitions, params, *, campaign_id):
+        heads = _eval(partitions, params, campaign_id=campaign_id)
+        return tuple(
+            dataclasses.replace(h, strategy_return_bytes=h.strategy_return_bytes + b"\n")
+            if h.strategy_return_bytes else h
+            for h in heads
+        )
+
+    identities, store = _fresh(tmp_path)
+    produced = produce_worker_output(
+        identities, parts_with_ledger, evaluator=tamper_evaluator, **_slice_kwargs()
+    )
+    outcome = import_worker_output(
+        store, identities, produced, parts_with_ledger, created_at=NOW,
+    )[LANE]
+    assert outcome.final_state == DispositionState.REJECTED
+    assert "strategy_return_contract_reproduces" in (outcome.reason or "")
+
+
+def test_import_rejects_doctored_scorecard_when_ledger_artifact_also_present(tmp_path):
+    """Independent Code Reviewer finding (2026-07-22): the only doctored-
+    artifact test tampered the SECOND (ledger) artifact while the first
+    (scorecard) was valid — this covers the reverse, catching a regression
+    like 'only check the first/last artifact in the list' that the other
+    test alone would miss."""
+    import dataclasses
+
+    from src.evidence.crypto_momentum.evaluation import evaluate_partitions as _eval
+    from src.evidence.crypto_momentum.manifests import forward_ledger_partition_id
+
+    parts = _partitions()
+    parts_with_ledger = {**parts, forward_ledger_partition_id(CONSTRUCTION): _ledger_bytes(_ledger_rows())}
+
+    def tamper_evaluator(partitions, params, *, campaign_id):
+        heads = _eval(partitions, params, campaign_id=campaign_id)
+        return tuple(dataclasses.replace(h, artifact_bytes=h.artifact_bytes + b" ") for h in heads)
+
+    identities, store = _fresh(tmp_path)
+    produced = produce_worker_output(
+        identities, parts_with_ledger, evaluator=tamper_evaluator, **_slice_kwargs()
+    )
+    outcome = import_worker_output(
+        store, identities, produced, parts_with_ledger, created_at=NOW,
+    )[LANE]
+    assert outcome.final_state == DispositionState.REJECTED
+    assert "artifact_reproduces" in (outcome.reason or "")
+
+
+def test_missing_declared_forward_ledger_is_refused_at_the_worker(tmp_path):
+    """A signed declaration that a construction carries forward-ledger data
+    cannot be satisfied by simply not supplying it — the deterministic
+    aggregator refuses the mismatch at the worker, the same fail-closed
+    discipline the cell aggregator already applies to missing folds."""
+    from dataclasses import replace as dc_replace
+
+    parts = _partitions()
+    identities, _ = _fresh(tmp_path)
+    params = dc_replace(_params(parts), expected_ledger_constructions=(CONSTRUCTION,))
+    with pytest.raises(ValueError, match="do not match"):
+        produce_worker_output(identities, parts, params=params, **_slice_kwargs())
+
+
+def test_reserved_id_forward_ledger_is_rejected():
+    """Code Reviewer finding (crypto_carry sibling, 2026-07-22): a
+    construction literally equal to 'forward_ledger' would make its cell
+    partition ids start with FORWARD_LEDGER_PREFIX, misclassifying every
+    cell as ledger data. Refused outright."""
+    from src.evidence.crypto_momentum.manifests import build_momentum_strategy_manifest, forward_ledger_partition_id
+
+    with pytest.raises(ValueError, match="reserved for forward-ledger"):
+        cell_partition_id("forward_ledger", "baseline", 0)
+    with pytest.raises(ValueError, match="reserved for forward-ledger"):
+        forward_ledger_partition_id("forward_ledger")
+    with pytest.raises(ValueError, match="reserved for forward-ledger"):
+        build_momentum_strategy_manifest(
+            CAMPAIGN, {"forward_ledger": ("x",)}, frozen_at=NOW,
+            min_oos_folds=1, sharpe_bar=0.0, sharpe_tstat_bar=0.0,
+            max_drawdown_limit=1.0, stress_sharpe_floor=0.0, drop_one_sharpe_floor=0.0,
+        )
+
+
+def test_evaluate_partitions_rejects_duplicate_expected_ledger_constructions():
+    """Symmetry fix (Code Reviewer, 2026-07-22): evaluate_partitions used to
+    silently dedupe a duplicated expected_ledger_constructions declaration."""
+    from dataclasses import replace as dc_replace
+
+    parts = _partitions()
+    params = dc_replace(_params(parts), expected_ledger_constructions=(CONSTRUCTION, CONSTRUCTION))
+    with pytest.raises(ValueError, match="duplicates"):
+        evaluate_partitions(parts, params, campaign_id=CAMPAIGN)
 
 
 def test_partial_actor_override_retains_other_role_defaults():

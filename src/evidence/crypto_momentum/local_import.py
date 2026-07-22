@@ -46,6 +46,7 @@ from src.evidence.signing import Ed25519Signer, TrustStore, verify_envelope
 from src.evidence.store import EvidenceStore
 
 from .evaluation import EvaluationParams, evaluate_partitions
+from .manifests import FORWARD_LEDGER_PREFIX
 from .models import PackagedConstructionHead, ConstructionImportOutcome
 
 logger = logging.getLogger(__name__)
@@ -116,12 +117,36 @@ def _declared_bars(strategy_manifest: StrategyManifest) -> dict[str, float]:
 def _dataset_cells_by_construction(
     dataset_manifest: DatasetManifest,
 ) -> dict[str, tuple[str, ...]]:
-    """The fold-set-per-construction implied by the signed dataset manifest partitions."""
+    """The fold-set-per-construction implied by the signed dataset manifest
+    partitions. Forward-ledger partitions are EXCLUDED — they are a separate,
+    orthogonal declaration (see ``_dataset_ledger_constructions``) and must
+    never be miscounted as a cell (which would corrupt this grouping's
+    parity with ``expected_cells_by_construction``)."""
     grouped: dict[str, set[str]] = defaultdict(set)
     for ref in dataset_manifest.partitions:
+        if ref.partition_id.startswith(FORWARD_LEDGER_PREFIX):
+            continue
         construction = ref.partition_id.split("::", 1)[0]
         grouped[construction].add(ref.partition_id)
     return {construction: tuple(sorted(ids)) for construction, ids in grouped.items()}
+
+
+def _dataset_ledger_constructions(dataset_manifest: DatasetManifest) -> tuple[str, ...]:
+    """Which constructions have a forward-ledger partition in the signed
+    dataset manifest — the actual counterpart to the signed
+    ``forward_ledger_constructions`` declaration."""
+    return tuple(sorted(
+        ref.partition_id[len(FORWARD_LEDGER_PREFIX):]
+        for ref in dataset_manifest.partitions
+        if ref.partition_id.startswith(FORWARD_LEDGER_PREFIX)
+    ))
+
+
+def _declared_ledger_constructions(strategy_manifest: StrategyManifest) -> tuple[str, ...]:
+    raw = strategy_manifest.parameters.get("forward_ledger_constructions") or []
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    return tuple(sorted(str(c) for c in raw))
 
 
 def _partitions_match_manifest(
@@ -146,11 +171,11 @@ def _hash_checks(
     partitions: Mapping[str, bytes],
 ) -> tuple[ImportCheck, ...]:
     package = head.package
-    artifact = package.artifacts[0]
-    artifact_ok = (
-        sha256_bytes(head.files[artifact.relative_path]) == artifact.digest
-        and head.package_envelope.payload_digest == content_digest(package)
-    )
+    artifact_ok = all(
+        artifact.relative_path in head.files
+        and sha256_bytes(head.files[artifact.relative_path]) == artifact.digest
+        for artifact in package.artifacts
+    ) and head.package_envelope.payload_digest == content_digest(package)
     # Bind the exact evaluation report to the signed package (mirrors risk-target
     # code review F1 / hedge slice): verify_envelope authenticates the report
     # signature, but this closes the gap where a differently-but-validly-signed
@@ -179,6 +204,10 @@ def _hash_checks(
         bool(declared_cells)
         and declared_cells == _dataset_cells_by_construction(dataset_manifest)
     )
+    # Mirrors strategy_cells_ok's rigor for the (optional, per-construction)
+    # forward-ledger return contract: a construction cannot silently gain or
+    # lose its promised roadmap §14 return data relative to what was signed.
+    ledger_ok = _declared_ledger_constructions(strategy_manifest) == _dataset_ledger_constructions(dataset_manifest)
     return (
         _check("artifact_hashes_match", artifact_ok, "artifact bytes match declared digest"),
         _check("evaluation_report_bound_to_package", report_bound,
@@ -190,6 +219,8 @@ def _hash_checks(
                "supplied cell partitions match the signed dataset manifest hashes"),
         _check("strategy_declared_cells_match_dataset", strategy_cells_ok,
                "strategy manifest's declared fold set per construction matches the dataset manifest"),
+        _check("strategy_declared_ledger_constructions_match_dataset", ledger_ok,
+               "strategy manifest's declared forward-ledger construction set matches the dataset manifest"),
     )
 
 
@@ -261,8 +292,21 @@ def _replay_checks(
     # just reproduced, so bind the reproduced bytes to the stored, signed artifact
     # digest. Catches a producer that signs an honest EvaluationReport but
     # packages a doctored construction_scorecard.json.
-    artifact = head.package.artifacts[0]
-    artifact_ok = sha256_bytes(result.artifact_bytes) == artifact.digest
+    artifacts_by_path = {a.relative_path: a for a in head.package.artifacts}
+    scorecard_artifact = artifacts_by_path.get("artifacts/construction_scorecard.json")
+    artifact_ok = scorecard_artifact is not None and sha256_bytes(result.artifact_bytes) == scorecard_artifact.digest
+
+    # Same reproducibility bind for the OPTIONAL roadmap §14 return contract:
+    # if the stored package declares one, the independent replay's own
+    # ledger-derived contract bytes must match it exactly. If the package
+    # declares NO such artifact, this check is vacuously true (nothing to
+    # reproduce) — mirrors the honest degrade-to-existence-only convention
+    # portfolio_book's own content-binding check uses for lanes without one.
+    contract_artifact = artifacts_by_path.get("artifacts/strategy_returns.jsonl")
+    if contract_artifact is None:
+        contract_ok = not result.strategy_return_bytes
+    else:
+        contract_ok = sha256_bytes(result.strategy_return_bytes) == contract_artifact.digest
 
     return (
         _check("metric_replay_reproduces", metric_ok,
@@ -270,6 +314,8 @@ def _replay_checks(
         _check("gate_verdict_reproduces", gate_ok, "reproduced gate verdict matches the producer's"),
         _check("artifact_reproduces", artifact_ok,
                "reproduced scorecard bytes match the stored artifact digest"),
+        _check("strategy_return_contract_reproduces", contract_ok,
+               "reproduced forward-ledger return contract matches the stored artifact (or neither exists)"),
     )
 
 
@@ -379,6 +425,7 @@ def import_head(
     replay_overrides = _declared_bars(strategy_manifest)
     if declared_cells:
         replay_overrides["expected_cells_by_construction"] = declared_cells
+    replay_overrides["expected_ledger_constructions"] = _declared_ledger_constructions(strategy_manifest)
     replay_params = replace(params, **replay_overrides) if replay_overrides else params
 
     checks = _StageChecks(
