@@ -40,6 +40,7 @@ from .dashboard import crypto_carry_evidence_view
 from .evaluation import EvaluationParams, evaluate_partitions
 from .local_import import import_head
 from .manifests import (
+    FORWARD_LEDGER_PREFIX,
     build_capability_profile,
     build_carry_evaluation_job_manifest,
     build_carry_cell_dataset_manifest,
@@ -118,12 +119,23 @@ def build_evidence_store(
 def _expected_cells_by_carry(
     partitions: Mapping[str, bytes],
 ) -> dict[str, tuple[str, ...]]:
-    """Derive the declared expected cell set from partition ids."""
+    """Derive the declared expected cell set from partition ids. Forward-
+    ledger partitions are excluded — they are a separate, orthogonal
+    declaration (see ``_expected_ledger_carries``)."""
     grouped: dict[str, list[str]] = {}
     for cell_id in partitions:
+        if cell_id.startswith(FORWARD_LEDGER_PREFIX):
+            continue
         carry_id = cell_id.split("::", 1)[0]
         grouped.setdefault(carry_id, []).append(cell_id)
     return {carry_id: tuple(sorted(ids)) for carry_id, ids in grouped.items()}
+
+
+def _expected_ledger_carries(partitions: Mapping[str, bytes]) -> tuple[str, ...]:
+    """Derive the declared forward-ledger carry set from partition ids."""
+    return tuple(sorted(
+        pid[len(FORWARD_LEDGER_PREFIX):] for pid in partitions if pid.startswith(FORWARD_LEDGER_PREFIX)
+    ))
 
 
 @dataclass(frozen=True)
@@ -165,16 +177,17 @@ def _config_digest(params: EvaluationParams, scorecard_version: str) -> str:
 def _resolve_params(
     partitions: Mapping[str, bytes], params: EvaluationParams | None
 ) -> EvaluationParams:
-    """Bind the declared expected-cell map into params if not already set."""
-    base = params or EvaluationParams()
-    if base.expected_cells_by_carry:
-        return base
+    """Bind the declared expected-cell map and forward-ledger carry set into
+    params if not already set."""
     from dataclasses import replace
 
-    return replace(
-        base,
-        expected_cells_by_carry=_expected_cells_by_carry(partitions),
-    )
+    base = params or EvaluationParams()
+    overrides = {}
+    if not base.expected_cells_by_carry:
+        overrides["expected_cells_by_carry"] = _expected_cells_by_carry(partitions)
+    if not base.expected_ledger_carries:
+        overrides["expected_ledger_carries"] = _expected_ledger_carries(partitions)
+    return replace(base, **overrides) if overrides else base
 
 
 def produce_worker_output(
@@ -225,6 +238,7 @@ def produce_worker_output(
         max_margin_utilization=params.max_margin_utilization,
         max_tracking_error=params.max_tracking_error,
         min_capacity_usd=params.min_capacity_usd,
+        forward_ledger_carries=params.expected_ledger_carries,
     )
     strategy_envelope = producer.sign(strategy_manifest, created_at=created_at)
 

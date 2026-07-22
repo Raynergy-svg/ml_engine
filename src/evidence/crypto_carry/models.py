@@ -38,6 +38,12 @@ class CarryHeadResult:
     cell_ids: tuple[str, ...]
     temporal_holdout: str
     incumbent_comparison: Mapping[str, object] = field(default_factory=dict)
+    # Roadmap §14 standardized strategy-return/exposure contract, sourced from
+    # this carry's REAL forward-shadow ledger (src.crypto.carry_shadow
+    # record_shadow_cycle) when supplied — empty for carries with no forward
+    # ledger partition yet (fully backward compatible). See
+    # evaluation.py::build_forward_ledger_return_contract for the exact schema.
+    strategy_return_bytes: bytes = b""
 
 
 @dataclass(frozen=True)

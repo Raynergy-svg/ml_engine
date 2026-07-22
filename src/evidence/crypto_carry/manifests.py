@@ -73,6 +73,25 @@ def build_capability_profile(
     )
 
 
+FORWARD_LEDGER_PREFIX = "forward_ledger::"
+_RESERVED_ID_SEGMENT = "forward_ledger"  # Code Reviewer finding, 2026-07-22: see below
+
+
+def _reject_reserved_id(carry_id: str) -> None:
+    """A carry_id literally equal to ``"forward_ledger"`` would make
+    ``cell_partition_id(carry_id, ...)`` start with ``FORWARD_LEDGER_PREFIX``
+    (e.g. ``"forward_ledger::binance::base::normal"``), misclassifying every
+    one of that carry's cells as ledger data in ``evaluate_partitions``. Fails
+    LOUD today (a ValueError from the ledger-set mismatch check, never a
+    silent misread — confirmed by the Code Reviewer), but an unusable carry_id
+    is still worth refusing outright rather than relying on a downstream
+    check to catch it."""
+    if carry_id == _RESERVED_ID_SEGMENT:
+        raise ValueError(
+            f"carry_id cannot be {_RESERVED_ID_SEGMENT!r} — reserved for forward-ledger partition ids"
+        )
+
+
 def cell_partition_id(
     carry_id: str, venue_set: str, cost_model: str, regime: str
 ) -> str:
@@ -80,7 +99,19 @@ def cell_partition_id(
     components = (carry_id, venue_set, cost_model, regime)
     if any(not value or "::" in value for value in components):
         raise ValueError("cell id components must be non-empty and cannot contain '::'")
+    _reject_reserved_id(carry_id)
     return "::".join(components)
+
+
+def forward_ledger_partition_id(carry_id: str) -> str:
+    """Canonical partition id for one carry's REAL forward-shadow ledger
+    (roadmap §14 standardized return contract source) — reserved prefix keeps
+    it unambiguously distinct from ``{carry_id}::{venue_set}::{cost_model}::
+    {regime}`` cell ids everywhere partitions are classified."""
+    if not carry_id or "::" in carry_id:
+        raise ValueError("carry_id must be non-empty and cannot contain '::'")
+    _reject_reserved_id(carry_id)
+    return f"{FORWARD_LEDGER_PREFIX}{carry_id}"
 
 
 def build_carry_cell_dataset_manifest(
@@ -148,24 +179,34 @@ def build_carry_strategy_manifest(
     min_capacity_usd: float,
     strategy_id: str = CRYPTO_CARRY_STRATEGY_ID,
     lane_id: str = CRYPTO_CARRY_LANE_ID,
+    forward_ledger_carries: Sequence[str] = (),
 ) -> StrategyManifest:
     """Freeze the crypto cash-and-carry evaluation program.
 
     The declared ``expected_cells_by_carry`` is signed into the manifest
     and is the authority the aggregator refuses incomplete/duplicate aggregations
     against — an omitted cell cannot be silently scored as a complete
-    carry.
+    carry. ``forward_ledger_carries`` is the SAME kind of signed declaration
+    for which carries' packages must carry the roadmap §14 return contract
+    (built from their real forward-shadow ledger).
     """
     carries = sorted(expected_cells_by_carry)
     if not carries:
         raise ValueError("at least one carry is required")
     for carry in carries:
+        _reject_reserved_id(carry)
         cells = expected_cells_by_carry[carry]
         if not cells:
             raise ValueError(f"carry {carry!r} declares no expected cells")
         if len(cells) != len(set(cells)):
             raise ValueError(f"carry {carry!r} declares duplicate expected cells")
     declared = {c: sorted(expected_cells_by_carry[c]) for c in carries}
+    ledger_carries = sorted(set(forward_ledger_carries))
+    if len(ledger_carries) != len(forward_ledger_carries):
+        raise ValueError("forward_ledger_carries must not contain duplicates")
+    unknown = set(ledger_carries) - set(carries)
+    if unknown:
+        raise ValueError(f"forward_ledger_carries references undeclared carries: {sorted(unknown)}")
     return StrategyManifest(
         strategy_id=strategy_id,
         lane_id=lane_id,
@@ -197,6 +238,7 @@ def build_carry_strategy_manifest(
                 "withdrawal_suspension", "stablecoin_depeg",
                 "cross_venue_settlement",
             ],
+            "forward_ledger_carries": ledger_carries,
         },
         cost_model={
             "basis": "net return includes fees, borrow/transfer costs and both spot/perp legs",
@@ -271,6 +313,8 @@ __all__ = [
     "CRYPTO_CARRY_METRIC_IDS",
     "build_capability_profile",
     "cell_partition_id",
+    "FORWARD_LEDGER_PREFIX",
+    "forward_ledger_partition_id",
     "build_carry_cell_dataset_manifest",
     "build_carry_strategy_manifest",
     "build_carry_evaluation_job_manifest",

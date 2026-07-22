@@ -148,6 +148,21 @@ def _package_head(
         size_bytes=len(head.artifact_bytes),
         media_type=head.media_type,
     )
+    artifacts = [artifact]
+    files = {artifact_path: head.artifact_bytes}
+    checksums = {artifact_path: artifact.digest}
+    if head.strategy_return_bytes:
+        contract_path = "artifacts/strategy_returns.jsonl"
+        contract_artifact = ArtifactRef(
+            artifact_id=f"crypto-carry-{head.campaign_id}-{head.carry_id}-strategy-returns",
+            relative_path=contract_path,
+            digest=sha256_bytes(head.strategy_return_bytes),
+            size_bytes=len(head.strategy_return_bytes),
+            media_type="application/x-ndjson",
+        )
+        artifacts.append(contract_artifact)
+        files[contract_path] = head.strategy_return_bytes
+        checksums[contract_path] = contract_artifact.digest
     package = EvidencePackage(
         package_id=f"crypto-carry-{head.campaign_id}-{head.carry_id}",
         lane_id=head.lane_id,
@@ -157,13 +172,13 @@ def _package_head(
         dataset_manifest_digests=job.dataset_manifest_digests,
         strategy_manifest_digest=job.strategy_manifest_digest,
         evaluation_report_digests=(report_envelope.payload_digest,),
-        artifacts=(artifact,),
+        artifacts=tuple(artifacts),
         safety_assertions=(
             SafetyAssertion(assertion_id="remote_worker_no_broker_credentials", passed=True),
             SafetyAssertion(assertion_id="remote_worker_cannot_read_control_state", passed=True),
             SafetyAssertion(assertion_id="worker_cannot_promote_or_overwrite_incumbent", passed=True),
         ),
-        checksums={artifact_path: artifact.digest},
+        checksums=checksums,
     )
     package_envelope = producer.sign(package, created_at=created_at)
     package_digest = package_envelope.payload_digest
@@ -192,7 +207,7 @@ def _package_head(
         package=package,
         package_digest=package_digest,
         package_envelope=package_envelope,
-        files={artifact_path: head.artifact_bytes},
+        files=files,
         evaluation_report_envelope=report_envelope,
         created_event_envelope=created_envelope,
         result_passed=head.passed,
