@@ -38,6 +38,7 @@ from src.evidence.contracts import (
     EvidencePackage, ImportCheck, ImportDecision, LocalImportVerdict, SafetyAssertion,
 )
 from src.evidence.hashing import sha256_bytes
+from src.evidence.portfolio_book.dashboard import portfolio_book_evidence_view
 from src.evidence.portfolio_book.evaluation import EvaluationParams
 from src.evidence.portfolio_book.local_import import import_book
 from src.evidence.portfolio_book.slice import (
@@ -54,9 +55,9 @@ SLICE_KW = dict(
 DEFAULT_PARAMS = EvaluationParams(oos_start="2025-11-01", min_est_days=150, min_oos_days=20)
 N_DAYS = 300
 SLEEVE_SPECS = {  # sleeve_id -> (mu, sigma, seed)
-    "risk_target": (0.0006, 0.006, 1),
+    "crypto_momentum": (0.0006, 0.006, 1),
     "hedge_eval": (0.0004, 0.004, 2),
-    "equity_research": (0.0005, 0.008, 3),
+    "crypto_carry": (0.0005, 0.008, 3),
 }
 
 
@@ -76,10 +77,17 @@ def _make_partition(mu: float, sigma: float, n_days: int, *, seed: int, source_p
     return ("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8")
 
 
-def _stage_source(store, identities, sleeve_id: str, now, *, final_state=DispositionState.QUARANTINED) -> str:
+def _stage_source(
+    store, identities, sleeve_id: str, now, *,
+    final_state=DispositionState.QUARANTINED, return_contract_bytes: bytes | None = None,
+) -> str:
     """Stage a minimal REAL EvidencePackage for ``sleeve_id`` and walk it
     through the REAL disposition chain up to (and optionally stopping before)
-    QUARANTINED. Returns the package digest."""
+    QUARANTINED. Returns the package digest. When ``return_contract_bytes`` is
+    given, the package ALSO publishes it at the standardized
+    ``artifacts/strategy_returns.jsonl`` path, so a test can exercise
+    portfolio_book's byte-level content-binding check against a real,
+    quarantined, contract-publishing source lane (as hedge_eval now is)."""
     producer = identities.signers[AuthorityRole.PRODUCER]
     importer = identities.signers[AuthorityRole.LOCAL_IMPORTER]
     verifier = identities.signers[AuthorityRole.INDEPENDENT_VERIFIER]
@@ -89,15 +97,28 @@ def _stage_source(store, identities, sleeve_id: str, now, *, final_state=Disposi
         artifact_id=f"{sleeve_id}-src", relative_path=path, digest=sha256_bytes(artifact_bytes),
         size_bytes=len(artifact_bytes), media_type="application/json",
     )
+    artifacts = [artifact]
+    files = {path: artifact_bytes}
+    checksums = {path: artifact.digest}
+    if return_contract_bytes is not None:
+        contract_path = "artifacts/strategy_returns.jsonl"
+        contract_artifact = ArtifactRef(
+            artifact_id=f"{sleeve_id}-strategy-returns", relative_path=contract_path,
+            digest=sha256_bytes(return_contract_bytes), size_bytes=len(return_contract_bytes),
+            media_type="application/x-ndjson",
+        )
+        artifacts.append(contract_artifact)
+        files[contract_path] = return_contract_bytes
+        checksums[contract_path] = contract_artifact.digest
     package = EvidencePackage(
         package_id=f"source-{sleeve_id}", lane_id=sleeve_id,
         producer_id=identities.actors[AuthorityRole.PRODUCER], created_at=now,
         job_manifest_digest="0" * 64, dataset_manifest_digests=("1" * 64,),
-        evaluation_report_digests=("2" * 64,), artifacts=(artifact,),
+        evaluation_report_digests=("2" * 64,), artifacts=tuple(artifacts),
         safety_assertions=(SafetyAssertion(assertion_id="seed_ok", passed=True),),
-        checksums={path: artifact.digest},
+        checksums=checksums,
     )
-    digest = store.write_package(producer.sign(package, created_at=now), {path: artifact_bytes})
+    digest = store.write_package(producer.sign(package, created_at=now), files)
     verdict = LocalImportVerdict(
         verdict_id=f"{sleeve_id}-verdict", package_digest=digest,
         importer_id=identities.actors[AuthorityRole.LOCAL_IMPORTER], created_at=now,
@@ -185,9 +206,9 @@ def test_missing_source_package_is_rejected(tmp_path):
     identities, store = _fresh(tmp_path)
     partitions, source_digests = _stage_sources_and_partitions(store, identities, SLEEVE_SPECS, NOW)
     fake_digest = "f" * 64  # never written to this store
-    source_digests["equity_research"] = fake_digest
-    mu, sigma, seed = SLEEVE_SPECS["equity_research"]
-    partitions["equity_research"] = _make_partition(mu, sigma, N_DAYS, seed=seed, source_package_digest=fake_digest)
+    source_digests["crypto_carry"] = fake_digest
+    mu, sigma, seed = SLEEVE_SPECS["crypto_carry"]
+    partitions["crypto_carry"] = _make_partition(mu, sigma, N_DAYS, seed=seed, source_package_digest=fake_digest)
     result = run_portfolio_book_evidence_slice(
         store, identities, partitions, source_package_digests=source_digests,
         params=DEFAULT_PARAMS, **SLICE_KW,
@@ -195,6 +216,124 @@ def test_missing_source_package_is_rejected(tmp_path):
     assert result.outcome.final_state == DispositionState.REJECTED
     failed = {check.check_id for check in result.outcome.verdict.checks if not check.passed}
     assert "source_packages_quarantined" in failed
+
+
+def _contract_row(day: str, net_return: float, gross_exposure: float, turnover) -> dict:
+    return {"date": day, "net_return": net_return, "gross_exposure": gross_exposure, "turnover": turnover}
+
+
+def _contract_bytes(rows: list[dict]) -> bytes:
+    return ("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n").encode("utf-8")
+
+
+def _oscillating_contract_rows(n_days: int, *, start: str = "2025-01-01") -> list[dict]:
+    """A deterministic, genuinely-varying (non-degenerate volatility) return
+    series with an honest null turnover — shaped like hedge_eval's real
+    contract, long enough for the allocator's estimation window to compute a
+    real, non-zero variance."""
+    rng = random.Random(123)
+    day = date.fromisoformat(start)
+    rows = []
+    for _ in range(n_days):
+        rows.append(_contract_row(day.isoformat(), rng.gauss(0.0005, 0.006), 0.5, None))
+        day += dt.timedelta(days=1)
+        while day.weekday() >= 5:
+            day += dt.timedelta(days=1)
+    return rows
+
+
+_CONTENT_BOUND_N_DAYS = 40
+_CONTENT_BOUND_OOS_START = _oscillating_contract_rows(_CONTENT_BOUND_N_DAYS)[30]["date"]
+
+
+def test_source_content_bound_passes_against_a_real_published_contract(tmp_path):
+    """When a source lane publishes its own strategy-return contract (as
+    hedge_eval now does), the supplied sleeve partition is checked against it
+    by content (net_return/gross_exposure/turnover per date), not raw bytes —
+    the partition legitimately carries one extra lineage-only field the
+    contract does not."""
+    identities, store = _fresh(tmp_path)
+    contract_rows = _oscillating_contract_rows(_CONTENT_BOUND_N_DAYS)
+    published = _contract_bytes(contract_rows)
+    digest = _stage_source(store, identities, "hedge_eval", NOW, return_contract_bytes=published)
+    other_digest = _stage_source(store, identities, "other", NOW)
+    # The sleeve partition supplied to portfolio_book: same content, PLUS the
+    # source_package_digest lineage field lineage.py requires.
+    supplied_rows = [{**row, "source_package_digest": digest} for row in contract_rows]
+    partitions = {
+        "hedge_eval": _contract_bytes(supplied_rows),
+        "other": _make_partition(0.0004, 0.004, _CONTENT_BOUND_N_DAYS, seed=9, source_package_digest=other_digest),
+    }
+    source_digests = {"hedge_eval": digest, "other": other_digest}
+    result = run_portfolio_book_evidence_slice(
+        store, identities, partitions, source_package_digests=source_digests,
+        params=EvaluationParams(oos_start=_CONTENT_BOUND_OOS_START, min_est_days=25, min_oos_days=5, max_allocation=0.9),
+        **SLICE_KW,
+    )
+    checks = {c.check_id: c for c in result.outcome.verdict.checks}
+    assert checks["source_content_bound"].passed is True
+    assert "hedge_eval" not in checks["source_content_bound"].details
+
+
+def test_source_content_bound_rejects_fabricated_return_series(tmp_path):
+    """A sleeve claiming a real, quarantined, contract-publishing source lane
+    cannot supply return data that contradicts what that lane actually
+    published — the exact gap the independent Code Reviewer flagged before
+    the first commit of this slice, now closed for any lane that publishes
+    the contract (hedge_eval, today)."""
+    identities, store = _fresh(tmp_path)
+    published_rows = _oscillating_contract_rows(_CONTENT_BOUND_N_DAYS)
+    published = _contract_bytes(published_rows)
+    digest = _stage_source(store, identities, "hedge_eval", NOW, return_contract_bytes=published)
+    other_digest = _stage_source(store, identities, "other", NOW)
+    # Fabricated: same dates, WRONG net_return values, but a correctly-bound
+    # source_package_digest (so the earlier lineage check alone would pass).
+    fabricated_rows = [
+        {**_contract_row(row["date"], row["net_return"] + 0.5, row["gross_exposure"], None), "source_package_digest": digest}
+        for row in published_rows
+    ]
+    partitions = {
+        "hedge_eval": _contract_bytes(fabricated_rows),
+        "other": _make_partition(0.0004, 0.004, _CONTENT_BOUND_N_DAYS, seed=9, source_package_digest=other_digest),
+    }
+    source_digests = {"hedge_eval": digest, "other": other_digest}
+    result = run_portfolio_book_evidence_slice(
+        store, identities, partitions, source_package_digests=source_digests,
+        params=EvaluationParams(oos_start=_CONTENT_BOUND_OOS_START, min_est_days=25, min_oos_days=5, max_allocation=0.9),
+        **SLICE_KW,
+    )
+    assert result.outcome.final_state == DispositionState.REJECTED
+    failed = {check.check_id for check in result.outcome.verdict.checks if not check.passed}
+    assert "source_content_bound" in failed
+
+
+def test_dashboard_surfaces_content_binding_coverage(tmp_path):
+    """A PASS on ``source_content_bound`` alone can't distinguish 'every sleeve
+    strongly content-bound' from 'no sleeve published a contract to bind
+    against' (Code Reviewer finding, 2026-07-22) — the dashboard must surface
+    that coverage claim explicitly rather than require a human to open the
+    raw verdict file to see what 'content-bound' actually covered."""
+    identities, store = _fresh(tmp_path)
+    contract_rows = _oscillating_contract_rows(_CONTENT_BOUND_N_DAYS)
+    digest = _stage_source(store, identities, "hedge_eval", NOW, return_contract_bytes=_contract_bytes(contract_rows))
+    other_digest = _stage_source(store, identities, "other", NOW)  # no published contract
+    supplied_rows = [{**row, "source_package_digest": digest} for row in contract_rows]
+    partitions = {
+        "hedge_eval": _contract_bytes(supplied_rows),
+        "other": _make_partition(0.0004, 0.004, _CONTENT_BOUND_N_DAYS, seed=9, source_package_digest=other_digest),
+    }
+    source_digests = {"hedge_eval": digest, "other": other_digest}
+    result = run_portfolio_book_evidence_slice(
+        store, identities, partitions, source_package_digests=source_digests,
+        params=EvaluationParams(oos_start=_CONTENT_BOUND_OOS_START, min_est_days=25, min_oos_days=5, max_allocation=0.9),
+        **SLICE_KW,
+    )
+    assert result.outcome.final_state == DispositionState.QUARANTINED
+    view = portfolio_book_evidence_view(store.root)
+    book = next(b for b in view["books"] if b["package_digest"] == result.outcome.package_digest)
+    binding = book["verdict"]["content_binding"]
+    assert binding is not None
+    assert "other" in binding  # names the sleeve that was existence+quarantine-only, not silently folded into a PASS
 
 
 def test_forged_source_digest_binding_is_refused_at_the_worker(tmp_path):
@@ -208,7 +347,7 @@ def test_forged_source_digest_binding_is_refused_at_the_worker(tmp_path):
     # Swap in a digest for a DIFFERENT, still-quarantined sleeve — legitimate
     # package, wrong sleeve — without touching the partition rows.
     forged = dict(source_digests)
-    forged["equity_research"] = source_digests["hedge_eval"]
+    forged["crypto_carry"] = source_digests["hedge_eval"]
     with pytest.raises(JobVerificationError, match="source_package_digest"):
         run_portfolio_book_evidence_slice(
             store, identities, partitions, source_package_digests=forged,
@@ -231,7 +370,7 @@ def test_forged_source_digest_binding_is_rejected_even_if_a_worker_skips_the_che
     from src.evidence.portfolio_book.worker import _package as package_book
 
     forged = dict(source_digests)
-    forged["equity_research"] = source_digests["hedge_eval"]  # legitimate package, wrong sleeve
+    forged["crypto_carry"] = source_digests["hedge_eval"]  # legitimate package, wrong sleeve
     producer = identities.signers[AuthorityRole.PRODUCER]
     capability = build_capability_profile()
     capability_envelope = producer.sign(capability, created_at=NOW)
@@ -277,7 +416,7 @@ def test_worker_rejects_sleeve_universe_mismatch(tmp_path):
     )
     # Tamper the supplied partitions after signing so the universe no longer matches.
     tampered = dict(partitions)
-    del tampered["equity_research"]
+    del tampered["crypto_carry"]
     with pytest.raises((JobVerificationError, DatasetHashError)):
         run_worker(
             job_envelope=produced.worker_output.job_envelope,
@@ -297,8 +436,8 @@ def test_changed_sleeve_partition_after_signing_causes_hash_failure(tmp_path):
         identities, partitions, source_package_digests=source_digests, params=DEFAULT_PARAMS, **SLICE_KW,
     )
     tampered = dict(partitions)
-    tampered["risk_target"] = _make_partition(
-        0.05, 0.006, 300, seed=99, source_package_digest=source_digests["risk_target"],
+    tampered["crypto_momentum"] = _make_partition(
+        0.05, 0.006, 300, seed=99, source_package_digest=source_digests["crypto_momentum"],
     )  # different bytes, same key set and same claimed digest
     outcome = import_book(
         store, produced.worker_output.book, job_envelope=produced.worker_output.job_envelope,
@@ -330,8 +469,8 @@ def test_book_can_never_reach_operator_approved_or_champion(tmp_path):
 def test_insufficient_sleeves_is_a_worker_error(tmp_path):
     identities, store = _fresh(tmp_path)
     digest = "a" * 64
-    single = {"risk_target": _make_partition(0.0006, 0.006, 300, seed=1, source_package_digest=digest)}
-    source_digests = {"risk_target": digest}
+    single = {"crypto_momentum": _make_partition(0.0006, 0.006, 300, seed=1, source_package_digest=digest)}
+    source_digests = {"crypto_momentum": digest}
     with pytest.raises(Exception):
         run_portfolio_book_evidence_slice(
             store, identities, single, source_package_digests=source_digests,

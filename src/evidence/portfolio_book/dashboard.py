@@ -35,10 +35,21 @@ def portfolio_book_evidence_view(store_root: str | Path) -> dict:
             continue
         digest = payload.get("package_digest")
         if isinstance(digest, str) and digest:
+            content_bound_check = next(
+                (check for check in checks if check.get("check_id") == "source_content_bound"), None
+            )
             verdicts[digest] = {
                 "decision": payload.get("decision"),
                 "rejection_reason": payload.get("rejection_reason"),
                 "failed_checks": [check.get("check_id") for check in checks if not check.get("passed", True)],
+                # Surfaced explicitly, not folded into failed_checks: PASS alone
+                # does not distinguish "every sleeve's source lane published a
+                # verified return contract" from "no sleeve did, existence and
+                # quarantine state were the only things checked" — the coverage
+                # claim lives only in this check's free-text details, so read
+                # it out here rather than let a human have to open the raw
+                # verdict file to see what "content-bound" actually covered.
+                "content_binding": (content_bound_check or {}).get("details"),
             }
     books = []
     for digest, info in sorted(index.get("packages", {}).items()):

@@ -4,16 +4,53 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-22 by Claude (§19 item 15 — portfolio allocator + combined-book gate evidence slice built).
+Last touched: 2026-07-22 by Claude (§19 item 15 follow-up — closed the honest gap: hedge_eval now
+publishes the roadmap §14 contract, portfolio_book verifies it byte-for-byte).
+
+## §19 item 15 follow-up: closing the honest gap (2026-07-22, same day)
+
+Operator said "close honest gap" re: the note below that the lineage binding didn't prove return
+VALUES traced to source content. Investigated all 5 originally-cited candidate sleeves first
+(2 Explore agents, file:line-cited) before touching anything — **risk_target and equity_research
+are NOT valid sleeves at all**: risk_target trains vol/drawdown-state models from raw OHLCV bars
+(no strategy/P&L/exposure concept anywhere in the slice); equity_research's rank-IC scorecard is a
+cross-sectional ranking metric per fold/window (no calendar dates, no realized daily return). Both
+removed from portfolio_book's docs/tests; corrected candidate set is hedge_eval / crypto_momentum
+/ crypto_carry — the only 3 of the original 5 that actually compute a strategy return series.
+
+**Landed:** (1) Retrofitted `src/evidence/hedge_eval/` additively with the standardized
+strategy-return/exposure contract (`artifacts/strategy_returns.jsonl`: date/net_return sourced
+from the ledger's `raw.net_return`, gross_exposure from `raw.gross_leverage`, turnover honestly
+`null` — no per-position weight history exists to compute it, and a leverage-level delta is not
+the same thing as position churn so it isn't faked) — checked by BOTH the worker and the local
+importer's independent replay; existing 24 hedge_eval tests untouched, +2 new. (2) NEW
+`_source_content_bound` check in `portfolio_book/local_import.py`: where a source lane publishes
+this contract, the supplied sleeve partition must agree with it on net_return/gross_exposure/
+turnover per date (compared by parsed content, not raw bytes — the book's own partition legitimately
+carries one extra lineage-only field the source contract doesn't); a source lane that doesn't yet
+publish it degrades to the old existence+quarantine-only check, reported honestly in the verdict
+details rather than silently claimed as content-verified. (3) Along the way, found and fixed a
+REAL integration bug: `evaluate_partitions`'s row parser required turnover/gross_exposure as hard
+numerics, which would have broken on the very `turnover: null` hedge_eval honestly emits — now
+accepts JSON null for those two fields (net_return still always required), tracked per-sleeve in
+a new `data_quality` artifact section so a null-defaulted-to-zero number is never silently
+presented as a real one. **Scoped down, not attempted:** crypto_momentum/crypto_carry retrofits —
+`momentum_shadow.py`/`carry_shadow.py` already compute real date/turnover/gross-exposure frames but
+discard them before reaching the evidence dataset partitions, AND there is no production script
+that builds real (non-test) cells for either evidence slice at all (`grep` confirmed) — extending
+their schema now would be forward-looking plumbing for a pipeline that doesn't exist yet, not a
+real closure; left explicitly open rather than forcing a low-value change. 90/90 tests green
+(portfolio_book 34 + hedge_eval 26 + track_b + contracts), flake8 clean.
 
 ## Portfolio allocator + combined-book gate evidence slice (2026-07-22) — §19 item 15 / roadmap §14 Phase K
 
 Built `src/evidence/portfolio_book/` — the 8th evidence slice, following the established
 manifests/evaluation/worker/local_import/slice/dashboard pattern (closest precedents: `track_b`
 for the "derives from other already-QUARANTINED packages" shape, `execution_cost` for the plain
-single-workload shape). Combines N sleeve daily-return partitions (risk_target, hedge_eval,
-equity_research, crypto_momentum, crypto_carry — any already-QUARANTINED lane's return stream)
-into one book: chronological estimation/OOS split (weights fit only on dates < oos_start, book
+single-workload shape). Combines N sleeve daily-return partitions (hedge_eval, crypto_momentum,
+crypto_carry — any already-QUARANTINED lane that computes a genuine strategy return series; NOT
+risk_target or equity_research, see follow-up entry above) into one book: chronological
+estimation/OOS split (weights fit only on dates < oos_start, book
 scored only on dates >= oos_start, no in-window rebalancing); computes inverse-vol / equal-risk-
 contribution / correlation-penalized / HRP (pure-Python single-linkage + quasi-diag + recursive
 bisection, no numpy/scipy — deliberately, for replay-determinism) as diagnostics, pre-registers
@@ -39,12 +76,12 @@ correctness bug the reviewer found: a near-zero-volatility ("flat") sleeve was b
 a dominant inverse-vol/HRP weight instead of being treated as likely-broken data — now refuses to
 allocate when any sleeve's estimation-window vol is below `min_sleeve_vol` (1e-6 default).
 
-**Known, honestly-scoped gap (not closed this session):** the lineage binding proves the claimed
-digest is cryptographically tied to the partition bytes and matches an actually-quarantined
-package — it does NOT yet prove the return VALUES were computed from that package's own content,
-because the other 7 lanes don't yet emit a standardized return/exposure artifact roadmap §14
-itself names as the prerequisite ("every lane produces a standardized strategy-return and exposure
-contract"). That is the honest next step for full provenance, not yet built.
+**Known, honestly-scoped gap at the time of this commit — closed same-day for hedge_eval, see the
+follow-up entry above:** the lineage binding proves the claimed digest is cryptographically tied
+to the partition bytes and matches an actually-quarantined package — it does NOT yet prove the
+return VALUES were computed from that package's own content, because the other lanes don't yet
+emit a standardized return/exposure artifact roadmap §14 itself names as the prerequisite. Still
+open for crypto_momentum/crypto_carry (no production cell-builder pipeline exists yet for either).
 
 32 new tests (`tests/test_portfolio_book_evidence_slice.py` lifecycle+failure-mode incl. two new
 forged-binding tests, `tests/test_portfolio_book_worker_no_authority.py` AST/literal/transitive-

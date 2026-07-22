@@ -97,11 +97,11 @@ def _hash_checks(
     partitions: Mapping[str, bytes],
 ) -> tuple[ImportCheck, ...]:
     package = head.package
-    artifact = package.artifacts[0]
-    artifact_ok = (
-        sha256_bytes(head.files[artifact.relative_path]) == artifact.digest
-        and head.package_envelope.payload_digest == content_digest(package)
-    )
+    artifact_ok = all(
+        artifact.relative_path in head.files
+        and sha256_bytes(head.files[artifact.relative_path]) == artifact.digest
+        for artifact in package.artifacts
+    ) and head.package_envelope.payload_digest == content_digest(package)
     # Bind the exact evaluation report to the signed package (mirrors risk-target
     # code review F1): verify_envelope authenticates the report signature, but
     # this closes the gap where a differently-but-validly-signed report with
@@ -203,8 +203,19 @@ def _replay_checks(
     # bytes to the stored, signed artifact digest. Catches a producer that signs
     # an honest EvaluationReport but packages a doctored scorecard.json — the
     # metrics/gates reproduce, yet the artifact a human/dashboard reads would lie.
-    artifact = head.package.artifacts[0]
-    artifact_ok = sha256_bytes(result.artifact_bytes) == artifact.digest
+    artifacts_by_path = {a.relative_path: a for a in head.package.artifacts}
+    scorecard_artifact = artifacts_by_path.get("artifacts/scorecard.json")
+    artifact_ok = scorecard_artifact is not None and sha256_bytes(result.artifact_bytes) == scorecard_artifact.digest
+
+    # Same reproducibility bind for the standardized strategy-return/exposure
+    # contract (roadmap §14) — a downstream consumer (e.g. the portfolio-book
+    # allocator) trusts this artifact's digest as proof the return series was
+    # actually computed from these ledger rows, not supplied out of band.
+    return_contract_artifact = artifacts_by_path.get("artifacts/strategy_returns.jsonl")
+    return_contract_ok = (
+        return_contract_artifact is not None
+        and sha256_bytes(result.strategy_return_bytes) == return_contract_artifact.digest
+    )
 
     return (
         _check("metric_replay_reproduces", metric_ok,
@@ -212,6 +223,8 @@ def _replay_checks(
         _check("gate_verdict_reproduces", gate_ok, "reproduced gate verdict matches the producer's"),
         _check("artifact_reproduces", artifact_ok,
                "reproduced scorecard bytes match the stored artifact digest"),
+        _check("strategy_return_contract_reproduces", return_contract_ok,
+               "reproduced strategy-return/exposure contract bytes match the stored artifact digest"),
     )
 
 

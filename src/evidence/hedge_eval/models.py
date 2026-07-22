@@ -32,6 +32,9 @@ def lane_id_for_strategy(strategy: str) -> str:
     return f"hedge_eval_{strategy}"
 
 
+STRATEGY_RETURN_MEDIA_TYPE = "application/x-ndjson"
+
+
 @dataclass(frozen=True)
 class HedgeHeadResult:
     """Deterministic hedge-evaluation of one strategy on a declared ledger.
@@ -49,6 +52,19 @@ class HedgeHeadResult:
     ``artifact_bytes`` are the Canonical-JSON scorecard the producer computed —
     plain data (no pickle, no executable payload), content-addressed and signed
     in the package; the slice never re-executes it.
+
+    ``strategy_return_bytes`` is the standardized strategy-return/exposure
+    contract (roadmap §14) — one JSONL row per resolved trading day:
+    ``{"date", "net_return", "gross_exposure", "turnover"}``. ``net_return`` is
+    ``row["raw"]["net_return"]``; ``gross_exposure`` is the ledger's
+    ``raw.gross_leverage`` (a gross-leverage proxy, the closest concept this
+    ledger already logs); ``turnover`` is always JSON ``null`` — per-position
+    weight history isn't logged by the shadow ledger today, so it is honestly
+    reported as not-yet-modeled rather than fabricated from a leverage delta
+    (a leverage-level change is not the same thing as position churn). Rows
+    are deduplicated by ``asof_date`` (last-occurrence-wins, since the shadow
+    ledger nominally logs one cycle per day but a backfill/re-run could repeat
+    a date) and sorted ascending.
     """
 
     head_id: str
@@ -62,6 +78,7 @@ class HedgeHeadResult:
     passed: bool
     artifact_bytes: bytes
     media_type: str
+    strategy_return_bytes: bytes
     n_cycles: int
     resolved_raw_cycles: int
     temporal_holdout: str

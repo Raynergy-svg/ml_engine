@@ -470,6 +470,93 @@ def test_import_rejects_doctored_scorecard_artifact(tmp_path):
     assert "artifact_reproduces" in (outcome.verdict.rejection_reason or "")
 
 
+def test_strategy_return_contract_is_present_and_well_formed(tmp_path):
+    """Roadmap §14 standardized strategy-return/exposure contract, retrofitted
+    additively onto hedge_eval: one JSONL row per resolved trading day, sorted
+    by date, with net_return/gross_exposure sourced from the ledger and
+    turnover honestly null (not modeled by this ledger yet)."""
+    identities, store, result = _run(tmp_path)
+    alpha_digest = result.outcomes[ALPHA_LANE].package_digest
+    payload = store.load_package_file(alpha_digest, "artifacts/strategy_returns.jsonl")
+    rows = [json.loads(line) for line in payload.decode("utf-8").splitlines() if line.strip()]
+    assert len(rows) == len(_RAW_ALPHA)
+    dates = [row["date"] for row in rows]
+    assert dates == sorted(dates)
+    for row, expected_raw in zip(rows, _RAW_ALPHA):
+        assert set(row) == {"date", "net_return", "gross_exposure", "turnover"}
+        assert row["net_return"] == pytest.approx(expected_raw)
+        assert row["turnover"] is None
+
+
+def _tamper_return_contract(strategy):
+    """A real producer-side evaluator that doctors ONE strategy's packaged
+    strategy-return contract bytes (leaving metrics/gates/scorecard honest) —
+    the exact attack the strategy_return_contract_reproduces rail exists to
+    catch (a downstream allocator must not trust a return series that was
+    swapped out after the honest scorecard was computed)."""
+    def evaluator(partitions, params):
+        out = []
+        for h in evaluate_partitions(partitions, params):
+            if h.head_id == strategy:
+                h = dataclasses.replace(h, strategy_return_bytes=h.strategy_return_bytes + b"\n")
+            out.append(h)
+        return tuple(out)
+    return evaluator
+
+
+def test_import_rejects_doctored_strategy_return_contract(tmp_path):
+    identities, store = _fresh(tmp_path)
+    partitions = {"alpha_lane": _jsonl(_alpha_rows())}
+    produced = produce_worker_output(
+        identities, partitions, evaluator=_tamper_return_contract("alpha_lane"),
+        registry_publish=_noop_registry, **SLICE_KW,
+    )
+    head = produced.worker_output.heads[0]
+    outcome = _import_one(identities, store, produced, head, partitions)
+    assert outcome.final_state == DispositionState.REJECTED
+    assert "strategy_return_contract_reproduces" in (outcome.verdict.rejection_reason or "")
+
+
+def test_return_contract_rejects_malformed_row_closed_not_silent():
+    """A row missing asof_date is structurally malformed, not a legitimate
+    unresolved cycle — matches ``_parse_partition``'s fail-closed philosophy
+    (Code Reviewer, 2026-07-22): the contract builder must raise rather than
+    silently drop it, since a silent drop would only surface downstream as a
+    confusing content-binding mismatch inside portfolio_book."""
+    rows = _alpha_rows()
+    del rows[0]["asof_date"]
+    with pytest.raises(ValueError, match="missing a valid asof_date or raw object"):
+        evaluate_partitions({"alpha_lane": _jsonl(rows)}, EvaluationParams())
+
+
+def test_return_contract_skips_unresolved_cycle_without_raising():
+    """A row genuinely carrying ``raw.net_return: null`` (unresolved cycle:
+    the strategy hadn't started, a data gap) is normal and expected — the
+    same value ``hsc.compute_strategy_scorecard`` itself already tolerates
+    (it filters ``is not None``, `src/hedge/hedge_scorecard.py:276`) —
+    distinct from the malformed-row case above, and must NOT raise."""
+    rows = _alpha_rows()
+    rows[0]["raw"]["net_return"] = None
+    result = evaluate_partitions({"alpha_lane": _jsonl(rows)}, EvaluationParams())
+    assert len(result) == 1  # did not raise; scored the strategy normally
+    assert result[0].strategy_return_bytes.count(b"\n") == len(_RAW_ALPHA) - 1  # the null row is excluded
+
+
+def test_return_contract_rejects_non_numeric_net_return_closed():
+    """A string net_return slips past ``_reject_non_finite_returns`` (which
+    only inspects float values). ``hsc.compute_strategy_scorecard`` itself
+    already fails closed on this shape (a ``TypeError`` from its own
+    arithmetic) before the contract builder even runs, so this exercises
+    ``_build_strategy_return_contract`` directly — defense in depth in case
+    a future, more permissive scorecard ever tolerated a row this malformed."""
+    from src.evidence.hedge_eval.evaluation import _build_strategy_return_contract
+
+    rows = _alpha_rows()
+    rows[0]["raw"]["net_return"] = "not-a-number"
+    with pytest.raises(ValueError, match="non-finite or non-numeric raw.net_return"):
+        _build_strategy_return_contract("alpha_lane", rows)
+
+
 def test_non_finite_ledger_value_is_rejected_closed():
     # A crafted NaN return (json.dumps emits "NaN", json.loads reads it back)
     # must not silently flow into Canonical-JSON encoding; the byte-parse path

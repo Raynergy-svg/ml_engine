@@ -237,6 +237,58 @@ def test_gate_fails_when_oos_sharpe_below_floor():
     assert sharpe_gate.status.value == "FAIL"
 
 
+def _partition_with_nulls(returns: list[float], *, null_turnover: bool = False, null_exposure: bool = False, start: str = "2025-01-01") -> bytes:
+    day = date.fromisoformat(start)
+    rows = []
+    for r in returns:
+        while day.weekday() >= 5:
+            day += dt.timedelta(days=1)
+        rows.append({
+            "date": day.isoformat(), "net_return": r,
+            "gross_exposure": None if null_exposure else 1.0,
+            "turnover": None if null_turnover else 0.05,
+        })
+        day += dt.timedelta(days=1)
+    return ("\n".join(json.dumps(row) for row in rows) + "\n").encode("utf-8")
+
+
+def test_null_turnover_is_honestly_reported_not_silently_zero_filled():
+    # A sleeve whose source lane doesn't model turnover (e.g. hedge_eval's
+    # ledger, which has no per-position weight history) reports turnover as
+    # JSON null in its standardized contract rather than fabricating a number.
+    # The allocator must still compute (treating it as 0.0), but must report
+    # honestly, per-sleeve, that the number is not a real modeled value.
+    a, _ = _gauss_partition(0.0006, 0.006, 300, seed=1)
+    b = _partition_with_nulls([_gauss_partition(0.0004, 0.004, 300, seed=2)[1][i] for i in range(300)], null_turnover=True)
+    result = evaluate_partitions({"a": a, "b": b}, _params(max_allocation=0.9))
+    artifact = json.loads(result.artifact_bytes)
+    assert artifact["data_quality"]["turnover_modeled"] == {"a": True, "b": False}
+    assert artifact["data_quality"]["gross_exposure_modeled"] == {"a": True, "b": True}
+    assert result.passed in (True, False)  # must not raise — null is a valid, honestly-tracked input
+
+
+def test_null_gross_exposure_is_honestly_reported():
+    a, values_a = _gauss_partition(0.0006, 0.006, 300, seed=1)
+    b = _partition_with_nulls([_gauss_partition(0.0004, 0.004, 300, seed=2)[1][i] for i in range(300)], null_exposure=True)
+    result = evaluate_partitions({"a": a, "b": b}, _params(max_allocation=0.9))
+    artifact = json.loads(result.artifact_bytes)
+    assert artifact["data_quality"]["gross_exposure_modeled"] == {"a": True, "b": False}
+
+
+def test_negative_turnover_is_still_refused_even_when_exposure_is_null():
+    a, _ = _gauss_partition(0.0006, 0.006, 300, seed=1)
+    day = date.fromisoformat("2025-01-01")
+    rows = []
+    for r in _gauss_partition(0.0004, 0.004, 300, seed=2)[1]:
+        while day.weekday() >= 5:
+            day += dt.timedelta(days=1)
+        rows.append({"date": day.isoformat(), "net_return": r, "gross_exposure": None, "turnover": -0.01})
+        day += dt.timedelta(days=1)
+    b = ("\n".join(json.dumps(row) for row in rows) + "\n").encode("utf-8")
+    with pytest.raises(ValueError, match="negative exposure or turnover"):
+        evaluate_partitions({"a": a, "b": b}, _params(max_allocation=0.9))
+
+
 def test_gate_passed_matches_all_gates_pass_invariant():
     a, _ = _gauss_partition(0.0006, 0.006, 300, seed=1)
     b, _ = _gauss_partition(0.0004, 0.004, 300, seed=2)

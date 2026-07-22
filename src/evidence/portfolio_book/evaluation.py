@@ -1,9 +1,19 @@
 """Deterministic, authority-free portfolio-book allocation and combined-book gate.
 
 Given a set of already-verified per-sleeve daily net-return partitions (one
-partition per contributing lane/strategy sleeve — e.g. risk_target, hedge_eval,
-equity_research, crypto_momentum, crypto_carry — each already independently
-QUARANTINED by its own evidence slice), this module:
+partition per contributing lane/strategy sleeve — e.g. hedge_eval,
+crypto_momentum, crypto_carry, or any other lane that produces a genuine daily
+strategy-return/exposure series, each already independently QUARANTINED by its
+own evidence slice), this module:
+
+Not every existing evidence slice qualifies as a sleeve: risk_target trains
+volatility/drawdown-state models from raw OHLCV bars and has no strategy P&L
+concept at all, and equity_research's rank-IC scorecard is a cross-sectional
+ranking metric over one window (no calendar dates, no realized daily P&L) —
+neither produces a return series this allocator could combine. Confirmed by
+direct investigation of both slices' `evaluation.py` before this note was
+added (2026-07-22); do not add either as a sleeve without first building a
+genuine strategy construction on top of them.
 
 1. parses each sleeve partition and requires an identical trading calendar
    across sleeves (refuses misaligned or short calendars, same "refuse rather
@@ -109,12 +119,27 @@ def _parse_date(value: object, field_name: str) -> date:
         raise ValueError(f"{field_name} is not a valid ISO-8601 date: {value!r}") from exc
 
 
-def _rows(partitions: Mapping[str, bytes]) -> dict[str, list[dict]]:
+_OPTIONAL_ROW_FIELDS = ("gross_exposure", "turnover")  # may be JSON null: not modeled by every lane yet
+
+
+def _rows(partitions: Mapping[str, bytes]) -> tuple[dict[str, list[dict]], dict[str, dict[str, bool]]]:
+    """Parse sleeve partitions; returns (rows_by_sleeve, modeled_by_sleeve).
+
+    ``net_return`` must always be a real finite number. ``gross_exposure`` and
+    ``turnover`` may be JSON ``null`` — not every source lane models both yet
+    (e.g. hedge_eval's ledger has no per-position weight history, so its
+    standardized contract honestly reports ``turnover: null`` rather than
+    fabricating a number from a leverage-level delta). A null is treated as
+    0.0 for computation, and ``modeled_by_sleeve`` records which fields had
+    ANY null row for that sleeve, so the book artifact can report this
+    honestly instead of silently presenting an assumed zero as a real one.
+    """
     if len(partitions) < 2:
         raise ValueError("a portfolio book requires at least 2 sleeve partitions")
     import json
 
     sleeves: dict[str, list[dict]] = {}
+    modeled: dict[str, dict[str, bool]] = {}
     for sleeve_id, data in sorted(partitions.items()):
         try:
             text = data.decode("utf-8")
@@ -122,6 +147,7 @@ def _rows(partitions: Mapping[str, bytes]) -> dict[str, list[dict]]:
             raise ValueError(f"sleeve {sleeve_id!r} partition is not UTF-8") from exc
         rows: list[dict] = []
         seen_dates: set[date] = set()
+        sleeve_modeled = {field: True for field in _OPTIONAL_ROW_FIELDS}
         for line_number, line in enumerate(text.splitlines(), 1):
             if not line.strip():
                 continue
@@ -138,10 +164,21 @@ def _rows(partitions: Mapping[str, bytes]) -> dict[str, list[dict]]:
             if row_date in seen_dates:
                 raise ValueError(f"sleeve {sleeve_id!r} has a duplicate date {row_date.isoformat()}")
             seen_dates.add(row_date)
-            numeric: dict[str, float] = {}
-            for name in ("net_return", "gross_exposure", "turnover"):
+            try:
+                net_return = float(row["net_return"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"sleeve {sleeve_id!r} has non-numeric net_return") from exc
+            if not math.isfinite(net_return):
+                raise ValueError(f"sleeve {sleeve_id!r} has non-finite net_return")
+            numeric: dict[str, float] = {"net_return": net_return}
+            for name in _OPTIONAL_ROW_FIELDS:
+                raw = row[name]
+                if raw is None:
+                    sleeve_modeled[name] = False
+                    numeric[name] = 0.0
+                    continue
                 try:
-                    value = float(row[name])
+                    value = float(raw)
                 except (TypeError, ValueError) as exc:
                     raise ValueError(f"sleeve {sleeve_id!r} has non-numeric {name}") from exc
                 if not math.isfinite(value):
@@ -154,7 +191,8 @@ def _rows(partitions: Mapping[str, bytes]) -> dict[str, list[dict]]:
             raise ValueError(f"sleeve {sleeve_id!r} partition contains no records")
         rows.sort(key=lambda row: row["_date"])
         sleeves[sleeve_id] = rows
-    return sleeves
+        modeled[sleeve_id] = sleeve_modeled
+    return sleeves, modeled
 
 
 def _aligned_calendar(sleeves: Mapping[str, list[dict]]) -> list[date]:
@@ -470,7 +508,7 @@ def evaluate_partitions(partitions: Mapping[str, bytes], params: EvaluationParam
     params = params or EvaluationParams()
     if not (0.0 <= params.cash_reserve_frac < 1.0):
         raise ValueError("cash_reserve_frac must be in [0, 1)")
-    sleeves = _rows(partitions)
+    sleeves, modeled = _rows(partitions)
     calendar = _aligned_calendar(sleeves)
     sleeve_ids = sorted(sleeves)
     n = len(sleeve_ids)
@@ -595,6 +633,21 @@ def evaluate_partitions(partitions: Mapping[str, bytes], params: EvaluationParam
         "book_oos": {
             "total_return": oos_total_return, "ann_vol": oos_ann_vol, "sharpe": oos_sharpe,
             "max_drawdown": oos_maxdd, "turnover_lookthrough": turnover_lookthrough,
+        },
+        "data_quality": {
+            # Honest reporting, not a silent zero-fill: a sleeve whose source
+            # lane doesn't model gross_exposure/turnover yet (e.g. hedge_eval's
+            # turnover today) reports False here even though the number used
+            # in book_oos/stress_scenarios above is 0.0 for that field.
+            # RESIDUAL TRUST BOUNDARY (Code Reviewer, 2026-07-22): "modeled"
+            # is self-reported by the source lane, not independently verified —
+            # a lane that always emits 0.0 regardless of whether it computed a
+            # real number would report True here just as honestly-null-reporting
+            # hedge_eval reports False. There is no clean structural fix without
+            # a lane-level attestation mechanism; treat this as an honesty
+            # signal from cooperating lanes, not a proof against an adversarial one.
+            "gross_exposure_modeled": {s: modeled[s]["gross_exposure"] for s in sleeve_ids},
+            "turnover_modeled": {s: modeled[s]["turnover"] for s in sleeve_ids},
         },
         "incremental_contribution": incremental_contribution,
         "stress_scenarios": {

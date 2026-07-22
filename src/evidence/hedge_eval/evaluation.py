@@ -39,6 +39,51 @@ from src.hedge import hedge_scorecard as hsc
 
 from .models import HedgeHeadResult, lane_id_for_strategy
 
+_JSON_NULL_TURNOVER = None  # not modeled by this ledger — see HedgeHeadResult docstring
+
+
+def _build_strategy_return_contract(strategy: str, rows: list[dict[str, Any]]) -> bytes:
+    """Roadmap §14 standardized strategy-return/exposure contract, derived
+    additively from ledger rows already parsed for scoring — one JSONL row
+    per resolved trading day: ``{"date", "net_return", "gross_exposure",
+    "turnover"}``. See ``HedgeHeadResult.strategy_return_bytes`` docstring for
+    the exact field derivation and the deduplication/turnover caveats.
+
+    A row missing ``raw.net_return`` is an UNRESOLVED cycle — a normal,
+    expected part of this ledger (the strategy hadn't started, a data gap,
+    etc; ``resolved_raw_cycles`` already tracks this distinction from
+    ``n_cycles``) and is skipped, not an error. A row missing ``asof_date`` or
+    whose ``raw`` isn't a dict at all is genuinely structurally malformed —
+    ``_parse_partition`` guarantees neither the strategy field's match nor
+    non-finite-return rejection covers this, so it fails closed here, matching
+    ``_parse_partition``'s own "malformed row is a hard evaluation failure,
+    not a silently-skipped line" philosophy rather than silently dropping it
+    and surfacing a confusing downstream mismatch instead."""
+    by_date: dict[str, dict[str, Any]] = {}
+    for line_number, row in enumerate(rows, start=1):
+        asof_date = row.get("asof_date")
+        raw = row.get("raw")
+        if not isinstance(asof_date, str) or not asof_date or not isinstance(raw, dict):
+            raise ValueError(
+                f"partition {strategy!r} row {line_number} is missing a valid asof_date or raw object"
+            )
+        net_return = raw.get("net_return")
+        if net_return is None:
+            continue  # unresolved cycle — expected, not an error
+        if not isinstance(net_return, (int, float)) or isinstance(net_return, bool) or not math.isfinite(net_return):
+            raise ValueError(f"partition {strategy!r} row {line_number} has a non-finite or non-numeric raw.net_return")
+        gross_exposure = raw.get("gross_leverage")
+        if not isinstance(gross_exposure, (int, float)) or isinstance(gross_exposure, bool) or not math.isfinite(gross_exposure):
+            gross_exposure = None
+        by_date[asof_date] = {  # last-occurrence-wins on a repeated date
+            "date": asof_date,
+            "net_return": float(net_return),
+            "gross_exposure": float(gross_exposure) if gross_exposure is not None else None,
+            "turnover": _JSON_NULL_TURNOVER,
+        }
+    lines = [json.dumps(by_date[date], sort_keys=True) for date in sorted(by_date)]
+    return ("\n".join(lines) + "\n").encode("utf-8") if lines else b""
+
 
 @dataclass(frozen=True)
 class EvaluationParams:
@@ -190,6 +235,7 @@ def evaluate_strategy(strategy: str, rows: list[dict[str, Any]], params: Evaluat
     metrics = _collect_metrics(card)
     tolerances = {name: params.replay_tolerance for name in metrics}
     artifact_bytes = canonical_bytes(card)
+    strategy_return_bytes = _build_strategy_return_contract(strategy, rows)
 
     return HedgeHeadResult(
         head_id=strategy,
@@ -203,6 +249,7 @@ def evaluate_strategy(strategy: str, rows: list[dict[str, Any]], params: Evaluat
         passed=passed,
         artifact_bytes=artifact_bytes,
         media_type="application/json",
+        strategy_return_bytes=strategy_return_bytes,
         n_cycles=int(card["n_cycles"]),
         resolved_raw_cycles=resolved_n,
         temporal_holdout=_holdout(card),
