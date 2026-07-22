@@ -4,7 +4,54 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-12 by Claude (QA review of `docs/architecture/AXIOM_PROFESSIONAL_TRAINING_ROADMAP.md` vs implementation).
+Last touched: 2026-07-22 by Claude (§19 item 15 — portfolio allocator + combined-book gate evidence slice built).
+
+## Portfolio allocator + combined-book gate evidence slice (2026-07-22) — §19 item 15 / roadmap §14 Phase K
+
+Built `src/evidence/portfolio_book/` — the 8th evidence slice, following the established
+manifests/evaluation/worker/local_import/slice/dashboard pattern (closest precedents: `track_b`
+for the "derives from other already-QUARANTINED packages" shape, `execution_cost` for the plain
+single-workload shape). Combines N sleeve daily-return partitions (risk_target, hedge_eval,
+equity_research, crypto_momentum, crypto_carry — any already-QUARANTINED lane's return stream)
+into one book: chronological estimation/OOS split (weights fit only on dates < oos_start, book
+scored only on dates >= oos_start, no in-window rebalancing); computes inverse-vol / equal-risk-
+contribution / correlation-penalized / HRP (pure-Python single-linkage + quasi-diag + recursive
+bisection, no numpy/scipy — deliberately, for replay-determinism) as diagnostics, pre-registers
+HRP as the applied policy (mirrors `src/equity/sleeve_combiner.py`'s existing choice); resolves
+lane-capacity/min-max/cash-reserve via iterative waterfilling, tail-correlation via greedy
+sleeve exclusion (terminates in <= n-1 passes — the earlier "damp weights toward zero" design
+never converges because scaling weight doesn't change the underlying return-series correlation;
+had to redesign), drawdown-budget scale-down (freed weight reverts to cash, never redistributed).
+Book gate: 6 criteria (OOS Sharpe floor, OOS drawdown ceiling, lane capacity, cash reserve,
+tail-correlation-after-exclusion, drawdown-budget). Stops at QUARANTINED — same as every other
+slice; no lane, and no book, becomes capital-active from a standalone gate.
+
+**Security hardening from independent Code Reviewer pass (before commit):** the reviewer's most
+severe finding was that the derivation-binding check (`source_packages_quarantined`, mirrors
+Track B's `_evaluation_derivation_checks`) verified a claimed source-package digest exists and is
+QUARANTINED but never that the sleeve's actual return rows have any relationship to that digest —
+a book could attach a legitimate-but-unrelated quarantined digest to fabricated sleeve data.
+Fixed with `src/evidence/portfolio_book/lineage.py`: every return-row now carries its sleeve's
+claimed `source_package_digest`, checked at BOTH the worker (refuses to even sign a mismatched
+package) and the local importer (independent re-check, so a non-reference worker that skipped its
+own check is still caught — defense in depth, proven by two separate tests). Also fixed a real
+correctness bug the reviewer found: a near-zero-volatility ("flat") sleeve was being rewarded with
+a dominant inverse-vol/HRP weight instead of being treated as likely-broken data — now refuses to
+allocate when any sleeve's estimation-window vol is below `min_sleeve_vol` (1e-6 default).
+
+**Known, honestly-scoped gap (not closed this session):** the lineage binding proves the claimed
+digest is cryptographically tied to the partition bytes and matches an actually-quarantined
+package — it does NOT yet prove the return VALUES were computed from that package's own content,
+because the other 7 lanes don't yet emit a standardized return/exposure artifact roadmap §14
+itself names as the prerequisite ("every lane produces a standardized strategy-return and exposure
+contract"). That is the honest next step for full provenance, not yet built.
+
+32 new tests (`tests/test_portfolio_book_evidence_slice.py` lifecycle+failure-mode incl. two new
+forged-binding tests, `tests/test_portfolio_book_worker_no_authority.py` AST/literal/transitive-
+import/capability scan, `tests/test_portfolio_book_allocator_math.py` pure allocator-math unit
+tests), all green; flake8 clean; 47 pre-existing evidence tests (hedge_eval/track_b/contracts)
+unaffected. Built in throwaway worktree off `origin/ralph/equity-harvester-bot` @ 6b9a410 (main
+tree has 235 unrelated uncommitted files from other in-flight work — never touched).
 
 ## Roadmap QA: Phase A-D genuinely built but disconnected from producers; risk-target gate bug fixed (2026-07-12)
 
