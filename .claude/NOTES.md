@@ -4,10 +4,79 @@
 > doctrine. New decisions go to INTENT, new failure modes go to LESSONS, new patterns go to a skill
 > — all via `/evolve`, with operator approval. Keep this file short and true; prune what's stale.
 
-Last touched: 2026-07-22 by Claude (§19 item 15 follow-up — closed the honest gap: hedge_eval now
-publishes the roadmap §14 contract, portfolio_book verifies it byte-for-byte).
+Last touched: 2026-07-22 by Claude (§19 item 15 second follow-up — crypto_momentum and crypto_carry
+now also publish the roadmap §14 contract, sourced from their REAL forward-shadow ledgers; the
+remaining 4 lanes confirmed and documented as architecturally NOT valid sleeves, not silently
+skipped).
 
-## §19 item 15 follow-up: closing the honest gap (2026-07-22, same day)
+## §19 item 15 second follow-up: crypto_momentum + crypto_carry retrofit (2026-07-22, later same day)
+
+Operator asked to resume closing the §14 gap across "the other 7 evidence lanes." Investigated the
+2 lanes not yet assessed (`track_b`, `execution_cost`) with a fresh read-only Explore agent before
+touching anything: **both are architecturally NOT valid return-generating sleeves**, same as
+risk_target/equity_research — `track_b` is a filing-scoring rank-IC scorecard (cross-sectional per
+rebalance-date, no daily P&L path — a single `forward_return` scalar per ticker, never a return
+SERIES); `execution_cost` is a per-order cost-prediction regression (MAE/RMSE vs baseline, no
+strategy/portfolio concept at all). Neither has, nor discards, a date-indexed return series
+anywhere in its pipeline — confirmed by grep (zero hits for
+`net_return|gross_exposure|turnover|daily|calendar_date|pnl` in either directory) and by reading
+`evaluation.py` end to end for both. **Final honest sleeve count: hedge_eval (done), crypto_momentum
+(done this round), crypto_carry (done this round) — 3 of 7. risk_target, equity_research, track_b,
+execution_cost are permanently out of scope for this retrofit; forcing a fake return contract onto
+any of them would be fabrication, not honesty.**
+
+**crypto_momentum / crypto_carry retrofit design** (different shape from hedge_eval's, since these
+two lanes' EXISTING evidence packages evaluate BACKTESTED cells — `{construction}::{stress}::
+fold{i}` / `{carry_id}::{venue_set}::{cost_model}::{regime}` — a fold-based validation question,
+not a daily-P&L one). The REAL date-indexed return series lives in a separate, already-existing
+production mechanism: `src.crypto.momentum_shadow` / `carry_shadow`'s append-only forward-shadow
+ledgers (`record_shadow_cycle`, real `asof_date`/`gross_leverage`/`today_net_return`/
+`today_turnover` rows, all four ALWAYS present — unlike hedge_eval's null turnover, this ledger's
+producer always records it). Retrofit taught each existing per-construction/per-carry package to
+OPTIONALLY carry a second `artifacts/strategy_returns.jsonl` artifact built from that construction/
+carry's real ledger, flowing through the SAME `partitions` dict via a reserved
+`"forward_ledger::{id}"` prefix — no function signature changes, fully additive (a construction/
+carry with no ledger partition gets byte-identical packages to before). The signed StrategyManifest
+gained a `forward_ledger_constructions`/`forward_ledger_carries` declaration with the SAME rigor as
+the existing `expected_cells_by_construction` — a construction cannot silently gain or lose its
+promised ledger data relative to what was signed, cross-checked at 4 independent layers (signing-
+time validation, dataset/strategy hash-check, independent replay re-derivation, raw-bytes-vs-
+manifest binding).
+
+**Found and fixed a real bug of my own making before it ever shipped**: the existing
+`_dataset_cells_by_construction`/`_expected_cells_by_construction`-style helpers (in both
+`local_import.py` and `slice.py`, for both lanes) group partitions by
+`partition_id.split("::", 1)[0]` — without excluding the new `forward_ledger::` prefix, a ledger
+partition would corrupt the EXISTING `strategy_declared_cells_match_dataset` check for any
+construction/carry that has one. Fixed in all 4 call sites before writing a single test.
+
+Independent Code Reviewer pass (2 agents, one per lane) found the design sound — the "signed
+declaration vs actual" gap was traced concretely and confirmed closed at multiple independent
+layers — but flagged a real test-coverage gap: the doctored-artifact tests only tampered the
+SECOND (ledger) artifact while the first (scorecard) was valid, missing the reverse case (a
+regression like "only check the first/last artifact in a list"). Added the companion test for both
+lanes.
+
+A second review round on crypto_carry (after the first fixes landed) found one more real bug: a
+`carry_id`/`construction` literally equal to `"forward_ledger"` would make its OWN cell partition
+ids start with `FORWARD_LEDGER_PREFIX`, misclassifying every one of its cells as ledger data — it
+fails loud (`ValueError`) rather than silently, but was still worth closing outright. Fixed with a
+shared `_reject_reserved_id()` guard applied in `cell_partition_id`, `forward_ledger_partition_id`,
+and the strategy-manifest builder's validation loop, in BOTH lanes. Also closed a duplicate-check
+asymmetry: `evaluate_partitions` was silently `set()`-deduping a duplicated
+`expected_ledger_carries`/`expected_ledger_constructions` declaration while the manifest builder
+explicitly rejected duplicates at signing time — now both raise. One test attempt
+(`test_strategy_declared_ledger_mismatch_is_caught_directly_at_import`) failed and was rewritten
+rather than papered over: swapping in a differently-signed strategy manifest to isolate the
+ledger-match check necessarily changes the manifest's own digest, which trips the EARLIER
+`strategy_manifest_bound_to_job` check first — renamed to
+`test_swapped_strategy_manifest_with_different_ledger_declaration_is_rejected` asserting the check
+that actually fires, with the finding documented in the test's own docstring.
+
+Final: 42/42 tests green (20 crypto_momentum + 22 crypto_carry), flake8 clean. Committed as two
+separate lane commits (`28c8b89` crypto_carry, `24a2a12` crypto_momentum) on top of `3aa9e86`.
+
+## §19 item 15 first follow-up: closing the honest gap for hedge_eval (2026-07-22, earlier same day)
 
 Operator said "close honest gap" re: the note below that the lineage binding didn't prove return
 VALUES traced to source content. Investigated all 5 originally-cited candidate sleeves first
