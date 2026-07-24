@@ -1,0 +1,65 @@
+{
+  "mode": "smoke",
+  "provenance": {
+    "experiment_id": "kronos-vs-axiom-trend-shootout-2026-07-24",
+    "kronos_model_id": "NeoQuasar/Kronos-small",
+    "kronos_repo_commit_pinned": "67b630e67f6a18c9e9be918d9b4337c960db1e9a",
+    "kronos_tokenizer_id": "NeoQuasar/Kronos-Tokenizer-base",
+    "prereg_doc_sha256": "ac6a30ab3489dde04d8cd3191324cbb43e4d16c1369801c23cb9b41bfd18c723",
+    "repo_commit": "074758d7f768c7954689f8edf5ec92739cd6ac62",
+    "sample_count": 3,
+    "seed_base": 42
+  },
+  "windows": [
+    {
+      "cost_scenarios": {
+        "1.5": {
+          "axiom": {
+            "net_expectancy_per_trade": -0.005129749567613897,
+            "participation": 0.5384615384615384,
+            "total_net_return": -0.015389248702841692,
+            "trade_win_rate": 0.3333333333333333,
+            "trades": 3,
+            "weekly_hit_rate": 0.4642857142857143,
+            "weeks_available": 52,
+            "weeks_taken": 28,
+            "winning_trades": 1
+          },
+          "kronos": null
+        },
+        "2.5": {
+          "axiom": {
+            "net_expectancy_per_trade": -0.0052297495676138965,
+            "participation": 0.5384615384615384,
+            "total_net_return": -0.01568924870284169,
+            "trade_win_rate": 0.3333333333333333,
+            "trades": 3,
+            "weekly_hit_rate": 0.4642857142857143,
+            "weeks_available": 52,
+            "weeks_taken": 28,
+            "winning_trades": 1
+          },
+          "kronos": null
+        },
+        "4.0": {
+          "axiom": {
+            "net_expectancy_per_trade": -0.005379749567613897,
+            "participation": 0.5384615384615384,
+            "total_net_return": -0.016139248702841693,
+            "trade_win_rate": 0.3333333333333333,
+            "trades": 3,
+            "weekly_hit_rate": 0.4642857142857143,
+            "weeks_available": 52,
+            "weeks_taken": 28,
+            "winning_trades": 1
+          },
+          "kronos": null
+        }
+      },
+      "window": [
+        "2018-01-01",
+        "2018-06-30"
+      ]
+    }
+  ]
+}
