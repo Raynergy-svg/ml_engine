@@ -367,9 +367,9 @@ def capture_exposure_snapshot(
         except Exception as exc:
             logger.error("exposure_history: canonical publication failed: %s", exc)
             return None
-    # _append_jsonl logs-and-swallows write OSErrors (but its mkdir can still
-    # raise); catch here and verify the row actually landed, so a failed write
-    # is reported as a refusal, not a phantom success (verifier gap G1).
+    # _append_jsonl now raises on a failed write (it used to log-and-swallow);
+    # catch here and ALSO verify the row actually landed, so a failed write is
+    # reported as a refusal, not a phantom success (verifier gap G1).
     try:
         _append_jsonl(out_path, row)
     except OSError as exc:

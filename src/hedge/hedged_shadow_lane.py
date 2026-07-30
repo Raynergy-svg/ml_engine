@@ -189,7 +189,16 @@ def _read_jsonl_rows(path: Path) -> List[Dict[str, Any]]:
 
 def _append_jsonl(path: Path, row: Dict[str, Any]) -> None:
     """Append-only JSONL write, flush + fsync — same durability convention
-    as ``momentum_shadow._append_ledger_row``."""
+    as ``momentum_shadow._append_ledger_row``.
+
+    Raises ``OSError`` when the row did not land. This used to log-and-return,
+    which made a failed ledger append indistinguishable from a successful one
+    (audit V4): ``run_cycle_for_strategy`` returned its row and reported success
+    while the ledger silently lost it. Callers that want to survive a write
+    failure must catch it explicitly and report a refusal —
+    ``exposure_history.capture_exposure_snapshot`` already does, and ``run_all``
+    turns it into a per-strategy ``None`` sentinel.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(path, "a", encoding="utf-8") as fh:
@@ -198,6 +207,7 @@ def _append_jsonl(path: Path, row: Dict[str, Any]) -> None:
             os.fsync(fh.fileno())
     except OSError as exc:
         logger.error("hedged_shadow_lane: ledger append failed for %s: %s", path, exc, exc_info=True)
+        raise
 
 
 # --------------------------------------------------------------------- #
@@ -811,6 +821,9 @@ def run_cycle_for_strategy(strategy: str, *, notional: float = SHADOW_NOTIONAL_D
     }
 
     if persist:
+        # A failed ledger append is a real failure of this cycle: the row did not
+        # persist, so it must not be returned as a success. _append_jsonl raises;
+        # run_all converts that into a per-strategy None sentinel (audit V4).
         _append_jsonl(ledger_path, row)
         _append_jsonl(decision_log_path, {
             "cycle_ts": cycle_ts, "strategy": strategy, "asof_date": book.asof_date,

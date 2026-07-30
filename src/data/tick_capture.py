@@ -112,6 +112,49 @@ class TickPersister:
         self.root = root
         self.on_flush = on_flush  # US-002: optional post-flush callback
         self.forward_capture = forward_capture
+        # Count of day-partitions that could not be read back for merge and were
+        # quarantined instead. Surfaced through TickCaptureDaemon.get_health so a
+        # silent-corruption event is visible, not just buried in the log.
+        self.parquet_merge_failures: int = 0
+        self.last_parquet_merge_failure: Optional[Dict[str, Any]] = None
+
+    def _quarantine_unreadable_partition(self, pq_path: Path, error: BaseException) -> Optional[Path]:
+        """Move an unreadable day-partition aside; never delete or overwrite it.
+
+        Returns the quarantine path, or ``None`` if the file could not be moved
+        (in which case the caller MUST NOT overwrite ``pq_path``).
+
+        The quarantine name deliberately does not end in ``.parquet`` so the
+        corrupt bytes are excluded from every reader glob
+        (``rglob("*.parquet")`` in ``tick_aggregate``, ``glob("*/*/*.parquet")``
+        in ``execution_cost_model``) and from ``prune_older_than``.
+        """
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        quarantine_path = pq_path.with_name(f"{pq_path.name}.corrupt-{stamp}")
+        try:
+            os.replace(pq_path, quarantine_path)
+        except OSError as move_err:
+            logger.error(
+                "Tick partition %s is unreadable (%s: %s) AND could not be "
+                "quarantined (%s) — refusing to overwrite it; this flush's ticks "
+                "are retained for retry",
+                pq_path, type(error).__name__, error, move_err,
+            )
+            return None
+        logger.error(
+            "Tick partition %s is unreadable (%s: %s) — quarantined to %s; "
+            "prior ticks are preserved there and are NOT in the new partition",
+            pq_path, type(error).__name__, error, quarantine_path,
+        )
+        self.parquet_merge_failures += 1
+        self.last_parquet_merge_failure = {
+            "at_utc": datetime.now(timezone.utc).isoformat(),
+            "partition": str(pq_path),
+            "quarantine": str(quarantine_path),
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+        return quarantine_path
 
     def flush(self, ticks: List[TickQuote]) -> int:
         """Persist ticks; return count written."""
@@ -179,17 +222,29 @@ class TickPersister:
                     str(inst), observations, buffer.getvalue()
                 )
 
-            # Append or create
+            # Append or create.
+            #
+            # A read failure here used to fall through to ``merged = group``,
+            # which then overwrote the day-partition with only the current
+            # ~30 s batch — silently deleting every tick already captured for
+            # that pair/day (audit V1). Invariant now enforced: an unreadable
+            # partition is moved aside with a timestamped suffix and never
+            # deleted or overwritten. If it cannot even be moved, this flush
+            # raises so ``_do_flush`` re-buffers the batch for retry.
+            merged = group
             if pq_path.exists():
                 try:
                     existing = pd.read_parquet(pq_path)
+                except Exception as read_err:
+                    if self._quarantine_unreadable_partition(pq_path, read_err) is None:
+                        raise OSError(
+                            f"unreadable tick partition {pq_path} could not be "
+                            f"quarantined; refusing to overwrite captured ticks"
+                        ) from read_err
+                else:
                     merged = pd.concat([existing, group])
                     merged = merged[~merged.index.duplicated(keep="last")]
                     merged = merged.sort_index()
-                except Exception:
-                    merged = group
-            else:
-                merged = group
 
             merged.to_parquet(pq_path, compression="zstd")
             written += len(group)
@@ -360,6 +415,11 @@ class TickCaptureDaemon:
             "gaps_detected": len(self._gaps),
             "last_gap": self._gaps[-1] if self._gaps else None,
             "retention_days": self.retention_days,
+            # Unreadable day-partitions quarantined instead of being overwritten.
+            # Non-zero means a partition's prior ticks now live only in its
+            # ``.corrupt-<ts>`` sidecar and need operator repair.
+            "parquet_merge_failures": self.persister.parquet_merge_failures,
+            "last_parquet_merge_failure": self.persister.last_parquet_merge_failure,
         }
 
     def _record_gap(self, gap_start: float, gap_end: float) -> None:

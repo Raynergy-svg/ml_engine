@@ -689,12 +689,24 @@ def get_default_forward_capture() -> ForwardCaptureService:
         return _DEFAULT_SERVICE
 
 
-def capture_best_effort(method: str, *args: Any, **kwargs: Any) -> None:
-    """Invoke a capture hook without changing the calling lane's control flow."""
+def capture_best_effort(method: str, *args: Any, **kwargs: Any) -> bool:
+    """Invoke a capture hook without changing the calling lane's control flow.
+
+    Returns ``True`` when the canonical write completed (including a deduplicated
+    no-op), ``False`` when it failed. The hook stays non-raising by design — it
+    must not break the calling research/trading lane — but the outcome is now a
+    real status the caller can log, count, and act on, instead of an
+    indistinguishable-from-success ``None`` (audit V2).
+
+    A disabled hook (pytest without ``AXIOM_DATA_ROOT``) reports ``True``: nothing
+    was attempted, so nothing failed.
+    """
     if os.getenv("PYTEST_CURRENT_TEST") and not os.getenv("AXIOM_DATA_ROOT"):
-        return
+        return True
     try:
         service = get_default_forward_capture()
         getattr(service, method)(*args, **kwargs)
     except Exception:
         logger.exception("forward capture hook failed: %s", method)
+        return False
+    return True

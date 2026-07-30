@@ -70,6 +70,33 @@ _ARCHIVES_URL = (
 
 DEFAULT_FORMS: Tuple[str, ...] = ("10-K", "10-Q", "8-K")
 
+# Canonical Track B capture failures observed in this process. The capture hook
+# is deliberately non-raising (a research fetch must not die because the capture
+# plane is down), but "non-raising" must never mean "invisible": every failure is
+# logged at ERROR and counted here so a batch caller can report a real status.
+_TRACK_B_CAPTURE_FAILURES: List[Dict[str, str]] = []
+
+
+def _record_track_b_capture_failure(accession: str, ticker: str, reason: str) -> None:
+    logger.error(
+        "Track B canonical filing capture FAILED (accession=%s ticker=%s): %s — "
+        "the filing exists only in the legacy text cache",
+        accession, ticker, reason,
+    )
+    _TRACK_B_CAPTURE_FAILURES.append(
+        {"accession": accession, "ticker": ticker, "reason": reason}
+    )
+
+
+def track_b_capture_failures() -> Tuple[Dict[str, str], ...]:
+    """Canonical-capture failures recorded since the last reset (newest last)."""
+    return tuple(_TRACK_B_CAPTURE_FAILURES)
+
+
+def reset_track_b_capture_failures() -> None:
+    """Clear the recorded canonical-capture failures (per-run bookkeeping)."""
+    _TRACK_B_CAPTURE_FAILURES.clear()
+
 
 class _TextExtractor(HTMLParser):
     """Stdlib-only HTML -> text: drop script/style, collapse whitespace.
@@ -373,9 +400,22 @@ def load_pit_filing(
     # canonical capture plane. Older PIT research fetches are explicitly
     # labeled backfill by the capture service; only newly observed filings may
     # become forward-eligible.
+    #
+    # The outer ``except Exception`` that used to wrap this block was a SECOND
+    # swallow on top of ``capture_best_effort``'s own (audit V2+V3): a canonical
+    # write could fail forever while this lane reported success. The hook is
+    # still non-raising — a research fetch must not die because the capture
+    # plane is down — but every failure is now logged at ERROR with the
+    # accession and counted, so callers have a real status to act on
+    # (see :func:`track_b_capture_failures`).
     try:
         from src.data_platform.forward_capture import capture_best_effort
-        capture_best_effort(
+    except ImportError as import_error:
+        _record_track_b_capture_failure(
+            str(best["accessionNumber"]), filing.ticker, f"import failed: {import_error}"
+        )
+    else:
+        captured = capture_best_effort(
             "capture_track_b_filing",
             ticker=filing.ticker,
             cik=filing.cik,
@@ -386,8 +426,12 @@ def load_pit_filing(
             document_url=doc_url,
             text=filing.text,
         )
-    except Exception as capture_error:
-        logger.warning("Track B canonical filing capture setup failed: %s", capture_error)
+        if not captured:
+            _record_track_b_capture_failure(
+                str(best["accessionNumber"]),
+                filing.ticker,
+                "canonical capture hook reported failure (see logged traceback)",
+            )
     return filing
 
 
