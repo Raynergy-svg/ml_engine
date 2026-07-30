@@ -32,9 +32,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.evidence.risk_target.evaluation import EvaluationParams  # noqa: E402
+from src.evidence.risk_target.persistent_identity import (  # noqa: E402
+    load_or_create_slice_identities,
+)
 from src.evidence.risk_target.slice import (  # noqa: E402
     build_evidence_store,
-    build_slice_identities,
     risk_target_evidence_view,
     run_risk_target_evidence_slice,
 )
@@ -43,8 +45,20 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 FACTOR_DIR = REPO_ROOT / "market_data" / "factor"
-DEFAULT_PAIRS = ["AUD_USD", "EUR_USD", "GBP_USD", "USD_CAD", "USD_CHF", "USD_JPY"]
+DATASET_DESCRIPTOR = FACTOR_DIR / "axiom_risk_target_dataset.json"
 DEFAULT_OUT = REPO_ROOT / "trained_data" / "evidence"
+# Private signing keys live under trained_data/axiom/ (gitignored — never
+# commit a private key). Persistent identities keep the durable store
+# verifiable across processes; see persistent_identity.py.
+DEFAULT_KEY_DIR = REPO_ROOT / "trained_data" / "axiom" / "signing"
+
+
+def _load_descriptor() -> dict:
+    try:
+        return json.loads(DATASET_DESCRIPTOR.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("dataset descriptor unreadable (%s); falling back to *_D.csv glob", exc)
+        return {}
 
 
 def _git_commit() -> str:
@@ -71,9 +85,16 @@ def _load_partitions(pairs: list[str]) -> dict[str, bytes]:
 
 
 def main() -> int:
+    descriptor = _load_descriptor()
+    descriptor_pairs = sorted(descriptor.get("partitions", {}))
+    default_pairs = descriptor_pairs or sorted(
+        p.name[:-len("_D.csv")] for p in FACTOR_DIR.glob("*_D.csv")
+    )
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pairs", nargs="+", default=DEFAULT_PAIRS)
+    parser.add_argument("--pairs", nargs="+", default=default_pairs)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--key-dir", type=Path, default=DEFAULT_KEY_DIR)
     parser.add_argument("--oos-start", default="2024-01-01")
     parser.add_argument("--dataset-id", default=None)
     args = parser.parse_args()
@@ -81,30 +102,59 @@ def main() -> int:
     partitions = _load_partitions(args.pairs)
     now = datetime.now(timezone.utc)
     params = EvaluationParams(oos_start=args.oos_start)
-    dataset_id = args.dataset_id or f"fx-daily-{now.strftime('%Y%m%dT%H%M%SZ')}"
+    dataset_id = args.dataset_id or descriptor.get(
+        "dataset_id", f"fx-daily-{now.strftime('%Y%m%dT%H%M%SZ')}"
+    )
+    coverage_start = date.fromisoformat(descriptor.get("coverage_start", "2014-01-01"))
+    coverage_end = date.fromisoformat(descriptor.get("coverage_end", now.date().isoformat()))
+    git_commit = _git_commit()
 
-    identities = build_slice_identities(now)
+    identities = load_or_create_slice_identities(args.key_dir, now=now)
     store = build_evidence_store(args.out, identities, clock_now=now)
 
     logger.info("Running risk-target evidence slice over %d pairs -> %s", len(partitions), args.out)
     result = run_risk_target_evidence_slice(
         store, identities, partitions,
         dataset_id=dataset_id,
-        coverage_start=date(2010, 1, 1), coverage_end=now.date(),
-        retrieved_at=now, created_at=now, git_commit=_git_commit(), params=params,
+        coverage_start=coverage_start, coverage_end=coverage_end,
+        retrieved_at=now, created_at=now, git_commit=git_commit, params=params,
     )
 
+    reports_by_lane = {
+        head.lane_id: head.evaluation_report_envelope.payload
+        for head in result.worker_output.heads
+    }
     summary = {
         "dataset_id": dataset_id,
-        "git_commit": _git_commit(),
+        "dataset_manifest_digest": result.dataset_manifest_envelope.payload_digest,
+        "job_manifest_digest": result.job_envelope.payload_digest,
+        "git_commit": git_commit,
         "pairs": sorted(partitions),
+        "store_root": str(args.out),
         "outcomes": {
             lane: {
                 "final_state": outcome.final_state.value,
                 "decision": outcome.verdict.decision.value,
                 "reason": outcome.reason,
                 "package_digest": outcome.package_digest,
+                "disposition_head_digest": outcome.disposition_head_digest,
+                "package_dir": str(args.out / "packages" / outcome.package_digest),
+                "ledger_dir": str(args.out / "dispositions" / outcome.package_digest),
                 "failed_checks": [c.check_id for c in outcome.verdict.checks if not c.passed],
+                "gates": [
+                    {
+                        "gate_id": g["gate_id"],
+                        "status": g["status"],
+                        "observed": g["observed"],
+                        "threshold": g["threshold"],
+                    }
+                    for g in reports_by_lane.get(lane, {}).get("gates", [])
+                ],
+                "metrics": {
+                    name: metric["value"]
+                    for name, metric in reports_by_lane.get(lane, {}).get("metrics", {}).items()
+                },
+                "head_passed": reports_by_lane.get(lane, {}).get("passed"),
             }
             for lane, outcome in result.outcomes.items()
         },
