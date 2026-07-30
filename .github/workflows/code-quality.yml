@@ -127,6 +127,17 @@ jobs:
           tests/test_training_infrastructure.py \
           tests/test_generate_policy_input.py \
           tests/integration/test_autonomy_loop_e2e.py \
+          tests/test_evidence_contracts.py \
+          tests/test_evidence_store.py \
+          tests/test_data_platform.py \
+          tests/test_forward_capture_defect_fixes.py \
+          tests/test_forward_capture_clock_skew.py \
+          tests/test_risk_target_training_gate.py \
+          tests/test_axiom_evidence_control.py \
+          tests/test_axiom_operator.py \
+          tests/test_research_conventions_and_budget.py \
+          tests/test_gated_harness.py \
+          tests/test_virtual_trade_features.py \
           -v --tb=short -m "not slow and not integration" 2>&1
 
     - name: Report
