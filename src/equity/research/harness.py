@@ -70,6 +70,7 @@ from src.equity.research.contracts import (
     ResearchScore,
 )
 from src.factor.ship_gate import evaluate_gate, verdict_to_dict
+from src.research.trial_budget import bonferroni_alpha, resolve_trial_budget
 
 logger = logging.getLogger(__name__)
 
@@ -643,7 +644,10 @@ def _circular_block_bootstrap_sharpe_pvalue(
 
 
 def _dsr_oos_n22(
-    arm_returns: pd.Series, n_trials: int = N_TRIALS
+    arm_returns: pd.Series,
+    n_trials: int = N_TRIALS,
+    *,
+    frozen_replay: bool = False,
 ) -> Dict[str, object]:
     """Prereg §4.5 criterion: DSR-OOS(N=22) >= 0.95 AND Bonferroni p-OOS < alpha.
 
@@ -652,21 +656,38 @@ def _dsr_oos_n22(
     harness reports per arm. ``passes_significance`` is ``None`` (not False)
     when either component could not be computed (too few bars) — an uncomputed
     criterion is never silently treated as failed OR passed.
+
+    ``n_trials`` is validated against the campaign register
+    (:mod:`src.research.trial_budget`) and the Bonferroni alpha is DERIVED from
+    it. Previously the alpha was the module constant regardless of the
+    ``n_trials`` argument, so calling with a different budget deflated the DSR
+    at one budget while testing the bootstrap p at another. At the default
+    (``N_TRIALS`` = 24) the derived alpha is identical to the old constant, so
+    no recorded verdict moves. ``frozen_replay=True`` permits a historical
+    budget for re-deriving an archived artifact exactly as recorded.
     """
-    dsr_block = _deflated_sharpe_ratio(arm_returns, n_trials)
+    applied_trials = resolve_trial_budget(
+        n_trials,
+        context="equity.research.harness._dsr_oos_n22",
+        frozen_replay=frozen_replay,
+    )
+    alpha = bonferroni_alpha(applied_trials)
+    dsr_block = _deflated_sharpe_ratio(arm_returns, applied_trials)
     boot_block = _circular_block_bootstrap_sharpe_pvalue(arm_returns)
     passes: Optional[bool] = None
     if dsr_block is not None and boot_block is not None:
         passes = bool(
             dsr_block["dsr"] >= 0.95
-            and boot_block["p_oos_sharpe_le_zero"] < BONFERRONI_ALPHA
+            and boot_block["p_oos_sharpe_le_zero"] < alpha
         )
     return {
         "dsr": dsr_block["dsr"] if dsr_block else None,
-        "bonferroni_alpha": BONFERRONI_ALPHA,
+        "bonferroni_alpha": alpha,
         "p_oos_bootstrap": boot_block["p_oos_sharpe_le_zero"] if boot_block else None,
         "passes_significance": passes,
-        "n_trials": n_trials,
+        "n_trials": applied_trials,
+        "budget_source": "src.research.trial_budget.TRIAL_LEDGER",
+        "budget_is_authoritative": applied_trials == N_TRIALS,
         "detail": {"dsr": dsr_block, "bootstrap": boot_block},
         "insufficient_data": dsr_block is None or boot_block is None,
     }

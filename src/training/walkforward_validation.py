@@ -35,6 +35,8 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
+from src.research.drawdown_convention import drawdown_fraction
+
 # Import validation metrics modules (optional - graceful fallback if not available)
 try:
     from src.risk.var_backtesting import compute_ewma_var, backtest_var, VaRConfig
@@ -560,7 +562,11 @@ def calculate_trading_metrics(
         cumulative_returns = np.cumprod(1 + strategy_returns)
         rolling_max = np.maximum.accumulate(cumulative_returns)
         drawdowns = (rolling_max - cumulative_returns) / rolling_max
-        metrics['max_drawdown'] = float(np.max(drawdowns))
+        # Canonical NON-NEGATIVE fraction -- see src.research.drawdown_convention.
+        metrics['max_drawdown'] = drawdown_fraction(
+            float(np.max(drawdowns)),
+            source="training.walkforward_validation._compute_metrics",
+        )
 
         # Calmar ratio
         if metrics['max_drawdown'] > 0:

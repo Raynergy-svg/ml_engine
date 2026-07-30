@@ -27,6 +27,8 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
+from src.research.drawdown_convention import drawdown_fraction
+
 from . import FACTOR_PIPELINE_VERSION
 from .data_loader import utc_now_stamp
 
@@ -101,9 +103,18 @@ def _sharpe(daily: np.ndarray) -> float:
 
 
 def _max_drawdown(equity: np.ndarray) -> float:
+    """Max peak-to-trough decline as a NON-NEGATIVE fraction (0.25 == 25%).
+
+    Canonical convention — see :mod:`src.research.drawdown_convention`.
+    Validated at this boundary so a future sign flip fails here rather than
+    silently satisfying ``max_dd <= MAX_DRAWDOWN`` in ``ship_gate``.
+    """
     peak = np.maximum.accumulate(equity)
     dd = equity / peak - 1.0
-    return float(-dd.min()) if dd.size else 0.0
+    value = float(-dd.min()) if dd.size else 0.0
+    return drawdown_fraction(
+        max(0.0, value), source="factor.backtest._max_drawdown"
+    )
 
 
 def run_backtest(

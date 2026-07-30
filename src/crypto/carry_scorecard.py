@@ -11,6 +11,8 @@ import math
 import re
 from typing import Any, Mapping, Sequence
 
+from src.research.drawdown_convention import drawdown_fraction, drawdown_limit
+
 ANN = 365.0
 MIN_PERIODS = 8
 MIN_CELLS = 3
@@ -58,6 +60,10 @@ def _sharpe(values: Sequence[float]) -> float | None:
 
 
 def _max_drawdown(values: Sequence[float]) -> float:
+    """Max peak-to-trough decline as a NON-NEGATIVE fraction (0.25 == 25%).
+
+    Canonical convention -- see :mod:`src.research.drawdown_convention`.
+    """
     equity = peak = 1.0
     maximum = 0.0
     for value in values:
@@ -65,7 +71,7 @@ def _max_drawdown(values: Sequence[float]) -> float:
         peak = max(peak, equity)
         if peak > 0:
             maximum = max(maximum, (peak - equity) / peak)
-    return maximum
+    return drawdown_fraction(maximum, source="crypto.carry_scorecard._max_drawdown")
 
 
 def _evidence_digest(record: Any) -> bool:
@@ -259,7 +265,15 @@ def aggregate_carry_scorecard(
     sharpes = [float(card["net_sharpe"]) for card in cards if card.get("net_sharpe") is not None]
     all_return_cells_defined = len(sharpes) == len(cards)
     minimum_sharpe = min(sharpes) if sharpes else None
-    maximum_drawdown = max((float(card["max_drawdown"]) for card in cards), default=None)
+    maximum_drawdown = max(
+        (
+            drawdown_fraction(
+                card["max_drawdown"], source="crypto.carry_scorecard.aggregate"
+            )
+            for card in cards
+        ),
+        default=None,
+    )
     maximum_margin = max((float(card["max_margin_utilization"]) for card in cards), default=None)
     maximum_tracking = max((float(card["max_tracking_error"]) for card in cards), default=None)
     minimum_capacity = min((float(card["min_capacity_usd"]) for card in cards), default=None)
@@ -269,7 +283,10 @@ def aggregate_carry_scorecard(
         and minimum_sharpe is not None
         and minimum_sharpe >= net_sharpe_floor
         and maximum_drawdown is not None
-        and maximum_drawdown <= max_drawdown_limit
+        and maximum_drawdown
+        <= drawdown_limit(
+            max_drawdown_limit, source="crypto.carry_scorecard.aggregate"
+        )
         and maximum_margin is not None
         and maximum_margin <= max_margin_utilization
         and maximum_tracking is not None

@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Dict
 
+from src.research.drawdown_convention import drawdown_fraction, drawdown_limit
+
 # --- Pre-registered ship criteria (PRD: tasks/prd-fx-factor-portfolio.md) ---
 MIN_NET_SHARPE = 0.40
 MIN_POSITIVE_YEARS = 6
@@ -30,11 +32,21 @@ class GateVerdict:
 
 
 def evaluate_gate(report: dict) -> GateVerdict:
-    """Evaluate a backtest report dict (``asdict(BacktestResult)``) against the bar."""
+    """Evaluate a backtest report dict (``asdict(BacktestResult)``) against the bar.
+
+    ``report["max_drawdown"]`` must be a canonical positive fraction (0.25 ==
+    a 25% decline). A negative value — i.e. produced under the opposite sign
+    convention — raises rather than trivially satisfying ``max_dd <= 0.25``.
+    This is the mirror image of the collision fixed in
+    ``gated_harness.backtest.hard_gate``; see
+    :mod:`src.research.drawdown_convention`.
+    """
+    source = "factor.ship_gate.evaluate_gate"
     net_sharpe = float(report.get("net_sharpe", 0.0))
     positive_years = int(report.get("positive_years", 0))
     total_years = int(report.get("total_years", 0))
-    max_dd = float(report.get("max_drawdown", 1.0))
+    max_dd = drawdown_fraction(report.get("max_drawdown", 1.0), source=source)
+    max_dd_budget = drawdown_limit(MAX_DRAWDOWN, source=source)
     walk_forward = bool(report.get("walk_forward", False))
 
     criteria = {
@@ -56,7 +68,7 @@ def evaluate_gate(report: dict) -> GateVerdict:
         "max_drawdown": {
             "value": max_dd,
             "threshold": MAX_DRAWDOWN,
-            "passed": max_dd <= MAX_DRAWDOWN,
+            "passed": max_dd <= max_dd_budget,
         },
         "walk_forward": {
             "value": walk_forward,

@@ -44,6 +44,8 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Mapping, Sequence
 
+from src.research.drawdown_convention import drawdown_fraction, drawdown_limit
+
 # A fold needs at least this many realized periods to estimate a Sharpe; below it
 # the fold reports ``sharpe=None`` (undefined, never a fabricated number).
 MIN_PERIODS_FOR_SHARPE = 8
@@ -119,7 +121,8 @@ def _max_drawdown(returns: Sequence[float]) -> float:
 
     Compounds the per-period net returns into an equity curve and returns the
     largest fractional decline from a running peak. A monotonically rising curve
-    returns 0.0.
+    returns 0.0. This is the canonical positive-fraction convention -- see
+    :mod:`src.research.drawdown_convention` -- validated at this boundary.
     """
     equity = 1.0
     peak = 1.0
@@ -130,7 +133,7 @@ def _max_drawdown(returns: Sequence[float]) -> float:
         if peak > 0.0:
             dd = (peak - equity) / peak
             max_dd = max(max_dd, dd)
-    return max_dd
+    return drawdown_fraction(max_dd, source="crypto.momentum_scorecard._max_drawdown")
 
 
 def compute_fold_scorecard(fold_id: str, rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
@@ -408,7 +411,12 @@ def _construction_decision(
         and drop_one_sharpe is not None
         and drop_one_sharpe >= drop_one_sharpe_floor
         and pooled_oos_drawdown is not None
-        and pooled_oos_drawdown <= max_drawdown_limit
+        and drawdown_fraction(
+            pooled_oos_drawdown, source="crypto.momentum_scorecard.verdict"
+        )
+        <= drawdown_limit(
+            max_drawdown_limit, source="crypto.momentum_scorecard.verdict"
+        )
     )
     if not significant:
         tstat_str = "undefined" if sharpe_tstat is None else f"{sharpe_tstat:.2f}"

@@ -18,10 +18,16 @@ from src.research.gated_harness.report import evaluate_research
 from src.research.gated_harness.significance import corrected_significance
 from src.research.gated_harness.stress import assert_prefix_causality, placebo_control
 from src.research.gated_harness.temporal_splits import chronological_holdout
+from src.research.trial_budget import N_TRIALS
 from src.research.gated_harness.verifier import IndependentReplayVerifier
 
 
-def _spec(*, mode: str = "exploratory", use_cpcv: bool = False) -> ResearchSpecification:
+def _spec(
+    *,
+    mode: str = "exploratory",
+    use_cpcv: bool = False,
+    trial_budget: int = 2,
+) -> ResearchSpecification:
     return ResearchSpecification(
         experiment_id="phase-e-fixture",
         lane_id="equity",
@@ -33,7 +39,7 @@ def _spec(*, mode: str = "exploratory", use_cpcv: bool = False) -> ResearchSpeci
         universe="survivorship-aware US equities",
         evaluation_windows=("2010-01-01/2020-01-01",),
         search_space={"rebalance_days": (21,)},
-        trial_budget=2,
+        trial_budget=trial_budget,
         correction="bonferroni",
         metrics=("sharpe", "max_drawdown"),
         promotion_criteria={"minimum_sharpe": 0.1},
@@ -63,7 +69,7 @@ def test_preregistration_digest_is_frozen_and_content_addressed():
 
 def test_confirmatory_multitrial_spec_requires_correction():
     with pytest.raises(ValueError, match="requires a declared correction"):
-        payload = _spec(mode="confirmatory").model_dump()
+        payload = _spec(mode="confirmatory", trial_budget=N_TRIALS).model_dump()
         payload["correction"] = "none"
         ResearchSpecification.model_validate(payload)
 
@@ -118,7 +124,9 @@ def test_return_summary_and_drawdown_gate_use_real_history():
     returns = pd.Series([0.1, -0.2, 0.05, 0.02])
     metrics = summarize_returns(returns)
     assert metrics["n_observations"] == 4
-    assert metrics["max_drawdown"] == pytest.approx(-0.2)
+    # Canonical convention: a 20% peak-to-trough decline is +0.2, never -0.2.
+    assert metrics["max_drawdown"] == pytest.approx(0.2)
+    assert metrics["drawdown_convention"] == "positive_fraction"
     verdict = hard_gate(metrics, minimum_history=10, maximum_drawdown=0.15, minimum_sharpe=-10)
     assert verdict["minimum_history"] is False
     assert verdict["maximum_drawdown"] is False

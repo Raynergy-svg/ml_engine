@@ -44,6 +44,8 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from src.research.drawdown_convention import drawdown_fraction
+
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -158,7 +160,7 @@ def _max_drawdown(returns: Sequence[float]) -> Optional[float]:
         peak = max(peak, equity)
         if peak > 0:
             max_dd = max(max_dd, (peak - equity) / peak)
-    return max_dd
+    return drawdown_fraction(max_dd, source="hedge.hedge_scorecard._max_drawdown")
 
 
 def _series_stats(returns: Sequence[float], asof_dates: Sequence[str]) -> Dict[str, Any]:

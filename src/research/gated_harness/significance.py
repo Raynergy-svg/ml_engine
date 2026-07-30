@@ -9,6 +9,12 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
+from src.research.trial_budget import (
+    BONFERRONI_ALPHA as AUTHORITATIVE_BONFERRONI_ALPHA,
+    N_TRIALS as AUTHORITATIVE_N_TRIALS,
+    ledger_summary,
+)
+
 MIN_BARS_FOR_SIGNIFICANCE = 10
 BOOTSTRAP_BLOCK_SIZE = 21
 BOOTSTRAP_N_REPS = 5000
@@ -94,7 +100,17 @@ def corrected_significance(
     n_trials: int,
     family_alpha: float = 0.05,
 ) -> dict[str, Any]:
-    """Binding DSR plus Bonferroni block-bootstrap decision."""
+    """Binding DSR plus Bonferroni block-bootstrap decision.
+
+    ``n_trials`` stays a free parameter — the arithmetic must remain callable at
+    any budget, since demonstrating trial inflation means computing the same
+    series at two budgets. What is NOT free is which budget a lane may declare
+    for a verdict; that is bound by
+    :class:`~src.research.gated_harness.preregistration.ResearchSpecification`
+    against the campaign register. To keep any divergence visible in the
+    artifact itself, the authoritative budget is always reported alongside the
+    applied one, plus an explicit ``budget_is_authoritative`` flag.
+    """
     if not 0.0 < family_alpha < 1.0:
         raise ValueError("family_alpha must be between zero and one")
     dsr_block = deflated_sharpe_ratio(returns, n_trials)
@@ -112,6 +128,11 @@ def corrected_significance(
         "p_oos_bootstrap": boot_block["p_oos_sharpe_le_zero"] if boot_block else None,
         "passes_significance": passes,
         "n_trials": n_trials,
+        "authoritative_n_trials": AUTHORITATIVE_N_TRIALS,
+        "authoritative_bonferroni_alpha": AUTHORITATIVE_BONFERRONI_ALPHA,
+        "budget_is_authoritative": int(n_trials) == AUTHORITATIVE_N_TRIALS,
+        "budget_source": "src.research.trial_budget.TRIAL_LEDGER",
+        "trial_ledger": ledger_summary()["allocations"],
         "detail": {"dsr": dsr_block, "bootstrap": boot_block},
         "insufficient_data": dsr_block is None or boot_block is None,
     }

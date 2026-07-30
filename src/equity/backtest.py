@@ -39,6 +39,8 @@ from typing import Dict, Optional, Union
 import numpy as np
 import pandas as pd
 
+from src.research.drawdown_convention import drawdown_fraction
+
 logger = logging.getLogger(__name__)
 
 ANN = 252
@@ -69,7 +71,14 @@ def stats(pnl: pd.Series) -> Dict[str, object]:
         }
     eq = (1 + pnl).cumprod()
     peak = eq.cummax()
-    dd = float(((peak - eq) / peak).max())
+    # ``max_dd`` is a canonical NON-NEGATIVE fraction (0.25 == a 25% decline)
+    # -- see src.research.drawdown_convention. Validated here so a sign flip
+    # fails at this seam instead of downstream in factor.ship_gate.
+    dd = drawdown_fraction(
+        float(((peak - eq) / peak).max()),
+        key="max_dd",
+        source="equity.backtest.stats",
+    )
     sharpe = float(pnl.mean() / (pnl.std() + 1e-12) * np.sqrt(ANN))
     cagr = float(eq.iloc[-1] ** (ANN / len(pnl)) - 1)
     per_year = {

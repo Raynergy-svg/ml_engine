@@ -19,16 +19,29 @@ Design invariants that are LOAD-BEARING for the experiment's validity:
   composite (§3.2). It is FROZEN — changing it after seeing results is the L-018
   dredging trap and must not be done.
 * **Multiple-testing budget.** ``N_TRIALS`` / ``BONFERRONI_ALPHA`` continue the
-  campaign's count (edge-round-4 was 21; this experiment is trial 22).
+  campaign's count (edge-round-4 was 21; this experiment is trial 22). As of
+  2026-07-30 they are DERIVED from the append-only ledger in
+  :mod:`src.research.trial_budget` rather than hand-edited here — one lane
+  hardcoding its own budget (the crypto/EDGAR scripts ran ``N_TRIALS=3``,
+  alpha 8x looser) is now a fail-closed error, not a silent divergence.
 
 No pandas / network / LLM imports here on purpose — contracts must stay importable
-by every builder with zero heavy deps.
+by every builder with zero heavy deps. ``src.research.trial_budget`` is
+stdlib-only for exactly this reason.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Protocol, runtime_checkable
+
+# Re-exported below as this module's public budget surface (see the
+# "Multiple-testing budget" block) — every existing consumer imports them
+# from here, e.g. src/equity/research/harness.py:67-68.
+from src.research.trial_budget import (  # noqa: F401  (intentional re-export)
+    BONFERRONI_ALPHA,
+    N_TRIALS,
+)
 
 # Bumped on ANY change to the loader column set, blinder ruleset, scorer schema,
 # or composite weights — artifacts tagged with a different version must refuse to
@@ -49,8 +62,17 @@ PRIMARY_WEIGHTS: Dict[str, float] = {
 # 2026-07-04: bumped 22 -> 24 for the FINRA short-volume pre-reg (2 new trials: H1 + H2).
 # See docs/prereg-finra-short-volume-2026-07-04.md. Historical Track B reports that cited
 # N_TRIALS=22 / alpha=0.00227 remain valid as-of-then; only NEW calls use the new budget.
-N_TRIALS: int = 24
-BONFERRONI_ALPHA: float = 0.05 / N_TRIALS  # 0.0020833...
+#
+# 2026-07-30: these are no longer hand-edited constants. They are RE-EXPORTS of the one
+# authoritative source, ``src.research.trial_budget``, whose append-only TRIAL_LEDGER
+# derives the count (20 + 1 + 1 + 2 = 24 — same value, same alpha, no verdict moves).
+# The as-of-then rule above is preserved and made executable: prior budgets live in
+# ``trial_budget.REPLAYABLE_BUDGETS`` and are reachable only via an explicit
+# ``frozen_replay=True``, while any NEW call declaring its own budget fails closed.
+# This is what stops another lane hardcoding N_TRIALS=3 (alpha 8x looser) undetected.
+# ``N_TRIALS`` / ``BONFERRONI_ALPHA`` are imported at the top of this module and
+# re-exported here for every existing consumer (harness.py:67-68 and friends).
+BUDGET_SOURCE = "src.research.trial_budget.TRIAL_LEDGER"
 
 # Arm identifiers for the four pre-registered lookahead-control arms (§1).
 ARM_FULL = "full"              # whole sample — EXPECTED contaminated by pretraining
