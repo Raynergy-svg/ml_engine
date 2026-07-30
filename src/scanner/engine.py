@@ -3573,18 +3573,167 @@ class Scanner:
                 if _ar.get("block_trade") is True or _ar.get("passed") is False:
                     _vetoing_agents.append(_name)
 
+            # 2026-07-30 (RL prerequisite fix): `features=` was a hardcoded
+            # `{}` literal at this call site, so all 4427 rows in
+            # `trained_data/virtual_trades.jsonl` shipped an EMPTY feature
+            # payload while the schema key was present on every row — the
+            # load-bearing blocker on the Phase J1 RL prerequisite "rejected
+            # setups are recorded with full features" (see
+            # docs/architecture/audit/phase_I_J1_J7_models.md §6 prereq #4,
+            # gap G3). The logger's signature has always accepted a real
+            # snapshot (`virtual_trade_logger.py:102`) and the downstream RL
+            # consumer (`src/training/rl/trajectory_loader.py`) expects one.
+            # Rejection features are UNBACKFILLABLE — the candle window, the
+            # model head outputs and the agent context are gone by the next
+            # cycle — so every scan logged with `{}` permanently destroyed
+            # that row's forensic value. Existing rows stay as-is.
+            #
+            # What is captured, and why: ONLY values already computed and
+            # carried on this `PairAnalysis` at rejection time. Nothing is
+            # recomputed and no market data is re-fetched — this runs inside
+            # the scan loop and must stay cheap. The snapshot IS the decision
+            # surface the rejection was made from: the model head outputs
+            # behind the direction call, the market/regime state, the
+            # uncertainty triplet and execution-quality inputs that drive the
+            # hard vetoes in `.claude/rules/trading.md`, the agent-consensus
+            # vote maths, the counterfactual trade's sizing, and the ensemble
+            # component scores stashed from `gate_details["scores"]` onto the
+            # result at engine.py:4871-4876. Per-agent verdicts are NOT
+            # duplicated here — they already ship in `agent_scores` /
+            # `vetoing_agents` above.
+            _vtl_features: Dict[str, float] = {}
+
+            def _vtl_add(_key: str, _value: Any) -> None:
+                """Coerce one already-computed value into the snapshot.
+
+                Mirrors the defensive coercion the `agent_scores` block above
+                uses. Anything that is not a finite real number — None, a
+                categorical string, a nested dict/list, NaN/inf — is SKIPPED,
+                never zero-filled. Zero-filling a missing feature is the
+                failure mode `.claude/rules/improvement.md` "Train<->Inference
+                Contract Gates" forbids: an absent key is honest, a 0.0
+                stand-in silently lies to the RL consumer. Skipping also
+                protects the writer, whose `round(float(v), 4)` normalization
+                (`virtual_trade_logger.py:184`) sits OUTSIDE its own
+                try/except and would otherwise raise into this scan path.
+                """
+                if _value is None or isinstance(_value, (dict, list, tuple, set, str)):
+                    return
+                try:
+                    _f = float(_value)
+                except (TypeError, ValueError):
+                    return
+                if not math.isfinite(_f):
+                    return
+                _vtl_features[_key] = _f
+
+            # Model head outputs — the direction/confidence decision surface.
+            _vtl_add("confidence", result.confidence)
+            _vtl_add("confidence_score", result.confidence_score)
+            _vtl_add("tcn_confidence", result.tcn_confidence)
+            _vtl_add("tcn_probability", result.tcn_probability)
+            _vtl_add("ridge_confidence", result.ridge_confidence)
+            _vtl_add("momentum", result.momentum)
+            _vtl_add("xgb_momentum", result.xgb_momentum)
+            _vtl_add("momentum_acceleration", result.momentum_acceleration)
+            _vtl_add("drawdown", result.drawdown)
+            _vtl_add("rf_drawdown", result.rf_drawdown)
+            _vtl_add("entry_score", result.entry_score)
+
+            # Market / regime state the setup was rejected in.
+            _vtl_add("current_price", result.current_price)
+            _vtl_add("atr", result.atr)
+            _vtl_add("atr_pips", result.atr_pips)
+            _vtl_add("volatility_percentile", result.volatility_percentile)
+            _vtl_add("trend_strength", result.trend_strength)
+            # `volatility_regime` is the only categorical on the decision
+            # surface, and the row schema is float-valued — persist the
+            # already-computed TCN regime as an ordinal. -1.0 means UNKNOWN,
+            # which is itself a hard `is_tradeable` veto (results.py:224),
+            # NOT a missing value.
+            _vtl_add(
+                "volatility_regime_ordinal",
+                {"LOW": 0.0, "NORMAL": 1.0, "HIGH": 2.0, "EXTREME": 3.0}.get(
+                    str(getattr(result, "volatility_regime", "") or "").upper(),
+                    -1.0,
+                ),
+            )
+
+            # Uncertainty triplet — drives the staleness / disagreement hard
+            # blocks and the MR composite veto.
+            _vtl_add("uncertainty_score", result.uncertainty_score)
+            _vtl_add("confidence_variance", result.confidence_variance)
+            _vtl_add("model_disagreement", result.model_disagreement)
+
+            # Execution-quality inputs — the execution_quality veto surface.
+            _vtl_add("execution_quality_score", result.execution_quality_score)
+            _vtl_add("spread_pips", result.spread_pips)
+            _vtl_add("est_slippage_pips", result.est_slippage_pips)
+            _vtl_add("liquidity_score", result.liquidity_score)
+
+            # Model-health inputs behind the accuracy / drift kill reasons.
+            _vtl_add("pair_model_accuracy", result.pair_model_accuracy)
+            _vtl_add("model_drift_score", result.model_drift_score)
+
+            # Agent-consensus vote maths (per-agent detail is in agent_scores).
+            _vtl_add("agent_votes", result.agent_votes)
+            _vtl_add("agent_total", result.agent_total)
+            _vtl_add("agent_score", result.agent_score)
+            _vtl_add("weighted_vote_score", result.weighted_vote_score)
+            _vtl_add("weighted_vote_threshold", result.weighted_vote_threshold)
+
+            # The counterfactual trade this setup would have taken — without
+            # it an off-policy evaluator cannot score the rejected action.
+            _vtl_add("sl_pips", result.sl_pips)
+            _vtl_add("tp_pips", result.tp_pips)
+            _vtl_add("risk_pct", result.risk_pct)
+            _vtl_add("recommended_lots", result.recommended_lots)
+
+            # Ensemble component scores — the per-head numbers the final gate
+            # verdict was computed from (`modular_inference.py:5107`). Stashed
+            # onto the result only when `gate_details` existed, so the pair
+            # may legitimately have neither: guard the shape, don't assume it.
+            # The nested `ensemble_weights` sub-dict is skipped by _vtl_add's
+            # dict guard rather than flattened — blend weights are config, not
+            # a market observation.
+            _ensemble_scores = getattr(result, "_ensemble_scores", None)
+            if isinstance(_ensemble_scores, dict):
+                for _sk, _sv in _ensemble_scores.items():
+                    if not _sk:
+                        continue
+                    _vtl_add(f"ensemble_{_sk}", _sv)
+            # Same source as the two keys above; kept as an independent read
+            # so the two most load-bearing scores survive a missing/malformed
+            # `scores` sub-dict.
+            if "ensemble_core_score" not in _vtl_features:
+                _vtl_add("ensemble_core_score", getattr(result, "_core_score", None))
+            if "ensemble_final_score" not in _vtl_features:
+                _vtl_add("ensemble_final_score", getattr(result, "_final_score", None))
+
             self._virtual_trade_logger.log_virtual_trade(
                 pair=pair,
                 direction=result.direction,
                 confidence=float(result.confidence),
                 gate_failures=_vtl_failures,
-                features={},
+                features=_vtl_features,
                 agent_scores=_vtl_agents,
                 gate_failures_detail=_vtl_failures_detail,
                 vetoing_agents=_vetoing_agents,
             )
         except Exception as _vtl_err:
-            logger.debug("%s: Phase 56 virtual trade log failed: %s", pair, _vtl_err)
+            # 2026-07-30: raised DEBUG -> WARNING. This is a data-capture path
+            # whose payload is unbackfillable, so a swallowed failure here
+            # silently destroys a rejection record — exactly the silent
+            # failure CLAUDE.md "Code quality non-negotiables" forbids ("no
+            # bare except / no silent failures — log and surface"). It stays
+            # non-fatal on purpose: capture must NEVER block a scan cycle.
+            # `exc_info=True` puts the stack in logs/buddy_debug.log so the
+            # failure is diagnosable rather than merely counted.
+            logger.warning(
+                "%s: virtual trade capture FAILED (non-fatal, scan continues) - %s: %s",
+                pair, type(_vtl_err).__name__, _vtl_err,
+                exc_info=True,
+            )
 
     def _apply_specialist_agents(
         self,
