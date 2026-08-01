@@ -115,7 +115,31 @@ def holdout_oos(
     from src.core.modular_data_loaders import compute_normalized_features
     from src.scanner.gates import GateEvaluator
 
-    feat = compute_normalized_features(df_oos)
+    # Build features with the SAME pipeline the trainer uses. Calling
+    # compute_normalized_features alone yields ~29 columns, but a head trained
+    # via train_single_model_m1.py expects the FeatureEngineering(include_all)
+    # superset — 37 of its 50 contract features (obv, cum_returns,
+    # returns_lag_*, di_spread, macd_x_adx, cci_signal, day_cos, ...) are simply
+    # absent from the narrow build. The transformer then refuses the contract
+    # and returns its (None, 0.5) abstain sentinel on EVERY bar, which this
+    # function's `except Exception: continue` rendered as a bare
+    # "no predictions returned". Mirrors scripts/per_pair_holdout_eval.py.
+    try:
+        from src.data.feature_engineering import FeatureEngineering
+        from src.utils import load_config
+        _cfg_path = REPO_ROOT / "config" / "config_m1_optimized.yaml"
+        _df_feat = FeatureEngineering(load_config(str(_cfg_path))).create_features(
+            df_oos.copy(), include_all=True
+        )
+        feat = (
+            _df_feat if "returns_1" in _df_feat.columns
+            else compute_normalized_features(_df_feat)
+        )
+    except Exception as exc:
+        log.warning("[%s] FeatureEngineering failed (%s); falling back to "
+                    "compute_normalized_features — contract gaps likely", pair, exc)
+        feat = compute_normalized_features(df_oos)
+
     if feat is None or len(feat) < seq_len + lookahead:
         return {"pair": pair, "error": f"insufficient OOS rows: {len(feat) if feat is not None else 0}"}
 
@@ -125,13 +149,31 @@ def holdout_oos(
     ev = GateEvaluator(model_dir=str(base_models_dir), use_per_pair_routing=True)
     ev.load_models(require_tcn=False)
 
+    # Label alignment. FeatureEngineering may drop warmup rows, so `feat` and
+    # `df_oos` are not guaranteed to be positionally aligned; indexing labels
+    # off df_oos by the feature-row position would silently mislabel every bar.
+    # Prefer feat's own close column; otherwise align on time.
+    if "close" in feat.columns:
+        closes = feat["close"].to_numpy(dtype=float)
+    elif "time" in feat.columns and "time" in df_oos.columns:
+        _m = feat[["time"]].merge(df_oos[["time", "close"]], on="time", how="left")
+        closes = _m["close"].to_numpy(dtype=float)
+    else:
+        if len(feat) != len(df_oos):
+            return {"pair": pair,
+                    "error": f"cannot align labels: len(feat)={len(feat)} "
+                             f"!= len(df_oos)={len(df_oos)} and no time/close column"}
+        closes = df_oos["close"].to_numpy(dtype=float)
+
     correct = 0
     total = 0
     long_correct = long_total = short_correct = short_total = 0
     for i in range(seq_len, len(feat) - lookahead):
         row = feat.iloc[i - seq_len + 1 : i + 1]
-        future_close = df_oos["close"].iloc[i + lookahead]
-        current_close = df_oos["close"].iloc[i]
+        future_close = closes[i + lookahead]
+        current_close = closes[i]
+        if not (future_close == future_close and current_close == current_close):
+            continue  # NaN from a failed alignment — skip rather than mislabel
         actual_dir = "LONG" if future_close > current_close else "SHORT"
         try:
             res = ev.evaluate_all_gates(row, instrument=pair)
@@ -261,9 +303,20 @@ def main() -> int:
         # scored a transformer-only stack while appearing to score the full
         # one. Copy the sibling heads across (never the transformer, which
         # must stay the OOS-trained one) so the holdout exercises every gate.
+        # Direction-head artifacts must NEVER be copied — the OOS model owns
+        # them. transformer_direction.* is obvious, but direction_scaler.pkl and
+        # feature_indices.pkl are ALSO written by the transformer trainer (via
+        # src/training/feature_alignment.py) and copying the incumbent's copies
+        # over silently corrupts the OOS model's inference contract, making it
+        # abstain on every bar.
+        _DIRECTION_HEAD_FILES = {"direction_scaler.pkl", "feature_indices.pkl"}
         if prod_dir.exists():
             for src in sorted(prod_dir.iterdir()):
-                if src.is_dir() or src.name.startswith("transformer_direction."):
+                if (
+                    src.is_dir()
+                    or src.name.startswith("transformer_direction.")
+                    or src.name in _DIRECTION_HEAD_FILES
+                ):
                     continue
                 shutil.copy2(src, oos_save_dir / src.name)
             log.info(
