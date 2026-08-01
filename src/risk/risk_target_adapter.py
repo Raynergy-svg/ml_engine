@@ -218,8 +218,20 @@ class RiskTargetAdapter:
         """
         if self._injected_store is not None:
             return self._injected_store
-        identities_path = self.signing_dir / "identities.json"
-        if not (self.evidence_root / "champions").is_dir() or not identities_path.exists():
+        # The signing dir holds TWO role registries with the same schema:
+        # identities.json (slice roles: producer / local_importer /
+        # independent_verifier, written by risk_target.persistent_identity)
+        # and promotion_identities.json (operator / promotion_service,
+        # written by evidence.promotion).  The champion POINTER is signed by
+        # promotion_service, so trusting only the first file makes every
+        # champion unresolvable ("untrusted signer key") — caught live by
+        # tests/test_champion_end_to_end_live.py on 2026-08-01.  Ingest both.
+        registry_paths = [
+            self.signing_dir / "identities.json",
+            self.signing_dir / "promotion_identities.json",
+        ]
+        present = [p for p in registry_paths if p.exists()]
+        if not (self.evidence_root / "champions").is_dir() or not present:
             return None
         try:
             from src.evidence.signing import Ed25519Signer, TrustStore
@@ -227,29 +239,35 @@ class RiskTargetAdapter:
             from src.evidence.transition_policy import AuthorityRegistry
             from src.evidence.contracts import AuthorityRole
 
-            metadata = json.loads(identities_path.read_text())
             trust = TrustStore()
             authorities = AuthorityRegistry()
-            for role_value, entry in (metadata.get("roles") or {}).items():
-                try:
-                    role = AuthorityRole(role_value)
-                except ValueError:
-                    continue  # forward-compat: skip roles this build doesn't know
-                key_path = self.signing_dir / f"{role_value}.key"
-                if not key_path.exists():
-                    continue
-                signer = Ed25519Signer.from_private_bytes(key_path.read_bytes())
-                if signer.key_id != entry.get("key_id"):
-                    logger.warning(
-                        "RiskTargetAdapter: key_id mismatch for role %s — skipping",
-                        role_value,
+            for identities_path in present:
+                metadata = json.loads(identities_path.read_text())
+                for role_value, entry in (metadata.get("roles") or {}).items():
+                    try:
+                        role = AuthorityRole(role_value)
+                    except ValueError:
+                        continue  # forward-compat: skip unknown roles
+                    key_path = self.signing_dir / f"{role_value}.key"
+                    if not key_path.exists():
+                        continue
+                    signer = Ed25519Signer.from_private_bytes(
+                        key_path.read_bytes()
                     )
-                    continue
-                valid_from = datetime.fromisoformat(entry["valid_from"])
-                trust.add(signer.trusted_key(valid_from=valid_from))
-                authorities.register(
-                    actor_id=entry["actor_id"], role=role, key_ids=(signer.key_id,),
-                )
+                    if signer.key_id != entry.get("key_id"):
+                        logger.warning(
+                            "RiskTargetAdapter: key_id mismatch for role %s "
+                            "— skipping",
+                            role_value,
+                        )
+                        continue
+                    valid_from = datetime.fromisoformat(entry["valid_from"])
+                    trust.add(signer.trusted_key(valid_from=valid_from))
+                    authorities.register(
+                        actor_id=entry["actor_id"],
+                        role=role,
+                        key_ids=(signer.key_id,),
+                    )
             return EvidenceStore(
                 self.evidence_root, trust_store=trust, authorities=authorities,
             )
