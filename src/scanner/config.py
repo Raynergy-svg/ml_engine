@@ -718,6 +718,35 @@ class ScannerConfig:
     use_tcn_volatility_filter: bool = True
     require_tcn_volatility: bool = False  # If True, block trades when TCN model unavailable
 
+    # RL sub-model toggles consumed by ModularEnsembleInference.
+    # 2026-07-30: use_rl_sizer/use_rl_gates existed ONLY as profile-dict
+    # entries (balanced/smart/aggressive/conservative), never as dataclass
+    # fields, so apply_profile() logged "unknown field 'use_rl_sizer' ...
+    # skipping" and the attributes were never set. engine.py:1965-1967 and
+    # :286-288 read config.use_rl_sizer directly, so _init_modular_ensemble
+    # raised AttributeError on EVERY call; the bare `except Exception`
+    # swallowed it and silently demoted the primary ensemble to the
+    # MultiPairInference fallback (which stubs the gates to True). Declaring
+    # them here is the missing first step of the three-step feature-flag rule
+    # in .claude/rules/improvement.md.
+    # NOTE: use_rl_exits is NOT declared here — it already exists below
+    # (default False). Declaring it twice would shadow that default.
+    use_rl_sizer: bool = True
+    use_rl_gates: bool = True
+
+    # Technical (RSI/MACD) direction fallback. Default OFF (fail-closed).
+    # 2026-07-31 (operator directive: "remove it"): three separate layers used
+    # to convert "no ML direction" into a tradeable direction —
+    #   1. an RSI fallback inside _infer_from_gates (deleted outright),
+    #   2. the _infer_from_technicals cascade tier (_run_inference),
+    #   3. a HOLD -> "lightweight technical bias" override further down.
+    # _infer_from_technicals never abstains: whenever an `rsi` column exists it
+    # returns a direction with a synthesized confidence up to 0.95. With the
+    # direction head refusing 100% of bars, that meant the scanner always
+    # emitted a signal carrying no ML at all. Flipping this to True restores
+    # the old opportunity-scanner behaviour; leave it False for trading.
+    enable_technical_fallback: bool = False
+
     # Joint-only model loading (scanner uses joint-trained models exclusively)
     use_joint_models_only: bool = True  # Load from trained_data/models/joint/ only
 

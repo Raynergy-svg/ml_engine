@@ -1953,7 +1953,14 @@ class Scanner:
                 require_ridge_model=False,
                 # Scanner should not block on contextual overlays.
                 sentiment_block_enabled=False,
-                enable_meta_labeling=False,
+                # 2026-07-30 (operator directive): meta-labeler ON. The
+                # XGBoost triple-barrier meta-labeler (trained_data/models/
+                # buddy_meta.pkl) was disabled here, so the scan path emitted
+                # candidates that no meta-label ever vetted. It now gates on
+                # min_meta_confidence=config.meta_labeler_threshold (0.52).
+                # overlay_meta_enabled stays False — that is the contextual
+                # overlay, a different thing from the meta-labeler head.
+                enable_meta_labeling=True,
                 overlay_meta_enabled=False,
                 final_score_threshold=float(self.config.final_score_threshold),
                 min_meta_confidence=float(self.config.meta_labeler_threshold),
@@ -2763,15 +2770,28 @@ class Scanner:
             ridge_conf = gate_result["confidence"]
             gates_passed = gate_result["all_passed"]
 
-            # Use direction from gates if Transformer provided it
+            # Use direction from gates if Transformer provided it.
+            #
+            # 2026-07-30 (operator directive): the RSI fallback that used to
+            # live here is REMOVED. It read
+            #     elif "rsi" in df_feat.columns:
+            #         direction = "LONG" if rsi < 50 else "SHORT"; tcn_conf = 0.0
+            # so whenever the direction head abstained — measured at 100% of
+            # bars on the 2026-07-12..07-31 holdout, because the artifact's
+            # contract demands instrument_* one-hots the per-pair pipeline
+            # never emits — the scanner silently traded a mean-reversion
+            # heuristic while reporting tcn_conf=0.0. That re-introduced the
+            # default-direction fallback removed in 1704d30 and contradicts
+            # the documented `direction=None` abstention. No ML direction now
+            # means NO trade, which is the fail-closed contract.
             if gate_result.get("transformer_direction"):
                 direction = gate_result["transformer_direction"]
                 tcn_conf = gate_result.get("transformer_prob", 0.5) * 100
-            elif "rsi" in df_feat.columns:
-                rsi = df_feat["rsi"].iloc[-1]
-                direction = "LONG" if rsi < 50 else "SHORT"
-                tcn_conf = 0.0
             else:
+                logger.debug(
+                    "%s: no transformer direction — abstaining (RSI fallback "
+                    "removed 2026-07-30)", pair,
+                )
                 return None, None, None, None, None, None, None
 
             # Overall confidence: use ridge confidence (0-100) scaled to 0-1,
@@ -2967,11 +2987,21 @@ class Scanner:
                 volatility_regime = _regime
             return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, (details or {})
 
-        # === FOURTH: Technical indicator fallback ===
-        result = self._infer_from_technicals(df_feat)
-        if result[0] is not None:
-            direction, confidence = result
-            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, details
+        # === FOURTH: Technical indicator fallback (OFF by default) ===
+        # 2026-07-31: gated behind enable_technical_fallback (default False).
+        # _infer_from_technicals never abstains — with an `rsi` column present
+        # it always returns a direction — so leaving this ungated meant a dead
+        # ML stack still produced tradeable signals from RSI/MACD alone.
+        if getattr(self.config, "enable_technical_fallback", False):
+            result = self._infer_from_technicals(df_feat)
+            if result[0] is not None:
+                direction, confidence = result
+                return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, details
+        else:
+            logger.debug(
+                "%s: technical fallback disabled — no ML direction, abstaining",
+                pair,
+            )
 
         return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_succeeded, details
 
@@ -3863,7 +3893,12 @@ class Scanner:
 
             # Scanner role: surface opportunities even when hard execution gates fail.
             # If the architecture returns HOLD, attach a lightweight technical bias.
-            if direction == "HOLD":
+            # 2026-07-31: gated behind enable_technical_fallback (default False) —
+            # this was the third path that turned "no ML direction" into a
+            # tradeable one, by overwriting HOLD with an RSI/MACD bias.
+            if direction == "HOLD" and getattr(
+                self.config, "enable_technical_fallback", False
+            ):
                 tech_direction, tech_conf = self._infer_from_technicals(df_feat)
                 if tech_direction is not None and tech_conf is not None:
                     direction = tech_direction

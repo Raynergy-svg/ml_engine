@@ -106,13 +106,22 @@ class TestRunInferencePipeline:
         return scanner
 
     def test_technical_fallback_produces_direction(self):
-        """When no ensemble or gates, technicals provide direction from RSI."""
+        """Technicals provide direction from RSI when the fallback is ENABLED.
+
+        2026-07-31: enable_technical_fallback now defaults to False (fail-closed)
+        after the operator directive to remove the no-ML direction fallbacks, so
+        this test opts in explicitly. The second half asserts the new default —
+        with the flag off, a dead ML stack must abstain (HOLD) rather than trade
+        an RSI heuristic.
+        """
         scanner = self._get_scanner()
         df_raw = _make_ohlcv(rows=200)
         df_feat = df_raw.copy()
         # Add RSI column — oversold = LONG signal
         df_feat["rsi"] = 25.0
         df_feat["macd"] = 0.001
+
+        scanner.config.enable_technical_fallback = True
 
         # Disable ensemble and gates via lazy-init patches
         with patch.object(scanner, '_init_modular_ensemble', return_value=False):
@@ -126,12 +135,28 @@ class TestRunInferencePipeline:
         assert succeeded is True
         assert gates is False  # No gates ran
 
+        # Fail-closed default: no ML direction => no trade.
+        scanner.config.enable_technical_fallback = False
+        with patch.object(scanner, '_init_modular_ensemble', return_value=False):
+            with patch.object(scanner, '_init_gate_evaluator', return_value=False):
+                with patch.object(scanner, '_check_volatility_regime', return_value=(True, 1)):
+                    direction_off, _c, _t, _r, _g, _rg, succeeded_off, _d = \
+                        scanner._run_inference(df_raw, df_feat, "EUR_USD")
+
+        assert direction_off == "HOLD"
+        assert succeeded_off is False
+
     def test_overbought_rsi_gives_short(self):
-        """RSI > 70 produces SHORT direction in technical fallback."""
+        """RSI > 70 produces SHORT direction when the technical fallback is on.
+
+        Opts in explicitly — enable_technical_fallback defaults to False as of
+        2026-07-31 (fail-closed).
+        """
         scanner = self._get_scanner()
         df_raw = _make_ohlcv(rows=200)
         df_feat = df_raw.copy()
         df_feat["rsi"] = 80.0
+        scanner.config.enable_technical_fallback = True
 
         with patch.object(scanner, '_init_modular_ensemble', return_value=False):
             with patch.object(scanner, '_init_gate_evaluator', return_value=False):

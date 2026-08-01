@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -32,6 +33,15 @@ sys.path.insert(0, str(REPO_ROOT))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("path4_true_oos")
+
+# --- Pre-registered OOS pass criteria (2026-07-31) ------------------------
+# Changed from a bare `accuracy >= 0.52` after that gate passed a model which
+# scored 0.03pp BELOW its own constant-long control. Directional accuracy is
+# only meaningful relative to the majority-class baseline on the same bars.
+RAW_MIN_ACCURACY = 0.52          # floor; necessary, nowhere near sufficient
+MIN_EDGE_VS_MAJORITY = 0.02      # must beat always-predict-majority by 2pp
+MIN_BALANCED_ACCURACY = 0.52     # guards against class-collapse into the drift
+# --------------------------------------------------------------------------
 
 
 def fetch_candles(pair: str, granularity: str, n: int) -> pd.DataFrame:
@@ -146,14 +156,48 @@ def holdout_oos(
 
     if total == 0:
         return {"pair": pair, "error": "no predictions returned"}
+
+    accuracy = correct / total
+    long_acc = long_correct / max(long_total, 1)
+    short_acc = short_correct / max(short_total, 1)
+
+    # --- Controls (2026-07-31) -------------------------------------------
+    # Raw accuracy alone is not evidence of edge. On the 2026-06-17..07-31
+    # USD_JPY M15 window, 57.83% of 24-bar futures closed UP, so a model that
+    # always says LONG scores 57.83%. The old gate (accuracy >= 0.52) passed
+    # such a model with a "PASS" verdict; the measured model scored 57.80% —
+    # 0.03pp WORSE than the trivial control — and still passed.
+    #
+    # A directional model must beat the majority-class control, and must not
+    # be achieving that purely by class-collapsing into the drifting side,
+    # which is what balanced accuracy catches.
+    majority_accuracy = max(long_total, short_total) / total
+    balanced_accuracy = (long_acc + short_acc) / 2.0
+    edge_vs_majority = accuracy - majority_accuracy
+
+    passed_gate = (
+        accuracy >= RAW_MIN_ACCURACY
+        and edge_vs_majority >= MIN_EDGE_VS_MAJORITY
+        and balanced_accuracy >= MIN_BALANCED_ACCURACY
+    )
+
     return {
         "pair": pair,
-        "accuracy": correct / total,
-        "long_accuracy": long_correct / max(long_total, 1),
-        "short_accuracy": short_correct / max(short_total, 1),
+        "accuracy": accuracy,
+        "long_accuracy": long_acc,
+        "short_accuracy": short_acc,
         "n_predictions": total,
         "n_correct": correct,
-        "passed_gate": (correct / total) >= 0.52,
+        # Controls — always reported so a PASS can be audited.
+        "majority_class_accuracy": majority_accuracy,
+        "balanced_accuracy": balanced_accuracy,
+        "edge_vs_majority": edge_vs_majority,
+        "gate_thresholds": {
+            "raw_min_accuracy": RAW_MIN_ACCURACY,
+            "min_edge_vs_majority": MIN_EDGE_VS_MAJORITY,
+            "min_balanced_accuracy": MIN_BALANCED_ACCURACY,
+        },
+        "passed_gate": passed_gate,
     }
 
 
@@ -210,6 +254,28 @@ def main() -> int:
         prod_dir = base_models / pair
         backup_dir = base_models / f"{pair}_path4_backup"
 
+        # 2026-07-31: train_master_on_split writes ONLY transformer_direction.*
+        # into oos_save_dir. The swap below then made that the whole per-pair
+        # dir, so the momentum / confidence / risk heads vanished for the
+        # duration of the holdout — GateEvaluator logged "momentum=none" and
+        # scored a transformer-only stack while appearing to score the full
+        # one. Copy the sibling heads across (never the transformer, which
+        # must stay the OOS-trained one) so the holdout exercises every gate.
+        if prod_dir.exists():
+            for src in sorted(prod_dir.iterdir()):
+                if src.is_dir() or src.name.startswith("transformer_direction."):
+                    continue
+                shutil.copy2(src, oos_save_dir / src.name)
+            log.info(
+                "[%s] copied %d sibling head/config file(s) into OOS dir so the "
+                "full gate stack is exercised",
+                pair,
+                sum(
+                    1 for f in prod_dir.iterdir()
+                    if f.is_file() and not f.name.startswith("transformer_direction.")
+                ),
+            )
+
         if prod_dir.exists():
             prod_dir.rename(backup_dir)
         oos_save_dir.rename(prod_dir)
@@ -233,10 +299,15 @@ def main() -> int:
         results.append(res)
 
         if "accuracy" in res:
-            log.info("[%s] OOS HOLDOUT: acc=%.1f%% n=%d  long=%.1f%% short=%.1f%%  %s",
-                     pair, res["accuracy"] * 100, res["n_predictions"],
-                     res["long_accuracy"] * 100, res["short_accuracy"] * 100,
-                     "✓" if res["passed_gate"] else "✗")
+            log.info(
+                "[%s] OOS HOLDOUT: acc=%.2f%% vs majority-class %.2f%% "
+                "(edge %+.2fpp) balanced=%.2f%% n=%d  long=%.1f%% short=%.1f%%  %s",
+                pair, res["accuracy"] * 100, res["majority_class_accuracy"] * 100,
+                res["edge_vs_majority"] * 100, res["balanced_accuracy"] * 100,
+                res["n_predictions"], res["long_accuracy"] * 100,
+                res["short_accuracy"] * 100,
+                "✓" if res["passed_gate"] else "✗",
+            )
         else:
             log.warning("[%s] OOS HOLDOUT: %s", pair, res.get("error"))
 
@@ -248,21 +319,33 @@ def main() -> int:
         "seq_len": args.seq_len,
         "train_candles": args.candles,
         "oos_bars": args.oos_bars,
-        "gate": 0.52,
+        "granularity": args.granularity,
+        "gate": {
+            "raw_min_accuracy": RAW_MIN_ACCURACY,
+            "min_edge_vs_majority": MIN_EDGE_VS_MAJORITY,
+            "min_balanced_accuracy": MIN_BALANCED_ACCURACY,
+        },
         "results": results,
     }
     report_path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str))
 
     print()
-    print("=" * 60)
-    print(f"PATH 4 (TRUE OOS) — H1 lookahead={args.lookahead}, train={args.candles}, oos={args.oos_bars}")
-    print("=" * 60)
-    print(f'{"pair":10} {"train_val":>9} {"oos_acc":>9} {"oos_n":>6} {"verdict":>8}')
-    print("-" * 50)
+    print("=" * 88)
+    # granularity was previously hardcoded "H1" here regardless of the flag —
+    # that mislabel made M15 runs read as H1 in the report.
+    print(f"PATH 4 (TRUE OOS) — {args.granularity} lookahead={args.lookahead}, "
+          f"train={args.candles}, oos={args.oos_bars}")
+    print("=" * 88)
+    print(f'{"pair":10} {"train_val":>9} {"oos_acc":>9} {"majority":>9} '
+          f'{"edge":>8} {"balanced":>9} {"oos_n":>6} {"verdict":>8}')
+    print("-" * 88)
     for r in results:
         if "accuracy" in r:
             tv = r.get("train_val_balanced_acc") or 0
-            print(f'{r["pair"]:10} {tv*100:>8.1f}% {r["accuracy"]*100:>8.1f}% {r["n_predictions"]:>6d} '
+            print(f'{r["pair"]:10} {tv*100:>8.1f}% {r["accuracy"]*100:>8.1f}% '
+                  f'{r["majority_class_accuracy"]*100:>8.1f}% '
+                  f'{r["edge_vs_majority"]*100:>+7.2f}p '
+                  f'{r["balanced_accuracy"]*100:>8.1f}% {r["n_predictions"]:>6d} '
                   f'{"✓" if r["passed_gate"] else "✗":>8}')
         else:
             print(f'{r["pair"]:10} ERROR: {r.get("error")}')
