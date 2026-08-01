@@ -41,6 +41,29 @@ REGIME_EXTREME = 3
 
 REGIME_NAMES = ["LOW", "NORMAL", "HIGH", "EXTREME"]
 
+# Lazily-built, per-process ScannerConfig used only to read the
+# risk-target damp flags (enable_risk_target_damp / risk_target_damp_floor)
+# when the caller did not inject one. Sentinel False = not yet attempted.
+_SCANNER_CONFIG_CACHE: object = False
+
+
+def _get_cached_scanner_config():
+    """Best-effort default ScannerConfig for damp-flag reads.
+
+    Lazy import to keep src/risk free of any import-time dependency on
+    src/scanner (execution.py imports this module). Returns None when the
+    scanner config cannot be built — callers then use safe defaults.
+    """
+    global _SCANNER_CONFIG_CACHE
+    if _SCANNER_CONFIG_CACHE is False:
+        try:
+            from src.scanner.config import ScannerConfig
+            _SCANNER_CONFIG_CACHE = ScannerConfig()
+        except Exception as exc:
+            logger.debug("ScannerConfig unavailable for damp flags: %s", exc)
+            _SCANNER_CONFIG_CACHE = None
+    return _SCANNER_CONFIG_CACHE
+
 
 @dataclass
 class RegimeScalingConfig:
@@ -128,6 +151,10 @@ class PositionSize:
     regime_scale_applied: float = 1.0
     regime_name: str = "UNKNOWN"
     aggressive_scaling_reason: str = ""
+    # Risk-target forward-vol damp (audit G2). Always in [0.25, 1.0] —
+    # 1.0 means "not applied" (disabled, non-FX, or adapter refused).
+    risk_target_damp_applied: float = 1.0
+    risk_target_damp_reason: str = ""
 
 
 class DynamicPositionSizer:
@@ -145,6 +172,11 @@ class DynamicPositionSizer:
             config: Position sizing configuration
         """
         self.config = config
+        # Risk-target forward-vol damp seam (audit G2). Both default to
+        # None: production lazily resolves the module singletons; tests
+        # inject real instances pointing at tmp_path artifacts (no mocks).
+        self.risk_target_adapter = None
+        self.scanner_config = None
 
     @staticmethod
     def _normalize_instrument(instrument: Union[str, Instrument]) -> Union[str, Instrument]:
@@ -180,9 +212,8 @@ class DynamicPositionSizer:
         Returns:
             PositionSize with calculated position details (units for FX, contracts for FUTURES)
         """
-        # Determine instrument type and get symbol string for logging
+        # Determine instrument type
         instrument_obj = self._normalize_instrument(instrument)
-        instrument_str = instrument_obj.symbol if isinstance(instrument_obj, Instrument) else str(instrument)
 
         base_position_size = self._calculate_base_position_size(
             account_equity, stop_loss_pips, instrument_obj
@@ -531,7 +562,35 @@ class DynamicPositionSizer:
         scaled_units = self._apply_position_constraints(
             scaled_units, account_equity, instrument
         )
-        
+
+        # Risk-target forward-vol damp (audit G2 wiring, 2026-07-30).
+        # STRICTLY RISK-DECREASING: multiplier in [0.25, 1.0]; adapter
+        # unavailable/refusing -> exactly 1.0. Sizing NEVER crashes or
+        # blocks on this — any failure is fail-neutral.
+        damp_mult, damp_reason = 1.0, ""
+        try:
+            damp_mult, damp_reason = self._risk_target_damp_multiplier(instrument)
+        except Exception as exc:
+            damp_mult, damp_reason = 1.0, f"damp_error:{exc}"
+            logger.debug("risk-target damp skipped (%s): %s", instrument, exc)
+        if damp_mult < 1.0:
+            damped_units = int(scaled_units * damp_mult)
+            # Respect the sizer's own min-size contract, but NEVER exceed
+            # the un-damped size — the damp can only shrink, never grow.
+            damped_units = max(damped_units, self.config.min_position_size)
+            damped_units = min(damped_units, scaled_units)
+            logger.info(
+                "RISK_TARGET_DAMP: %s elevated forward vol -> x%.3f "
+                "(%s -> %s units) [%s]",
+                instrument, damp_mult, f"{scaled_units:,}", f"{damped_units:,}",
+                damp_reason,
+            )
+            scaled_units = damped_units
+        else:
+            logger.debug(
+                "RISK_TARGET_DAMP neutral for %s: %s", instrument, damp_reason
+            )
+
         # Recalculate risk amount
         instrument_obj = self._normalize_instrument(instrument)
         risk_amount = self._calculate_actual_risk_amount(
@@ -557,7 +616,7 @@ class DynamicPositionSizer:
         return PositionSize(
             units=scaled_units,
             confidence_level=base_result.confidence_level,
-            position_multiplier=base_result.position_multiplier * regime_scale,
+            position_multiplier=base_result.position_multiplier * regime_scale * damp_mult,
             risk_amount=risk_amount,
             confidence_score=base_result.confidence_score,
             is_valid=True,
@@ -566,8 +625,43 @@ class DynamicPositionSizer:
             regime_scale_applied=regime_scale,
             regime_name=regime_name,
             aggressive_scaling_reason=scaling_reason if regime_scale != 1.0 else "",
+            risk_target_damp_applied=damp_mult,
+            risk_target_damp_reason=damp_reason,
         )
-    
+
+    def _risk_target_damp_multiplier(
+        self, instrument: Union[str, Instrument]
+    ) -> tuple[float, str]:
+        """Risk-target forward-vol damp multiplier for one instrument.
+
+        Returns (multiplier, reason) with multiplier in [0.25, 1.0].
+        Fail-neutral by construction: disabled flag, non-FX instrument,
+        missing adapter/model/features all return exactly (1.0, reason).
+        Consumer-side getattr on the ScannerConfig fields
+        ``enable_risk_target_damp`` / ``risk_target_damp_floor``
+        (.claude/rules/improvement.md Live Wiring gates).
+        """
+        # FX only — the risk-target model is trained on daily FX bars.
+        if isinstance(instrument, Instrument):
+            if instrument.asset_class != "FX":
+                return 1.0, "not_fx_instrument"
+            pair = instrument.symbol
+        else:
+            pair = str(instrument)
+
+        cfg = self.scanner_config
+        if cfg is None:
+            cfg = _get_cached_scanner_config()
+        if cfg is not None and not bool(getattr(cfg, "enable_risk_target_damp", True)):
+            return 1.0, "disabled_by_config"
+        floor = float(getattr(cfg, "risk_target_damp_floor", 0.5)) if cfg is not None else 0.5
+
+        adapter = self.risk_target_adapter
+        if adapter is None:
+            from src.risk.risk_target_adapter import get_risk_target_adapter
+            adapter = get_risk_target_adapter()
+        return adapter.compute_damp_multiplier(pair, floor=floor)
+
     def _calculate_regime_scale_factor(
         self,
         volatility_regime: int,

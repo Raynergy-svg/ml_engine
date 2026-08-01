@@ -154,10 +154,16 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "equity_harvester_vol_lookback": 21,
         "equity_harvester_long_only": True,
         "equity_harvester_ship_gate_path": "trained_data/backtests/SHIP_GATE.json",
+        # Risk-target forward-vol damp (risk-decreasing only, audit G2)
+        "enable_risk_target_damp": True,
+        "risk_target_damp_floor": 0.5,
     },
     # Fewer trades, higher signal quality requirements.
     "conservative": {
         "blocked_pairs": [],
+        # Risk-target forward-vol damp (risk-decreasing only, audit G2)
+        "enable_risk_target_damp": True,
+        "risk_target_damp_floor": 0.5,
         "min_confidence": 58.0,
         "min_momentum": 0.28,
         "min_tcn_probability": 0.63,
@@ -206,6 +212,9 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     "aggressive": {
         "blocked_pairs": [],
         "enable_execution": True,  # Phase 30 (US-185)
+        # Risk-target forward-vol damp (risk-decreasing only, audit G2)
+        "enable_risk_target_damp": True,
+        "risk_target_damp_floor": 0.5,
         "min_confidence": 40.0,
         "min_momentum": 0.06,
         "min_tcn_probability": 0.58,
@@ -326,6 +335,9 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     "smart": {
         "blocked_pairs": [],
         "enable_execution": True,
+        # Risk-target forward-vol damp (risk-decreasing only, audit G2)
+        "enable_risk_target_damp": True,
+        "risk_target_damp_floor": 0.5,
         # ── Entry Quality Gates (high selectivity > high volume) ─────
         # Mythos audit 2026-04-29 — relaxed from 62.0 → 35.0. Context:
         # the 04-15 tightening to 62.0 came from the 10-loss streak when
@@ -755,6 +767,15 @@ class ScannerConfig:
     aggressive_scale_high_vol: float = 1.5
     aggressive_scale_extreme_vol: float = 1.75
     aggressive_min_meta_confidence: float = 0.52
+
+    # Risk-target forward-vol damp (audit G2 wiring, 2026-07-30).
+    # STRICTLY RISK-DECREASING: when the risk-target model's predicted
+    # forward vol is elevated vs its reference distribution, position size
+    # is scaled DOWN by a multiplier in [risk_target_damp_floor, 1.0] —
+    # never up. Adapter unavailable/refusing => exactly 1.0 (fail-neutral).
+    # Consumer: src/risk/position_sizing.py::DynamicPositionSizer.
+    enable_risk_target_damp: bool = True
+    risk_target_damp_floor: float = 0.5  # clamped to [0.25, 1.0] at load + consumer
 
     use_rl_exits: bool = False  # RL optimal exit timing (PPO model)
 
@@ -1334,6 +1355,12 @@ class ScannerConfig:
                 f"Clamping to 0.02."
             )
             self.risk_per_trade_pct = 0.02
+        if self.risk_target_damp_floor < 0.25 or self.risk_target_damp_floor > 1.0:
+            logger.warning(
+                f"risk_target_damp_floor={self.risk_target_damp_floor} outside safe "
+                f"range [0.25, 1.0]. Clamping to 0.5."
+            )
+            self.risk_target_damp_floor = 0.5
         if self.max_open_risk_pct < 0 or self.max_open_risk_pct > 0.50:
             logger.warning(
                 f"max_open_risk_pct={self.max_open_risk_pct} outside safe range [0, 0.50]. "
