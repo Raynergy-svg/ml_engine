@@ -624,6 +624,68 @@ class EvidenceStore:
                 raise StoreCorruptionError("champion pointer lane does not match its address")
             return pointer
 
+    def load_champion_pointer_envelope(self, lane_id: str) -> SignedEnvelope:
+        """Return the lane's fully validated champion-pointer envelope.
+
+        Additive read helper for the promotion service (Phase L): the caller
+        needs the exact signed envelope (for compare-and-swap digests and for
+        rollback preservation), not just the decoded pointer. Validation is
+        identical to :meth:`load_champion_pointer`.
+        """
+        with self._locked():
+            path = self._champion_path(lane_id)
+            if not path.exists():
+                raise FileNotFoundError(f"no champion pointer for lane: {lane_id}")
+            envelope, _ = self._read_envelope(path)
+            pointer = self._validate_champion_unlocked(envelope)
+            if pointer.lane_id != lane_id:
+                raise StoreCorruptionError("champion pointer lane does not match its address")
+            return envelope
+
+    def clear_champion_pointer(self, lane_id: str, *, expected_pointer_digest: str) -> None:
+        """Atomically remove a lane's champion pointer (CAS-guarded).
+
+        Additive Phase-L helper for supervised champion swaps: a new CHAMPION
+        disposition cannot commit while the lane's pointer file still selects
+        a different (retired) package, because the index projection validates
+        the pointer against the champion-state package. Removing the pointer
+        is fail-closed — until the replacement pointer is written the lane
+        advertises no champion and consumers must abstain. The compare-and-
+        swap digest prevents clearing a pointer some other writer replaced.
+        """
+        with self._locked():
+            path = self._champion_path(lane_id)
+            if not path.exists():
+                raise FileNotFoundError(f"no champion pointer for lane: {lane_id}")
+            envelope, _ = self._read_envelope(path)
+            if envelope.payload_digest != expected_pointer_digest:
+                raise ConcurrentHeadError(
+                    f"champion pointer changed for {lane_id}: "
+                    f"expected={expected_pointer_digest!r}, actual={envelope.payload_digest!r}"
+                )
+            path.unlink()
+            self._fsync_directory(path.parent)
+            self._repair_projection_after_commit(
+                "champion pointer removal", expected_pointer_digest
+            )
+
+    def peek_champion_pointer_digest(self, lane_id: str) -> str | None:
+        """Return the raw payload digest of the lane's pointer file, or None.
+
+        CAS-only helper: it verifies canonical-envelope integrity but does NOT
+        re-validate champion resolution, so it also works when the pointer has
+        gone stale (e.g. its package was retired during a rollback). The digest
+        is only useful as ``expected_pointer_digest`` for
+        :meth:`write_champion_pointer`, which re-validates everything itself —
+        this helper grants no authority and returns no artifact identity.
+        """
+        with self._locked():
+            path = self._champion_path(lane_id)
+            if not path.exists():
+                return None
+            envelope, _ = self._read_envelope(path)
+            return envelope.payload_digest
+
     def _index_payload_unlocked(
         self,
         *,
