@@ -29,6 +29,49 @@ from .raw_sequence_model import RawSequenceModel, ModelConfig
 logger = logging.getLogger(__name__)
 
 
+def _probability_head(value: Any, shape: tuple[int, int], *, normalized: bool = False) -> np.ndarray:
+    """Validate model output before it can enter calibration or signal logic."""
+    probabilities = np.asarray(value)
+    if probabilities.shape != shape or probabilities.dtype.kind not in "fiu":
+        raise ValueError("model probability head has an invalid shape or dtype")
+    if not np.all(np.isfinite(probabilities)) or np.any(probabilities < 0) or np.any(probabilities > 1):
+        raise ValueError("model probability head must contain finite probabilities")
+    if normalized and not np.allclose(probabilities.sum(axis=1), 1.0, atol=1e-4, rtol=0):
+        raise ValueError("model regime probabilities must sum to one")
+    return probabilities
+
+
+def _regime_head(outputs: Any) -> np.ndarray:
+    """Read regime by name; retain the historical two-output model format."""
+    if isinstance(outputs, dict):
+        regime = outputs["regime"]
+    elif isinstance(outputs, (list, tuple)) and len(outputs) == 2:
+        regime = outputs[1]
+    else:
+        raise ValueError("unsupported model output contract")
+    return _probability_head(regime, (1, 4), normalized=True)
+
+
+def _direction_head(outputs: Any) -> np.ndarray:
+    """Decode only the supported single five-bar binary direction contract.
+
+    The legacy named/positional pair is supported, but multi-horizon or
+    three-class outputs need an explicit decision policy rather than guessing.
+    """
+    if isinstance(outputs, dict):
+        if set(outputs) == {"direction_5", "regime"}:
+            direction = outputs["direction_5"]
+        elif set(outputs) == {"direction", "regime"}:
+            direction = outputs["direction"]
+        else:
+            raise ValueError("unsupported or ambiguous direction heads")
+    elif isinstance(outputs, (list, tuple)) and len(outputs) == 2:
+        direction = outputs[0]
+    else:
+        raise ValueError("unsupported model output contract")
+    return _probability_head(direction, (1, 1))
+
+
 @dataclass
 class SOTAInferenceConfig:
     """Configuration for SOTA inference."""
@@ -131,7 +174,9 @@ class SOTAInference:
 
         # Forward pass
         try:
-            dir_prob, regime_probs = self.model.model.predict(tensor, verbose=0)
+            outputs = self.model.model.predict(tensor, verbose=0)
+            dir_prob = _direction_head(outputs)
+            regime_probs = _regime_head(outputs)
         except Exception as e:
             logger.warning("SOTAInference predict failed: %s", e)
             return self._make_hold_signal("prediction_error")
@@ -210,7 +255,8 @@ class SOTAInference:
             return ("UNKNOWN", np.full(4, 0.25, dtype=np.float32))
 
         try:
-            _, regime_probs = self.model.model.predict(tensor, verbose=0)
+            outputs = self.model.model.predict(tensor, verbose=0)
+            regime_probs = _regime_head(outputs)
         except Exception as e:
             logger.warning("SOTAInference predict_regime_only failed: %s", e)
             return ("UNKNOWN", np.full(4, 0.25, dtype=np.float32))
