@@ -1,0 +1,20 @@
+{
+  "execution_enabled": false,
+  "implemented_tasks": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "profile": "research-contracts-only",
+  "schema_version": 1,
+  "source_sha256": {
+    "src/__init__.py": "40a2d1468e7b438edc98bb72e7ae77d4ede0a9deefef10662a94e311a0aa20d8",
+    "src/axiom2/__init__.py": "6e5184465aad8284aff60dad09af3e02b4a384dc34857a172bd5069236f68111",
+    "src/axiom2/contracts/__init__.py": "c1e7c1cf91a1cbdaeea8ea5da5e90550ba40043dc0faf9bd102a88811ff6c8e1",
+    "src/axiom2/contracts/research_proposal.py": "a4682406bcd3ee4c2c4a30cda0db22b84128af81881d962bf7acb15068a1410e",
+    "src/axiom2/data/__init__.py": "f2470ac617aa88ff9726f0448aead889dda0a0cc5767134650eeee99ed146b92",
+    "src/axiom2/data/temporal.py": "47ad2bdcdd350185cda947661963fcbdfaa87ddcd63fc073d43b0cb0b1a1509d",
+    "src/axiom2/data/universe.py": "3e7efab8d584c5a3e37c633c131c629821497ab4709bcc62a4426a670960c5e4"
+  }
+}
