@@ -30,14 +30,21 @@ class TestRawSequenceModel:
         m = model.build()
         assert m is not None
         assert m.input_shape == (None, 32, 5)
-        assert len(m.outputs) == 2  # direction, regime
+        assert len(m.outputs) == 2  # direction_5, regime
+        assert isinstance(m.output, dict)
+        assert set(m.output) == {"direction_5", "regime"}
 
     def test_forward_pass(self):
         cfg = ModelConfig(seq_len=32, d_model=32, num_layers=2)
         model = RawSequenceModel(cfg)
         model.build()
         x = np.random.randn(2, 32, 5).astype(np.float32)
-        dir_prob, regime_prob = model.model.predict(x, verbose=0)
+        outputs = model.model.predict(x, verbose=0)
+        assert isinstance(outputs, dict)
+        assert set(outputs) == {"direction_5", "regime"}
+        dir_prob, regime_prob = outputs["direction_5"], outputs["regime"]
+        assert np.isfinite(dir_prob).all() and np.isfinite(regime_prob).all()
+        assert np.all(regime_prob >= 0.0) and np.all(regime_prob <= 1.0)
         assert dir_prob.shape == (2, 1)
         assert regime_prob.shape == (2, 4)
         assert np.all(dir_prob >= 0.0) and np.all(dir_prob <= 1.0)

@@ -348,11 +348,19 @@ def test_invoke_claude_missing_cli_captured_as_error(tmp_workspace, monkeypatch)
     # Get past the no-LLM policy chokepoint (default BLOCKED) so the
     # subprocess error-capture path under test is actually reached.
     monkeypatch.setenv("BUDDY_META_USE_LLM", "1")
+    # The resolved executable is fictional; subprocess.run is mocked below.
+    # Missing host CLI must not bypass the error-handling path under test.
+    monkeypatch.setattr(
+        "src.scanner.automation.claude_subprocess.resolve_claude_cli",
+        lambda _name: str(tmp_workspace / "fake-claude"),
+    )
     with patch("src.scanner.automation.claude_subprocess.subprocess.run") as mock_run:
         mock_run.side_effect = FileNotFoundError("claude not found")
         result = invoke_claude_reflection(
             prompt="test", trade_id="T-X", mode="lightweight", timeout_seconds=1
         )
+    mock_run.assert_called_once()
+    assert mock_run.call_args.kwargs["timeout"] == 1
     assert result.success is False
     assert "claude CLI not found" in (result.error or "")
 
@@ -364,10 +372,48 @@ def test_invoke_claude_timeout_captured_as_error(tmp_workspace, monkeypatch):
     # Get past the no-LLM policy chokepoint (default BLOCKED) so the
     # subprocess error-capture path under test is actually reached.
     monkeypatch.setenv("BUDDY_META_USE_LLM", "1")
+    # The resolved executable is fictional; subprocess.run is mocked below.
+    # Missing host CLI must not bypass the error-handling path under test.
+    monkeypatch.setattr(
+        "src.scanner.automation.claude_subprocess.resolve_claude_cli",
+        lambda _name: str(tmp_workspace / "fake-claude"),
+    )
     with patch("src.scanner.automation.claude_subprocess.subprocess.run") as mock_run:
         mock_run.side_effect = _sub.TimeoutExpired(cmd="claude", timeout=1)
         result = invoke_claude_reflection(
             prompt="test", trade_id="T-Y", mode="deep", timeout_seconds=1
         )
+    mock_run.assert_called_once()
+    assert mock_run.call_args.kwargs["timeout"] == 1
     assert result.success is False
     assert "timed out" in (result.error or "")
+
+
+
+def test_invoke_claude_missing_resolved_cli_never_spawns(tmp_workspace, monkeypatch):
+    """Test the actual preflight failure separately from spawn-time ENOENT."""
+    monkeypatch.setenv("BUDDY_META_USE_LLM", "1")
+    with (
+        patch("src.scanner.automation.claude_subprocess.resolve_claude_cli", return_value=None) as resolve,
+        patch("src.scanner.automation.claude_subprocess.subprocess.run") as run,
+    ):
+        result = invoke_claude_reflection(prompt="test", trade_id="T-Z")
+    resolve.assert_called_once()
+    run.assert_not_called()
+    assert result.success is False
+    assert result.error == "claude CLI not found on PATH"
+
+
+def test_invoke_claude_policy_blocks_before_cli_lookup_or_spawn(tmp_workspace, monkeypatch):
+    """The timeout fixture must not weaken the default production policy gate."""
+    monkeypatch.setenv("BUDDY_META_USE_LLM", "0")
+    with (
+        patch("src.scanner.automation.claude_subprocess.resolve_claude_cli") as resolve,
+        patch("src.scanner.automation.claude_subprocess.subprocess.run") as run,
+    ):
+        result = invoke_claude_reflection(prompt="test", trade_id="T-BLOCKED")
+    resolve.assert_not_called()
+    run.assert_not_called()
+    assert result.success is False
+    assert result.error == "no_llm_policy"
+    assert not (tmp_workspace / ".claude/reflection_log.jsonl").exists()

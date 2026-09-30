@@ -253,6 +253,17 @@ class SOTATrainer:
         cfg = self.cfg
         seq_len = self.model.cfg.seq_len
 
+        # This label generator is explicitly five-bar, not a multi-horizon trainer.
+        horizons = self.model.cfg.direction_horizons
+        if (
+            type(horizons) is not tuple
+            or len(horizons) != 1
+            or type(horizons[0]) is not int
+            or horizons[0] != 5
+        ):
+            raise ValueError("finetune requires direction_horizons=(5,); other horizons need matching labels")
+        direction_head = "direction_5"
+
         # Build windows + labels
         all_X: List[np.ndarray] = []
         all_y_dir: List[int] = []
@@ -309,16 +320,16 @@ class SOTATrainer:
 
         if cfg.use_temporal_split:
             train_X = X[:n_train]
-            train_y = {"direction": y_dir[:n_train], "regime": y_reg[:n_train]}
+            train_y = {direction_head: y_dir[:n_train], "regime": y_reg[:n_train]}
             val_X = X[n_train : n_train + n_val]
-            val_y = {"direction": y_dir[n_train : n_train + n_val], "regime": y_reg[n_train : n_train + n_val]}
+            val_y = {direction_head: y_dir[n_train : n_train + n_val], "regime": y_reg[n_train : n_train + n_val]}
         else:
             perm = np.random.permutation(len(X))
             X, y_dir, y_reg = X[perm], y_dir[perm], y_reg[perm]
             train_X = X[:n_train]
-            train_y = {"direction": y_dir[:n_train], "regime": y_reg[:n_train]}
+            train_y = {direction_head: y_dir[:n_train], "regime": y_reg[:n_train]}
             val_X = X[n_train : n_train + n_val]
-            val_y = {"direction": y_dir[n_train : n_train + n_val], "regime": y_reg[n_train : n_train + n_val]}
+            val_y = {direction_head: y_dir[n_train : n_train + n_val], "regime": y_reg[n_train : n_train + n_val]}
 
         # Build supervised model
         if not self.model._built:
@@ -336,10 +347,10 @@ class SOTATrainer:
 
         callbacks = [
             keras.callbacks.ReduceLROnPlateau(
-                monitor="val_direction_loss", mode="min", factor=cfg.lr_decay_factor, patience=cfg.lr_patience, verbose=1
+                monitor=f"val_{direction_head}_loss", mode="min", factor=cfg.lr_decay_factor, patience=cfg.lr_patience, verbose=1
             ),
             keras.callbacks.EarlyStopping(
-                monitor="val_direction_loss", mode="min", patience=cfg.early_stop_patience, restore_best_weights=True, verbose=1
+                monitor=f"val_{direction_head}_loss", mode="min", patience=cfg.early_stop_patience, restore_best_weights=True, verbose=1
             ),
         ]
 
