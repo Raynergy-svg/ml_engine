@@ -1,0 +1,29 @@
+name: Axiom Task 1 Verification
+
+on:
+  push:
+    branches:
+      - copilot/axiom-2-task-1-verification
+
+permissions:
+  contents: read
+
+jobs:
+  task-1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Run Task 1 namespace test
+        run: python -m pytest tests/axiom2/test_namespace_boundary.py -v --tb=short
