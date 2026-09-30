@@ -1,11 +1,11 @@
 # Axiom 2.0 — Equities-First Architecture
 
-**Status:** Revised after three-pass adversarial review; proposed for user review  
+**Status:** Revised after Codex-vs-Axiom three-pass adversarial review; proposed for user review  
 **Date:** 2026-09-29
 
 ## 1. Objective
 
-Axiom 2.0 changes the system from an FX-first directional classifier into an equities-first autonomous portfolio intelligence system.
+Axiom 2.0 changes the system from an FX-first directional classifier into a lean equities-first evidence, promotion, portfolio-risk, and execution kernel. General research reasoning and software engineering are delegated to a replaceable research agent (Codex initially); Axiom remains the deterministic authority that decides what evidence is valid, what may be promoted, what portfolio risk is permitted, and what orders may reach the broker.
 
 The first objective is not maximum feature count or maximum autonomy. It is to establish a reproducible, economically meaningful equity edge that survives out-of-sample validation, transaction costs, market-regime changes, and shadow execution.
 
@@ -14,15 +14,16 @@ The existing FX/OANDA system is retained as reproducible legacy research. It is 
 ## 2. Design principles
 
 1. **Edge before complexity.** New model families, options, crypto, and advanced autonomy are excluded until the equity baseline proves value.
-2. **Broker interface is not strategy logic.** Robinhood supplies supported market/broker capabilities. Axiom owns datasets, features, labels, models, portfolio decisions, risk, evidence, and governance.
-3. **Immutable research inputs.** Training and validation use timestamped snapshots rather than mutable live MCP responses.
-4. **No LLM in the trading hot path.** LLMs may research, diagnose, propose experiments, and review evidence. Deterministic code controls inference, risk, and execution.
-5. **Fail closed.** Missing data, stale quotes, unresolved order state, evidence failure, or risk-state uncertainty blocks new exposure.
-6. **No weakened promotion gates.** Changing markets is not evidence of edge.
-7. **Every live decision is reproducible.** Dataset version, feature schema, model artifact, calibration, decision, risk state, order review, broker response, and outcome are linked.
-8. **Research OOS is a consumable resource.** Repeated exposure to the same holdout converts it into training information. Final promotion therefore requires a sealed holdout that ordinary experimentation cannot inspect.
-9. **Temporal truth over convenient data.** A value is trainable only when Axiom can prove when it became knowable. Current broker fields are never assumed to be historically point-in-time.
-10. **Ablation before accumulation.** New feature families and model complexity must demonstrate incremental OOS economic value over the simpler promoted stack.
+2. **Axiom is a kernel, not another general agent platform.** Axiom owns four authorities only: evidence integrity, promotion, deterministic portfolio/risk, and execution/reconciliation. Research orchestration, hypothesis generation, code authoring, diagnostics, and narrative analysis belong to a replaceable research agent.
+3. **Broker interface is not strategy logic.** Robinhood supplies supported live market/broker capabilities and broker truth. Axiom owns the evidence vault, promoted artifacts, portfolio decisions, risk, and execution authorization.
+4. **Immutable research inputs.** Training and validation use timestamped snapshots rather than mutable live MCP responses.
+5. **No LLM in the trading hot path.** LLMs may research, diagnose, propose experiments, and review evidence. Deterministic code controls inference, risk, and execution.
+6. **Fail closed.** Missing data, stale quotes, unresolved order state, evidence failure, or risk-state uncertainty blocks new exposure.
+7. **No weakened promotion gates.** Changing markets is not evidence of edge.
+8. **Every live decision is reproducible.** Dataset version, feature schema, model artifact, calibration, decision, risk state, order review, broker response, and outcome are linked.
+9. **Research OOS is a consumable resource.** Repeated exposure to the same holdout converts it into training information. Final promotion therefore requires a sealed holdout that ordinary experimentation cannot inspect.
+10. **Temporal truth over convenient data.** A value is trainable only when Axiom can prove when it became knowable. Current broker fields are never assumed to be historically point-in-time.
+11. **Ablation before accumulation.** New feature families and model complexity must demonstrate incremental OOS economic value over the simpler promoted stack.
 
 ## 3. Initial scope
 
@@ -48,51 +49,61 @@ The existing FX/OANDA system is retained as reproducible legacy research. It is 
 - LLM-directed order placement
 - automatic model promotion directly to live capital
 
-## 4. System boundary
+## 4. System boundary and authority model
 
 ```text
-Robinhood market/broker interface
-        |
-        v
-Canonical ingestion + immutable snapshots
-        |
-        v
-Point-in-time equity feature store
-        |
-        +--> labels / benchmark-relative outcomes
-        |
-        v
-Research + model training
-        |
-        v
-Evidence / validation / calibration
-        |
-        v
-Cross-sectional opportunity ranking
-        |
-        v
-Meta-label + eligibility gates
-        |
-        v
-Portfolio construction
-        |
-        v
-Deterministic risk governor
-        |
-        v
-Shadow / approval / execution boundary
-        |
-        v
-Robinhood order review + placement
-        |
-        v
-Broker reconciliation + journal
-        |
-        v
-Outcome evidence / learning
+                 REPLACEABLE RESEARCH AGENT
+                      (Codex initially)
+                              |
+                  structured research proposal
+                              v
+                    +------------------+
+                    |    AXIOM 2.0     |
+                    |------------------|
+historical sources -> Evidence Authority|
+                    |        v         |
+                    | Promotion        |
+                    | Authority        |
+                    |        v         |
+live market data -->| Promoted Model   |
+                    |        v         |
+                    | Portfolio/Risk   |
+                    | Authority        |
+                    |        v         |
+                    | Execution +      |
+                    | Reconciliation   |
+                    +--------+---------+
+                             |
+                      approved order only
+                             v
+                      Robinhood MCP
+                             |
+                             v
+                       Agentic Account
 ```
 
-## 5. Canonical domain model
+There is exactly one production order path: Axiom execution authority -> Robinhood. The research agent has no alternative production order route. A direct research-agent-to-Robinhood connection, if used during isolated investigation, must be read-only/minimum-data and must not possess production order tools.
+
+Codex is not a permanent architectural dependency. Research agents communicate through a versioned Research Proposal Contract. Axiom must be able to accept the same contract from Codex, another approved research agent, deterministic research code, or a human.
+
+## 5. Research Proposal Contract
+
+A research agent may propose experiments but cannot self-promote them. Every proposal must include at minimum:
+- experiment ID
+- hypothesis
+- universe definition
+- feature families
+- label and holding horizon
+- benchmark
+- transaction-cost assumptions
+- model/baseline definition
+- primary metrics and promotion rule
+- code commit/artifact identity
+- expected data dependencies
+
+Axiom validates the proposal against the experiment registry, data-provenance rules, and holdout policy before any result can enter promotion evidence. Free-form agent conclusions are never promotion evidence by themselves.
+
+## 6. Canonical domain model
 
 Axiom must stop leaking FX concepts into generic interfaces.
 
@@ -134,7 +145,7 @@ Replace the FX-shaped order API requiring SL/TP on every placement with a generi
 
 Risk exits are policy decisions, not mandatory broker-interface parameters.
 
-## 6. Universe
+## 7. Universe
 
 Phase 1 uses a controlled liquid universe: S&P 500 constituents plus a curated set of highly liquid broad-market and sector ETFs, subject to point-in-time membership and liquidity eligibility.
 
@@ -147,7 +158,7 @@ Eligibility filters include:
 
 The research pipeline must avoid survivorship bias by storing point-in-time universe membership rather than training against today's membership retroactively. Robinhood availability does not prove historical point-in-time membership or delisted-security coverage. Phase D must either prove those properties from a source or exclude unsupported periods/securities. Current S&P 500 membership must never be projected backward.
 
-## 7. Feature architecture
+## 8. Feature architecture
 
 Features are grouped into independently versioned families.
 
@@ -191,7 +202,7 @@ L2/order-book features are excluded from the first research campaign. Broker-pro
 
 No feature is admitted without a provenance definition and leakage test.
 
-## 8. Labels and learning objective
+## 9. Labels and learning objective
 
 The primary model is no longer next-candle binary direction.
 
@@ -205,7 +216,7 @@ Cross-sectional forward excess-return ranking over a defined holding horizon, be
 
 Labels are computed strictly after the feature cutoff and incorporate realistic trading calendars. Corporate actions and delistings must not silently disappear.
 
-## 9. Model stack
+## 10. Model stack
 
 Start simple and force complexity to earn promotion.
 
@@ -217,7 +228,7 @@ Start simple and force complexity to earn promotion.
 
 Calibration applies to probability-producing components. Ranking quality is evaluated with ranking and portfolio metrics, not classification accuracy alone.
 
-## 10. Validation and experiment-selection control
+## 11. Validation and experiment-selection control
 
 A model is not promoted because validation accuracy is higher than the old FX model.
 
@@ -250,7 +261,7 @@ Required evidence includes:
 
 Primary success metrics center on economically relevant OOS performance: benchmark-relative return, risk-adjusted return, drawdown, turnover/cost sensitivity, ranking quality, and stability. Accuracy may be reported where meaningful but is not the promotion objective.
 
-## 11. Portfolio construction
+## 12. Portfolio construction
 
 The ranker produces opportunities, not orders.
 
@@ -267,9 +278,9 @@ Portfolio construction converts eligible candidates into target weights subject 
 
 Phase 1 remains long-only.
 
-## 12. Risk and execution
+## 13. Risk and execution
 
-A deterministic risk governor is authoritative.
+A deterministic risk governor is authoritative. The research agent cannot call broker order-placement tools in production, cannot override risk decisions, and cannot mutate the promoted model/artifact pointer during a trading session.
 
 Order flow:
 1. model decision
@@ -286,7 +297,7 @@ An ambiguous placement response never triggers an immediate duplicate order. Rec
 
 External-agent trade approvals should remain enabled during initial integration testing, and Axiom's adapter should additionally disable real submission until the shadow gates pass.
 
-## 13. Robinhood adapter and security boundary
+## 14. Robinhood adapter and security boundary
 
 Add a Robinhood implementation behind Axiom's broker/data interfaces rather than allowing MCP-specific structures to propagate through the codebase.
 
@@ -310,12 +321,14 @@ Security requirements:
 - redact account numbers and other unnecessary account identifiers from logs/evidence;
 - minimum-data retrieval by default;
 - separate research and execution sessions/credentials where the provider permits it;
-- development, healing, and LLM agents receive no order-placement authority;
+- development, healing, research, and LLM agents receive no production order-placement authority;
+- the production MCP/tool policy exposes order side effects only to Axiom's execution gateway; where tool-level allowlists/approval controls are available they are mandatory;
+- no second Codex-to-Robinhood production connection may bypass Axiom;
 - local deterministic kill state blocks all new orders independently of model state;
 - broker disconnect/revocation is documented as the ultimate external kill mechanism;
 - startup refuses execution if expected tool capabilities or semantics have changed.
 
-## 14. Legacy FX isolation
+## 15. Legacy FX isolation
 
 OANDA/FX code and artifacts remain reproducible but are removed from default Axiom 2.0 execution and training paths.
 
@@ -328,7 +341,7 @@ The end state separates:
 
 Exact physical moves happen only when import-safe; logical isolation comes first.
 
-## 15. Evidence spine
+## 16. Evidence spine
 
 Preserve the strongest part of the current system.
 
@@ -347,39 +360,42 @@ Every promoted claim links:
 
 Research failures remain evidence. They are not overwritten by subsequent experiments.
 
-## 16. Migration sequence
+## 17. Migration sequence
 
 ### Phase A — Freeze and baseline
 Freeze the FX promoted state, inventory dependencies, record current evidence, and ensure no migration rewrites historical artifacts.
 
-### Phase B — Domain contracts
+### Phase B — Lean-kernel and research-agent contracts
+Define the four Axiom authorities and the versioned Research Proposal Contract first. Explicitly identify existing autonomous/agent components that become delegated, deprecated, or non-authoritative. Do not rebuild capabilities Codex already supplies unless an ablation or operational requirement proves Axiom must own them.
+
+### Phase C — Domain contracts
 Generalize instrument, market-data, order, session, portfolio, and broker capability contracts. Add equity-native tests before changing runtime defaults.
 
-### Phase C — Robinhood read-only adapter
+### Phase D — Robinhood read-only adapter
 Connect minimum required data/account capabilities only. Prove timestamps, history, quote freshness, capability/version behavior, account allowlisting/redaction, universe mapping, corporate-action semantics where available, and reconciliation semantics without order submission. Do not infer historical research suitability from successful live retrieval.
 
-### Phase D — Equity research dataset and temporal audit
+### Phase E — Equity research dataset and temporal audit
 Build the immutable point-in-time data vault and leakage tests for the controlled universe. Every candidate source/field must pass the temporal-availability contract. Prove or source point-in-time universe membership, delisted-security treatment, split/dividend handling, and adjusted-price semantics. Unsupported historical fields are excluded rather than approximated.
 
-### Phase E — Minimal preregistered research campaign
+### Phase F — Minimal preregistered research campaign
 Test one primary question: can point-in-time price, volume, market/sector-relative, and regime features rank liquid US equities such that a top-ranked long-only portfolio produces persistent positive excess return after conservative costs across walk-forward periods? Register naive factor baselines and the LightGBM ranker before opening the sealed holdout. No news, fundamentals, L2, LLM sentiment, transformer, or multi-agent consensus enters this campaign.
 
-### Phase F — Sealed-holdout decision
+### Phase G — Sealed-holdout decision
 Freeze the candidate and code commit before evaluating the sealed holdout. Record the result and mark the holdout consumed. If the edge fails, return to research without weakening the gate.
 
-### Phase G — Meta-label + portfolio
+### Phase H — Meta-label + portfolio
 Add candidate filtering, cost-aware portfolio construction, and deterministic equity risk controls.
 
-### Phase H — Shadow execution
+### Phase I — Shadow execution
 Run live-market decisions with zero real order submission. Reconcile hypothetical fills/cost assumptions against available broker observations.
 
-### Phase I — Broker execution proof
+### Phase J — Broker execution proof
 Enable order review and tightly controlled test execution only after the shadow/evidence gates pass and with human approval.
 
-### Phase J — Controlled feature expansion
+### Phase K — Controlled feature expansion
 Only after demonstrated edge consider broader universe or additional feature families. Fundamentals, earnings, microstructure/L2, news, alternative data, temporal neural models, crypto, and options enter one family at a time and must demonstrate incremental OOS value through preregistered ablation before promotion.
 
-## 17. Failure handling
+## 18. Failure handling
 
 Axiom blocks new exposure when:
 - source data is stale/incomplete
@@ -395,9 +411,11 @@ Axiom blocks new exposure when:
 
 Existing positions enter deterministic reconciliation/risk-management behavior rather than being abandoned.
 
-## 18. Testing strategy
+## 19. Testing strategy
 
 Required test layers:
+- Research Proposal Contract validation and agent-substitution tests
+- negative tests proving research/development agents cannot invoke production order side effects
 - contract tests for generic broker/data interfaces
 - Robinhood adapter translation tests
 - timestamp/timezone/session tests
@@ -418,9 +436,9 @@ Required test layers:
 
 No live-capital test is used to discover basic integration bugs.
 
-## 19. Definition of Axiom 2.0 success
+## 20. Definition of Axiom 2.0 success
 
-Axiom 2.0 is not successful when it merely connects to Robinhood or reports a higher validation score.
+Axiom 2.0 is not successful when it merely connects to Robinhood, reports a higher validation score, or recreates a large autonomous-agent framework. The kernel is successful only if its four authorities are independently testable and the research-agent layer can be replaced without changing evidence, promotion, risk, or execution semantics.
 
 The first release milestone is reached when:
 1. the equity dataset is reproducible and leakage-tested;
