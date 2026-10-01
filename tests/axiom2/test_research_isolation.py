@@ -25,6 +25,20 @@ SOURCE_FILES = (
     "src/axiom2/data/__init__.py",
     "src/axiom2/data/temporal.py",
     "src/axiom2/data/universe.py",
+    "src/evidence/__init__.py",
+    "src/evidence/canonical.py",
+    "src/evidence/contracts/__init__.py",
+    "src/evidence/contracts/base.py",
+    "src/evidence/contracts/models.py",
+    "src/evidence/equity_research/__init__.py",
+    "src/evidence/equity_research/experiment_registry.py",
+    "src/evidence/equity_research/holdout.py",
+    "src/evidence/equity_research/models.py",
+    "src/evidence/event_store.py",
+    "src/evidence/hashing.py",
+    "src/evidence/signing.py",
+    "src/evidence/store.py",
+    "src/evidence/transition_policy.py",
 )
 
 
@@ -69,7 +83,7 @@ def test_standalone_bundle_exercises_real_contracts_without_legacy_modules(gate,
     with zipfile.ZipFile(bundle) as archive:
         assert set(archive.namelist()) == set(SOURCE_FILES)
     result = gate.verify_bundle(bundle, snapshot)
-    assert result["exercised"] == ["research_proposal", "temporal", "universe"]
+    assert result["exercised"] == ["research_proposal", "temporal", "universe", "experiment_registry", "sealed_holdout"]
     assert result["blocked_side_effects"] == []
     assert "src.scanner.execution" in result["unavailable_modules"]
     assert "src.training.correlation_group_config" in result["unavailable_modules"]
@@ -150,7 +164,7 @@ def test_cache_files_are_never_packaged(gate, tree):
         ("profile", "production"),
         ("execution_enabled", True),
         ("schema_version", 2),
-        ("implemented_tasks", [1, 2, 3, 4, 5]),
+        ("implemented_tasks", [1, 2, 3, 4, 5, 6]),
     ],
 )
 def test_policy_cannot_silently_claim_a_later_or_executable_release(gate, tree, field, value):
@@ -215,10 +229,10 @@ def test_cli_reports_only_current_boundary_not_task10_or_live_readiness(tree, tm
     assert result.returncode == 0, result.stdout + result.stderr
     receipt = json.loads(result.stdout)
     assert receipt["status"] == "PASS"
-    assert receipt["scope"] == "research-contracts-only"
+    assert receipt["scope"] == "research-evidence-only"
     assert receipt["execution_enabled"] is False
     assert receipt["research_kernel_complete"] is False
-    assert receipt["implemented_tasks"] == [1, 2, 3, 4]
+    assert receipt["implemented_tasks"] == [1, 2, 3, 4, 5]
     assert receipt["bundle_sha256"] == hashlib.sha256(bundle.read_bytes()).hexdigest()
 
 
@@ -267,3 +281,38 @@ def test_updated_source_with_late_import_is_rejected_before_any_execution(gate, 
     with pytest.raises(ValueError, match="dependency"):
         gate.audit_sources(tree)
     assert not sentinel.exists()
+
+
+def test_task5_shared_dependencies_are_inside_the_verified_artifact(gate):
+    assert {
+        "src/evidence/store.py",
+        "src/evidence/signing.py",
+        "src/evidence/hashing.py",
+        "src/evidence/equity_research/experiment_registry.py",
+        "src/evidence/equity_research/holdout.py",
+    } <= gate.SOURCE_FILES
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "src/evidence/store.py",
+        "src/evidence/equity_research/experiment_registry.py",
+        "src/evidence/equity_research/holdout.py",
+    ],
+)
+def test_shared_evidence_cannot_import_legacy_execution_after_repinning(gate, tree, filename):
+    with (tree / filename).open("a") as stream:
+        stream.write("\ndef forbidden_dependency():\n    import src.scanner.execution\n")
+    rehash(tree, filename)
+    with pytest.raises(ValueError, match="dependency outside"):
+        gate.audit_sources(tree)
+
+
+@pytest.mark.parametrize("dependency", ["pydantic", "cryptography"])
+def test_dependency_version_changes_require_review(gate, tree, dependency):
+    policy = json.loads((tree / POLICY).read_text())
+    policy["dependency_versions"][dependency] = "999.0.0"
+    (tree / POLICY).write_text(json.dumps(policy))
+    with pytest.raises(ValueError, match="profile"):
+        gate.audit_sources(tree)

@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   research-contracts:
-    name: Research isolation and contracts (Tasks 1-4)
+    name: Research isolation and contracts (Tasks 1-5)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -24,10 +24,10 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6, verified 2026-09-30
         with:
           python-version: '3.11'
-      - name: Install the research-contract test dependency only
-        run: python -m pip install pytest==9.0.2
+      - name: Install the pinned research-evidence dependencies
+        run: python -m pip install -r requirements-axiom2-research.txt
       - name: Run every current Axiom contract and boundary test
-        run: python -m pytest tests/axiom2 -q --junitxml="$RUNNER_TEMP/axiom-research-tests.xml"
+        run: python -m pytest tests/axiom2 tests/evidence/equity_research tests/test_evidence_contracts.py tests/test_evidence_store.py tests/test_equity_research_evidence_slice.py tests/test_equity_research_evidence_worker_no_authority.py -q --junitxml="$RUNNER_TEMP/axiom-research-tests.xml"
       - name: Build and prove the execution-free research artifact
         run: |
           python scripts/axiom2_verify_isolation.py --bundle "$RUNNER_TEMP/axiom-research-contracts.zip" > "$RUNNER_TEMP/axiom-research-boundary.json"
