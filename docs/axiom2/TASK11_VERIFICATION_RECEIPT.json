@@ -1,0 +1,98 @@
+{
+  "branch": "codex/axiom-2-task-11",
+  "capital_authorized": false,
+  "date": "2026-10-01",
+  "environment": {
+    "machine": "arm64",
+    "packages": {
+      "cryptography": "46.0.7",
+      "lightgbm": "4.7.0",
+      "numpy": "2.0.2",
+      "pandas": "2.3.3",
+      "pydantic": "2.12.5",
+      "pytest": "9.0.2"
+    },
+    "python": "3.11.16",
+    "system": "Darwin"
+  },
+  "execution_enabled": false,
+  "genuine_final_holdout_accessed": false,
+  "live_broker_verification_performed": false,
+  "next_task": 12,
+  "original_checkpoint": "a348bed38c45e6bba066d04820b22ba841c2e057",
+  "portfolio_source_sha256": {
+    "src/axiom2/portfolio/__init__.py": "a260c97940265b8ee8a7f58ec9c23e7c2c0e9fd568e799814e1acc5ae9132250",
+    "src/axiom2/portfolio/authority.py": "0ee18b27fdf3a43bb107339999f18110bd0003e2ee602f19bd2b7d4ac1f05dcc",
+    "src/axiom2/portfolio/contracts.py": "52e4912ee3559683c7a1fce6b0c50aff6889772913f920892fd00ec1e13eb935"
+  },
+  "promotion_safety_checkpoint": "ce225fbb9ddf48e078090993b04e32e4bf8792e0",
+  "red_evidence": {
+    "cost_spread_adversarial": {
+      "failed": 4,
+      "passed": 22
+    },
+    "portfolio_initial": {
+      "failed": 81
+    },
+    "portfolio_inventory": {
+      "failed": 15
+    },
+    "portfolio_requirements_expanded": {
+      "failed": 84
+    },
+    "signed_promotion": {
+      "failed": 7,
+      "passed": 21
+    }
+  },
+  "repo_wide_legacy_suite_run": false,
+  "research_bundle_implemented_tasks": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "research_bundle_sha256": "33b19496ee1f760e5533b6340e5c512086f0675b0a46f3031e515154fb732f5c",
+  "research_bundle_unchanged_since_promotion_safety_fix": true,
+  "reviews": {
+    "adversarial_failure_modes": "PASS",
+    "independent_subagent_review_performed": false,
+    "integration_regression_isolation": "PASS",
+    "requirements_semantics": "PASS",
+    "reviewer_kind": "INLINE_SELF_REVIEW"
+  },
+  "schema_version": 1,
+  "standalone_probe": {
+    "blocked_side_effects": [],
+    "evaluations": 2000,
+    "input_cases": 1000,
+    "pytest_imported": false,
+    "research_or_broker_modules_loaded": false,
+    "seed": 20261001,
+    "source_kind": "SYNTHETIC",
+    "state_counts": {
+      "HALTED": 200,
+      "HOLD": 200,
+      "READY_SHADOW": 200,
+      "RECONCILE": 200,
+      "REJECTED": 200
+    },
+    "status": "PASS"
+  },
+  "status": "IMPLEMENTED_AND_LOCALLY_VERIFIED_NON_CAPITAL",
+  "task": 11,
+  "tests": {
+    "axiom_dependency_safety_gate": 952,
+    "combined_focused": 166,
+    "portfolio": 127,
+    "promotion": 39,
+    "task10_e2e": 2
+  },
+  "warnings_as_errors": true
+}

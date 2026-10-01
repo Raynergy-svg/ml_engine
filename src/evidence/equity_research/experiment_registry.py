@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields, replace
 from datetime import datetime, timedelta
+import hashlib
 import json
 import re
 from types import MappingProxyType
@@ -34,7 +35,7 @@ class ResearchEvent(StrictContract):
 
     sequence: int = Field(ge=0)
     previous_event_digest: Sha256Digest | None
-    kind: Literal["REGISTERED", "FAILED", "FROZEN", "HOLDOUT_DECLARED", "HOLDOUT_OPENED", "HOLDOUT_CONSUMED"]
+    kind: Literal["REGISTERED", "FAILED", "FROZEN", "TRIAL_STARTED", "TRIAL_SUCCEEDED", "TRIAL_FAILED", "HOLDOUT_DECLARED", "HOLDOUT_OPENED", "HOLDOUT_CONSUMED"]
     actor_id: Identifier
     occurred_at: datetime
     body: dict[str, JsonValue]
@@ -85,6 +86,18 @@ class FrozenCandidate:
 
 
 @dataclass(frozen=True, slots=True)
+class TrialRecord:
+    trial_id: str
+    experiment_id: str
+    campaign_digest: str
+    config_index: int
+    config_digest: str
+    status: str
+    result_digest: str | None = None
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class HoldoutRecord:
     holdout_id: str
     dataset_digest: str
@@ -110,6 +123,7 @@ class HoldoutRecord:
 class ResearchState:
     experiments: Mapping[str, RegisteredExperiment]
     candidates: Mapping[str, FrozenCandidate]
+    trials: Mapping[str, TrialRecord]
     holdouts: Mapping[str, HoldoutRecord]
     head_digest: str | None
     event_count: int
@@ -159,7 +173,7 @@ def _proposal(data: dict) -> ResearchProposal:
 
 
 def required_role(kind: str) -> AuthorityRole:
-    if kind in ("REGISTERED", "FAILED", "FROZEN"):
+    if kind in ("REGISTERED", "FAILED", "FROZEN", "TRIAL_STARTED", "TRIAL_SUCCEEDED", "TRIAL_FAILED"):
         return AuthorityRole.LOCAL_IMPORTER
     if kind == "HOLDOUT_DECLARED":
         return AuthorityRole.OPERATOR
@@ -169,7 +183,7 @@ def required_role(kind: str) -> AuthorityRole:
 
 
 def _apply_event(
-    event: ResearchEvent, digest: str, signer_key_id: str, experiments: dict, candidates: dict, holdouts: dict
+    event: ResearchEvent, digest: str, signer_key_id: str, experiments: dict, candidates: dict, trials: dict, holdouts: dict
 ) -> None:
     # Materialize plain JSON, never call provider coercion hooks during replay.
     data = json.loads(canonical_bytes(event.body))
@@ -219,6 +233,46 @@ def _apply_event(
         candidates[digest] = candidate
         experiments[identifier] = replace(registered, candidate_id=digest)
         return
+    if event.kind in ("TRIAL_STARTED", "TRIAL_SUCCEEDED", "TRIAL_FAILED"):
+        if event.kind == "TRIAL_STARTED":
+            _body(data, {"trial_id", "experiment_id", "campaign_digest", "config_index", "config_digest"})
+            experiment_id = _text(data["experiment_id"], "experiment_id")
+            registered = experiments.get(experiment_id)
+            if registered is None or registered.failure_reason is not None:
+                raise ValueError("trial requires an active registered experiment")
+            campaign_digest = _digest(data["campaign_digest"], "campaign_digest")
+            config_digest = _digest(data["config_digest"], "config_digest")
+            if type(data["config_index"]) is not int or data["config_index"] < 0:
+                raise ValueError("config_index must be a nonnegative integer")
+            expected_id = hashlib.sha256(canonical_bytes({
+                "experiment_id": experiment_id,
+                "campaign_digest": campaign_digest,
+                "config_index": data["config_index"],
+                "config_digest": config_digest,
+                "schema_version": 1,
+            })).hexdigest()
+            trial_id = _digest(data["trial_id"], "trial_id")
+            if trial_id != expected_id or trial_id in trials:
+                raise ValueError("trial identity is invalid or already exists")
+            trials[trial_id] = TrialRecord(
+                trial_id, experiment_id, campaign_digest, data["config_index"], config_digest, "STARTED"
+            )
+            return
+        expected = {"trial_id", "result_digest"} if event.kind == "TRIAL_SUCCEEDED" else {"trial_id", "failure_reason"}
+        _body(data, expected)
+        trial_id = _digest(data["trial_id"], "trial_id")
+        trial = trials.get(trial_id)
+        if trial is None or trial.status != "STARTED":
+            raise ValueError("trial must be STARTED before terminal evidence")
+        if event.kind == "TRIAL_SUCCEEDED":
+            trials[trial_id] = replace(
+                trial, status="SUCCEEDED", result_digest=_digest(data["result_digest"], "result_digest")
+            )
+        else:
+            trials[trial_id] = replace(
+                trial, status="FAILED", failure_reason=_text(data["failure_reason"], "failure_reason")
+            )
+        return
     # Holdout lifecycle is defined once, in the dedicated Task 5 authority module.
     from .holdout import apply_holdout_event
 
@@ -229,7 +283,7 @@ def reconstruct_research(
     receipts: tuple[ResearchReceipt, ...], *, trust_store: TrustStore, authorities: AuthorityRegistry
 ) -> ResearchState:
     """Authenticate and replay the complete global research journal; fail closed."""
-    experiments, candidates, holdouts = {}, {}, {}
+    experiments, candidates, trials, holdouts = {}, {}, {}, {}
     prior_digest = None
     prior_time = prior_receipt_time = None
     for sequence, receipt in enumerate(receipts):
@@ -248,13 +302,14 @@ def reconstruct_research(
             authorities.authorize_identity(
                 actor_id=event.actor_id, role=required_role(event.kind), key_id=envelope.signature.key_id
             )
-            _apply_event(event, envelope.payload_digest, envelope.signature.key_id, experiments, candidates, holdouts)
+            _apply_event(event, envelope.payload_digest, envelope.signature.key_id, experiments, candidates, trials, holdouts)
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             raise StoreCorruptionError(f"invalid research event at sequence {sequence}: {exc}") from exc
         prior_digest, prior_time, prior_receipt_time = envelope.payload_digest, event.occurred_at, receipt.received_at
     return ResearchState(
         MappingProxyType(experiments),
         MappingProxyType(candidates),
+        MappingProxyType(trials),
         MappingProxyType(holdouts),
         prior_digest,
         len(receipts),
@@ -302,6 +357,7 @@ class ExperimentRegistry:
                 self.signer.key_id,
                 dict(state.experiments),
                 dict(state.candidates),
+                dict(state.trials),
                 dict(state.holdouts),
             )
             try:
@@ -337,6 +393,52 @@ class ExperimentRegistry:
             return {"experiment_id": identifier, "reason": reason}
 
         return self._record("FAILED", build).experiments[identifier]
+
+    def record_trial_started(
+        self, experiment_id: str, campaign_digest: str, config_index: int, config_digest: str
+    ) -> TrialRecord:
+        experiment_id=_text(experiment_id,"experiment_id")
+        campaign_digest=_digest(campaign_digest,"campaign_digest")
+        config_digest=_digest(config_digest,"config_digest")
+        if type(config_index) is not int or config_index < 0:
+            raise ValueError("config_index must be a nonnegative integer")
+        trial_id=hashlib.sha256(canonical_bytes({
+            "experiment_id":experiment_id,
+            "campaign_digest":campaign_digest,
+            "config_index":config_index,
+            "config_digest":config_digest,
+            "schema_version":1,
+        })).hexdigest()
+        def build(state: ResearchState) -> dict | None:
+            previous=state.trials.get(trial_id)
+            if previous is not None:
+                return None
+            return {
+                "trial_id":trial_id,
+                "experiment_id":experiment_id,
+                "campaign_digest":campaign_digest,
+                "config_index":config_index,
+                "config_digest":config_digest,
+            }
+        return self._record("TRIAL_STARTED",build).trials[trial_id]
+
+    def record_trial_succeeded(self, trial_id: str, result_digest: str) -> TrialRecord:
+        trial_id=_digest(trial_id,"trial_id"); result_digest=_digest(result_digest,"result_digest")
+        def build(state: ResearchState) -> dict | None:
+            previous=state.trials.get(trial_id)
+            if previous is not None and previous.status=="SUCCEEDED" and previous.result_digest==result_digest:
+                return None
+            return {"trial_id":trial_id,"result_digest":result_digest}
+        return self._record("TRIAL_SUCCEEDED",build).trials[trial_id]
+
+    def record_trial_failed(self, trial_id: str, reason: str) -> TrialRecord:
+        trial_id=_digest(trial_id,"trial_id"); reason=_text(reason,"failure_reason")
+        def build(state: ResearchState) -> dict | None:
+            previous=state.trials.get(trial_id)
+            if previous is not None and previous.status=="FAILED" and previous.failure_reason==reason:
+                return None
+            return {"trial_id":trial_id,"failure_reason":reason}
+        return self._record("TRIAL_FAILED",build).trials[trial_id]
 
     def freeze_candidate(self, experiment_id: str, artifact_hash: str, code_commit: str) -> FrozenCandidate:
         identifier = _text(experiment_id, "experiment_id")

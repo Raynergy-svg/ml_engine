@@ -22,6 +22,15 @@ import sysconfig
 import zipfile
 
 POLICY = "config/axiom2/research_boundary.json"
+# A separately audited authority may coexist in the checkout, never the bundle.
+PORTFOLIO_POLICY = "config/axiom2/portfolio_boundary.json"
+PORTFOLIO_FILES = frozenset({
+    "src/axiom2/portfolio/__init__.py",
+    "src/axiom2/portfolio/contracts.py",
+    "src/axiom2/portfolio/authority.py",
+    "src/axiom2/contracts/equity_orders.py",
+    "src/axiom2/portfolio/intents.py",
+})
 SOURCE_FILES = frozenset(
     [
         "src/__init__.py",
@@ -31,6 +40,14 @@ SOURCE_FILES = frozenset(
         "src/axiom2/data/__init__.py",
         "src/axiom2/data/temporal.py",
         "src/axiom2/data/universe.py",
+        "src/axiom2/research/__init__.py",
+        "src/axiom2/research/features.py",
+        "src/axiom2/research/labels.py",
+        "src/axiom2/research/ranker.py",
+        "src/axiom2/research/splits.py",
+        "src/axiom2/promotion/__init__.py",
+        "src/axiom2/promotion/authority.py",
+        "src/axiom2/research/baselines.py",
         "src/evidence/__init__.py",
         "src/evidence/canonical.py",
         "src/evidence/contracts/__init__.py",
@@ -49,8 +66,26 @@ SOURCE_FILES = frozenset(
 )
 STDLIB_IMPORTS = frozenset({"__future__", "dataclasses", "datetime", "re", "zoneinfo"})
 DYNAMIC_CAPABILITIES = frozenset({"__import__", "eval", "exec", "compile", "open"})
-DEPENDENCY_VERSIONS = {"pydantic": "2.12.5", "cryptography": "46.0.7"}
+DEPENDENCY_VERSIONS = {"pydantic": "2.12.5", "cryptography": "46.0.7", "pandas": "2.3.3", "numpy": "2.0.2", "lightgbm": "4.7.0"}
 IMPORTS_BY_SOURCE = {
+    "src/axiom2/portfolio/__init__.py": [],
+    "src/axiom2/portfolio/contracts.py": [
+        "__future__", "dataclasses", "datetime", "hashlib", "re", "zoneinfo",
+        "src.evidence.canonical",
+    ],
+    "src/axiom2/portfolio/authority.py": [
+        "__future__", "dataclasses", "datetime", "hashlib",
+        "src.evidence.canonical", "src.axiom2.portfolio.contracts",
+    ],
+    "src/axiom2/contracts/equity_orders.py": [
+        "dataclasses", "datetime", "re", "src.axiom2.portfolio.contracts",
+        "src.evidence.contracts",
+    ],
+    "src/axiom2/portfolio/intents.py": [
+        "dataclasses", "datetime", "hashlib", "src.evidence.canonical",
+        "src.axiom2.portfolio.authority", "src.axiom2.portfolio.contracts",
+        "src.axiom2.contracts.equity_orders", "src.evidence.signing",
+    ],
     "src/__init__.py": ["__future__"],
     "src/axiom2/__init__.py": ["__future__"],
     "src/axiom2/contracts/__init__.py": ["__future__"],
@@ -58,6 +93,14 @@ IMPORTS_BY_SOURCE = {
     "src/axiom2/data/__init__.py": ["__future__"],
     "src/axiom2/data/temporal.py": ["__future__", "dataclasses", "datetime", "zoneinfo"],
     "src/axiom2/data/universe.py": ["__future__", "dataclasses", "datetime", "src.axiom2.data.temporal"],
+    "src/axiom2/research/__init__.py": [],
+    "src/axiom2/research/features.py": ["dataclasses", "datetime", "numpy", "pandas", "src.axiom2.contracts.research_proposal", "src.axiom2.data.universe"],
+    "src/axiom2/research/labels.py": ["pandas"],
+    "src/axiom2/research/ranker.py": ["abc", "dataclasses", "hashlib", "json", "lightgbm", "numpy", "pandas", "src.axiom2.contracts.research_proposal", "src.axiom2.research.baselines", "src.evidence.canonical", "src.evidence.contracts", "src.evidence.signing"],
+    "src/axiom2/research/splits.py": ["dataclasses", "pandas"],
+    "src/axiom2/promotion/__init__.py": [],
+    "src/axiom2/promotion/authority.py": ["dataclasses", "datetime", "hashlib", "json", "math", "src.axiom2.research.ranker", "src.evidence.canonical", "src.evidence.contracts"],
+    "src/axiom2/research/baselines.py": ["dataclasses", "math", "pandas"],
     "src/evidence/__init__.py": ["src.evidence.canonical", "src.evidence.hashing", "src.evidence.store"],
     "src/evidence/canonical.py": [
         "__future__",
@@ -85,6 +128,7 @@ IMPORTS_BY_SOURCE = {
         "__future__",
         "dataclasses",
         "datetime",
+        "hashlib",
         "json",
         "pydantic",
         "re",
@@ -229,6 +273,37 @@ def _audit_imports(snapshot: dict[str, bytes]) -> None:
                 raise ValueError(f"dependency outside research profile: {name}:{node.lineno}: {dependencies}")
 
 
+def _audit_portfolio_exclusion(root: Path, observed: set[str]) -> dict[str, bytes]:
+    """Pin the complete non-capital authority without adding it to research.
+
+    Research-only source trees remain valid. Any portfolio file or policy
+    requires the entire reviewed profile; no directory-prefix skip is allowed.
+    """
+    if not (observed & PORTFOLIO_FILES) and not os.path.lexists(root / PORTFOLIO_POLICY):
+        return {}
+    policy = json.loads(
+        _regular_source(root, PORTFOLIO_POLICY).read_text(), object_pairs_hook=_no_duplicates,
+    )
+    if (type(policy) is not dict
+            or set(policy) != {"schema_version", "profile", "execution_enabled",
+                               "capital_authorized", "source_sha256"}
+            or type(policy["schema_version"]) is not int or policy["schema_version"] != 1
+            or policy["profile"] != "portfolio-risk-shadow-only"
+            or policy["execution_enabled"] is not False
+            or policy["capital_authorized"] is not False):
+        raise ValueError("unsupported portfolio boundary profile")
+    digests = policy["source_sha256"]
+    if type(digests) is not dict or set(digests) != PORTFOLIO_FILES:
+        raise ValueError("portfolio source inventory requires explicit review")
+    snapshot = {}
+    for name in sorted(PORTFOLIO_FILES):
+        content = _regular_source(root, name).read_bytes()
+        if hashlib.sha256(content).hexdigest() != digests[name]:
+            raise ValueError(f"portfolio source digest changed; review required: {name}")
+        snapshot[name] = content
+    return snapshot
+
+
 def audit_sources(root: Path) -> dict[str, bytes]:
     """Capture exact audited bytes; fail before executing any candidate source."""
     root = root.resolve()
@@ -249,7 +324,7 @@ def audit_sources(root: Path) -> dict[str, bytes]:
         or policy["profile"] != "research-evidence-only"
         or policy["dependency_versions"] != DEPENDENCY_VERSIONS
         or policy["execution_enabled"] is not False
-        or policy["implemented_tasks"] != [1, 2, 3, 4, 5]
+        or policy["implemented_tasks"] != [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         or any(type(task) is not int for task in policy["implemented_tasks"])
     ):
         raise ValueError("unsupported research boundary profile")
@@ -268,7 +343,9 @@ def audit_sources(root: Path) -> dict[str, bytes]:
         for name in files:
             # No resources/native modules are needed by the current profile.
             observed.add((Path(directory) / name).relative_to(root).as_posix())
-    if observed != {name for name in SOURCE_FILES if name == "src/__init__.py" or name.startswith("src/axiom2/")}:
+    portfolio = _audit_portfolio_exclusion(root, observed)
+    expected = {name for name in SOURCE_FILES if name == "src/__init__.py" or name.startswith("src/axiom2/")}
+    if observed != expected | set(portfolio):
         raise ValueError("source inventory drift: missing or unreviewed files")
     snapshot = {}
     for name in sorted(SOURCE_FILES):
@@ -276,7 +353,7 @@ def audit_sources(root: Path) -> dict[str, bytes]:
         if hashlib.sha256(content).hexdigest() != digests[name]:
             raise ValueError(f"source digest changed; review required: {name}")
         snapshot[name] = content
-    _audit_imports(snapshot)
+    _audit_imports({**snapshot, **portfolio})
     return snapshot
 
 
@@ -346,6 +423,15 @@ manifest = UniverseManifest(universe_id='fixture-universe', source='fixture', ev
         member_from=start, member_until=end),))
 if build_universe_as_of(start, manifest) != ('FIXTURE:SEC',):
     raise RuntimeError('universe API failed')
+import pandas as pd
+from src.axiom2.research.features import build_phase1_features
+dates = pd.date_range(start, periods=3, freq='D')
+bars = pd.DataFrame({'timestamp': dates, 'instrument_id': ['FIXTURE:SEC']*3, 'close': [100.,101.,102.], 'volume':[1000.,1100.,1200.], 'available_to_axiom_time': dates, 'feature_cutoff': dates, 'sector':['fixture']*3})
+bench = pd.DataFrame({'value':[100.,101.,102.], 'available_to_axiom_time':dates}, index=dates)
+sectors = pd.DataFrame({'fixture':[100.,100.5,101.], 'available_to_axiom_time':dates}, index=dates)
+features = build_phase1_features(bars, bench, sectors, manifest, cutoff=dates[-1])
+if features.frame.empty:
+    raise RuntimeError('feature API failed')
 from dataclasses import replace
 from src.evidence.contracts import AuthorityRole
 from src.evidence.signing import Ed25519Signer, TrustStore
@@ -396,7 +482,7 @@ for name in ('src.scanner.execution', 'src.brokers.oanda', 'src.training.correla
 loaded = sorted(name for name in sys.modules if name == 'src' or name.startswith('src.'))
 if loaded != sorted(expected) or violations:
     raise RuntimeError('unexpected project module or external effect')
-print(json.dumps({'exercised': ['research_proposal', 'temporal', 'universe', 'experiment_registry', 'sealed_holdout'],
+print(json.dumps({'exercised': ['research_proposal', 'temporal', 'universe', 'experiment_registry', 'sealed_holdout', 'phase1_features'],
     'unavailable_modules': unavailable, 'loaded_project_modules': loaded, 'blocked_side_effects': violations}))
 """
 
@@ -434,7 +520,7 @@ def verify_bundle(bundle: Path, snapshot: dict[str, bytes]) -> dict:
         result = subprocess.run(
             command,
             cwd=stage,
-            env={"PATH": os.defpath, "TZ": "UTC"},
+            env={"PATH": os.defpath, "TZ": "UTC", **({"DYLD_FALLBACK_LIBRARY_PATH": os.environ["DYLD_FALLBACK_LIBRARY_PATH"]} if "DYLD_FALLBACK_LIBRARY_PATH" in os.environ else {})},
             capture_output=True,
             text=True,
             timeout=30,
@@ -465,7 +551,7 @@ def main() -> int:
             "scope": "research-evidence-only",
             "execution_enabled": False,
             "research_kernel_complete": False,
-            "implemented_tasks": [1, 2, 3, 4, 5],
+            "implemented_tasks": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             "bundle_sha256": hashlib.sha256(args.bundle.read_bytes()).hexdigest(),
             "source_sha256": {name: hashlib.sha256(value).hexdigest() for name, value in snapshot.items()},
             "probe": result,
