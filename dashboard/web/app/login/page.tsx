@@ -42,7 +42,7 @@ export default function LoginPage() {
           Secure terminal access
         </div>
         <p className="mb-6 text-center text-[12px] text-dim">
-          Read-only view of the Buddy trading engine · OANDA fxPractice
+          Axiom 2.0 evidence workspace · Legacy FX available separately
         </p>
         <form onSubmit={submit} className="flex flex-col gap-3">
           <input
@@ -51,13 +51,13 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Access key"
-            className="w-full rounded-md border bg-surface2 px-3 py-2.5 font-mono text-[13px] text-text outline-none hairline focus:border-[var(--color-cyan)]"
+            className="w-full rounded-md border bg-surface2 px-3 py-2.5 font-mono text-[13px] text-text outline-none hairline focus:border-[#ff8b23]"
           />
           <button
             type="submit"
             disabled={busy || !password}
             className="rounded-md py-2.5 font-mono text-[13px] font-semibold text-base disabled:opacity-40"
-            style={{ background: "linear-gradient(120deg,var(--color-cyan),var(--color-emerald))" }}
+            style={{ background: "#ff8b23" }}
           >
             {busy ? "Verifying…" : "Unlock AXIOM"}
           </button>
