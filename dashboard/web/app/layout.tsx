@@ -6,8 +6,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "AXIOM — Buddy trading terminal",
-  description: "Read-only live terminal for the Buddy systematic trading engine (OANDA fxPractice).",
+  title: "AXIOM 2.0 — Operating picture",
+  description: "Read-only Axiom evidence, portfolio and execution qualification workspace.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

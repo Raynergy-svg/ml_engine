@@ -37,6 +37,7 @@ from fastapi.responses import StreamingResponse  # noqa: E402
 from dashboard.server import data_sources as ds  # noqa: E402
 from dashboard.server.safety import build_readonly_client  # noqa: E402
 from dashboard.server.training_api import router as training_router  # noqa: E402
+from dashboard.server.axiom2_projection import router as axiom2_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("axiom.app")
@@ -54,6 +55,7 @@ async def lifespan(app_: FastAPI):
 app = FastAPI(title="AXIOM data layer", version="1.0",
               description="Read-only terminal API for the Buddy trading engine", lifespan=lifespan)
 app.include_router(training_router)
+app.include_router(axiom2_router)
 app.add_middleware(
     CORSMiddleware,
     # No cross-origin browser access: the browser talks ONLY to the authed Next origin,
