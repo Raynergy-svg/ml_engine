@@ -25,6 +25,14 @@ SOURCE_FILES = (
     "src/axiom2/data/__init__.py",
     "src/axiom2/data/temporal.py",
     "src/axiom2/data/universe.py",
+    "src/axiom2/research/__init__.py",
+    "src/axiom2/research/features.py",
+    "src/axiom2/research/labels.py",
+    "src/axiom2/research/ranker.py",
+    "src/axiom2/research/splits.py",
+    "src/axiom2/promotion/__init__.py",
+    "src/axiom2/promotion/authority.py",
+    "src/axiom2/research/baselines.py",
     "src/evidence/__init__.py",
     "src/evidence/canonical.py",
     "src/evidence/contracts/__init__.py",
@@ -83,7 +91,7 @@ def test_standalone_bundle_exercises_real_contracts_without_legacy_modules(gate,
     with zipfile.ZipFile(bundle) as archive:
         assert set(archive.namelist()) == set(SOURCE_FILES)
     result = gate.verify_bundle(bundle, snapshot)
-    assert result["exercised"] == ["research_proposal", "temporal", "universe", "experiment_registry", "sealed_holdout"]
+    assert result["exercised"] == ["research_proposal", "temporal", "universe", "experiment_registry", "sealed_holdout", "phase1_features"]
     assert result["blocked_side_effects"] == []
     assert "src.scanner.execution" in result["unavailable_modules"]
     assert "src.training.correlation_group_config" in result["unavailable_modules"]
@@ -164,7 +172,7 @@ def test_cache_files_are_never_packaged(gate, tree):
         ("profile", "production"),
         ("execution_enabled", True),
         ("schema_version", 2),
-        ("implemented_tasks", [1, 2, 3, 4, 5, 6]),
+        ("implemented_tasks", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
     ],
 )
 def test_policy_cannot_silently_claim_a_later_or_executable_release(gate, tree, field, value):
@@ -232,7 +240,7 @@ def test_cli_reports_only_current_boundary_not_task10_or_live_readiness(tree, tm
     assert receipt["scope"] == "research-evidence-only"
     assert receipt["execution_enabled"] is False
     assert receipt["research_kernel_complete"] is False
-    assert receipt["implemented_tasks"] == [1, 2, 3, 4, 5]
+    assert receipt["implemented_tasks"] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     assert receipt["bundle_sha256"] == hashlib.sha256(bundle.read_bytes()).hexdigest()
 
 
@@ -309,7 +317,7 @@ def test_shared_evidence_cannot_import_legacy_execution_after_repinning(gate, tr
         gate.audit_sources(tree)
 
 
-@pytest.mark.parametrize("dependency", ["pydantic", "cryptography"])
+@pytest.mark.parametrize("dependency", ["pydantic", "cryptography", "pandas", "numpy", "lightgbm"])
 def test_dependency_version_changes_require_review(gate, tree, dependency):
     policy = json.loads((tree / POLICY).read_text())
     policy["dependency_versions"][dependency] = "999.0.0"
