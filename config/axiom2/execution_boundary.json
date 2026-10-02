@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "profile": "execution-shadow-disabled",
+  "execution_enabled": false,
+  "capital_authorized": false,
+  "source_sha256": {
+    "src/axiom2/execution/__init__.py": "0fcf3346ce3f41b3ef3680922036a84afaf7b1344f8a9f1b1c03b250bb605075",
+    "src/axiom2/execution/admission.py": "1c14cc20d00cca351d9dc4359aa861b98099569713aae6af8b8cad42d95fc8b6",
+    "src/axiom2/execution/authority.py": "4eb7e7a3605ae189e44afbe26da07c40581d1ff334128b18799dd1288919cd56",
+    "src/axiom2/execution/authorization.py": "6ce4f26e671f88deb32c7ae3e34abffa4fea82067ef5a6b5194fd5a7c4921146",
+    "src/axiom2/execution/costs.py": "15cbe41e24f86583df4f5494f76f0d66539242f78420ee0d88436b7b86beab45",
+    "src/axiom2/execution/journal.py": "18b5d8e1b7489899ed50a7b2e3f578ea1f3a8c39f08a10a74861b3aa15fd01e5",
+    "src/axiom2/execution/reconciliation.py": "82b0a0fd5554eb29e6f6af1e67b358b1c44582ede0dae4393ebb21dc8cc1eb9a",
+    "src/axiom2/shadow/__init__.py": "c91edcd0568f7db55b637c05f12b953fcdf942b3576e9564442dcea5473f9e28",
+    "src/axiom2/shadow/engine.py": "eb48bf99653cccbe2ed0cb384a34488beddab8735d8173bc605576422f1e12a9",
+    "src/axiom2/shadow/fills.py": "04a029db3a0a06ef1827b3418564c044a75e4ec99b23233d8750b735334e94bb",
+    "src/evidence/execution_shadow.py": "bfc62419d933d98da57f4b4381b01ea92f7b84083271ab696f623757f63694d9",
+    "src/axiom2/execution/lifecycle.py": "dc0a1246e0e2f020b2665fe5fa0d0443bbc5c7831d795404f065e59fd9703235",
+    "src/axiom2/execution/resolution.py": "92bfea949abc2f36a63d9d57b04aa62e5e9766337b4b008cd29e8cb8fcf7975e",
+    "src/axiom2/shadow/portfolio.py": "d7405208c028e9d9a6acb3d7b51dac9ee05caf2aae6913a57f368804ed1eb4ce",
+    "src/axiom2/execution/fencing.py": "d7492372bac0c0b86579f956c77e5e1a1391497a784561bd0cab8880b60da85e",
+    "src/axiom2/execution/artifacts.py": "9cae625846b24d1954494b70623d7ea3679281575ee4b0ed801f40156fb94a7d",
+    "src/axiom2/brokers/__init__.py": "d1daabb62db902ca8d96ae9f25ffc0944363371785510d6192972924c29365c0",
+    "src/axiom2/brokers/contracts.py": "2e428174743616e51253ddab41610cf891da42b1a794e108bec6504c380cb078",
+    "src/axiom2/brokers/robinhood_readonly.py": "5d5e8f84e4383f3f45b78834459318edd92fa844f2bf26f5e6362a43ea3e2267",
+    "src/axiom2/brokers/service.py": "5bbdc93197f80917052633629d02bd9e7c35a3827a785fe8405eff0431a08dec",
+    "src/axiom2/brokers/fake_execution.py": "228f633d86278086e75abd2f5fdb8d23cc8841f051e46cde35191117621670d0",
+    "src/axiom2/execution/service.py": "9b7eeab603f2b8571e89936edf76dab950281eaa37c9736b71b0707a9601d2f8"
+  }
+}

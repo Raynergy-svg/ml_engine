@@ -31,6 +31,8 @@ PORTFOLIO_FILES = frozenset({
     "src/axiom2/contracts/equity_orders.py",
     "src/axiom2/portfolio/intents.py",
 })
+EXECUTION_POLICY = "config/axiom2/execution_boundary.json"
+EXECUTION_FILES = frozenset(['src/axiom2/brokers/service.py', 'src/axiom2/brokers/fake_execution.py', 'src/axiom2/execution/service.py'] + ['src/axiom2/brokers/__init__.py', 'src/axiom2/brokers/contracts.py', 'src/axiom2/brokers/robinhood_readonly.py', 'src/axiom2/execution/__init__.py', 'src/axiom2/execution/admission.py', 'src/axiom2/execution/authority.py', 'src/axiom2/execution/authorization.py', 'src/axiom2/execution/costs.py', 'src/axiom2/execution/journal.py', 'src/axiom2/execution/lifecycle.py', 'src/axiom2/execution/reconciliation.py', 'src/axiom2/execution/resolution.py', 'src/axiom2/execution/fencing.py', 'src/axiom2/execution/artifacts.py', 'src/axiom2/shadow/__init__.py', 'src/axiom2/shadow/fills.py', 'src/axiom2/shadow/engine.py', 'src/axiom2/shadow/portfolio.py', 'src/evidence/execution_shadow.py'])
 SOURCE_FILES = frozenset(
     [
         "src/__init__.py",
@@ -68,6 +70,29 @@ STDLIB_IMPORTS = frozenset({"__future__", "dataclasses", "datetime", "re", "zone
 DYNAMIC_CAPABILITIES = frozenset({"__import__", "eval", "exec", "compile", "open"})
 DEPENDENCY_VERSIONS = {"pydantic": "2.12.5", "cryptography": "46.0.7", "pandas": "2.3.3", "numpy": "2.0.2", "lightgbm": "4.7.0"}
 IMPORTS_BY_SOURCE = {
+    'src/axiom2/brokers/service.py': ['src.axiom2.brokers.robinhood_readonly'],
+    'src/axiom2/brokers/fake_execution.py': ['datetime', 'json', 'typing', 'uuid', 'pydantic', 'src.evidence.contracts', 'src.evidence.canonical', 'src.evidence.hashing', 'src.evidence.signing', 'src.evidence.store', 'src.axiom2.execution.journal', 'src.axiom2.brokers.robinhood_readonly', 'src.axiom2.execution.service'],
+    'src/axiom2/execution/service.py': ['dataclasses', 'datetime', 'json', 'types', 'uuid', 'src.evidence.canonical', 'src.evidence.contracts', 'src.evidence.hashing', 'src.evidence.signing', 'src.axiom2.execution.lifecycle', 'src.axiom2.execution.artifacts', 'src.axiom2.execution.authorization', 'src.axiom2.execution.fencing', 'src.axiom2.execution.resolution', 'src.axiom2.execution.reconciliation', 'src.axiom2.brokers.fake_execution', 'src.axiom2.brokers.robinhood_readonly'],
+    'src/axiom2/brokers/__init__.py': [],
+    'src/axiom2/brokers/contracts.py': ['datetime', 'typing', 'src.evidence.contracts'],
+    'src/axiom2/brokers/robinhood_readonly.py': ['dataclasses', 'datetime', 'decimal', 'typing', 'fractions', 'uuid', 're', 'asyncio', 'pydantic', 'src.evidence.canonical', 'src.axiom2.brokers.contracts'],
+    'src/axiom2/execution/artifacts.py': ['dataclasses', 'datetime', 'pathlib', 'hashlib', 'json', 'math', 'os', 'stat', 'csv', 'io', 'decimal', 'typing', 'pydantic', 'src.evidence.contracts', 'src.evidence.canonical', 'src.evidence.hashing', 'src.evidence.signing', 'src.evidence.store', 'src.evidence.equity_research.experiment_registry', 'src.axiom2.execution.resolution', 'src.axiom2.portfolio.contracts', 'src.axiom2.portfolio.authority'],
+    'src/axiom2/execution/fencing.py': ['datetime', 'typing', 'pydantic', 'src.evidence.contracts', 'src.evidence.canonical', 'src.evidence.hashing', 'src.evidence.signing', 'src.evidence.store', 'src.axiom2.execution.journal'],
+    'src/axiom2/shadow/portfolio.py': ['dataclasses', 'datetime', 'json', 'typing', 'pydantic', 'src.evidence.contracts', 'src.evidence.signing', 'src.evidence.canonical', 'src.evidence.hashing', 'src.evidence.store', 'src.evidence.execution_shadow', 'src.axiom2.execution.resolution', 'src.axiom2.contracts.equity_orders', 'src.axiom2.portfolio.contracts', 'src.axiom2.portfolio.intents', 'src.axiom2.shadow.fills', 'src.axiom2.execution.journal', 'src.axiom2.portfolio.authority'],
+    'src/axiom2/execution/resolution.py': ['dataclasses', 'datetime', 'json', 'pydantic', 'src.evidence.contracts', 'src.evidence.canonical', 'src.evidence.signing', 'src.axiom2.portfolio.contracts', 'src.axiom2.portfolio.authority', 'src.axiom2.portfolio.intents', 'src.axiom2.contracts.equity_orders', 'src.evidence.hashing'],
+    'src/axiom2/execution/__init__.py': [],
+    'src/axiom2/execution/admission.py': ['dataclasses'],
+    'src/axiom2/execution/authority.py': ['src.axiom2.execution.admission'],
+    'src/axiom2/execution/authorization.py': ['dataclasses', 'datetime', 'typing', 'pydantic', 'src.evidence.contracts', 'src.evidence.canonical', 'src.evidence.hashing', 'src.evidence.signing', 'src.evidence.store'],
+    'src/axiom2/execution/costs.py': ['dataclasses'],
+    'src/axiom2/execution/journal.py': ['dataclasses', 'datetime', 'json', 'types', 'collections.abc', 'src.evidence.canonical', 'src.evidence.contracts', 'src.evidence.hashing', 'src.evidence.signing', 'src.evidence.store', 'src.evidence.execution_shadow', 'src.axiom2.contracts.equity_orders', 'src.axiom2.portfolio.contracts'],
+    'src/axiom2/execution/lifecycle.py': ['dataclasses', 'datetime', 'json', 'typing', 'pydantic', 'src.evidence.contracts', 'src.evidence.canonical', 'src.evidence.signing', 'src.evidence.hashing', 'src.evidence.store', 'src.axiom2.contracts.equity_orders', 'src.axiom2.portfolio.intents', 'src.axiom2.execution.journal', 'src.axiom2.execution.authorization', 'src.axiom2.execution.resolution', 'src.axiom2.execution.fencing', 'src.axiom2.execution.artifacts', 'src.axiom2.brokers.fake_execution', 'src.axiom2.brokers.robinhood_readonly', 'uuid'],
+    'src/axiom2/execution/reconciliation.py': ['dataclasses', 'typing', 'src.axiom2.execution.costs'],
+    'src/axiom2/shadow/__init__.py': ['src.axiom2.shadow.engine', 'src.axiom2.shadow.fills'],
+    'src/axiom2/shadow/engine.py': ['dataclasses', 'hashlib', 'datetime', 'src.evidence.canonical', 'src.axiom2.portfolio.contracts', 'src.axiom2.portfolio.intents', 'src.axiom2.contracts.equity_orders', 'src.axiom2.shadow.fills', 'src.axiom2.shadow.portfolio'],
+    'src/axiom2/shadow/fills.py': ['dataclasses', 'datetime', 'src.axiom2.portfolio.contracts', 'src.axiom2.contracts.equity_orders'],
+    'src/evidence/execution_shadow.py': ['datetime', 'typing', 'pydantic', 'src.evidence.contracts'],
+
     "src/axiom2/portfolio/__init__.py": [],
     "src/axiom2/portfolio/contracts.py": [
         "__future__", "dataclasses", "datetime", "hashlib", "re", "zoneinfo",
@@ -249,7 +274,7 @@ def _audit_imports(snapshot: dict[str, bytes]) -> None:
         for node in ast.walk(ast.parse(snapshot[name], filename=name)):
             if isinstance(node, (ast.Name, ast.Attribute)):
                 token = node.id if isinstance(node, ast.Name) else node.attr
-                allowed_io = token == "open" and name in {"src/evidence/store.py", "src/evidence/hashing.py"}
+                allowed_io = token == "open" and name in {"src/evidence/store.py", "src/evidence/hashing.py", "src/axiom2/execution/artifacts.py"}
                 if token in DYNAMIC_CAPABILITIES and not allowed_io:
                     raise ValueError(f"dynamic capability outside audited profile: {name}:{node.lineno}")
             if isinstance(node, ast.Import):
@@ -304,6 +329,37 @@ def _audit_portfolio_exclusion(root: Path, observed: set[str]) -> dict[str, byte
     return snapshot
 
 
+def _audit_execution_exclusion(root: Path, observed: set[str]) -> dict[str, bytes]:
+    """Pin the complete non-capital authority without adding it to research.
+
+    Research-only source trees remain valid. Any execution file or policy
+    requires the entire reviewed profile; no directory-prefix skip is allowed.
+    """
+    if not any(os.path.lexists(root / name) for name in EXECUTION_FILES) and not os.path.lexists(root / EXECUTION_POLICY):
+        return {}
+    policy = json.loads(
+        _regular_source(root, EXECUTION_POLICY).read_text(), object_pairs_hook=_no_duplicates,
+    )
+    if (type(policy) is not dict
+            or set(policy) != {"schema_version", "profile", "execution_enabled",
+                               "capital_authorized", "source_sha256"}
+            or type(policy["schema_version"]) is not int or policy["schema_version"] != 1
+            or policy["profile"] != "execution-shadow-disabled"
+            or policy["execution_enabled"] is not False
+            or policy["capital_authorized"] is not False):
+        raise ValueError("unsupported execution boundary profile")
+    digests = policy["source_sha256"]
+    if type(digests) is not dict or set(digests) != EXECUTION_FILES:
+        raise ValueError("execution source inventory requires explicit review")
+    snapshot = {}
+    for name in sorted(EXECUTION_FILES):
+        content = _regular_source(root, name).read_bytes()
+        if hashlib.sha256(content).hexdigest() != digests[name]:
+            raise ValueError(f"execution source digest changed; review required: {name}")
+        snapshot[name] = content
+    return snapshot
+
+
 def audit_sources(root: Path) -> dict[str, bytes]:
     """Capture exact audited bytes; fail before executing any candidate source."""
     root = root.resolve()
@@ -344,8 +400,9 @@ def audit_sources(root: Path) -> dict[str, bytes]:
             # No resources/native modules are needed by the current profile.
             observed.add((Path(directory) / name).relative_to(root).as_posix())
     portfolio = _audit_portfolio_exclusion(root, observed)
+    execution = _audit_execution_exclusion(root, observed)
     expected = {name for name in SOURCE_FILES if name == "src/__init__.py" or name.startswith("src/axiom2/")}
-    if observed != expected | set(portfolio):
+    if observed != expected | set(portfolio) | {name for name in execution if name.startswith("src/axiom2/")}:
         raise ValueError("source inventory drift: missing or unreviewed files")
     snapshot = {}
     for name in sorted(SOURCE_FILES):
@@ -353,7 +410,7 @@ def audit_sources(root: Path) -> dict[str, bytes]:
         if hashlib.sha256(content).hexdigest() != digests[name]:
             raise ValueError(f"source digest changed; review required: {name}")
         snapshot[name] = content
-    _audit_imports({**snapshot, **portfolio})
+    _audit_imports({**snapshot, **portfolio, **execution})
     return snapshot
 
 
