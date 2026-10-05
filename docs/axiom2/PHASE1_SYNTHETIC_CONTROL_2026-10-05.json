@@ -1,0 +1,245 @@
+{
+  "arms": {
+    "FULL": {
+      "fold_ic": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "gate": {
+        "drawdown": true,
+        "ic": true,
+        "net": true,
+        "stability": true
+      },
+      "gate_digest": "3117d82f92a2ba707fd4d155af4a6391e364cbcc555dc17fa8841caae161eb0b",
+      "gate_pass": true,
+      "positive_fold_fraction": 1.0,
+      "rank_ic": 1.0,
+      "status": "SUCCEEDED",
+      "stress_bps": {
+        "10": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019168140106857197,
+          "net_excess_return": 0.019168140106857197,
+          "raw_drawdown": 0.0
+        },
+        "25": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019151773211600366,
+          "net_excess_return": 0.019151773211600366,
+          "raw_drawdown": 0.0
+        },
+        "50": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019124495052838992,
+          "net_excess_return": 0.019124495052838992,
+          "raw_drawdown": 0.0
+        }
+      },
+      "turnover": 0.01091126350455058
+    },
+    "P": {
+      "fold_ic": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "gate": {
+        "drawdown": true,
+        "ic": true,
+        "net": true,
+        "stability": true
+      },
+      "gate_digest": "3117d82f92a2ba707fd4d155af4a6391e364cbcc555dc17fa8841caae161eb0b",
+      "gate_pass": true,
+      "positive_fold_fraction": 1.0,
+      "rank_ic": 1.0,
+      "status": "SUCCEEDED",
+      "stress_bps": {
+        "10": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019168140106857197,
+          "net_excess_return": 0.019168140106857197,
+          "raw_drawdown": 0.0
+        },
+        "25": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019151773211600366,
+          "net_excess_return": 0.019151773211600366,
+          "raw_drawdown": 0.0
+        },
+        "50": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019124495052838992,
+          "net_excess_return": 0.019124495052838992,
+          "raw_drawdown": 0.0
+        }
+      },
+      "turnover": 0.01091126350455058
+    },
+    "PM": {
+      "fold_ic": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "gate": {
+        "drawdown": true,
+        "ic": true,
+        "net": true,
+        "stability": true
+      },
+      "gate_digest": "3117d82f92a2ba707fd4d155af4a6391e364cbcc555dc17fa8841caae161eb0b",
+      "gate_pass": true,
+      "positive_fold_fraction": 1.0,
+      "rank_ic": 1.0,
+      "status": "SUCCEEDED",
+      "stress_bps": {
+        "10": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019168140106857197,
+          "net_excess_return": 0.019168140106857197,
+          "raw_drawdown": 0.0
+        },
+        "25": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019151773211600366,
+          "net_excess_return": 0.019151773211600366,
+          "raw_drawdown": 0.0
+        },
+        "50": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019124495052838992,
+          "net_excess_return": 0.019124495052838992,
+          "raw_drawdown": 0.0
+        }
+      },
+      "turnover": 0.01091126350455058
+    },
+    "PR": {
+      "fold_ic": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "gate": {
+        "drawdown": true,
+        "ic": true,
+        "net": true,
+        "stability": true
+      },
+      "gate_digest": "3117d82f92a2ba707fd4d155af4a6391e364cbcc555dc17fa8841caae161eb0b",
+      "gate_pass": true,
+      "positive_fold_fraction": 1.0,
+      "rank_ic": 1.0,
+      "status": "SUCCEEDED",
+      "stress_bps": {
+        "10": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019168140106857197,
+          "net_excess_return": 0.019168140106857197,
+          "raw_drawdown": 0.0
+        },
+        "25": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019151773211600366,
+          "net_excess_return": 0.019151773211600366,
+          "raw_drawdown": 0.0
+        },
+        "50": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019124495052838992,
+          "net_excess_return": 0.019124495052838992,
+          "raw_drawdown": 0.0
+        }
+      },
+      "turnover": 0.01091126350455058
+    },
+    "PV": {
+      "fold_ic": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "gate": {
+        "drawdown": true,
+        "ic": true,
+        "net": true,
+        "stability": true
+      },
+      "gate_digest": "3117d82f92a2ba707fd4d155af4a6391e364cbcc555dc17fa8841caae161eb0b",
+      "gate_pass": true,
+      "positive_fold_fraction": 1.0,
+      "rank_ic": 1.0,
+      "status": "SUCCEEDED",
+      "stress_bps": {
+        "10": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019168140106857197,
+          "net_excess_return": 0.019168140106857197,
+          "raw_drawdown": 0.0
+        },
+        "25": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019151773211600366,
+          "net_excess_return": 0.019151773211600366,
+          "raw_drawdown": 0.0
+        },
+        "50": {
+          "excess_drawdown": 0.0,
+          "momentum_net_excess_return": 0.019124495052838992,
+          "net_excess_return": 0.019124495052838992,
+          "raw_drawdown": 0.0
+        }
+      },
+      "turnover": 0.01091126350455058
+    }
+  },
+  "classification": "synthetic-development",
+  "execution_enabled": false,
+  "fixture_code_commit_placeholder": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "historical_attempt_count": 1,
+  "holdout_accessed": false,
+  "paired": {
+    "FULL_minus_P": {
+      "block_rebalances": 4,
+      "fold_boundaries_retained": true,
+      "limitation": "Finite development diagnostic; no source-leakage repair or profit guarantee.",
+      "lower_97_5": 0.0,
+      "mean": 0.0,
+      "replicates": 9999,
+      "seed": 0
+    },
+    "FULL_minus_momentum": {
+      "block_rebalances": 4,
+      "fold_boundaries_retained": true,
+      "limitation": "Finite development diagnostic; no source-leakage repair or profit guarantee.",
+      "lower_97_5": 0.0,
+      "mean": 0.0,
+      "replicates": 9999,
+      "seed": 0
+    }
+  },
+  "plan_digest": "c8afd7a94f2b82bee3ddcfd1906155ea56cdf93cd17ab4d8a2293c846dd6f462",
+  "primary_hypothesis_pass": false,
+  "protocol": "phase1-qualified-family-ablation-v1",
+  "purpose": "Positive software control only; no empirical market qualification",
+  "runtime": {
+    "lightgbm": "4.7.0",
+    "numpy": "2.0.2",
+    "pandas": "2.3.3",
+    "python": "3.12.14",
+    "sklearn": "1.7.2"
+  }
+}

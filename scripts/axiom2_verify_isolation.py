@@ -44,6 +44,7 @@ SOURCE_FILES = frozenset(
         "src/axiom2/data/universe.py",
         "src/axiom2/research/__init__.py",
         "src/axiom2/research/features.py",
+        "src/axiom2/research/development.py",
         "src/axiom2/research/labels.py",
         "src/axiom2/research/ranker.py",
         "src/axiom2/research/splits.py",
@@ -70,6 +71,7 @@ STDLIB_IMPORTS = frozenset({"__future__", "dataclasses", "datetime", "re", "zone
 DYNAMIC_CAPABILITIES = frozenset({"__import__", "eval", "exec", "compile", "open"})
 DEPENDENCY_VERSIONS = {"pydantic": "2.12.5", "cryptography": "46.0.7", "pandas": "2.3.3", "numpy": "2.0.2", "lightgbm": "4.7.0"}
 IMPORTS_BY_SOURCE = {
+    "src/axiom2/research/development.py": ['dataclasses', 'hashlib', 'json', 'lightgbm', 'numpy', 'pandas', 'pathlib', 'platform', 'pydantic', 'sklearn', 'src.axiom2.contracts.research_proposal', 'src.axiom2.data.universe', 'src.axiom2.research.features', 'src.axiom2.research.labels', 'src.axiom2.research.ranker', 'src.axiom2.research.splits', 'src.evidence.canonical', 'src.evidence.contracts', 'src.evidence.signing'],
     'src/axiom2/brokers/service.py': ['src.axiom2.brokers.robinhood_readonly'],
     'src/axiom2/brokers/fake_execution.py': ['datetime', 'json', 'typing', 'uuid', 'pydantic', 'src.evidence.contracts', 'src.evidence.canonical', 'src.evidence.hashing', 'src.evidence.signing', 'src.evidence.store', 'src.axiom2.execution.journal', 'src.axiom2.brokers.robinhood_readonly', 'src.axiom2.execution.service'],
     'src/axiom2/execution/service.py': ['dataclasses', 'datetime', 'json', 'types', 'uuid', 'src.evidence.canonical', 'src.evidence.contracts', 'src.evidence.hashing', 'src.evidence.signing', 'src.axiom2.execution.lifecycle', 'src.axiom2.execution.artifacts', 'src.axiom2.execution.authorization', 'src.axiom2.execution.fencing', 'src.axiom2.execution.resolution', 'src.axiom2.execution.reconciliation', 'src.axiom2.brokers.fake_execution', 'src.axiom2.brokers.robinhood_readonly'],

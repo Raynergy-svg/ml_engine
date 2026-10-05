@@ -94,11 +94,19 @@ class CampaignPayload(StrictContract):
     max_drawdown: float
     positive_fold_fraction: float
 
+class CampaignDiagnosticsPayload(StrictContract):
+    campaign_manifest_digest: str
+    selected_trial_id: str
+    selected_trial_result_digest: str
+    diagnostics_digest: str
+
 @dataclass(frozen=True)
 class CampaignResult:
     model_type: str; experiment_count: int; mean_rank_correlation: float; portfolio_net_return: float; baseline_net_return: float; turnover: float; max_drawdown: float
     regime_slices: tuple[tuple[str,float],...]; artifact_hash: str; search_space_digest: str; feature_digest: str; label_digest: str; split_digest: str; campaign_manifest_digest: str; selected_trial_id: str; selected_trial_result_digest: str; model_artifact_hash: str; model_artifact_bytes: bytes; best_params: tuple[tuple[str, object], ...]; positive_fold_fraction: float
     holdout_accessed: bool=False; envelope: SignedEnvelope|None=None
+    diagnostics: tuple=()
+    diagnostics_envelope: SignedEnvelope|None=None
 
 def search_space_digest(search_space): return hashlib.sha256(canonical_bytes(tuple(dict(x) for x in search_space))).hexdigest()
 def frame_digest(frame):
@@ -170,7 +178,7 @@ def _max_drawdown(returns):
     peak=np.maximum.accumulate(wealth)
     return float(np.min(wealth/peak-1.0))
 
-def run_registered_campaign(proposal,features,labels,splits,*,registry,feature_schema_id,label_schema_id,expected_feature_schema_id,expected_label_schema_id,cost_bps,search_space=({"num_leaves":7,"learning_rate":.05},),adapter=None,portfolio_policy=None):
+def run_registered_campaign(proposal,features,labels,splits,*,registry,feature_schema_id,label_schema_id,expected_feature_schema_id,expected_label_schema_id,cost_bps,search_space=({"num_leaves":7,"learning_rate":.05},),adapter=None,portfolio_policy=None,fold_recorder=None):
     validate_research_proposal(proposal)
     registered=registry.snapshot().experiments.get(proposal.experiment_id)
     if registered is None or registered.proposal!=proposal or registered.failure_reason is not None:
@@ -215,27 +223,45 @@ def run_registered_campaign(proposal,features,labels,splits,*,registry,feature_s
         trial=registry.record_trial_started(proposal.experiment_id,campaign_digest,config_index,config_digest)
         if trial.status=="FAILED":
             continue
+        diagnostic_ic=[]; diagnostic_book=[]; fold_artifacts=[]; baseline_weights={}
         scores=[]; rets=[]; turns=[]; prior_weights={}; curve=[]; fold_means=[]; final_model=None; used_dates=[]
         try:
-            for split in splits:
+            for fold_index,split in enumerate(splits):
                 train=joined[joined.index.get_level_values("timestamp").isin(split.train)].sort_index()
                 test=joined[joined.index.get_level_values("timestamp").isin(split.test)].sort_index()
                 if train.empty or test.empty: continue
                 train_features=train[feature_cols].copy()
                 train_target=train["cross_sectional_rank"].copy()
                 test_features=test[feature_cols].copy()
-                final_model=adapter.fit(train_features,train_target,params)
+                if fold_recorder is not None:
+                    fold_recorder("STARTED",fold_index,{"train_digest":frame_digest(train_features),"test_digest":frame_digest(test_features)})
+                try:
+                    final_model=adapter.fit(train_features,train_target,params)
+                    fold_bytes=adapter.serialize_artifact(final_model)
+                    fold_artifacts.append((fold_index,hashlib.sha256(fold_bytes).hexdigest()))
+                    if fold_recorder is not None:
+                        fold_recorder("SUCCEEDED",fold_index,{"artifact_bytes":fold_bytes,"effective_params":final_model.get_params()})
+                except Exception as exc:
+                    if fold_recorder is not None:
+                        fold_recorder("FAILED",fold_index,{"reason":type(exc).__name__+": "+str(exc)[:220]})
+                    raise
                 pred=adapter.predict_scores(final_model,test_features)
                 scored=test.assign(_pred=pred)
                 fold_score=_mean_cross_sectional_ic(scored)
                 scores.append(fold_score); fold_means.append(fold_score)
                 for timestamp,g in scored.groupby(level="timestamp",sort=True):
+                    diagnostic_ic.append((fold_index,timestamp.isoformat(),_score(g["_pred"].to_numpy(),g["cross_sectional_rank"].to_numpy())))
                     if timestamp not in rebalance_dates: continue
                     pick=_select_complete_top_k(g,portfolio_policy.top_k)
                     ids=tuple(pick.index.get_level_values("instrument_id"))
                     turn=_turnover_to_equal(prior_weights,ids)
                     ret=float(pick["forward_excess_return"].mean())-(float(cost_bps)/10000.)*turn
                     rets.append(ret); turns.append(turn); curve.append(ret); used_dates.append(timestamp)
+                    baseline_pick=g.nlargest(portfolio_policy.top_k,"return_5")
+                    baseline_ids=tuple(baseline_pick.index.get_level_values("instrument_id"))
+                    baseline_turn=_turnover_to_equal(baseline_weights,baseline_ids)
+                    diagnostic_book.append((fold_index,timestamp.isoformat(),float(pick["forward_return"].mean()),float(pick["forward_excess_return"].mean()),turn,float(baseline_pick["forward_return"].mean()),float(baseline_pick["forward_excess_return"].mean()),baseline_turn,ids))
+                    baseline_weights=_post_return_weights(baseline_ids,baseline_pick["forward_return"].to_numpy())
                     prior_weights=_post_return_weights(ids,pick["forward_return"].to_numpy())
             if final_model is None or not rets:
                 raise ValueError("configuration produced no evaluable trained portfolio")
@@ -243,21 +269,23 @@ def run_registered_campaign(proposal,features,labels,splits,*,registry,feature_s
             config_model_hash=hashlib.sha256(config_model_bytes).hexdigest()
             score=float(np.mean(scores)) if scores else -1.
             positive=float(np.mean(np.asarray(fold_means)>0)) if fold_means else 0.0
+            diagnostics=(tuple(diagnostic_ic),tuple(diagnostic_book),tuple(fold_means),tuple(fold_artifacts))
             result_digest=hashlib.sha256(canonical_bytes({
                 "campaign_digest":campaign_digest,"config_digest":config_digest,
+                "diagnostics_digest":hashlib.sha256(canonical_bytes(diagnostics)).hexdigest(),
                 "score":score,"returns":tuple(rets),"turnover":tuple(turns),
                 "model_artifact_hash":config_model_hash,"positive_fold_fraction":positive,
                 "schema_version":1,
             })).hexdigest()
             registry.record_trial_succeeded(trial.trial_id,result_digest)
-            candidates.append((score,params,rets,turns,curve,final_model,positive,tuple(used_dates),config_model_bytes,config_model_hash,trial.trial_id,result_digest))
+            candidates.append((score,params,rets,turns,curve,final_model,positive,tuple(used_dates),config_model_bytes,config_model_hash,trial.trial_id,result_digest,diagnostics))
         except Exception as exc:
             message=str(exc).strip().replace("\x00","")[:220]
             registry.record_trial_failed(trial.trial_id,f"{type(exc).__name__}: {message}")
             continue
     if not candidates:
         raise ValueError("campaign produced no successful registered configurations")
-    score,params,rets,turns,curve,model,positive_fold_fraction,used_dates,model_bytes,model_hash,selected_trial_id,selected_trial_result_digest=max(candidates,key=lambda x:(x[0],json.dumps(x[1],sort_keys=True)))
+    score,params,rets,turns,curve,model,positive_fold_fraction,used_dates,model_bytes,model_hash,selected_trial_id,selected_trial_result_digest,diagnostics=max(candidates,key=lambda x:(x[0],json.dumps(x[1],sort_keys=True)))
     net=float(np.mean(rets)); turnover=float(np.mean(turns)); dd=_max_drawdown(curve)
     baseline_result=evaluate_momentum_baseline(features,labels,costs=CostAssumption(proposal.cost_model_id,float(cost_bps)),top_n=portfolio_policy.top_k,evaluation_dates=used_dates)
     baseline=baseline_result.net_return
@@ -275,7 +303,12 @@ def run_registered_campaign(proposal,features,labels,splits,*,registry,feature_s
         positive_fold_fraction=positive_fold_fraction,
     )
     envelope=registry.signer.sign(payload,created_at=registry.store._trusted_clock())
-    return CampaignResult(adapter.model_family,len(search),score,net,baseline,turnover,dd,regimes,artifact,search_digest,fd,ld,sd,campaign_digest,selected_trial_id,selected_trial_result_digest,model_hash,model_bytes,tuple(sorted(params.items())),positive_fold_fraction,False,envelope)
+    diagnostic_envelope=registry.signer.sign(CampaignDiagnosticsPayload(
+        campaign_manifest_digest=campaign_digest,selected_trial_id=selected_trial_id,
+        selected_trial_result_digest=selected_trial_result_digest,
+        diagnostics_digest=hashlib.sha256(canonical_bytes(diagnostics)).hexdigest(),
+    ),created_at=registry.store._trusted_clock())
+    return CampaignResult(adapter.model_family,len(search),score,net,baseline,turnover,dd,regimes,artifact,search_digest,fd,ld,sd,campaign_digest,selected_trial_id,selected_trial_result_digest,model_hash,model_bytes,tuple(sorted(params.items())),positive_fold_fraction,False,envelope,diagnostics,diagnostic_envelope)
 
 
 @dataclass(frozen=True)
@@ -365,6 +398,15 @@ def _verify_campaign_evidence(proposal,campaign,*,registry):
     for name,value in expected.items():
         if getattr(payload,name)!=value:
             raise ValueError(f"signed campaign evidence mismatch: {name}")
+    if campaign.diagnostics:
+        if campaign.diagnostics_envelope is None:raise ValueError("signed campaign diagnostics missing")
+        diagnostic=verify_envelope(campaign.diagnostics_envelope,CampaignDiagnosticsPayload,registry.store.trust_store)
+        registry.store.authorities.authorize_identity(actor_id=registry.actor_id,role=AuthorityRole.LOCAL_IMPORTER,key_id=campaign.diagnostics_envelope.signature.key_id)
+        if (diagnostic.campaign_manifest_digest!=campaign.campaign_manifest_digest
+            or diagnostic.selected_trial_id!=campaign.selected_trial_id
+            or diagnostic.selected_trial_result_digest!=campaign.selected_trial_result_digest
+            or diagnostic.diagnostics_digest!=hashlib.sha256(canonical_bytes(campaign.diagnostics)).hexdigest()):
+            raise ValueError("signed campaign diagnostic evidence mismatch")
     if hashlib.sha256(campaign.model_artifact_bytes).hexdigest()!=campaign.model_artifact_hash:
         raise ValueError("model artifact hash does not match actual bytes")
     if campaign.holdout_accessed:
