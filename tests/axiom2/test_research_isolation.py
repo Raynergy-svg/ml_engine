@@ -27,6 +27,7 @@ SOURCE_FILES = (
     "src/axiom2/data/universe.py",
     "src/axiom2/research/__init__.py",
     "src/axiom2/research/features.py",
+    "src/axiom2/research/development.py",
     "src/axiom2/research/labels.py",
     "src/axiom2/research/ranker.py",
     "src/axiom2/research/splits.py",
