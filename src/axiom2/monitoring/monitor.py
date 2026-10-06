@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 from threading import RLock
 
+from src.evidence.canonical import canonical_bytes
 from src.evidence.hashing import content_digest
 
 from .contracts import (
@@ -134,7 +135,7 @@ class AxiomMonitor:
                 raw_candidate = payload.get("candidate")
                 if not isinstance(raw_candidate, dict):
                     raise MonitorStoreCorruption("candidate registration payload is malformed")
-                candidate = CandidateRegistration.model_validate(raw_candidate)
+                candidate = CandidateRegistration.model_validate_json(canonical_bytes(raw_candidate), strict=True)
             raw_state = payload.get("state")
             if raw_state is not None:
                 try:
@@ -150,7 +151,7 @@ class AxiomMonitor:
                 raw_observation = payload.get("observation")
                 if not isinstance(raw_observation, dict):
                     raise MonitorStoreCorruption("observation payload is malformed")
-                last_observation = MarketObservation.model_validate(raw_observation)
+                last_observation = MarketObservation.model_validate_json(canonical_bytes(raw_observation), strict=True)
                 raw_digest = payload.get("observation_digest")
                 expected_digest = content_digest(last_observation)
                 if raw_digest != expected_digest:
@@ -447,7 +448,7 @@ class AxiomMonitor:
             raw_observation = prior.payload.get("observation")
             if not isinstance(raw_observation, dict):
                 raise MonitorStoreCorruption("duplicate observation has no payload")
-            if content_digest(MarketObservation.model_validate(raw_observation)) != content_digest(
+            if content_digest(MarketObservation.model_validate_json(canonical_bytes(raw_observation), strict=True)) != content_digest(
                 observation
             ):
                 raise MonitorStoreCorruption("conflicting duplicate observation")
@@ -842,7 +843,7 @@ class AxiomMonitor:
             raw_wakeup = event.payload.get("wakeup")
             if not isinstance(raw_wakeup, dict):
                 raise MonitorStoreCorruption("material event has malformed wakeup")
-            wakeup = ResearchWakeup.model_validate(raw_wakeup)
+            wakeup = ResearchWakeup.model_validate_json(canonical_bytes(raw_wakeup), strict=True)
             try:
                 self.wakeup_sink.wake(wakeup)
             except Exception:
