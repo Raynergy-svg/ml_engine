@@ -1,0 +1,59 @@
+{
+  "upstream": {
+    "repository": "nautechsystems/nautilus_trader",
+    "revision": "4f021bafc2e99c5490cee204b0fc2bd2c83baab4",
+    "package": "nautilus-trader",
+    "version_at_revision": "2.0.0rc7",
+    "source_build": true,
+    "license": "LGPL-3.0-only"
+  },
+  "build_requirements": {
+    "python": ">=3.12,<3.15",
+    "rust": "1.99.0",
+    "uv": ">=0.12,<0.13",
+    "maturin": "1.15.0",
+    "host_tools": ["clang", "lld", "patchelf"]
+  },
+  "declared_upstream_features": [
+    "extension-module",
+    "arrow",
+    "betfair",
+    "high-precision",
+    "mimalloc",
+    "redis",
+    "postgres",
+    "defi",
+    "hypersync",
+    "tracing-bridge"
+  ],
+  "enabled_feature_recording": {
+    "source": "workflow runtime: bash scripts/cargo-features.bash plus make build defaults",
+    "extra_features": []
+  },
+  "public_interfaces_under_test": [
+    "nautilus_trader.common.Clock.new_test",
+    "nautilus_trader.common.Clock.set_timer_ns",
+    "nautilus_trader.common.Clock.set_time",
+    "nautilus_trader.common.MessageBus.subscribe",
+    "nautilus_trader.common.MessageBus.publish",
+    "nautilus_trader.common.DataActor.start",
+    "nautilus_trader.common.DataActor.stop"
+  ],
+  "order_event_constructors_probed": [
+    "OrderSubmitted",
+    "OrderAccepted",
+    "OrderRejected",
+    "OrderCanceled",
+    "OrderCancelRejected",
+    "OrderFilled"
+  ],
+  "runtime_boundary": {
+    "replay_only": true,
+    "live_feed": false,
+    "external_network": false,
+    "broker_credentials": false,
+    "execution_clients": false,
+    "order_submission": false,
+    "capital_authorization": false
+  }
+}
