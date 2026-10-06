@@ -84,7 +84,6 @@ class AxiomMonitor:
         {
             MonitorEventKind.OBSERVATION_ACCEPTED,
             MonitorEventKind.ENTRY_TRIGGERED,
-            MonitorEventKind.FRESHNESS_FAILURE,
             MonitorEventKind.CONNECTION_LOST,
             MonitorEventKind.CONNECTION_RESTORED,
             MonitorEventKind.THESIS_INVALIDATED,
