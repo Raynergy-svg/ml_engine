@@ -33,7 +33,7 @@
     "src/axiom2/promotion/authority.py": "c640a8603620762d9de351c7dd3008c6a27fca11a3db4aacf13d56a5d610b8e1",
     "src/axiom2/research/__init__.py": "9a0230e28fb87ab3e1caee614183ce8b98d2c3c1f5705efdbfe1a28637286524",
     "src/axiom2/research/baselines.py": "29440885c2f646ea35331edda78d54c0fbd58a798e9599a9c1ce137ae299326a",
-    "src/axiom2/research/development.py": "d7b0b186fcf4b2976884df7d90a040b952de833e1bbfe4f6ed9d2ea1a6d50b7f",
+    "src/axiom2/research/development.py": "cde88324eeab43abcd2310ef1f610887cdffed48f669fd1c9bb3f8d830c7b7a5",
     "src/axiom2/research/features.py": "630ad3dab159c5f3668fe434f4711e502b7835d43bb4517755d3d904a416b070",
     "src/axiom2/research/labels.py": "656c05662661b2254e4f528744dfdb4bca7655487b3d6e92a1e947ab3e94ae45",
     "src/axiom2/research/ranker.py": "a53c55f732e6f93f659a9638918202424d6b1b8ac5df759ceee7980e3faed2fd",
