@@ -180,7 +180,7 @@ def _exercise_lifecycle() -> dict[str, Any]:
         "component": "DataActor",
         "lifecycle_driver": "BacktestEngine",
         "hook_events": lifecycle_events,
-        "final_state": actor.state().name,
+        "final_state": str(actor.state()),
         "dispose_called": True,
     }
 

@@ -60,3 +60,11 @@ def test_smoke_is_bound_to_public_runtime_and_order_event_apis():
     assert "actor.stop()" not in smoke
     assert "ExecutionClient(" not in smoke
     assert "TradingNode" not in smoke
+
+
+def test_smoke_serializes_component_state_with_supported_string_conversion():
+    smoke = SMOKE_PATH.read_text(encoding="utf-8")
+
+    assert '"final_state": str(actor.state())' in smoke
+    assert "actor.state().name" not in smoke
+    assert "actor.state().value" not in smoke
