@@ -279,3 +279,100 @@ def test_service_stdio_rejects_unknown_snapshot_without_opening_data(tmp_path):
     assert response['status']=='REJECTED'
     assert not response['execution_enabled'] and not response['holdout_accessed']
     assert not ctx.registry.snapshot().experiments
+
+
+def _fresh_signed_comparison_report(tmp_path):
+    from src.axiom2.research.development import run_development_comparison, ComparisonReport, _persist
+    from src.evidence.contracts import SignedEnvelope
+    from src.evidence.signing import verify_envelope
+
+    ctx=build_context(tmp_path/'store')
+    plan=admit(fixture_bundle(tmp_path/'data',ctx),ctx)
+    key=run_development_comparison(plan,registry=ctx.registry,code_commit='a'*40)
+    raw=(ctx.store.root/'development'/(key+'.json')).read_bytes()
+    report=verify_envelope(
+        SignedEnvelope.model_validate_json(raw),ComparisonReport,ctx.store.trust_store
+    )
+    return ctx, report
+
+
+def _persist_signed_comparison_report(ctx, data):
+    from src.axiom2.research.development import ComparisonReport, _persist
+
+    return _persist(
+        ctx.registry,
+        ctx.registry.signer.sign(
+            ComparisonReport.model_validate(data),created_at=NOW
+        ),
+    )
+
+
+def test_report_verifier_recomputes_signed_derived_conclusions(tmp_path):
+    ctx, report=_fresh_signed_comparison_report(tmp_path)
+    mutations=(
+        ('gate', lambda data: data['arms']['P']['gate'].__setitem__('ic',False)),
+        ('stress', lambda data: data['arms']['P']['stress_bps']['25'].__setitem__('net_excess_return',999.0)),
+        ('paired', lambda data: data['paired']['FULL_minus_P'].__setitem__('lower_97_5',999.0)),
+        ('primary', lambda data: data.__setitem__('primary_hypothesis_pass',not data['primary_hypothesis_pass'])),
+    )
+    for name, mutate in mutations:
+        data=json.loads(report.model_dump_json())
+        mutate(data)
+        key=_persist_signed_comparison_report(ctx,data)
+        with pytest.raises(ValueError,match=name):
+            from src.axiom2.research.development import verify_comparison_report
+            verify_comparison_report(key,registry=ctx.registry)
+
+
+def test_report_verifier_binds_campaign_trial_result_to_registry(tmp_path):
+    from src.axiom2.research.development import (
+        CampaignDiagnosticsPayload,CampaignPayload,ComparisonReport,_persist,
+        run_development_comparison,verify_comparison_report,
+    )
+    from src.evidence.contracts import SignedEnvelope
+    from src.evidence.signing import verify_envelope
+
+    ctx=build_context(tmp_path/'store')
+    plan=admit(fixture_bundle(tmp_path/'data',ctx),ctx)
+    key=run_development_comparison(plan,registry=ctx.registry,code_commit='a'*40)
+    report_path=ctx.store.root/'development'/(key+'.json')
+    report=verify_envelope(
+        SignedEnvelope.model_validate_json(report_path.read_bytes()),
+        ComparisonReport,ctx.store.trust_store
+    )
+    arm=report.arms['P']
+
+    campaign_raw=(ctx.store.root/'development'/(arm['campaign_evidence']+'.json')).read_bytes()
+    campaign=verify_envelope(
+        SignedEnvelope.model_validate_json(campaign_raw),
+        CampaignPayload,ctx.store.trust_store
+    )
+    diagnostic_raw=(ctx.store.root/'development'/(arm['diagnostic_evidence']+'.json')).read_bytes()
+    diagnostic=verify_envelope(
+        SignedEnvelope.model_validate_json(diagnostic_raw),
+        CampaignDiagnosticsPayload,ctx.store.trust_store
+    )
+    bad_result_digest='f'*64
+    campaign_data=campaign.model_dump(mode='json')
+    campaign_data['selected_trial_result_digest']=bad_result_digest
+    diagnostic_data=diagnostic.model_dump(mode='json')
+    diagnostic_data['selected_trial_result_digest']=bad_result_digest
+    campaign_key=_persist(
+        ctx.registry,
+        ctx.registry.signer.sign(
+            CampaignPayload.model_validate(campaign_data),created_at=NOW
+        ),
+    )
+    diagnostic_key=_persist(
+        ctx.registry,
+        ctx.registry.signer.sign(
+            CampaignDiagnosticsPayload.model_validate(diagnostic_data),created_at=NOW
+        ),
+    )
+    report_data=json.loads(report.model_dump_json())
+    report_data['arms']['P']['campaign_evidence']=campaign_key
+    report_data['arms']['P']['diagnostic_evidence']=diagnostic_key
+    inconsistent_key=_persist_signed_comparison_report(ctx,report_data)
+
+    with pytest.raises(ValueError,match='trial'):
+        verify_comparison_report(inconsistent_key,registry=ctx.registry)
