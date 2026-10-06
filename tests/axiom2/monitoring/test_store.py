@@ -43,7 +43,7 @@ def test_append_replay_preserves_sequence_chain_and_digest(tmp_path):
 
     assert first != second
     assert [row.sequence for row in rows] == [0, 1]
-    assert rows[1].previous_digest == second if False else rows[1].previous_digest == first
+    assert rows[1].previous_digest == first
     assert store.head_digest() == second
 
 
