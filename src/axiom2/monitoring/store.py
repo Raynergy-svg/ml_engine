@@ -202,6 +202,22 @@ class MonitorStore:
                 if prior_sources and event.source_sequence <= max(prior_sources):
                     raise MonitorStoreOrderingError("source watermark regression")
 
+            if rows:
+                paths = sorted(
+                    (
+                        path
+                        for path in self.events_root.iterdir()
+                        if not path.name.startswith(".")
+                    ),
+                    key=lambda path: path.name,
+                )
+                latest_receipt = MonitorReceipt.model_validate_json(
+                    paths[-1].read_bytes(),
+                    strict=True,
+                )
+                if received_at < latest_receipt.received_at:
+                    raise MonitorStoreOrderingError("receipt time regression")
+
             stored = event.model_copy(
                 update={
                     "sequence": len(rows),
@@ -228,7 +244,14 @@ class MonitorStore:
         """Return the verified receipt watermark for monotonic deliveries."""
         with self._locked():
             self._replay_unlocked()
-            paths = sorted(self.events_root.iterdir(), key=lambda path: path.name)
+            paths = sorted(
+                (
+                    path
+                    for path in self.events_root.iterdir()
+                    if not path.name.startswith(".")
+                ),
+                key=lambda path: path.name,
+            )
             if not paths:
                 return None
             receipt = MonitorReceipt.model_validate_json(paths[-1].read_bytes(), strict=True)
