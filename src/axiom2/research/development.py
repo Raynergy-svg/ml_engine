@@ -399,12 +399,102 @@ def run_development_comparison(plan, *, registry, code_commit):
     return _persist(registry,registry.signer.sign(report,created_at=registry.store._trusted_clock()))
 
 
+def _report_number(value, label):
+    if type(value) not in (int,float) or isinstance(value,bool) or not np.isfinite(float(value)):
+        raise ValueError(label+' must be finite')
+    return float(value)
+
+
+def _same_report_number(left,right):
+    try:
+        values=(float(left),float(right))
+    except (TypeError,ValueError):
+        return False
+    return all(np.isfinite(value) for value in values) and bool(np.isclose(*values,rtol=0.0,atol=1e-12))
+
+
+def _derive_arm_evidence(arm):
+    session_ic=arm.get('session_ic')
+    if not isinstance(session_ic,(list,tuple)) or len(session_ic)!=315:
+        raise ValueError('derived IC coverage mismatch')
+    by_fold={};seen=set()
+    for row in session_ic:
+        if not isinstance(row,(list,tuple)) or len(row)!=3:
+            raise ValueError('derived IC row malformed')
+        fold,timestamp,value=row
+        if type(fold) is not int or fold not in range(5) or type(timestamp) is not str or not timestamp:
+            raise ValueError('derived IC row malformed')
+        if (fold,timestamp) in seen:
+            raise ValueError('derived IC dates duplicated')
+        seen.add((fold,timestamp))
+        by_fold.setdefault(fold,[]).append(_report_number(value,'session IC'))
+    if set(by_fold)!=set(range(5)):
+        raise ValueError('derived IC fold coverage mismatch')
+    fold_ic=tuple(float(np.mean(by_fold[index])) for index in range(5))
+    reported_fold_ic=arm.get('fold_ic')
+    if not isinstance(reported_fold_ic,(list,tuple)) or tuple(reported_fold_ic)!=fold_ic:
+        raise ValueError('derived fold IC mismatch')
+    rank_ic=float(np.mean(fold_ic))
+    positive=float(np.mean(np.asarray(fold_ic)>0))
+    if not all((_same_report_number(arm.get('rank_ic'),rank_ic),_same_report_number(arm.get('positive_fold_fraction'),positive))):
+        raise ValueError('derived IC conclusion mismatch')
+
+    book=arm.get('book')
+    if not isinstance(book,(list,tuple)) or not book:
+        raise ValueError('derived portfolio evidence missing')
+    for row in book:
+        if not isinstance(row,(list,tuple)) or len(row)!=9:
+            raise ValueError('derived portfolio row malformed')
+        fold,timestamp,raw_return,excess_return,turnover,baseline_return,baseline_excess,baseline_turn,ids=row
+        if type(fold) is not int or fold not in range(5) or type(timestamp) is not str or not timestamp:
+            raise ValueError('derived portfolio row malformed')
+        for value,label in (
+            (raw_return,'raw return'),(excess_return,'excess return'),
+            (turnover,'turnover'),(baseline_return,'baseline return'),
+            (baseline_excess,'baseline excess'),(baseline_turn,'baseline turnover'),
+        ):
+            _report_number(value,label)
+        if not isinstance(ids,(list,tuple)) or not ids or any(type(identifier) is not str or not identifier for identifier in ids):
+            raise ValueError('derived portfolio identities malformed')
+    turnover=float(np.mean([float(row[4]) for row in book]))
+    if arm.get('turnover')!=turnover:
+        raise ValueError('derived turnover mismatch')
+    stress={}
+    for bps in (10,25,50):
+        raw=[float(row[2])-bps/10000*float(row[4]) for row in book]
+        excess=[float(row[3])-bps/10000*float(row[4]) for row in book]
+        baseline=[float(row[6])-bps/10000*float(row[7]) for row in book]
+        stress[str(bps)]=dict(
+            net_excess_return=float(np.mean(excess)),
+            momentum_net_excess_return=float(np.mean(baseline)),
+            raw_wealth=[1.]+np.cumprod(1.+np.asarray(raw)).tolist(),
+            excess_wealth=[1.]+np.cumprod(1.+np.asarray(excess)).tolist(),
+            raw_drawdown=_max_drawdown(raw),
+            excess_drawdown=_max_drawdown(excess),
+        )
+    if canonical_bytes(arm.get('stress_bps'))!=canonical_bytes(stress):
+        raise ValueError('cost stress mismatch')
+    expected_gate=dict(
+        ic=rank_ic>=GATE['min_rank_ic'],
+        net=stress['10']['net_excess_return']>=GATE['min_net_return'],
+        drawdown=stress['10']['excess_drawdown']>=GATE['max_drawdown'],
+        stability=positive>=GATE['min_positive_fold_fraction'],
+    )
+    if arm.get('gate')!=expected_gate or arm.get('gate_pass')!=all(expected_gate.values()):
+        raise ValueError('derived gate mismatch')
+    if arm.get('gate_digest')!=development_gate_digest(**GATE):
+        raise ValueError('development gate identity mismatch')
+    return rank_ic,fold_ic,positive,turnover,stress
+
+
 def verify_comparison_report(key, *, registry):
     report=_signed_load(registry,key,ComparisonReport)
     if report.protocol!=PROTOCOL or report.execution_enabled or report.holdout_accessed or set(report.arms)!=set(ARMS) or report.arm_order!=tuple(ARMS):raise ValueError('invalid development comparison')
     manifest=_signed_load(registry,report.manifest_evidence,RunManifest).body
     if digest({k:v for k,v in manifest.items() if k not in ("code_commit","runtime","historical_head","historical_attempt_count","effective_params","calibration","implementation","historical_experiments","historical_trials")})!=report.plan_digest:raise ValueError("manifest evidence mismatch")
     if manifest["historical_head"]!=report.historical_head or manifest["historical_attempt_count"]!=report.historical_attempt_count:raise ValueError("ignored historical attempt context")
+    if manifest.get("gate")!=development_gate_digest(**GATE) or tuple(manifest.get("costs",()))!=(10,25,50):raise ValueError('development protocol identity mismatch')
+    if manifest.get("bootstrap")!=dict(replicates=9999,seed=0,block=4,lower_quantile=.025):raise ValueError('development bootstrap identity mismatch')
     state=registry.snapshot()
     if state.attempt_count<report.historical_attempt_count+5:raise ValueError('ignored historical attempt')
     for identifier,registration in manifest['historical_experiments'].items():
@@ -422,7 +512,6 @@ def verify_comparison_report(key, *, registry):
             fold_artifacts[slot]=event.body['artifact_digest']
         if statuses not in (['STARTED'],['STARTED','SUCCEEDED'],['STARTED','FAILED']):raise ValueError('fold attempt sequence invalid')
         if 'artifact_digest' in event.body:
-
             ad=event.body['artifact_digest'];raw=(registry.store.root/'development'/(ad+'.model')).read_bytes()
             if hashlib.sha256(raw).hexdigest()!=ad:raise ValueError('fold artifact mismatch')
         previous=event_key
@@ -441,13 +530,45 @@ def verify_comparison_report(key, *, registry):
             if campaign.proposal_id!=arm['experiment_id'] or campaign.selected_trial_id!=arm['trial_id']:raise ValueError('campaign trial identity mismatch')
             relevant=[t for t in state.trials.values() if t.experiment_id==arm['experiment_id']]
             if len(relevant)!=1:raise ValueError('ignored or extra trial attempt')
+            rank_ic,fold_ic,positive,turnover,stress=_derive_arm_evidence(arm)
+            if not all((_same_report_number(campaign.mean_rank_correlation,rank_ic),
+                _same_report_number(campaign.portfolio_net_return,stress['10']['net_excess_return']),
+                _same_report_number(campaign.baseline_net_return,stress['10']['momentum_net_excess_return']),
+                _same_report_number(campaign.turnover,turnover),
+                _same_report_number(campaign.max_drawdown,stress['10']['excess_drawdown']),
+                _same_report_number(campaign.positive_fold_fraction,positive))):
+                raise ValueError('campaign derived metric mismatch')
             if arm['rank_ic']!=campaign.mean_rank_correlation or arm['positive_fold_fraction']!=campaign.positive_fold_fraction or arm['turnover']!=campaign.turnover:raise ValueError('campaign metric mismatch')
-            trial=state.trials.get(arm['trial_id'])
-            if trial is None or trial.status!='SUCCEEDED' or trial.result_digest!=arm['trial_result_digest']:raise ValueError('trial evidence incomplete')
+            trial=state.trials.get(campaign.selected_trial_id)
+            if (
+                trial is None
+                or trial.status!='SUCCEEDED'
+                or trial.experiment_id!=arm['experiment_id']
+                or trial.campaign_digest!=campaign.campaign_manifest_digest
+                or trial.result_digest!=campaign.selected_trial_result_digest
+                or arm['trial_result_digest']!=campaign.selected_trial_result_digest
+            ):raise ValueError('selected trial result digest mismatch')
         elif arm['status']=='FAILED' and exp.failure_reason!=arm['reason']:raise ValueError('failed attempt missing')
+    all_succeeded=all(report.arms[name]['status']=='SUCCEEDED' for name in ARMS)
+    expected_paired={}
+    expected_primary=False
+    if all_succeeded:
+        full=report.arms['FULL']['book'];price=report.arms['P']['book']
+        if [(row[0],row[1]) for row in full]!=[(row[0],row[1]) for row in price]:raise ValueError('paired evidence mismatch')
+        expected_paired={
+            'FULL_minus_P':paired_bounds(
+                [(float(f[3])-.001*float(f[4]))-(float(p[3])-.001*float(p[4])) for f,p in zip(full,price)],
+                [row[0] for row in full],
+            ),
+            'FULL_minus_momentum':paired_bounds(
+                [(float(f[3])-.001*float(f[4]))-(float(f[6])-.001*float(f[7])) for f in full],
+                [row[0] for row in full],
+            ),
+        }
+        expected_primary=bool(report.arms['FULL']['gate_pass'] and all(item['lower_97_5']>0 for item in expected_paired.values()))
+    if canonical_bytes(report.paired)!=canonical_bytes(expected_paired):raise ValueError('paired bound mismatch')
+    if report.primary_hypothesis_pass!=expected_primary:raise ValueError('primary hypothesis mismatch')
     return report
-
-
 
 def handle_development_request(request, *, registry, bundles, code_commit, allow_synthetic=False):
     """Trusted service composition. Only configured snapshot IDs are resolvable.
