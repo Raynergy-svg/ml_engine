@@ -464,7 +464,7 @@ def _derive_arm_evidence(arm):
             raw_drawdown=_max_drawdown(raw),
             excess_drawdown=_max_drawdown(excess),
         )
-    if arm.get('stress_bps')!=stress:
+    if canonical_bytes(arm.get('stress_bps'))!=canonical_bytes(stress):
         raise ValueError('cost stress mismatch')
     expected_gate=dict(
         ic=rank_ic>=GATE['min_rank_ic'],
