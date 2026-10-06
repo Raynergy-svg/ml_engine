@@ -112,9 +112,15 @@ def _exercise_event_delivery_and_clock() -> dict[str, Any]:
         fire_immediately=False,
     )
     assert clock.timer_count() == 1
+    assert clock.next_time_ns("axiom2.nautilus.smoke.timer") == start_ns + interval_ns
+
+    # The supported Python Clock surface schedules and reports deterministic
+    # timers, but Clock.set_time() only changes the virtual timestamp. It does
+    # not dispatch queued callbacks, and this revision exposes no public
+    # advance_time method. Expiry is therefore evaluated on replay observations
+    # and restart, not by pretending a callback was delivered.
     clock.set_time(start_ns + interval_ns)
-    assert len(timer_events) == 1, timer_events
-    assert timer_events[0]["name"] == "axiom2.nautilus.smoke.timer"
+    assert clock.timestamp_ns() == start_ns + interval_ns
 
     bus.dispose()
     return {
@@ -122,6 +128,9 @@ def _exercise_event_delivery_and_clock() -> dict[str, Any]:
         "deterministic_clock": {
             "start_ns": start_ns,
             "advanced_to_ns": start_ns + interval_ns,
+            "timer_count": clock.timer_count(),
+            "next_timer_ns": clock.next_time_ns("axiom2.nautilus.smoke.timer"),
+            "timer_callback_dispatch": "not_exposed_by_public_python_clock",
             "timer_events": timer_events,
         },
     }
