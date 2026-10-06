@@ -73,3 +73,28 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
 implied. See the License for the specific language governing
 permissions and limitations under the License.
+
+-----------------------------------------------------------------------
+QuantConnect LEAN monitoring boundary — Apache License, Version 2.0
+-----------------------------------------------------------------------
+
+This product includes an adapter boundary for the upstream QuantConnect LEAN
+runtime (https://github.com/QuantConnect/Lean), pinned for this slice at
+80e7843f645673bcbeaab963049f76f20f6785e1.
+
+No LEAN source is copied into this repository. The adapter delegates live
+subscriptions, consolidation, scheduling, synchronization, and connection
+handling to the external LEAN runtime; Axiom receives normalized observations
+only. If LEAN binaries or source are distributed with a deployment, retain
+QuantConnect's copyright notices and the Apache License, Version 2.0.
+
+LEAN is Copyright 2014 QuantConnect and contributors, licensed under the
+Apache License, Version 2.0. A copy of the license may be obtained at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the license for the specific language governing permissions and
+limitations under the License.

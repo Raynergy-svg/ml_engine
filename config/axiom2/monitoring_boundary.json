@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "profile": "monitoring-observation-only",
+  "execution_enabled": false,
+  "capital_authorized": false,
+  "broker_write_enabled": false,
+  "lean_revision": "80e7843f645673bcbeaab963049f76f20f6785e1",
+  "source_sha256": {
+    "src/axiom2/monitoring/__init__.py": "c5f8715f23e8161fb3615b82cef19f53ea92bf8eadb4080aec8aa25e34c1f565",
+    "src/axiom2/monitoring/contracts.py": "be8bb3e5e244a76d34c8aa40c0ce80d886eb2013c8162d50c626e7726ca92f22",
+    "src/axiom2/monitoring/lean_adapter.py": "ee1d72bec4608e735072a0b276b2f9b2125a877d04c48ffb2ae0db79d7d1683d",
+    "src/axiom2/monitoring/monitor.py": "c693e71b03a5f6e9df634acd04b828cba759b64247e594e73ceb6be74f908ec0",
+    "src/axiom2/monitoring/store.py": "d37300fe21bfd574501e5b5b5303740fcbea2095406a80e3bcc0ed45869f0a36"
+  }
+}
