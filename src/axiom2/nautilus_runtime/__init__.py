@@ -9,6 +9,7 @@ from .contracts import (
 )
 from .journal import CandidateJournal
 from .policy import CandidateMonitor
+from .runtime import NautilusReplayRuntime, NautilusRuntimeUnavailable
 from .wakeup import ResearchWakeupConsumer
 
 __all__ = [
@@ -17,6 +18,8 @@ __all__ = [
     "CandidateObservation",
     "CandidateState",
     "MaterialEvent",
+    "NautilusReplayRuntime",
+    "NautilusRuntimeUnavailable",
     "ResearchResult",
     "ResearchWakeup",
     "ResearchWakeupConsumer",

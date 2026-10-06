@@ -62,3 +62,7 @@ jobs:
           NAUTILUS_SOURCE_REVISION: 4f021bafc2e99c5490cee204b0fc2bd2c83baab4
           NAUTILUS_BUILD_MODE: source checkout plus upstream make build
         run: ../nautilus/python/.venv/bin/python scripts/axiom2_nautilus_smoke.py
+
+      - name: Run Nautilus-backed Axiom runtime tests
+        working-directory: axiom
+        run: PYTHONPATH="$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_runtime_recovery.py
