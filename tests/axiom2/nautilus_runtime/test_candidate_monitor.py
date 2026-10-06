@@ -222,6 +222,6 @@ def test_expiration_is_terminal_from_waiting(tmp_path):
     journal = CandidateJournal(tmp_path / "candidate.sqlite")
     monitor = CandidateMonitor(journal)
     monitor.observe(observation("watch", observed_at_ns=1, deadline_ns=5))
-    monitor.observe(observation("expired", observed_at_ns=5, deadline_ns=10))
+    monitor.observe(observation("expired", observed_at_ns=5, deadline_ns=5))
     assert monitor.state("candidate-1", "v1") is CandidateState.EXPIRED
     journal.close()
