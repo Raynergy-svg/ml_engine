@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
+from threading import RLock
 
 from src.evidence.hashing import content_digest
 
@@ -98,6 +99,7 @@ class AxiomMonitor:
     ):
         self.store = store
         self.wakeup_sink = wakeup_sink
+        self._mutex = RLock()
 
     def _events(self) -> tuple[MonitorEvent, ...]:
         return self.store.replay()
@@ -455,6 +457,11 @@ class AxiomMonitor:
             raise MonitorStoreOrderingError("source watermark regression")
 
     def observe(self, observation: MarketObservation) -> CandidateState:
+        """Serialize observations so trigger races re-read durable state."""
+        with self._mutex:
+            return self._observe(observation)
+
+    def _observe(self, observation: MarketObservation) -> CandidateState:
         """Consume one normalized observation and emit at most one material wakeup."""
         projection = self._projection(observation.candidate_id)
         self._validate_observation_identity(projection, observation)
@@ -674,6 +681,16 @@ class AxiomMonitor:
         return state
 
     def revalidate(
+        self,
+        candidate_id: str,
+        observation: MarketObservation,
+        command_id: str,
+    ) -> CandidateState:
+        """Serialize revalidation against concurrent invalidation."""
+        with self._mutex:
+            return self._revalidate(candidate_id, observation, command_id)
+
+    def _revalidate(
         self,
         candidate_id: str,
         observation: MarketObservation,
