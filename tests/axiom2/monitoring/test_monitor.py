@@ -128,7 +128,7 @@ def test_price_and_volume_crossing_triggers_once(tmp_path):
     assert trigger(monitor).value == "TRIGGERED"
     assert len(sink.wakeups) == 1
 
-    assert monitor.observe(observation("trigger-2", 2, price=500_000_002, volume=10_002)).value == "TRIGGERED"
+    assert monitor.observe(observation("trigger-2", 2, price=500_000_001, volume=10_001)).value == "TRIGGERED"
     assert len(sink.wakeups) == 1
 
 
