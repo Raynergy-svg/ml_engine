@@ -33,6 +33,14 @@ PORTFOLIO_FILES = frozenset({
 })
 EXECUTION_POLICY = "config/axiom2/execution_boundary.json"
 EXECUTION_FILES = frozenset(['src/axiom2/brokers/service.py', 'src/axiom2/brokers/fake_execution.py', 'src/axiom2/execution/service.py'] + ['src/axiom2/brokers/__init__.py', 'src/axiom2/brokers/contracts.py', 'src/axiom2/brokers/robinhood_readonly.py', 'src/axiom2/execution/__init__.py', 'src/axiom2/execution/admission.py', 'src/axiom2/execution/authority.py', 'src/axiom2/execution/authorization.py', 'src/axiom2/execution/costs.py', 'src/axiom2/execution/journal.py', 'src/axiom2/execution/lifecycle.py', 'src/axiom2/execution/reconciliation.py', 'src/axiom2/execution/resolution.py', 'src/axiom2/execution/fencing.py', 'src/axiom2/execution/artifacts.py', 'src/axiom2/shadow/__init__.py', 'src/axiom2/shadow/fills.py', 'src/axiom2/shadow/engine.py', 'src/axiom2/shadow/portfolio.py', 'src/evidence/execution_shadow.py'])
+MONITORING_POLICY = "config/axiom2/monitoring_boundary.json"
+MONITORING_FILES = frozenset({
+    "src/axiom2/monitoring/__init__.py",
+    "src/axiom2/monitoring/contracts.py",
+    "src/axiom2/monitoring/store.py",
+    "src/axiom2/monitoring/monitor.py",
+    "src/axiom2/monitoring/lean_adapter.py",
+})
 SOURCE_FILES = frozenset(
     [
         "src/__init__.py",
@@ -362,6 +370,46 @@ def _audit_execution_exclusion(root: Path, observed: set[str]) -> dict[str, byte
     return snapshot
 
 
+def _audit_monitoring_exclusion(root: Path, observed: set[str]) -> dict[str, bytes]:
+    """Pin observation-only monitoring separately from the research bundle."""
+    if not (observed & MONITORING_FILES) and not os.path.lexists(root / MONITORING_POLICY):
+        return {}
+    policy = json.loads(
+        _regular_source(root, MONITORING_POLICY).read_text(), object_pairs_hook=_no_duplicates,
+    )
+    expected_fields = {
+        "schema_version",
+        "profile",
+        "execution_enabled",
+        "capital_authorized",
+        "broker_write_enabled",
+        "lean_revision",
+        "source_sha256",
+    }
+    if (
+        type(policy) is not dict
+        or set(policy) != expected_fields
+        or type(policy["schema_version"]) is not int
+        or policy["schema_version"] != 1
+        or policy["profile"] != "monitoring-observation-only"
+        or policy["execution_enabled"] is not False
+        or policy["capital_authorized"] is not False
+        or policy["broker_write_enabled"] is not False
+        or policy["lean_revision"] != "80e7843f645673bcbeaab963049f76f20f6785e1"
+    ):
+        raise ValueError("unsupported monitoring boundary profile")
+    digests = policy["source_sha256"]
+    if type(digests) is not dict or set(digests) != MONITORING_FILES:
+        raise ValueError("monitoring source inventory requires explicit review")
+    snapshot = {}
+    for name in sorted(MONITORING_FILES):
+        content = _regular_source(root, name).read_bytes()
+        if hashlib.sha256(content).hexdigest() != digests[name]:
+            raise ValueError(f"monitoring source digest changed; review required: {name}")
+        snapshot[name] = content
+    return snapshot
+
+
 def audit_sources(root: Path) -> dict[str, bytes]:
     """Capture exact audited bytes; fail before executing any candidate source."""
     root = root.resolve()
@@ -403,8 +451,9 @@ def audit_sources(root: Path) -> dict[str, bytes]:
             observed.add((Path(directory) / name).relative_to(root).as_posix())
     portfolio = _audit_portfolio_exclusion(root, observed)
     execution = _audit_execution_exclusion(root, observed)
+    monitoring = _audit_monitoring_exclusion(root, observed)
     expected = {name for name in SOURCE_FILES if name == "src/__init__.py" or name.startswith("src/axiom2/")}
-    if observed != expected | set(portfolio) | {name for name in execution if name.startswith("src/axiom2/")}:
+    if observed != expected | set(portfolio) | set(monitoring) | {name for name in execution if name.startswith("src/axiom2/")}:
         raise ValueError("source inventory drift: missing or unreviewed files")
     snapshot = {}
     for name in sorted(SOURCE_FILES):
