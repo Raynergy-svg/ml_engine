@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import ast
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -239,3 +240,24 @@ def test_ready_is_not_an_execution_surface(tmp_path):
     assert not hasattr(monitor, "place_order")
     assert not hasattr(monitor, "broker")
     assert not hasattr(monitor, "execution_authority")
+
+def test_trigger_race_has_one_material_trigger(tmp_path):
+    sink = Sink()
+    monitor = waiting(tmp_path, sink)
+    observations = (
+        observation("race-1", 1, price=500_000_001, volume=10_001),
+        observation("race-2", 2, price=500_000_002, volume=10_002),
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = tuple(pool.map(monitor.observe, observations))
+
+    assert results == (CandidateState.TRIGGERED, CandidateState.TRIGGERED)
+    assert len([wake for wake in sink.wakeups if wake.reason.value == "ENTRY_TRIGGERED"]) == 1
+    assert len(
+        [
+            row
+            for row in MonitorStore(tmp_path).replay()
+            if row.kind.value == "ENTRY_TRIGGERED"
+        ]
+    ) == 1
