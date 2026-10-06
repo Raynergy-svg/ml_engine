@@ -42,7 +42,7 @@ def test_smoke_is_bound_to_public_runtime_and_order_event_apis():
         '"timer_scheduling"',
         '"timer_start_ns"',
         '"first_event_ns"',
-        '"expected_first_timer_ns"',
+        "expected_first_timer_ns",
         '"timestamp_advance_verified"',
         '"supported_by_public_python_clock"',
     ):
