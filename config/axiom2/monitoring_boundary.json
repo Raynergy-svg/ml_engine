@@ -5,5 +5,11 @@
   "capital_authorized": false,
   "broker_write_enabled": false,
   "lean_revision": "80e7843f645673bcbeaab963049f76f20f6785e1",
-  "source_sha256": {}
+  "source_sha256": {
+    "src/axiom2/monitoring/__init__.py": "40cf28a2f973d8a4a227005deea1c092f329b752d8864dc6c02e4992b79f3c55",
+    "src/axiom2/monitoring/contracts.py": "be8bb3e5e244a76d34c8aa40c0ce80d886eb2013c8162d50c626e7726ca92f22",
+    "src/axiom2/monitoring/lean_adapter.py": "38abcdab8d96063e1adf1ca804c6463a0ffd6d96dd82eb9dfda3e8019cc8aea7",
+    "src/axiom2/monitoring/monitor.py": "7f0411cc4177c40e0c694e3906004497b8366682a95e191c568b90c2b17d88b3",
+    "src/axiom2/monitoring/store.py": "654183a75b870403bed530bd1679fa58ac0c029b0319c76167df99c7ca25aa98"
+  }
 }
