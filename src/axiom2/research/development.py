@@ -405,6 +405,14 @@ def _report_number(value, label):
     return float(value)
 
 
+def _same_report_number(left,right):
+    try:
+        values=(float(left),float(right))
+    except (TypeError,ValueError):
+        return False
+    return all(np.isfinite(value) for value in values) and bool(np.isclose(*values,rtol=0.0,atol=1e-12))
+
+
 def _derive_arm_evidence(arm):
     session_ic=arm.get('session_ic')
     if not isinstance(session_ic,(list,tuple)) or len(session_ic)!=315:
@@ -428,7 +436,7 @@ def _derive_arm_evidence(arm):
         raise ValueError('derived fold IC mismatch')
     rank_ic=float(np.mean(fold_ic))
     positive=float(np.mean(np.asarray(fold_ic)>0))
-    if arm.get('rank_ic')!=rank_ic or arm.get('positive_fold_fraction')!=positive:
+    if not all((_same_report_number(arm.get('rank_ic'),rank_ic),_same_report_number(arm.get('positive_fold_fraction'),positive))):
         raise ValueError('derived IC conclusion mismatch')
 
     book=arm.get('book')
@@ -523,14 +531,13 @@ def verify_comparison_report(key, *, registry):
             relevant=[t for t in state.trials.values() if t.experiment_id==arm['experiment_id']]
             if len(relevant)!=1:raise ValueError('ignored or extra trial attempt')
             rank_ic,fold_ic,positive,turnover,stress=_derive_arm_evidence(arm)
-            if (
-                campaign.mean_rank_correlation!=rank_ic
-                or campaign.portfolio_net_return!=stress['10']['net_excess_return']
-                or campaign.baseline_net_return!=stress['10']['momentum_net_excess_return']
-                or campaign.turnover!=turnover
-                or campaign.max_drawdown!=stress['10']['excess_drawdown']
-                or campaign.positive_fold_fraction!=positive
-            ):raise ValueError('campaign derived metric mismatch')
+            if not all((_same_report_number(campaign.mean_rank_correlation,rank_ic),
+                _same_report_number(campaign.portfolio_net_return,stress['10']['net_excess_return']),
+                _same_report_number(campaign.baseline_net_return,stress['10']['momentum_net_excess_return']),
+                _same_report_number(campaign.turnover,turnover),
+                _same_report_number(campaign.max_drawdown,stress['10']['excess_drawdown']),
+                _same_report_number(campaign.positive_fold_fraction,positive))):
+                raise ValueError('campaign derived metric mismatch')
             if arm['rank_ic']!=campaign.mean_rank_correlation or arm['positive_fold_fraction']!=campaign.positive_fold_fraction or arm['turnover']!=campaign.turnover:raise ValueError('campaign metric mismatch')
             trial=state.trials.get(campaign.selected_trial_id)
             if (
