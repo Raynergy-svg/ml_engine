@@ -165,7 +165,7 @@ class ReconciliationReceipt(StrictContract):
 
 
 class MonitorEvent(StrictContract):
-    sequence: int = Field(ge=0)
+    sequence: int = Field(default=0, ge=0)
     previous_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     event_id: str = Field(min_length=1)
     candidate_id: str = Field(min_length=1)
