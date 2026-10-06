@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
+import signal
+import subprocess
+import sys
 
 from axiom2.nautilus_runtime import (
     CandidateJournal,
@@ -101,6 +105,71 @@ def test_replay_runtime_qualified_trigger_restarts_and_reaches_ready(
     assert restarted_monitor.revalidate(result).duplicate
     assert not hasattr(runtime, "submit_order")
     restarted_journal.close()
+
+
+def test_sigkill_and_restart_recovers_one_wakeup(tmp_path: Path) -> None:
+    database = tmp_path / "sigkill.sqlite"
+    child = """
+import hashlib
+import os
+from pathlib import Path
+import signal
+import sys
+
+from axiom2.nautilus_runtime import (
+    CandidateJournal,
+    CandidateMonitor,
+    CandidateObservation,
+    NautilusReplayRuntime,
+)
+
+def digest(value):
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+def observation(observation_id, observed_at_ns, confirmation=False):
+    return CandidateObservation(
+        candidate_id="runtime-candidate",
+        candidate_version="v1",
+        observation_id=observation_id,
+        observed_at_ns=observed_at_ns,
+        freshness_deadline_ns=100,
+        evidence_digest=digest("evidence:" + observation_id),
+        raw_observation_digest=digest("raw:" + observation_id),
+        confirmation=confirmation,
+        facts={"source": "deterministic-replay"},
+    )
+
+journal = CandidateJournal(Path(sys.argv[1]))
+monitor = CandidateMonitor(journal)
+runtime = NautilusReplayRuntime(monitor, journal)
+runtime.start()
+runtime.publish(observation("watch", 1))
+runtime.publish(observation("confirmed", 2, confirmation=True))
+os.kill(os.getpid(), signal.SIGKILL)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", child, str(database)],
+        env=os.environ.copy(),
+    )
+    assert process.wait(timeout=30) == -signal.SIGKILL
+
+    journal = CandidateJournal(database)
+    monitor = CandidateMonitor(journal)
+    pending = journal.pending_wakeups()
+    assert len(pending) == 1
+    result = ResearchResult(
+        wakeup_id=pending[0].wakeup_id,
+        candidate_id="runtime-candidate",
+        candidate_version="v1",
+        completed_at_ns=3,
+        fresh_until_ns=50,
+        evidence_digest=digest("research:sigkill"),
+        qualifies=True,
+    )
+    assert monitor.revalidate(result).outcome == CandidateState.READY.value
+    assert journal.pending_wakeups() == ()
+    assert monitor.revalidate(result).duplicate
+    journal.close()
 
 
 def test_replay_runtime_stale_result_cannot_resurrect_invalidated_version(
