@@ -27,6 +27,6 @@ jobs:
       - name: Install test runner
         run: python -m pip install --disable-pip-version-check "pytest==8.3.5"
 
-      - name: Run durable candidate-monitor tests
+      - name: Run smoke contract and durable candidate-monitor tests
         working-directory: axiom
-        run: python -m pytest -q tests/axiom2/nautilus_runtime/test_candidate_monitor.py
+        run: python -m pytest -q tests/axiom2/test_nautilus_smoke_contract.py tests/axiom2/nautilus_runtime/test_candidate_monitor.py

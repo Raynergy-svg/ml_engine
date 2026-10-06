@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a no-credentials, replay-only smoke test against installed NautilusTrader.
+"""Run a no-credentials, replay-only public event/clock smoke test.
 
 The script intentionally uses only public Python APIs. It does not create a
 client, connect a transport, submit an order, or mutate Axiom state.
@@ -114,11 +114,11 @@ def _exercise_event_delivery_and_clock() -> dict[str, Any]:
     assert clock.timer_count() == 1
     assert clock.next_time_ns("axiom2.nautilus.smoke.timer") == start_ns + interval_ns
 
-    # The supported Python Clock surface schedules and reports deterministic
-    # timers, but Clock.set_time() only changes the virtual timestamp. It does
-    # not dispatch queued callbacks, and this revision exposes no public
-    # advance_time method. Expiry is therefore evaluated on replay observations
-    # and restart, not by pretending a callback was delivered.
+    # Event delivery is exercised above. The timer check below is deliberately
+    # limited to scheduling and timestamp state: this upstream revision's
+    # supported Python Clock surface has no public advance_time or callback
+    # dispatch method. Advancing the timestamp must not be reported as timer
+    # callback delivery.
     clock.set_time(start_ns + interval_ns)
     assert clock.timestamp_ns() == start_ns + interval_ns
 
@@ -128,10 +128,17 @@ def _exercise_event_delivery_and_clock() -> dict[str, Any]:
         "deterministic_clock": {
             "start_ns": start_ns,
             "advanced_to_ns": start_ns + interval_ns,
-            "timer_count": clock.timer_count(),
-            "next_timer_ns": clock.next_time_ns("axiom2.nautilus.smoke.timer"),
-            "timer_callback_dispatch": "not_exposed_by_public_python_clock",
-            "timer_events": timer_events,
+            "timestamp_advance_verified": True,
+            "timer_scheduling": {
+                "registered": True,
+                "timer_count": clock.timer_count(),
+                "next_timer_ns": clock.next_time_ns("axiom2.nautilus.smoke.timer"),
+            },
+            "callback_dispatch": {
+                "supported_by_public_python_clock": False,
+                "observed_events": timer_events,
+                "note": "Clock.set_time advances the virtual timestamp only; this revision exposes no public advance_time or callback-dispatch API.",
+            },
         },
     }
 

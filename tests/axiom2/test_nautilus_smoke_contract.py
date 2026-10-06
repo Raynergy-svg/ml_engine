@@ -39,8 +39,12 @@ def test_smoke_is_bound_to_public_runtime_and_order_event_apis():
         "DataActor",
         "OrderFilled",
         "OrderCancelRejected",
+        '"timer_scheduling"',
+        '"timestamp_advance_verified"',
+        '"supported_by_public_python_clock"',
     ):
         assert required in smoke
 
+    assert "timer_callback_dispatch" not in smoke
     assert "ExecutionClient(" not in smoke
     assert "TradingNode" not in smoke
