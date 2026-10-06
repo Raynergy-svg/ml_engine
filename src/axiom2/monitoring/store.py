@@ -224,6 +224,16 @@ class MonitorStore:
         rows = self.replay()
         return self._event_digest(rows[-1]) if rows else None
 
+    def latest_received_at(self) -> datetime | None:
+        """Return the verified receipt watermark for monotonic deliveries."""
+        with self._locked():
+            self._replay_unlocked()
+            paths = sorted(self.events_root.iterdir(), key=lambda path: path.name)
+            if not paths:
+                return None
+            receipt = MonitorReceipt.model_validate_json(paths[-1].read_bytes(), strict=True)
+            return receipt.received_at
+
     def pending_wakeups(self) -> tuple[MonitorEvent, ...]:
         rows = self.replay()
         delivered = {
