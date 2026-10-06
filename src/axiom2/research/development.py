@@ -557,16 +557,16 @@ def verify_comparison_report(key, *, registry):
         if [(row[0],row[1]) for row in full]!=[(row[0],row[1]) for row in price]:raise ValueError('paired evidence mismatch')
         expected_paired={
             'FULL_minus_P':paired_bounds(
-                [float(f[3])-.001*float(f[4])-float(p[3])+.001*float(p[4]) for f,p in zip(full,price)],
+                [(float(f[3])-.001*float(f[4]))-(float(p[3])-.001*float(p[4])) for f,p in zip(full,price)],
                 [row[0] for row in full],
             ),
             'FULL_minus_momentum':paired_bounds(
-                [float(f[3])-.001*float(f[4])-float(f[6])+.001*float(f[7]) for f in full],
+                [(float(f[3])-.001*float(f[4]))-(float(f[6])-.001*float(f[7])) for f in full],
                 [row[0] for row in full],
             ),
         }
         expected_primary=bool(report.arms['FULL']['gate_pass'] and all(item['lower_97_5']>0 for item in expected_paired.values()))
-    if report.paired!=expected_paired:raise ValueError('paired bound mismatch')
+    if canonical_bytes(report.paired)!=canonical_bytes(expected_paired):raise ValueError('paired bound mismatch')
     if report.primary_hypothesis_pass!=expected_primary:raise ValueError('primary hypothesis mismatch')
     return report
 
