@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "profile": "monitoring-observation-only",
+  "execution_enabled": false,
+  "capital_authorized": false,
+  "broker_write_enabled": false,
+  "lean_revision": "80e7843f645673bcbeaab963049f76f20f6785e1",
+  "source_sha256": {}
+}
