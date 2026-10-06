@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a no-credentials, replay-only public event/clock smoke test.
+"""Run a no-credentials, replay-only public event/clock/actor smoke test.
 
 The script intentionally uses only public Python APIs. It does not create a
 client, connect a transport, submit an order, or mutate Axiom state.
@@ -152,20 +152,35 @@ def _exercise_event_delivery_and_clock() -> dict[str, Any]:
 
 
 def _exercise_lifecycle() -> dict[str, Any]:
+    from nautilus_trader.backtest import BacktestEngine, BacktestEngineConfig
     from nautilus_trader.common import DataActor, DataActorConfig
 
-    actor = DataActor(DataActorConfig(log_events=False, log_commands=False))
-    actor.start()
-    assert actor.is_running(), actor.state()
-    running_state = actor.state().name
-    actor.stop()
-    assert actor.is_stopped(), actor.state()
-    stopped_state = actor.state().name
-    actor.dispose()
+    lifecycle_events: list[str] = []
+
+    class SmokeActor(DataActor):
+        def on_start(self) -> None:
+            lifecycle_events.append("start")
+
+        def on_stop(self) -> None:
+            lifecycle_events.append("stop")
+
+    engine = BacktestEngine(
+        BacktestEngineConfig(bypass_logging=True, run_analysis=False)
+    )
+    actor = SmokeActor(DataActorConfig(log_events=False, log_commands=False))
+    engine.add_actor(actor)
+    try:
+        engine.run()
+    finally:
+        engine.dispose()
+
+    assert lifecycle_events == ["start", "stop"], lifecycle_events
+    assert actor.is_disposed(), actor.state()
     return {
         "component": "DataActor",
-        "start_state": running_state,
-        "stop_state": stopped_state,
+        "lifecycle_driver": "BacktestEngine",
+        "hook_events": lifecycle_events,
+        "final_state": actor.state().name,
         "dispose_called": True,
     }
 
@@ -281,7 +296,7 @@ def _exercise_order_event_constructors() -> dict[str, Any]:
     return {
         "public_constructors_callable": sorted(events),
         "engine_integration_claim": False,
-        "note": "Constructor calls prove model API availability only; no execution engine or client was created.",
+        "note": "Constructor calls prove model API availability only; no live execution client or broker was created.",
     }
 
 
@@ -315,6 +330,7 @@ def main() -> int:
         "safety": {
             "broker_credentials_present": False,
             "execution_clients_created": False,
+            "backtest_engine_created": True,
             "external_network_attempts": attempts,
             "order_submitted": False,
             "capital_authorized": False,

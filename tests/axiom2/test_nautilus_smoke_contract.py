@@ -37,6 +37,11 @@ def test_smoke_is_bound_to_public_runtime_and_order_event_apis():
         "subscribe",
         "publish",
         "DataActor",
+        "BacktestEngine",
+        "add_actor",
+        "engine.run",
+        "on_start",
+        "on_stop",
         "OrderFilled",
         "OrderCancelRejected",
         '"timer_scheduling"',
@@ -51,5 +56,7 @@ def test_smoke_is_bound_to_public_runtime_and_order_event_apis():
     assert "timer_callback_dispatch" not in smoke
     assert 'next_time_ns("axiom2.nautilus.smoke.timer") == start_ns + interval_ns' not in smoke
     assert "start_time_ns=timer_start_ns" in smoke
+    assert "actor.start()" not in smoke
+    assert "actor.stop()" not in smoke
     assert "ExecutionClient(" not in smoke
     assert "TradingNode" not in smoke

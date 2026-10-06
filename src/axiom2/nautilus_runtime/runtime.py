@@ -16,8 +16,10 @@ class NautilusRuntimeUnavailable(RuntimeError):
 class NautilusReplayRuntime:
     """Deliver admitted observations through Nautilus into Axiom policy.
 
-    This is deliberately replay-only. It exposes no order or execution client
-    methods and does not create a TradingNode, broker, or credentialed client.
+    This is deliberately replay-only. It uses Nautilus Clock and MessageBus
+    mechanics, while its start/stop methods are adapter lifecycle gates. It
+    exposes no order or execution client methods and does not create a
+    TradingNode, broker, or credentialed client.
     """
 
     TOPIC = "axiom2.nautilus.admitted_observation"
@@ -31,12 +33,7 @@ class NautilusReplayRuntime:
         topic: str = TOPIC,
     ) -> None:
         try:
-            from nautilus_trader.common import (
-                Clock,
-                DataActor,
-                DataActorConfig,
-                MessageBus,
-            )
+            from nautilus_trader.common import Clock, MessageBus
             from nautilus_trader.model import TraderId
         except ModuleNotFoundError as exc:
             raise NautilusRuntimeUnavailable(
@@ -48,9 +45,6 @@ class NautilusReplayRuntime:
         self.topic = topic
         self.clock = Clock.new_test()
         self.bus = MessageBus(TraderId(trader_id), clock=self.clock)
-        self.actor = DataActor(
-            DataActorConfig(log_events=False, log_commands=False)
-        )
         self._started = False
         self._disposed = False
         self._last_material_event: MaterialEvent | None = None
@@ -68,14 +62,12 @@ class NautilusReplayRuntime:
         if self._disposed:
             raise RuntimeError("runtime is disposed")
         if not self._started:
-            self.actor.start()
             self._started = True
 
     def stop(self) -> None:
         if self._disposed:
             return
         if self._started:
-            self.actor.stop()
             self._started = False
 
     def dispose(self) -> None:
@@ -83,7 +75,6 @@ class NautilusReplayRuntime:
             return
         self.stop()
         self.bus.dispose()
-        self.actor.dispose()
         self._disposed = True
 
     def set_time(self, to_time_ns: int) -> None:

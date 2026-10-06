@@ -53,6 +53,12 @@ The corrected smoke run is independently tracked and must finish before
 smoke success is claimed. No Rust bridge was added because the required
 observation-boundary behavior is available without timer callback dispatch.
 
+The next source run exposed a second public-interface issue: constructing a
+DataActor and calling start() directly leaves it in PRE_INITIALIZED and raises
+an invalid lifecycle transition. The harness now registers the actor through
+BacktestEngine.add_actor(), runs the offline backtest engine, and disposes it;
+the replay adapter no longer calls unsupported direct actor lifecycle methods.
+
 ## Public API findings
 
 The smoke harness and implementation use only public supported Python
@@ -61,8 +67,8 @@ interfaces:
 - Clock.new_test(), set_timer_ns, and set_time for deterministic clock state.
 - MessageBus(TraderId, clock=...), subscribe, and publish for synchronous
   event delivery.
-- DataActor.start(), is_running(), stop(), and is_stopped() for lifecycle
-  start/stop.
+- BacktestEngine.add_actor(), run(), and dispose(), with DataActor
+  on_start()/on_stop() hooks for the supported offline lifecycle.
 - Public model constructors for OrderSubmitted, OrderAccepted, OrderRejected,
   OrderCanceled, OrderCancelRejected, and OrderFilled.
 - Public LimitOrder.apply(event) for offline order-event replay.
@@ -92,7 +98,7 @@ provenance record; the dependency remains unmodified and pinned.
 
 The implemented path is:
 
-admitted observation -> Nautilus public MessageBus/DataActor runtime -> Axiom
+admitted observation -> Nautilus public Clock/MessageBus runtime -> Axiom
 candidate policy -> durable material event -> bounded ResearchWakeup -> Axiom
 revalidation
 

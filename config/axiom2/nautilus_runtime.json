@@ -36,8 +36,11 @@
     "nautilus_trader.common.Clock.set_time",
     "nautilus_trader.common.MessageBus.subscribe",
     "nautilus_trader.common.MessageBus.publish",
-    "nautilus_trader.common.DataActor.start",
-    "nautilus_trader.common.DataActor.stop"
+    "nautilus_trader.backtest.BacktestEngine.add_actor",
+    "nautilus_trader.backtest.BacktestEngine.run",
+    "nautilus_trader.backtest.BacktestEngine.dispose",
+    "nautilus_trader.common.DataActor.on_start",
+    "nautilus_trader.common.DataActor.on_stop"
   ],
   "order_event_constructors_probed": [
     "OrderSubmitted",
