@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
+from src.evidence.canonical import canonical_bytes
 from src.axiom2.monitoring.contracts import (
     CandidateRegistration,
     CandidateState,
@@ -91,11 +92,13 @@ def test_rules_reject_invalid_metric_role_combinations():
             role="NOT_A_ROLE",
         )
 
+    payload = candidate().model_dump(
+        mode="json",
+        exclude={"state", "schema_version"},
+    )
+    payload["entry_rules"] = []
     with pytest.raises(ValidationError):
-        CandidateRegistration(
-            **candidate().model_dump(exclude={"state", "schema_version"}),
-            entry_rules=(),
-        )
+        CandidateRegistration.model_validate_json(canonical_bytes(payload))
 
 
 def test_candidate_state_enum_includes_monitoring_lifecycle():
