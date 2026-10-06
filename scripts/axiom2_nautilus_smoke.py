@@ -235,7 +235,11 @@ def _exercise_order_event_constructors() -> dict[str, Any]:
         event_id=UUID4(),
         **{key: value for key, value in common.items() if key != "venue_order_id"},
     )
-    events["OrderAccepted"] = OrderAccepted(event_id=UUID4(), **common)
+    events["OrderAccepted"] = OrderAccepted(
+        event_id=UUID4(),
+        reconciliation=False,
+        **common,
+    )
     events["OrderRejected"] = OrderRejected(
         event_id=UUID4(),
         trader_id=trader_id,

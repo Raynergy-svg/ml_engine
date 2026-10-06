@@ -68,3 +68,13 @@ def test_smoke_serializes_component_state_with_supported_string_conversion():
     assert '"final_state": str(actor.state())' in smoke
     assert "actor.state().name" not in smoke
     assert "actor.state().value" not in smoke
+    
+def test_smoke_matches_pinned_order_accepted_constructor_requirements():
+    smoke = SMOKE_PATH.read_text(encoding="utf-8")
+    accepted_call = smoke.split(
+        'events["OrderAccepted"] = OrderAccepted(', 1
+    )[1].split(
+        'events["OrderRejected"] = OrderRejected(', 1
+    )[0]
+
+    assert "reconciliation=False" in accepted_call
