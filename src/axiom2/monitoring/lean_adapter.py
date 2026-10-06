@@ -14,6 +14,7 @@ from typing import Callable, Literal, Protocol
 
 from pydantic import Field
 
+from src.evidence.canonical import canonical_bytes
 from src.evidence.contracts import StrictContract
 
 from .contracts import CandidateState, MarketObservation
@@ -63,7 +64,7 @@ class LeanObservationAdapter:
         envelope = (
             event
             if isinstance(event, LeanMarketEvent)
-            else LeanMarketEvent.model_validate(event)
+            else LeanMarketEvent.model_validate_json(canonical_bytes(event), strict=True)
         )
         observation = MarketObservation(
             candidate_id=envelope.candidate_id,
