@@ -589,6 +589,11 @@ class AxiomMonitor:
         return projection.state
 
     def expire(self, now: datetime) -> tuple[str, ...]:
+        """Serialize deadline transitions against observations."""
+        with self._mutex:
+            return self._expire(now)
+
+    def _expire(self, now: datetime) -> tuple[str, ...]:
         """Expire candidates whose durable deadline has passed."""
         self._require_aware(now, "now")
         expired: list[str] = []
@@ -628,6 +633,11 @@ class AxiomMonitor:
         )
 
     def apply_research_response(self, response: ResearchResponse) -> CandidateState:
+        """Serialize advisor responses against invalidation and revalidation."""
+        with self._mutex:
+            return self._apply_research_response(response)
+
+    def _apply_research_response(self, response: ResearchResponse) -> CandidateState:
         """Apply an advisor response without allowing it to authorize execution."""
         event_id = f"research:{response.response_id}"
         prior = self._event(event_id)
@@ -786,6 +796,11 @@ class AxiomMonitor:
         return None
 
     def apply_reconciliation(self, receipt: ReconciliationReceipt) -> CandidateState:
+        """Serialize reconciliation transitions; never write to a broker."""
+        with self._mutex:
+            return self._apply_reconciliation(receipt)
+
+    def _apply_reconciliation(self, receipt: ReconciliationReceipt) -> CandidateState:
         """Consume reconciliation truth; never submit, cancel, or write to a broker."""
         event_id = f"reconcile:{receipt.receipt_id}"
         prior = self._event(event_id)
