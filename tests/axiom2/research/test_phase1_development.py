@@ -302,7 +302,7 @@ def _persist_signed_comparison_report(ctx, data):
     return _persist(
         ctx.registry,
         ctx.registry.signer.sign(
-            ComparisonReport.model_validate(data),created_at=NOW
+            ComparisonReport.model_validate_json(json.dumps(data)),created_at=NOW
         ),
     )
 
