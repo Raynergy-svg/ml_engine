@@ -103,34 +103,42 @@ def _exercise_event_delivery_and_clock() -> dict[str, Any]:
 
     start_ns = clock.timestamp_ns()
     interval_ns = 1_000_000_000
+    timer_start_ns = start_ns + interval_ns
+    expected_first_timer_ns = timer_start_ns + interval_ns
     clock.set_timer_ns(
         "axiom2.nautilus.smoke.timer",
         interval_ns=interval_ns,
-        start_time_ns=start_ns + interval_ns,
+        start_time_ns=timer_start_ns,
         callback=on_timer,
         allow_past=False,
         fire_immediately=False,
     )
     assert clock.timer_count() == 1
-    assert clock.next_time_ns("axiom2.nautilus.smoke.timer") == start_ns + interval_ns
+    assert (
+        clock.next_time_ns("axiom2.nautilus.smoke.timer")
+        == expected_first_timer_ns
+    )
 
     # Event delivery is exercised above. The timer check below is deliberately
-    # limited to scheduling and timestamp state: this upstream revision's
-    # supported Python Clock surface has no public advance_time or callback
-    # dispatch method. Advancing the timestamp must not be reported as timer
-    # callback delivery.
-    clock.set_time(start_ns + interval_ns)
-    assert clock.timestamp_ns() == start_ns + interval_ns
+    # limited to scheduling and timestamp state: at this pinned revision,
+    # fire_immediately=False schedules the first event at start_time_ns plus
+    # one interval. The supported Python Clock surface has no public
+    # advance_time or callback-dispatch method, so this is not timer delivery
+    # evidence.
+    clock.set_time(timer_start_ns)
+    assert clock.timestamp_ns() == timer_start_ns
 
     bus.dispose()
     return {
         "event_delivery": {"topic": topic, "received": received},
         "deterministic_clock": {
             "start_ns": start_ns,
-            "advanced_to_ns": start_ns + interval_ns,
+            "advanced_to_ns": timer_start_ns,
             "timestamp_advance_verified": True,
             "timer_scheduling": {
                 "registered": True,
+                "timer_start_ns": timer_start_ns,
+                "first_event_ns": expected_first_timer_ns,
                 "timer_count": clock.timer_count(),
                 "next_timer_ns": clock.next_time_ns("axiom2.nautilus.smoke.timer"),
             },

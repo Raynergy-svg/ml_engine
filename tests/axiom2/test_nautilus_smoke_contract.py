@@ -40,11 +40,16 @@ def test_smoke_is_bound_to_public_runtime_and_order_event_apis():
         "OrderFilled",
         "OrderCancelRejected",
         '"timer_scheduling"',
+        '"timer_start_ns"',
+        '"first_event_ns"',
+        '"expected_first_timer_ns"',
         '"timestamp_advance_verified"',
         '"supported_by_public_python_clock"',
     ):
         assert required in smoke
 
     assert "timer_callback_dispatch" not in smoke
+    assert 'next_time_ns("axiom2.nautilus.smoke.timer") == start_ns + interval_ns' not in smoke
+    assert "start_time_ns=timer_start_ns" in smoke
     assert "ExecutionClient(" not in smoke
     assert "TradingNode" not in smoke
