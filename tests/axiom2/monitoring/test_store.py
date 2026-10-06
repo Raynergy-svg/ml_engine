@@ -120,3 +120,12 @@ def test_pending_wakeup_is_recovered_from_event_history(tmp_path):
         received_at=NOW + timedelta(seconds=1),
     )
     assert store.pending_wakeups() == ()
+
+def test_receipt_time_regression_is_rejected_before_write(tmp_path):
+    store = MonitorStore(tmp_path)
+    store.append(event("event-1", source_sequence=1), received_at=NOW + timedelta(seconds=1))
+
+    with pytest.raises(MonitorStoreOrderingError, match="receipt time"):
+        store.append(event("event-2", source_sequence=2), received_at=NOW)
+
+    assert [row.event_id for row in store.replay()] == ["event-1"]
