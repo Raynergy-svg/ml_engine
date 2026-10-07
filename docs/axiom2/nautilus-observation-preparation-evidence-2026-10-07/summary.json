@@ -1,0 +1,43 @@
+{
+  "code_commit": "15d4fda039b4484e2d4c9050a83efe32a0aec831",
+  "review": "APPROVED for bounded offline preparation only",
+  "full_scoped_gate": {
+    "tests": 1484,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "full_gate_seconds": 168.065,
+  "focused_tests": 148,
+  "focused_seconds": 11.06,
+  "independent_native_tests": 26,
+  "independent_seconds": 7.96,
+  "native_rebuild_performed": false,
+  "github_actions_run_for_this_code": null,
+  "verification_environment": "selected Linux cloud workspace, Python3.12.14; reused verified original Linux artifact; not a Mac equivalence claim",
+  "site_source_bytes_verified": 0,
+  "production_activated": false,
+  "blockers": [
+    "Current Library consumer helper tools/list HTTP401; source admission, owner publisher, persistent Site schema, supervision binding unverified",
+    "Independent Mac qualification of latest preparation pending"
+  ],
+  "evidence_sha256": {
+    "independent-final-namespace-probe.log": "58e8109e5e7e318ff9222ac0fc14f674bf92d070d86b0ef9ffe9146c7c99f7ac",
+    "independent-fix-ancestor-probe.log": "69f55b35effb25a8ad60b78998f6de263aca41a43c5c65d7904fb7bc54a8aa33",
+    "independent-fix-sqlite-full-probe.log": "d38d0d2597b1e61116901c96b565d4020b80c5e3f570c964d2adb28d096adffe",
+    "independent-hardlink-probe.log": "d9486e0409f5f64317df10e602b33e6ea68d8392bc4323243171af654f5e4c71",
+    "independent-preparation-final-review.md": "ece98f1ca2f9f80650ff14c47598c610d58c370d6007bb978ac37ea3168da8c8",
+    "independent-preparation-final-tests.log": "2c1d6f438021222dad78361c44fcb1c30376e050b9dcc74f32d75efe4216b92c",
+    "independent-preparation-fix-review.md": "39eb9dd40b3df01628305e8aaaa5538e70ba1db7d84ba53b474cb1a876813354",
+    "independent-preparation-review.md": "e025b19b6466cafe0dc4f13513c6f8f8c8bd7b82dddf26230867d36d92d157bb",
+    "independent-sqlite-full-callback-probe.log": "eac153c0ab978754535aed766ef7138df0dc019b7634fb7d7f8da93371ce9d63",
+    "preparation-ancestor-red.log": "d2cc599311796ef8d4522b0887ffd1dd06baa7f3a45650c6928888611f094526",
+    "preparation-callback-red-verified.log": "aadfc0b99875707b058eb0f1cb10731ae96947fcc8d3fdf553cef11ba79133f2",
+    "preparation-final-focused.log": "e04a9817bc8061aecb961a80843bc534a425e1e678b84f13f73f8c472a11f841",
+    "preparation-final-focused.xml": "33bbaa0687b3ded0d390420209062d873e1fe7247f626e99a464686be4444b81",
+    "preparation-final-full-gate.log": "dad3217a1d7878fca1852c93a9dcf1890a0062dd91264ac71b4d95a7ae77ceaa",
+    "preparation-final-full-gate.xml": "c1511deb31112c6774606294beb65c3d89970cf50539696048433db59304d8f6",
+    "preparation-final-source-integrity.json": "ac0100d219c668c8d728e7f2095cb77bab5546440497b421dfa145a886773c56",
+    "preparation-source-coverage.json": "ce0b67678771dfaa0ffe4f07641ab67b9690ad839752b44498185eac3e47ee23"
+  }
+}

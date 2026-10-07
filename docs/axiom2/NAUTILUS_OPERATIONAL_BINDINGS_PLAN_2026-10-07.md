@@ -1,5 +1,11 @@
 # Nautilus operational bindings — bounded plan, 2026-10-07
 
+Historical planning receipt at `65694bf`. David approved its persistent preparation
+scopes at 04:07 UTC. The current implementation, test/review status, source
+coverage and remaining blockers are in
+[NAUTILUS_OBSERVATION_PREPARATION_2026-10-07.md](NAUTILUS_OBSERVATION_PREPARATION_2026-10-07.md).
+Statements below saying "plan only" or "unapplied" describe that earlier checkpoint.
+
 Decision: reuse the existing owner transport, Python research worker and process
 supervisor. Add narrow adapters around the reviewed observation runtime; do not
 create a provider, credentials, a new scheduler/framework, a trading route or UI.
