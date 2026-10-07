@@ -24,13 +24,15 @@ MAX_STORAGE_BYTES = 64 * 1024 * 1024
 
 def private_namespace(evidence_root):
     root = Path(evidence_root).absolute() / 'observation_runtime'
+    # Managed user namespaces can map the filesystem-root owner away from UID0.
+    trusted_owners = (Path('/').stat().st_uid, os.getuid())
     # The configured evidence root must already exist; never accept paths from
     # records. Reject symlink components and foreign/private-scope mismatches.
     for parent in [root.parent, *root.parent.parents]:
         if parent.is_symlink():
             raise ValueError('unsafe storage namespace: symlink')
         parent_info = parent.stat()
-        if (parent_info.st_uid not in (0, os.getuid())
+        if (parent_info.st_uid not in trusted_owners
                 or (stat.S_IMODE(parent_info.st_mode) & 0o022
                     and not parent_info.st_mode & stat.S_ISVTX)):
             raise ValueError('unsafe storage namespace: ancestor can be replaced by another writer')
