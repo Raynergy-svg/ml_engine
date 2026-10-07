@@ -241,12 +241,12 @@ jobs:
           retention-days: 1
 
       - name: Install exact Axiom comparison test dependencies
-        run: uv pip install --python nautilus/python/.venv/bin/python -r axiom/requirements-axiom2-nautilus-tests.txt
+        run: uv pip install --python nautilus/python/.venv/bin/python -r axiom/requirements-axiom2-research.txt -r axiom/requirements-axiom2-nautilus-tests.txt
 
       - name: Run contract tests
         if: ${{ always() }}
         working-directory: axiom
-        run: python -m pytest -q tests/axiom2/test_nautilus_smoke_contract.py
+        run: python -m pytest -q tests/axiom2/test_nautilus_smoke_contract.py tests/axiom2/test_nautilus_artifact_redirect.py
 
       - name: Run actual public-interface smoke harness
         if: ${{ always() }}
@@ -254,14 +254,34 @@ jobs:
         env:
           NAUTILUS_SOURCE_REVISION: 4f021bafc2e99c5490cee204b0fc2bd2c83baab4
           NAUTILUS_BUILD_MODE: approved unchanged Linux extension; exact matching source/toolchain manifest; isolated test environment
-        run: ../nautilus/python/.venv/bin/python scripts/axiom2_nautilus_smoke.py
+        run: |
+          ../nautilus/python/.venv/bin/python scripts/axiom2_nautilus_smoke.py > "$RUNNER_TEMP/nautilus-smoke.json"
+          cat "$RUNNER_TEMP/nautilus-smoke.json"
 
       - name: Run Nautilus-backed Axiom runtime tests
         if: ${{ always() }}
         working-directory: axiom
-        run: PYTHONPATH="$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_runtime_recovery.py
+        run: PYTHONPATH="$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_runtime_recovery.py tests/axiom2/nautilus_runtime/test_candidate_monitor.py tests/axiom2/nautilus_runtime/test_monitor_completion.py tests/axiom2/nautilus_runtime/test_projection_contract.py
 
       - name: Run offline Nautilus order-lifecycle tests
         if: ${{ always() }}
         working-directory: axiom
         run: PYTHONPATH="$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_order_lifecycle.py
+
+      - name: Run the complete current Axiom and evidence gate
+        if: ${{ always() }}
+        working-directory: axiom
+        run: ../nautilus/python/.venv/bin/python -m pytest tests/axiom2 tests/evidence/equity_research tests/test_evidence_contracts.py tests/test_evidence_store.py tests/test_equity_research_evidence_slice.py tests/test_equity_research_evidence_worker_no_authority.py -q -W error --junitxml="$RUNNER_TEMP/axiom-scoped-tests.xml"
+
+      - name: Preserve small verification evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nautilus-verification-evidence
+          path: |
+            ${{ runner.temp }}/axiom-scoped-tests.xml
+            ${{ runner.temp }}/nautilus-smoke.json
+            nautilus/.axiom2-nautilus-build-manifest.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 90

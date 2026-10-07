@@ -101,4 +101,4 @@ def test_runtime_workflow_preserves_exact_build_and_runs_all_gates():
     assert "PYTHONPATH=\"$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom\"" in workflow
     assert "test_runtime_recovery.py" in workflow
     assert "test_order_lifecycle.py" in workflow
-    assert workflow.count("if: ${{ always() }}") == 4
+    assert workflow.count("if: ${{ always() }}") >= 4
