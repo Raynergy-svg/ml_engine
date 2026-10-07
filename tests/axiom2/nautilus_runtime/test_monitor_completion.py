@@ -144,3 +144,24 @@ def test_separate_connections_do_not_duplicate_durable_trigger(tmp_path):
     assert CandidateMonitor(second).observe(observation()) == event
     assert len(second.pending_wakeups()) == 1
     assert len(second.state_history('c', 'v1')) == 2
+
+
+def test_replay_returns_coupled_durable_snapshot_and_rejects_raw_corruption(tmp_path):
+    journal = CandidateJournal(tmp_path/'monitor.db')
+    CandidateMonitor(journal).observe(observation())
+    recovered = journal.replay()
+    assert recovered.candidates[0].state is CandidateState.TRIGGERED
+    assert len(recovered.pending_wakeups) == 1
+    journal.connection.execute("UPDATE raw_observations SET payload_json='{}'")
+    with pytest.raises(Exception, match='raw.*digest'):
+        journal.replay()
+
+
+def test_observation_cannot_extend_research_ready_deadline(tmp_path):
+    journal = CandidateJournal(tmp_path/'monitor.db')
+    monitor = CandidateMonitor(journal)
+    monitor.observe(observation())
+    monitor.revalidate(result(journal))
+    monitor.observe(observation('fresh-observation', 4, deadline=100))
+    journal.advance_time(5)
+    assert monitor.state('c', 'v1') is CandidateState.EXPIRED

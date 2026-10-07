@@ -19,6 +19,8 @@ from nautilus_trader.model import OrderSubmitted
 from nautilus_trader.model import OrderType
 from nautilus_trader.model import Price
 from nautilus_trader.model import Quantity
+from nautilus_trader.model import TraderId
+from nautilus_trader.model import StrategyId
 from nautilus_trader.model import TradeId
 from nautilus_trader.model import VenueOrderId
 
@@ -36,8 +38,8 @@ def event_uuid(index: int) -> UUID4:
     return UUID4.from_str(f"00000000-0000-4000-8000-{index:012d}")
 
 
-TRADER_ID = "TRADER-AXIOM2-REPLAY"
-STRATEGY_ID = "S-AXIOM2-REPLAY"
+TRADER_ID = TraderId("TRADER-AXIOM2-REPLAY")
+STRATEGY_ID = StrategyId("S-AXIOM2-REPLAY")
 INSTRUMENT_ID = InstrumentId.from_str("AAPL.SIM")
 ACCOUNT_ID = AccountId("SIM-AXIOM2")
 CLIENT_ORDER_ID = ClientOrderId("O-AXIOM2-REPLAY")
@@ -128,7 +130,7 @@ def fill_contract(fill_event: OrderFilled, event_id: str, quantity: int) -> Fill
         instrument=INSTRUMENT_ID.value,
         quantity=quantity,
         price_cents=int(fill_event.last_px.as_decimal() * 100),
-        fee_cents=int(fill_event.commission.raw),
+        fee_cents=int(fill_event.commission.as_decimal() * 100),
     )
 
 
@@ -141,12 +143,12 @@ def test_actual_nautilus_order_lifecycle_and_restart_recovery(tmp_path: Path) ->
 
     partial = filled(3, "TRADE-PARTIAL", 40)
     assert replay.ingest("fill-partial", partial, received_at_ns=3).snapshot.status == "PARTIALLY_FILLED"
-    assert replay.snapshot().filled_quantity_raw == 40
+    assert replay.snapshot().filled_quantity_raw == int(Quantity.from_int(40).raw)
 
     conflict = filled(4, "TRADE-PARTIAL", 40, price="10.01")
     conflict_result = replay.ingest("fill-partial", conflict, received_at_ns=4)
     assert conflict_result.disposition == "CONFLICT"
-    assert replay.snapshot().filled_quantity_raw == 40
+    assert replay.snapshot().filled_quantity_raw == int(Quantity.from_int(40).raw)
 
     engine_duplicate = filled(5, "TRADE-PARTIAL", 40)
     duplicate_result = replay.ingest(
@@ -155,7 +157,7 @@ def test_actual_nautilus_order_lifecycle_and_restart_recovery(tmp_path: Path) ->
     assert duplicate_result.disposition == "REJECTED"
     assert duplicate_result.reason is not None
     assert "Duplicate fill" in duplicate_result.reason
-    assert replay.snapshot().filled_quantity_raw == 40
+    assert replay.snapshot().filled_quantity_raw == int(Quantity.from_int(40).raw)
 
     assert replay.ingest("pending-cancel-1", pending_cancel(6), received_at_ns=6).snapshot.status == "PENDING_CANCEL"
     assert replay.ingest("cancel-rejected", cancel_rejected(7), received_at_ns=7).snapshot.status == "PARTIALLY_FILLED"
@@ -164,13 +166,13 @@ def test_actual_nautilus_order_lifecycle_and_restart_recovery(tmp_path: Path) ->
 
     late = filled(10, "TRADE-LATE", 60)
     assert replay.ingest("fill-late", late, received_at_ns=10).snapshot.status == "FILLED"
-    assert replay.snapshot().filled_quantity_raw == 100
+    assert replay.snapshot().filled_quantity_raw == int(Quantity.from_int(100).raw)
     assert replay.snapshot().is_closed
     assert replay.snapshot().is_canceled is False
 
     duplicate_report = replay.ingest("fill-late", late, received_at_ns=11)
     assert duplicate_report.disposition == "DUPLICATE"
-    assert replay.snapshot().filled_quantity_raw == 100
+    assert replay.snapshot().filled_quantity_raw == int(Quantity.from_int(100).raw)
 
     raw = replay.raw_observations()
     assert [row["disposition"] for row in raw] == [
@@ -191,13 +193,14 @@ def test_actual_nautilus_order_lifecycle_and_restart_recovery(tmp_path: Path) ->
 
     restarted = NautilusOrderReplay(database)
     assert restarted.snapshot().status == "FILLED"
-    assert restarted.snapshot().filled_quantity_raw == 100
+    assert restarted.snapshot().filled_quantity_raw == int(Quantity.from_int(100).raw)
     assert restarted.snapshot().event_count == event_count_before_restart
     assert restarted.snapshot().event_count == 9
     assert len(restarted.applied_events()) == 8
     assert len(restarted.raw_observations()) == 11
 
     path = [
+        "PROPOSED", "APPROVAL_PENDING", "REVIEWED",
         "SUBMISSION_RESERVED",
         "ACKNOWLEDGED",
         "PARTIALLY_FILLED",
@@ -326,7 +329,7 @@ def test_two_connections_rebuild_before_applying_report(tmp_path):
     first.ingest('partial', filled(3, 'T1', 40), received_at_ns=3)
     second.ingest('rest', filled(4, 'T2', 60), received_at_ns=4)
     assert first.snapshot().status == 'FILLED'
-    assert second.snapshot().filled_quantity_raw == 100
+    assert second.snapshot().filled_quantity_raw == int(Quantity.from_int(100).raw)
 
 
 def test_event_identity_dedupes_across_receipt_identities(tmp_path):
@@ -336,3 +339,43 @@ def test_event_identity_dedupes_across_receipt_identities(tmp_path):
     assert replay.ingest('second', event, received_at_ns=2).disposition == 'DUPLICATE'
     assert replay.snapshot().event_count == 2
     assert len(replay.raw_observations()) == 2
+
+
+def test_wrong_scope_is_retained_and_cannot_change_projection(tmp_path):
+    replay = NautilusOrderReplay(tmp_path/'scope.sqlite')
+    replay.ingest('submitted', submitted(1), received_at_ns=1)
+    wrong = OrderAccepted(**common(2), account_id=AccountId('SIM-WRONG'),
+        venue_order_id=VENUE_ORDER_ID, reconciliation=False)
+    assert replay.ingest('wrong', wrong, received_at_ns=2).disposition == 'REJECTED'
+    assert replay.snapshot().status == 'SUBMITTED'
+    assert replay.projection().unresolved
+    assert replay.raw_observations()[-1]['event_type'] == 'OrderAccepted'
+
+
+def test_rejected_order_late_fill_remains_unresolved(tmp_path):
+    from nautilus_trader.model import OrderRejected
+    replay = NautilusOrderReplay(tmp_path/'rejected.sqlite')
+    replay.ingest('submitted', submitted(1), received_at_ns=1)
+    rejected = OrderRejected(**common(2), account_id=ACCOUNT_ID, reason='REPLAY_REJECTION', reconciliation=False, due_post_only=False)
+    assert replay.ingest('rejected', rejected, received_at_ns=2).snapshot.status == 'REJECTED'
+    replay.ingest('late', filled(3, 'late-after-reject', 100), received_at_ns=3)
+    assert replay.projection().unresolved
+
+
+def test_native_report_raw_and_derived_rows_rollback_together(tmp_path):
+    import sqlite3
+    import pytest
+    replay = NautilusOrderReplay(tmp_path/'rollback.sqlite')
+    replay.connection.execute("CREATE TRIGGER fail_projection BEFORE INSERT ON derived_order_states BEGIN SELECT RAISE(ABORT, 'injected projection failure'); END")
+    with pytest.raises(sqlite3.IntegrityError, match='injected'):
+        replay.ingest('submitted', submitted(1), received_at_ns=1)
+    assert replay.raw_observations() == ()
+    assert replay.snapshot().status == 'INITIALIZED'
+
+
+def test_runtime_order_surfaces_have_no_execution_authority(tmp_path):
+    replay = NautilusOrderReplay(tmp_path/'authority.sqlite')
+    for name in ('submit_order', 'cancel_order', 'amend_order', 'authorize_order'):
+        assert not hasattr(replay, name)
+    assert not replay.projection().execution_enabled
+    assert not replay.projection().capital_authorized

@@ -5,6 +5,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+import hashlib
+import json
 import sqlite3
 from typing import Any
 
@@ -40,6 +42,13 @@ class CandidateSnapshot:
     freshness_deadline_ns: int
     evidence_digest: str
     latest_observation_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class DurableSnapshot:
+    candidates: tuple[CandidateSnapshot, ...]
+    pending_wakeups: tuple[ResearchWakeup, ...]
+    now_ns: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +171,36 @@ class CandidateJournal:
             raise
         else:
             self.connection.execute("COMMIT")
+
+    def replay(self) -> DurableSnapshot:
+        """Read coupled recovery state and check retained raw/event consistency.
+
+        This detects accidental corruption; it is not a signed authority journal
+        or protection against an attacker replacing an entire SQLite database.
+        """
+        with self._transaction():
+            for raw in self.connection.execute("SELECT * FROM raw_observations"):
+                if hashlib.sha256(raw["payload_json"].encode()).hexdigest() != raw["payload_digest"]:
+                    raise CandidateJournalError("raw observation digest mismatch")
+            candidates = tuple(self._snapshot_from_row(row) for row in
+                self.connection.execute("SELECT * FROM candidate_states ORDER BY candidate_id, candidate_version"))
+            for current in candidates:
+                history = self.state_history(current.candidate_id, current.candidate_version)
+                previous = None
+                for index, event in enumerate(history):
+                    new = CandidateState(event['new_state'])
+                    if (event['sequence'] != index or event['previous_state'] != (previous.value if previous else None)
+                            or not transition_allowed(previous, new)):
+                        raise CandidateJournalError("candidate state history mismatch")
+                    previous = new
+                if not history or previous != current.state or len(history)-1 != current.state_sequence:
+                    raise CandidateJournalError("candidate snapshot differs from history")
+            pending = self.pending_wakeups()
+            for wakeup in pending:
+                material = self.connection.execute("SELECT * FROM material_events WHERE event_id=?", (wakeup.material_event_id,)).fetchone()
+                if material is None or (material['candidate_id'], material['candidate_version'], material['evidence_digest']) != (wakeup.candidate_id, wakeup.candidate_version, wakeup.bound_evidence_digest):
+                    raise CandidateJournalError("wakeup differs from material event")
+            return DurableSnapshot(candidates, pending, self.now_ns)
 
     def advance_time(self, now_ns: int) -> None:
         if type(now_ns) is not int or now_ns < 0:
@@ -447,6 +486,9 @@ class CandidateJournal:
                 )
 
             if current is not None and not state_path:
+                deadline = observation.freshness_deadline_ns
+                if current.state is CandidateState.READY:
+                    deadline = min(deadline, current.freshness_deadline_ns)
                 self.connection.execute(
                     """
                     UPDATE candidate_states
@@ -456,7 +498,7 @@ class CandidateJournal:
                     """,
                     (
                         observation.observed_at_ns,
-                        observation.freshness_deadline_ns,
+                        deadline,
                         observation.evidence_digest,
                         observation.observation_id,
                         observation.candidate_id,

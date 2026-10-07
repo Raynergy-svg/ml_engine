@@ -7,8 +7,9 @@ from .contracts import (
     ResearchResult,
     ResearchWakeup,
 )
-from .journal import CandidateJournal
+from .journal import CandidateJournal, DurableSnapshot
 from .order_replay import (
+    LifecycleProjection,
     NautilusOrderReplay,
     NautilusOrderReplayCorruption,
     NautilusOrderReplayUnavailable,
@@ -26,6 +27,8 @@ __all__ = [
     "CandidateObservation",
     "CandidateState",
     "MaterialEvent",
+    "DurableSnapshot",
+    "LifecycleProjection",
     "NautilusOrderReplay",
     "NautilusOrderReplayCorruption",
     "NautilusOrderReplayUnavailable",

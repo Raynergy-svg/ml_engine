@@ -205,3 +205,25 @@ def test_replay_runtime_stale_result_cannot_resurrect_invalidated_version(
 
     runtime.dispose()
     journal.close()
+
+
+def test_runtime_clock_revokes_ready_and_recovers_clock_after_restart(tmp_path):
+    database = tmp_path/'clock.sqlite'
+    journal = CandidateJournal(database)
+    monitor = CandidateMonitor(journal)
+    runtime = NautilusReplayRuntime(monitor, journal)
+    runtime.start()
+    runtime.publish(observation('confirmed', observed_at_ns=2, confirmation=True))
+    wakeup = journal.pending_wakeups()[0]
+    monitor.revalidate(ResearchResult(wakeup.wakeup_id, 'runtime-candidate', 'v1', 3, 5,
+        digest('clock-result'), True))
+    assert monitor.state('runtime-candidate', 'v1') is CandidateState.READY
+    runtime.set_time(5)
+    assert monitor.state('runtime-candidate', 'v1') is CandidateState.EXPIRED
+    runtime.dispose()
+    journal.close()
+    recovered = CandidateJournal(database)
+    restarted = NautilusReplayRuntime(CandidateMonitor(recovered), recovered)
+    assert restarted.clock.timestamp_ns() == 5
+    restarted.dispose()
+    recovered.close()
