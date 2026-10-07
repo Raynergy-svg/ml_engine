@@ -1,0 +1,44 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________ test_child_rejects_unsafe_storage_namespace[ancestor-public] _________
+
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-59/test_child_rejects_unsafe_stor0')
+attack = 'ancestor-public'
+
+    @pytest.mark.parametrize('attack', ['symlink', 'public', 'parent-public', 'ancestor-public', 'hardlink'])
+    def test_child_rejects_unsafe_storage_namespace(tmp_path, attack):
+        evidence_root = tmp_path
+        if attack == 'ancestor-public':
+            shared = tmp_path / 'shared'
+            shared.mkdir()
+            shared.chmod(0o777)
+            evidence_root = shared / 'evidence'
+            evidence_root.mkdir(mode=0o700)
+        root = evidence_root / 'observation_runtime'
+        if attack == 'symlink':
+            target = tmp_path / 'target'
+            target.mkdir()
+            root.symlink_to(target, target_is_directory=True)
+        elif attack == 'public':
+            root.mkdir(mode=0o755)
+            root.chmod(0o755)
+        elif attack == 'parent-public':
+            tmp_path.chmod(0o777)
+        elif attack == 'hardlink':
+            root.mkdir(mode=0o700)
+            original = tmp_path / 'original.sqlite'
+            with sqlite3.connect(original) as db:
+                db.execute('CREATE TABLE original (payload)')
+            original.chmod(0o600)
+            os.link(original, root / 'candidates.sqlite')
+        with (tmp_path / 'stderr').open('wb') as errors:
+            child = launch(evidence_root, errors)
+            child.communicate(timeout=5)
+>           assert child.returncode != 0
+E           AssertionError: assert 0 != 0
+E            +  where 0 = <Popen: returncode: 0 args: ['/workspace/axiom-test-venv/bin/python', '/work...>.returncode
+
+tests/axiom2/nautilus_runtime/test_observation_preparation.py:175: AssertionError
+=========================== short test summary info ============================
+FAILED tests/axiom2/nautilus_runtime/test_observation_preparation.py::test_child_rejects_unsafe_storage_namespace[ancestor-public]
+1 failed, 13 deselected in 0.69s
