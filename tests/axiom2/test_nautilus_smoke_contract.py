@@ -78,3 +78,27 @@ def test_smoke_matches_pinned_order_accepted_constructor_requirements():
     )[0]
 
     assert "reconciliation=False" in accepted_call
+
+def test_runtime_workflow_preserves_exact_build_and_runs_all_gates():
+    workflow = (
+        ROOT / ".github" / "workflows" / "axiom2-nautilus-runtime.yml"
+    ).read_text(encoding="utf-8")
+    manifest = json.loads(
+        (ROOT / "config" / "axiom2" / "nautilus_build_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert manifest["upstream"]["revision"] == UPSTREAM_REVISION
+    assert manifest["build"]["enabled_features"] == (
+        "arrow,ffi,python,high-precision,streaming,defi"
+    )
+    assert manifest["build"]["uv_version"] == "0.12.23"
+    assert "actions/cache/restore@" in workflow
+    assert "actions/cache/save@" in workflow
+    assert "actions/upload-artifact@" in workflow
+    assert "nautilus/.axiom2-nautilus-build-manifest.json" in workflow
+    assert "PYTHONPATH=\"$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom\"" in workflow
+    assert "test_runtime_recovery.py" in workflow
+    assert "test_order_lifecycle.py" in workflow
+    assert workflow.count("if: ${{ always() }}") == 4
