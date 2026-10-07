@@ -307,6 +307,36 @@ def _persist_signed_comparison_report(ctx, data):
     )
 
 
+def test_report_paired_bounds_use_exact_signed_book_arithmetic(tmp_path):
+    from src.axiom2.research.development import paired_bounds, verify_comparison_report
+
+    ctx, report = _fresh_signed_comparison_report(tmp_path)
+    full, price = report.arms['FULL']['book'], report.arms['P']['book']
+    folds = [row[0] for row in full]
+    expected = {
+        'FULL_minus_P': paired_bounds(
+            [(f[3] - .001 * f[4]) - (p[3] - .001 * p[4])
+             for f, p in zip(full, price)], folds),
+        'FULL_minus_momentum': paired_bounds(
+            [(f[3] - .001 * f[4]) - (f[6] - .001 * f[7]) for f in full], folds),
+    }
+    # Signed IEEE-754 results require exact reproduction, not a tolerance.
+    assert report.paired == expected
+    original = json.loads(report.model_dump_json())
+    original_key = hashlib.sha256(canonical_bytes(
+        ctx.registry.signer.sign(report, created_at=NOW))).hexdigest()
+    assert verify_comparison_report(original_key, registry=ctx.registry) == report
+    for comparison in expected:
+        for metric in ('mean', 'lower_97_5'):
+            altered = copy.deepcopy(original)
+            value = altered['paired'][comparison][metric]
+            altered['paired'][comparison][metric] = float(np.nextafter(value, np.inf))
+            assert altered['paired'][comparison][metric] != value
+            key = _persist_signed_comparison_report(ctx, altered)
+            with pytest.raises(ValueError, match='paired bound mismatch'):
+                verify_comparison_report(key, registry=ctx.registry)
+
+
 def test_report_verifier_recomputes_signed_derived_conclusions(tmp_path):
     ctx, report=_fresh_signed_comparison_report(tmp_path)
     mutations=(
