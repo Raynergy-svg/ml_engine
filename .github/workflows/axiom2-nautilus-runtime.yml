@@ -86,7 +86,7 @@ jobs:
               f'rustc {expected["build"]["rust_toolchain"]}'
           ):
               raise SystemExit(f"unexpected Rust toolchain: {rust_version}")
-          if uv_version != f'uv {expected["build"]["uv_version"]}':
+          if uv_version != expected["build"]["uv_version"]:
               raise SystemExit(f"unexpected uv version: {uv_version}")
 
           manifest = {
