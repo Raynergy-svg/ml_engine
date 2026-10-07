@@ -216,11 +216,12 @@ class CandidateJournal:
         self.connection.execute("BEGIN IMMEDIATE")
         try:
             yield
-        except BaseException:
-            self.connection.execute("ROLLBACK")
-            raise
-        else:
             self.connection.execute("COMMIT")
+        except BaseException:
+            # SQLITE_FULL can itself roll back; retain its original error.
+            if self.connection.in_transaction:
+                self.connection.execute("ROLLBACK")
+            raise
 
     def replay(self) -> DurableSnapshot:
         """Read coupled recovery state and check retained raw/event consistency.

@@ -31,6 +31,9 @@ def private_namespace(evidence_root):
             raise ValueError('unsafe storage namespace: symlink')
     if not root.parent.is_dir():
         raise ValueError('configured evidence root is missing')
+    parent_mode = root.parent.stat()
+    if parent_mode.st_uid != os.getuid() or stat.S_IMODE(parent_mode.st_mode) & 0o022:
+        raise ValueError('unsafe storage namespace: evidence root must be owner-controlled')
     if not root.exists() and not root.is_symlink():
         root.mkdir(mode=0o700)
     for path in [root, *(root / name for name in ('candidates.sqlite', 'candidates.sqlite-wal', 'candidates.sqlite-shm'))]:
@@ -38,7 +41,8 @@ def private_namespace(evidence_root):
             continue
         mode = path.lstat()
         expected = stat.S_ISDIR(mode.st_mode) if path == root else stat.S_ISREG(mode.st_mode)
-        if not expected or mode.st_uid != os.getuid() or stat.S_IMODE(mode.st_mode) & 0o077:
+        if (not expected or mode.st_uid != os.getuid() or stat.S_IMODE(mode.st_mode) & 0o077
+                or (path != root and mode.st_nlink != 1)):
             raise ValueError('unsafe storage namespace: owner-only directory/files required')
     return root / 'candidates.sqlite'
 
@@ -110,8 +114,9 @@ async def serve(path, replies):
                 reply(dict(status='REJECTED', error=type(exc).__name__, observation_runtime=runtime.status()))
                 break
             except (ValueError, TypeError, RuntimeError) as exc:
-                reply(dict(status='REJECTED', error=str(exc)))
-                if len(line) > MAX_RECORD_BYTES or not line.endswith(b'\n'):
+                reply(dict(status='REJECTED', error=str(exc), observation_runtime=runtime.status()))
+                if (runtime.status()['runtime'] == 'FAULTED' or len(line) > MAX_RECORD_BYTES
+                        or not line.endswith(b'\n')):
                     break
             except Exception as exc:
                 runtime._fault(type(exc).__name__)

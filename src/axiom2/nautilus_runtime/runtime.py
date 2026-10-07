@@ -119,7 +119,8 @@ class _GenerationConnection:
             try:
                 self._owner._check_generation()
             except BaseException:
-                self._connection.execute("ROLLBACK")
+                if self._connection.in_transaction:
+                    self._connection.execute("ROLLBACK")
                 raise
         return result
 
@@ -184,7 +185,8 @@ class NautilusContinuousRuntime:
                 (self.generation, 'STARTING', now, now + 3_000_000_000))
             self._connection.execute("COMMIT")
         except BaseException:
-            self._connection.execute("ROLLBACK")
+            if self._connection.in_transaction:
+                self._connection.execute("ROLLBACK")
             raise
         self._started = True
         self.journal.connection = _GenerationConnection(self._connection, self)
@@ -279,14 +281,22 @@ class NautilusContinuousRuntime:
         self.journal.advance_time(now)
         self._last_material_event = None
         self._bus.publish(NautilusReplayRuntime.TOPIC, observation.to_payload(), external_pub=False)
+        # The pinned native MessageBus logs/swallow Python callback failures.
+        # Explicit local fault truth prevents an ACCEPTED response or stale READY.
+        if self._local_fault:
+            raise RuntimeError('observation callback failed closed: ' + self._local_fault)
         return self._last_material_event
 
     def _on_observation(self, payload):
-        self._check_generation()
-        observation = CandidateObservation(**payload)
-        self._last_material_event = self.monitor.observe(observation)
-        self._connection.execute("UPDATE continuous_runtime SET data_deadline_ns=? WHERE generation=?",
-                                 (observation.freshness_deadline_ns, self.generation))
+        try:
+            self._check_generation()
+            observation = CandidateObservation(**payload)
+            self._last_material_event = self.monitor.observe(observation)
+            self._connection.execute("UPDATE continuous_runtime SET data_deadline_ns=? WHERE generation=?",
+                                     (observation.freshness_deadline_ns, self.generation))
+        except Exception as exc:
+            self._last_material_event = None
+            self._fault(type(exc).__name__)
 
     def pending(self, *, generation: int):
         self._check_generation(generation)

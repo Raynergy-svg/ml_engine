@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from axiom2.nautilus_runtime import CandidateJournal
+from axiom2.nautilus_runtime import CandidateJournal, CandidateObservation, ResearchResult
 from axiom2.nautilus_runtime.runtime import NautilusContinuousRuntime
 
 WORKER = Path(__file__).resolve().parents[3] / 'scripts/axiom2_nautilus_observation_worker.py'
@@ -23,7 +23,7 @@ def test_bounded_journal_denies_growth_and_retains_committed_records(tmp_path):
     journal.connection.execute('CREATE TABLE quota_fixture (payload BLOB)')
     journal.check_storage()
     journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'kept',))
-    with pytest.raises(sqlite3.DatabaseError):
+    with pytest.raises(sqlite3.DatabaseError, match='database or disk is full'):
         with journal._transaction():
             journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'x' * 512_000,))
     assert journal.connection.execute('SELECT payload FROM quota_fixture').fetchall()[0][0] == b'kept'
@@ -78,6 +78,45 @@ def test_unwritable_journal_stops_actual_native_handle_and_clears_ready(tmp_path
     asyncio.run(scenario())
 
 
+def test_native_callback_sqlite_full_cannot_leave_ready_or_accept_invalidation(tmp_path):
+    async def scenario():
+        journal = CandidateJournal(tmp_path / 'candidates.sqlite', max_storage_bytes=1024 * 1024)
+        runtime = NautilusContinuousRuntime(journal)
+        try:
+            await runtime.start()
+            now = runtime.timestamp_ns()
+            digest = hashlib.sha256(b'fixture').hexdigest()
+            observation = CandidateObservation('fixture', 'v1', 'original', now, now+10_000_000_000,
+                                               digest, digest, confirmation=True)
+            runtime.publish(observation, generation=runtime.generation)
+            wakeup, = runtime.pending(generation=runtime.generation)
+            runtime.complete(ResearchResult(wakeup.wakeup_id, 'fixture', 'v1', now,
+                                           now+10_000_000_000, digest, True), generation=runtime.generation)
+            assert runtime.status()['candidate_ready'] is True
+            journal.connection.execute('CREATE TABLE quota_fixture(payload BLOB)')
+            for _ in range(1000):
+                try:
+                    with journal._transaction():
+                        journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'x'*1000,))
+                except sqlite3.DatabaseError:
+                    break
+            else:
+                pytest.fail('fixture did not reach the real SQLite page limit')
+            invalidation = CandidateObservation('fixture', 'v1', 'invalidation', now, now+10_000_000_000,
+                digest, digest, invalidated=True, invalidation_reason='fixture invalidation',
+                facts={'large_record': 'x'*20_000})
+            with pytest.raises(RuntimeError, match='callback failed closed'):
+                runtime.publish(invalidation, generation=runtime.generation)
+            assert journal.raw_observation('invalidation') is None
+            assert runtime.status()['runtime'] == 'FAULTED'
+            assert runtime.status()['candidate_ready'] is False
+            assert journal.storage_bytes() <= 1024 * 1024
+        finally:
+            await runtime.shutdown()
+            journal.close()
+    asyncio.run(scenario())
+
+
 def receive(child):
     assert select.select([child.stdout], [], [], 5)[0], 'bounded child response timeout'
     return json.loads(child.stdout.readline())
@@ -104,22 +143,31 @@ def test_default_entrypoint_cannot_activate_or_create_state(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize('attack', ['symlink', 'public'])
+@pytest.mark.parametrize('attack', ['symlink', 'public', 'parent-public', 'hardlink'])
 def test_child_rejects_unsafe_storage_namespace(tmp_path, attack):
     root = tmp_path / 'observation_runtime'
     if attack == 'symlink':
         target = tmp_path / 'target'
         target.mkdir()
         root.symlink_to(target, target_is_directory=True)
-    else:
+    elif attack == 'public':
         root.mkdir(mode=0o755)
         root.chmod(0o755)
+    elif attack == 'parent-public':
+        tmp_path.chmod(0o777)
+    else:
+        root.mkdir(mode=0o700)
+        original = tmp_path / 'original.sqlite'
+        with sqlite3.connect(original) as db:
+            db.execute('CREATE TABLE original (payload)')
+        os.link(original, root / 'candidates.sqlite')
     with (tmp_path / 'stderr').open('wb') as errors:
         child = launch(tmp_path, errors)
         child.communicate(timeout=5)
         assert child.returncode != 0
     assert b'unsafe storage namespace' in (tmp_path / 'stderr').read_bytes()
-    assert not (root / 'candidates.sqlite').exists()
+    if attack != 'hardlink':
+        assert not (root / 'candidates.sqlite').exists()
 
 
 def test_real_child_idle_timers_ready_expiry_and_restart(tmp_path):
