@@ -33,6 +33,14 @@ PORTFOLIO_FILES = frozenset({
 })
 EXECUTION_POLICY = "config/axiom2/execution_boundary.json"
 EXECUTION_FILES = frozenset(['src/axiom2/brokers/service.py', 'src/axiom2/brokers/fake_execution.py', 'src/axiom2/execution/service.py'] + ['src/axiom2/brokers/__init__.py', 'src/axiom2/brokers/contracts.py', 'src/axiom2/brokers/robinhood_readonly.py', 'src/axiom2/execution/__init__.py', 'src/axiom2/execution/admission.py', 'src/axiom2/execution/authority.py', 'src/axiom2/execution/authorization.py', 'src/axiom2/execution/costs.py', 'src/axiom2/execution/journal.py', 'src/axiom2/execution/lifecycle.py', 'src/axiom2/execution/reconciliation.py', 'src/axiom2/execution/resolution.py', 'src/axiom2/execution/fencing.py', 'src/axiom2/execution/artifacts.py', 'src/axiom2/shadow/__init__.py', 'src/axiom2/shadow/fills.py', 'src/axiom2/shadow/engine.py', 'src/axiom2/shadow/portfolio.py', 'src/evidence/execution_shadow.py'])
+NAUTILUS_POLICY = "config/axiom2/nautilus_boundary.json"
+NAUTILUS_FILES = frozenset(['src/axiom2/nautilus_runtime/__init__.py',
+ 'src/axiom2/nautilus_runtime/contracts.py',
+ 'src/axiom2/nautilus_runtime/journal.py',
+ 'src/axiom2/nautilus_runtime/order_replay.py',
+ 'src/axiom2/nautilus_runtime/policy.py',
+ 'src/axiom2/nautilus_runtime/runtime.py',
+ 'src/axiom2/nautilus_runtime/wakeup.py'])
 SOURCE_FILES = frozenset(
     [
         "src/__init__.py",
@@ -71,6 +79,13 @@ STDLIB_IMPORTS = frozenset({"__future__", "dataclasses", "datetime", "re", "zone
 DYNAMIC_CAPABILITIES = frozenset({"__import__", "eval", "exec", "compile", "open"})
 DEPENDENCY_VERSIONS = {"pydantic": "2.12.5", "cryptography": "46.0.7", "pandas": "2.3.3", "numpy": "2.0.2", "lightgbm": "4.7.0"}
 IMPORTS_BY_SOURCE = {
+    'src/axiom2/nautilus_runtime/__init__.py': ['src.axiom2.nautilus_runtime.contracts', 'src.axiom2.nautilus_runtime.journal', 'src.axiom2.nautilus_runtime.order_replay', 'src.axiom2.nautilus_runtime.policy', 'src.axiom2.nautilus_runtime.runtime', 'src.axiom2.nautilus_runtime.wakeup'],
+    'src/axiom2/nautilus_runtime/contracts.py': ['__future__', 'collections.abc', 'dataclasses', 'enum', 'hashlib', 'json', 'types', 'typing'],
+    'src/axiom2/nautilus_runtime/journal.py': ['__future__', 'contextlib', 'dataclasses', 'hashlib', 'json', 'pathlib', 'sqlite3', 'src.axiom2.nautilus_runtime.contracts', 'src.axiom2.nautilus_runtime.policy', 'typing'],
+    'src/axiom2/nautilus_runtime/order_replay.py': ['__future__', 'contextlib', 'dataclasses', 'fractions', 'hashlib', 'json', 'nautilus_trader', 'nautilus_trader.core', 'nautilus_trader.model', 'pathlib', 'sqlite3', 'src.axiom2.execution.lifecycle', 'src.axiom2.execution.reconciliation', 'typing'],
+    'src/axiom2/nautilus_runtime/policy.py': ['__future__', 'dataclasses', 'src.axiom2.nautilus_runtime.contracts', 'typing'],
+    'src/axiom2/nautilus_runtime/runtime.py': ['__future__', 'nautilus_trader.common', 'nautilus_trader.model', 'src.axiom2.nautilus_runtime.contracts', 'src.axiom2.nautilus_runtime.journal', 'src.axiom2.nautilus_runtime.policy', 'typing'],
+    'src/axiom2/nautilus_runtime/wakeup.py': ['__future__', 'src.axiom2.nautilus_runtime.contracts', 'src.axiom2.nautilus_runtime.journal'],
     "src/axiom2/research/development.py": ['dataclasses', 'hashlib', 'json', 'lightgbm', 'numpy', 'pandas', 'pathlib', 'platform', 'pydantic', 'sklearn', 'src.axiom2.contracts.research_proposal', 'src.axiom2.data.universe', 'src.axiom2.research.features', 'src.axiom2.research.labels', 'src.axiom2.research.ranker', 'src.axiom2.research.splits', 'src.evidence.canonical', 'src.evidence.contracts', 'src.evidence.signing'],
     'src/axiom2/brokers/service.py': ['src.axiom2.brokers.robinhood_readonly'],
     'src/axiom2/brokers/fake_execution.py': ['datetime', 'json', 'typing', 'uuid', 'pydantic', 'src.evidence.contracts', 'src.evidence.canonical', 'src.evidence.hashing', 'src.evidence.signing', 'src.evidence.store', 'src.axiom2.execution.journal', 'src.axiom2.brokers.robinhood_readonly', 'src.axiom2.execution.service'],
@@ -362,6 +377,37 @@ def _audit_execution_exclusion(root: Path, observed: set[str]) -> dict[str, byte
     return snapshot
 
 
+def _audit_nautilus_exclusion(root: Path, observed: set[str]) -> dict[str, bytes]:
+    """Register exact reviewed replay mechanics without packaging or executing them.
+
+    Research-only trees remain valid. Any known Nautilus file or policy requires
+    the complete pinned profile; unknown files still fail the global inventory.
+    """
+    if not (observed & NAUTILUS_FILES) and not os.path.lexists(root / NAUTILUS_POLICY):
+        return {}
+    policy = json.loads(
+        _regular_source(root, NAUTILUS_POLICY).read_text(), object_pairs_hook=_no_duplicates,
+    )
+    if (type(policy) is not dict
+            or set(policy) != {"schema_version", "profile", "execution_enabled",
+                               "capital_authorized", "source_sha256"}
+            or type(policy["schema_version"]) is not int or policy["schema_version"] != 1
+            or policy["profile"] != "nautilus-replay-mechanics-only"
+            or policy["execution_enabled"] is not False
+            or policy["capital_authorized"] is not False):
+        raise ValueError("unsupported Nautilus exclusion profile")
+    digests = policy["source_sha256"]
+    if type(digests) is not dict or set(digests) != NAUTILUS_FILES:
+        raise ValueError("Nautilus source inventory requires explicit review")
+    snapshot = {}
+    for name in sorted(NAUTILUS_FILES):
+        content = _regular_source(root, name).read_bytes()
+        if hashlib.sha256(content).hexdigest() != digests[name]:
+            raise ValueError(f"Nautilus source digest changed; review required: {name}")
+        snapshot[name] = content
+    return snapshot
+
+
 def audit_sources(root: Path) -> dict[str, bytes]:
     """Capture exact audited bytes; fail before executing any candidate source."""
     root = root.resolve()
@@ -403,8 +449,9 @@ def audit_sources(root: Path) -> dict[str, bytes]:
             observed.add((Path(directory) / name).relative_to(root).as_posix())
     portfolio = _audit_portfolio_exclusion(root, observed)
     execution = _audit_execution_exclusion(root, observed)
+    nautilus = _audit_nautilus_exclusion(root, observed)
     expected = {name for name in SOURCE_FILES if name == "src/__init__.py" or name.startswith("src/axiom2/")}
-    if observed != expected | set(portfolio) | {name for name in execution if name.startswith("src/axiom2/")}:
+    if observed != expected | set(portfolio) | set(nautilus) | {name for name in execution if name.startswith("src/axiom2/")}:
         raise ValueError("source inventory drift: missing or unreviewed files")
     snapshot = {}
     for name in sorted(SOURCE_FILES):
@@ -412,7 +459,7 @@ def audit_sources(root: Path) -> dict[str, bytes]:
         if hashlib.sha256(content).hexdigest() != digests[name]:
             raise ValueError(f"source digest changed; review required: {name}")
         snapshot[name] = content
-    _audit_imports({**snapshot, **portfolio, **execution})
+    _audit_imports({**snapshot, **portfolio, **execution, **nautilus})
     return snapshot
 
 
