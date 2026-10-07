@@ -1,7 +1,7 @@
 # Nautilus cloud completion verification — 2026-10-07
 
-Status: **replay implementation and sequential review complete; full integration
-handoff BLOCKED**. Production remains disabled. This file fulfills Task 5 of the
+Status: **reviewed cloud replay completion handoff COMPLETE; full scoped gate
+PASS**. Production remains disabled. This file fulfills Task 5 of the
 2026-10-06 plan; its evidence was collected on 2026-10-07.
 
 ## Exact scope and provenance
@@ -9,7 +9,7 @@ handoff BLOCKED**. Production remains disabled. This file fulfills Task 5 of the
 - Completion branch: `codex/axiom2-nautilus-cloud-completion-2026-10-07`.
 - Inherited checkpoint and untouched runtime branch:
   `9e996c8bd3e0a37fafed2793be1d1165d91209b3`.
-- Final tested code: `13f4e1e7fd6a7d91ec63dff075684eb3d53c5926`.
+- Final verification code: `6fa68a036d468f0206fe6f0eae83704380892def`.
   Subsequent handoff commits change documentation/evidence only.
 - Unmodified Nautilus source: `4f021bafc2e99c5490cee204b0fc2bd2c83baab4`.
 - Original build run: `37553124116`; artifact: `11454954090`.
@@ -38,7 +38,8 @@ the environment nor these Linux results establish Mac equivalence.
 | Runtime publish, bounded wakeups, SIGKILL/restart/idempotent recovery | Yes | 5 native runtime cases passed | Passes 1, 2 and 3 | Yes, independent owner |
 | Durable native order replay and Axiom projection/reconciliation consumers | Yes | 9 native order + 7 projection cases passed | Passes 1, 2 and 3 | Yes, independent owner |
 | Exact binary/artifact reuse and credential-stripping download redirects | Yes | 8 contract/integrity cases passed; real extension digest verified | Pass 3 finding fixed with RED→GREEN tests | Yes, independent owner |
-| Full current Axiom/evidence checkout isolation admission | Blocked by unchanged inventory gate | 1,407 passed; 3 failed; 0 collection errors | Block confirmed in pass 3 | Linux block must be resolved separately |
+| Signed paired-report exact numerical verification | Yes; two verifier expressions preserve producer arithmetic order | 3 focused cases passed, including signed one-unit tampering; full scoped gate passed | Independent follow-up APPROVE | Yes, independent owner |
+| Full current Axiom/evidence checkout isolation admission | Exact reviewed seven-file exclusion applied | 136 boundary cases passed; complete scoped gate 1,453 passed | Independent follow-up APPROVE; research artifact bytes unchanged | Yes, independent owner |
 
 The 58 focused cases passed locally after the review fix in 0.45 seconds.
 Tests use actual pinned native interfaces for runtime and order behavior.
@@ -68,6 +69,15 @@ unrepresentable quantities/money remain retained and unresolved/HALTED.
    pinned binary digest and retains a JSON receipt. No second reviewer or
    native rebuild was used.
 
+A subsequent user-authorized bounded blocker closure received independent
+review of numeric commit `eb4d231b` and exclusion proposal digest
+`ba5bccaee62a716f60ffb3d93b7173d79aba40e6e39d44a403142e7ad91ae7f0`.
+The reviewer independently passed 3 numeric tests (35.31 seconds) and 42
+exclusion tests (0.42 seconds), finding no material issue or permission expansion.
+Its [full recommendation](nautilus-evidence-2026-10-07/independent-followup-review.md)
+compares unchanged research ZIP bytes before/after registration. After application,
+136 current inventory/research/portfolio boundary tests passed in 5.21 seconds.
+
 The journal integrity checks establish internal consistency of unsigned
 mechanics, not resistance to replacement of the entire database. The Python
 socket guard proves the exercised Python smoke path denied connections; it is
@@ -76,22 +86,29 @@ is explicit. Live timer callback dispatch, feeds, native provider transport,
 signed journal/fencing, capital/risk/final command authorization and the sole
 production gateway remain Axiom-owned or outside this replay authorization.
 
-## Final cloud results
+## Final cloud verification
 
-Run [37562644230](https://github.com/Raynergy-svg/ml_engine/actions/runs/37562644230)
-tests code `13f4e1e7` with `reuse_only=true`, `export_artifact=false`.
+Final run [37563968612](https://github.com/Raynergy-svg/ml_engine/actions/runs/37563968612)
+tests code `6fa68a03` on a bounded completion-branch code push. Cache/artifact
+reuse is enforced for that branch; documentation-only pushes do not rerun it.
 Exact binary verification, all 58 focused cases and actual smoke passed.
-The complete scoped suite finished: **1,407 passed, 3 failed, 0 skipped,
-0 collection errors**, 221.022 seconds. The workflow conclusion is **failure**;
-all three failures are listed below. No native build step ran.
+The complete scoped suite finished: **1,453 passed, 0 failed, 0 skipped,
+0 collection errors**, 275.140 seconds. Workflow conclusion: **success**.
+No native build or environment recreation step ran on this final cache hit.
 
-Artifact `11457224348` retains the complete JUnit XML, smoke, binary receipt
-and reconstructed manifest for 90 days. Its downloaded ZIP SHA256 is
-`70389af2700c72519082fec72095498245c3aba10ea316ee2200c963c5863d1d`.
-Stable tracked summaries/receipts are in
-[nautilus-evidence-2026-10-07](nautilus-evidence-2026-10-07/linux-cloud-test-summary.json).
-The retained manifest hashes to the exact approved cache digest and the final
-cloud binary receipt records the original extension digest.
+Artifact `11458660699` retains complete JUnit XML, smoke, binary receipt and
+reconstructed manifest for 90 days. Its downloaded ZIP SHA256 is
+`be35466b50aa5cee9fb62e765ec7566f7a0c279f2e8837f9e7e31d499052b5b8`.
+[Final tracked summary](nautilus-evidence-2026-10-07/linux-final-cloud-test-summary.json),
+[binary receipt](nautilus-evidence-2026-10-07/linux-final-cloud-binary-receipt.json),
+[manifest](nautilus-evidence-2026-10-07/linux-final-cloud-manifest.json) and
+[actual smoke](nautilus-evidence-2026-10-07/linux-final-cloud-smoke.json) are stable
+handoff evidence. The downloaded archive digest, exact approved manifest digest
+and original extension digest were independently checked during capture.
+
+Historical run `37562644230` at `13f4e1e7` produced 1,407 passed/3 failed;
+its summary/receipts remain retained as `linux-cloud-*`. Those three failures
+are resolved by the reviewed fixes below and the final clean-checkout run.
 
 Full scoped command (warnings are errors):
 
@@ -103,26 +120,34 @@ python -m pytest tests/axiom2 tests/evidence/equity_research \
   -q -W error --junitxml=axiom-scoped-tests.xml
 ```
 
-## Remaining blockers and exact next actions
+## Resolved integration blockers and remaining scope
 
-1. **Isolation inventory admission:**
-   `tests/axiom2/portfolio/test_boundary.py::test_research_artifact_cannot_import_portfolio_or_execution`
-   rejects the Nautilus source directory through the exact observed-source check
-   in `scripts/axiom2_verify_isolation.py`. No gate/profile/hash was changed,
-   skipped or xfailed. The parent must obtain explicit authorization for an
-   independently reviewed, hash-pinned Nautilus exclusion inventory/profile
-   extension. Keep Nautilus outside the research bundle and preserve unknown
-   source/drift denial. The proposed inventory supplied with this handoff is
-   **unapplied** and grants no authority.
-2. **Inherited research verifier failures:**
-   `test_finite_five_arm_campaign_retains_signed_reports_and_history` and
-   `test_report_verifier_recomputes_signed_derived_conclusions` in
-   `tests/axiom2/research/test_phase1_development.py` both fail at
-   `src/axiom2/research/development.py:562` with `paired bound mismatch`.
-   The fresh reviewer reproduced both on untouched `9e996c8` (2 failed in
-   23.88 seconds). Assign/authorize a separate bounded numerical-report verifier
-   repair and rerun these two tests plus the scoped gate. That repair is not
-   hidden inside this Nautilus task.
+1. **Isolation inventory admission — resolved by reviewed registration:**
+   `f2935d2c` applies the exact seven original proposed source hashes in
+   `config/axiom2/nautilus_boundary.json`. The complete literal-false replay-only
+   profile is required. Unknown source/resources, drift, missing files/policy,
+   symlinks, arbitrary path registration, forbidden network imports and research
+   imports of Nautilus remain denied. The existing research `SOURCE_FILES`,
+   import permissions and dependency versions are unchanged. Native bytes and
+   profile are excluded from the returned research snapshot and ZIP; an isolated
+   import probe confirms the package is unavailable from that ZIP. The independent
+   reviewer determined this is exact known-source coexistence under the user's
+   stated exception, without material research/security/authority expansion.
+   [Reviewed precise diff](nautilus-evidence-2026-10-07/reviewed-exact-exclusion.patch)
+   is retained. Its test file was renamed `test_nautilus_inventory_boundary.py`
+   on application to avoid collision with the existing portfolio test filename;
+   all reviewed code and test contents match exactly.
+2. **Inherited signed numeric verifier mismatch — repaired separately:**
+   `eb4d231b` changes only two paired-return expressions to preserve producer
+   IEEE-754 evaluation order: subtract separately computed cost-adjusted returns.
+   A concrete reproduction differs by two floating-point units when reassociated.
+   No tolerance, threshold, bootstrap parameter, signed-evidence validation or
+   campaign authority changed. Only the repaired `development.py` hash was
+   updated to `de6935ca014c234995e1c4424e80735282668db243d772359d523a5061a38300`;
+   the other 56 existing source hashes remain unchanged. Both inherited tests
+   and a new exact signed-book/one-unit-statistic-tampering regression pass
+   (3 in 35.69 seconds; independently 3 in 35.31 seconds). Exact altered signed
+   means/lower bounds for both comparisons remain rejected.
 3. **Mac evidence:** independently owned by thread
    `01a11280-4b86-722e-8f8d-edcfa7181030`. Parent coordinates that handoff;
    this task performed no Mac build or validation.
@@ -130,12 +155,12 @@ python -m pytest tests/axiom2 tests/evidence/equity_research \
 The offline native-read declaration probe passes with zero broker actions,
 `execution_enabled=false`, `capital_authorized=false`, and
 `live_connection_verified=false`; it is declaration integrity only, not
-operational provider proof. Existing research/portfolio/execution inventory
-hashes remain unchanged. The original runtime branch, separate workspace,
+operational provider proof. Existing portfolio/execution inventory hashes and the other 56 original source
+hashes remain unchanged; only the explicitly repaired research verifier was repinned. The original runtime branch, separate workspace,
 and paused LEAN PR63 were not changed. No merge, reset, amend, force push,
 deployment, inference purchase, credentials or real orders were used.
 
 The completion branch/worktree and stable evidence are retained for review.
-Full integration completion cannot be claimed until the first two blockers
-are resolved and the scoped gate passes. Production activation requires its
+The fresh post-repair scoped gate passes. No cloud replay integration blocker
+remains; Mac and production/live operations retain their independent scope. Production activation requires its
 separate existing authorization and is not part of this handoff.

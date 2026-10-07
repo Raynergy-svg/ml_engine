@@ -128,13 +128,16 @@ The historical build and API findings above are preserved. The inherited
 checkpoint `9e996c8bd3e0a37fafed2793be1d1165d91209b3` was completed on isolated
 branch `codex/axiom2-nautilus-cloud-completion-2026-10-07`, preserving the
 original runtime branch and paused LEAN PR63. Final code checkpoint
-`13f4e1e7fd6a7d91ec63dff075684eb3d53c5926` implements durable replay freshness,
-monitor recovery and actual offline lifecycle projection/reconciliation consumers.
+`6fa68a036d468f0206fe6f0eae83704380892def` implements durable replay freshness,
+monitor recovery and actual offline lifecycle projection/reconciliation consumers,
+plus the independently reviewed signed numeric verifier repair and exact
+seven-file source exclusion registration.
 
 See [final verification](NAUTILUS_RUNTIME_VERIFICATION_2026-10-06.md) for the
 exact implemented/tested/reviewed/Mac-pending table, three sequential passes,
-artifact receipts and blockers. The 58 focused cases and actual Linux smoke
-pass. Full checkout integration remains blocked by the unchanged source
-inventory gate and two independently reproduced inherited research verifier
-failures. No native rebuild or Mac equivalence is claimed. This is a reviewed
-replay implementation handoff, not a green full gate or production activation.
+artifact receipts and results. The 58 focused cases and actual Linux smoke
+pass. All three initial integration failures have bounded reviewed repairs;
+136 current boundary tests and all 1,453 full scoped cloud cases pass
+(run `37563968612`, code `6fa68a03`). Exact registration preserves unknown/drift/import denial and research
+artifact bytes. No native rebuild, Mac equivalence or production activation
+is claimed.
