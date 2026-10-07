@@ -5,6 +5,11 @@ on:
     branches:
       - codex/axiom2-nautilus-runtime-2026-10-06
   workflow_dispatch:
+    inputs:
+      reuse_only:
+        description: Fail on cache miss instead of rebuilding the pinned source
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -133,8 +138,14 @@ jobs:
             nautilus/.axiom2-nautilus-build-manifest.json
           key: ${{ steps.nautilus_manifest.outputs.cache_key }}
 
+      - name: Require the existing verified build for bounded verification
+        if: inputs.reuse_only && steps.nautilus_cache.outputs.cache-hit != 'true'
+        run: |
+          echo 'Exact build cache unavailable; bounded verification does not rebuild.'
+          exit 1
+
       - name: Sync and build the unmodified upstream source
-        if: steps.nautilus_cache.outputs.cache-hit != 'true'
+        if: steps.nautilus_cache.outputs.cache-hit != 'true' && !inputs.reuse_only
         working-directory: nautilus
         env:
           CI: "true"
@@ -177,6 +188,10 @@ jobs:
             nautilus/.axiom2-nautilus-build-manifest.json
           if-no-files-found: error
           retention-days: 90
+          include-hidden-files: true
+
+      - name: Install exact Axiom comparison test dependencies
+        run: uv pip install --python nautilus/python/.venv/bin/python -r axiom/requirements-axiom2-nautilus-tests.txt
 
       - name: Run contract tests
         if: ${{ always() }}

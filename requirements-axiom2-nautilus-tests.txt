@@ -1,0 +1,4 @@
+# Axiom comparison tests run in the separate, already verified Nautilus venv.
+pytest==8.3.5
+pydantic==2.12.5
+cryptography==46.0.7
