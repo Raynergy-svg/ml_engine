@@ -6,7 +6,7 @@ from typing import Any
 import asyncio
 import time
 
-from .contracts import CandidateObservation, MaterialEvent
+from .contracts import CandidateObservation, MaterialEvent, ResearchResult
 from .journal import CandidateJournal
 from .policy import CandidateMonitor
 
@@ -215,7 +215,8 @@ class NautilusContinuousRuntime:
             self._bus.subscribe(NautilusReplayRuntime.TOPIC, self._on_observation)
             self._task = asyncio.create_task(self._drive())
             await asyncio.wait_for(asyncio.shield(self._ready), timeout=3)
-        except BaseException:
+        except BaseException as exc:
+            self._fault(type(exc).__name__)
             await self.shutdown()
             raise
 
@@ -231,7 +232,7 @@ class NautilusContinuousRuntime:
             raise
 
     def _fault(self, reason):
-        self._connection.execute("UPDATE continuous_runtime SET phase='FAULTED',error=? WHERE generation=?",
+        self._connection.execute("UPDATE continuous_runtime SET phase='FAULTED',error=? WHERE generation=? AND phase!='FAULTED'",
                                  (reason, self.generation))
         if self._node is not None:
             self._node.handle().stop()
@@ -279,7 +280,12 @@ class NautilusContinuousRuntime:
 
     def complete(self, result, *, generation: int):
         self._check_generation(generation)
-        self.journal.advance_time(self.timestamp_ns())
+        now = self.timestamp_ns()
+        if not isinstance(result, ResearchResult):
+            raise TypeError('injected result must be a ResearchResult')
+        if result.completed_at_ns > now:
+            raise ValueError('future research result is not admitted by this runtime')
+        self.journal.advance_time(now)
         return self.journal.consume_research_wakeup(result)
 
     def status(self):
@@ -303,14 +309,28 @@ class NautilusContinuousRuntime:
 
     async def shutdown(self):
         self._closing = True
+        failure = None
         if self._node is not None:
             self._node.handle().stop()
         if self._task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(self._task), timeout=3)
+            except asyncio.CancelledError as exc:
+                self._fault(type(exc).__name__)
+                if not self._task.cancelled():
+                    failure = exc
             except Exception as exc:
                 self._fault(type(exc).__name__)
-                raise
+                failure = exc
+            if not self._task.done():
+                self._task.cancel()
+                try:
+                    await asyncio.wait_for(self._task, timeout=1)
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    self._fault(type(exc).__name__)
+                    failure = exc
         if self._actor is not None:
             self._actor.clock.cancel_timers()
         if self._bus is not None:
@@ -322,3 +342,5 @@ class NautilusContinuousRuntime:
         self._started = False
         self.journal.connection = self._connection
         self._task = self._bus = self._actor = self._node = None
+        if failure is not None:
+            raise failure

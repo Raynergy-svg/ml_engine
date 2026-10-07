@@ -1,5 +1,6 @@
 """Real pinned live timers; synthetic admitted observations; no providers."""
 import asyncio
+import gc
 import hashlib
 import json
 import os
@@ -209,6 +210,116 @@ asyncio.run(main())
             process.wait(timeout=3)
         process.stdout.close()
         process.stderr.close()
+
+
+def test_active_lease_denies_second_worker_without_native_node_creation(tmp_path):
+    async def scenario():
+        path = tmp_path / 'exclusive.sqlite'
+        first_journal, second_journal = CandidateJournal(path), CandidateJournal(path)
+        first = module.NautilusContinuousRuntime(first_journal, interval_ns=20_000_000)
+        second = module.NautilusContinuousRuntime(second_journal, interval_ns=20_000_000)
+        try:
+            await first.start()
+            with pytest.raises(RuntimeError, match='holds the runtime lease'):
+                await second.start()
+            assert second.generation == 0
+            assert second.status()['runtime'] == 'UNVERIFIED'
+            assert first.status()['runtime'] == 'RUNNING'
+            assert first.status()['generation'] == 1
+        finally:
+            await first.shutdown()
+            first_journal.close()
+            second_journal.close()
+    asyncio.run(scenario())
+
+
+def test_future_research_result_cannot_promote_ready(tmp_path):
+    async def scenario():
+        journal = CandidateJournal(tmp_path / 'future-result.sqlite')
+        runtime = module.NautilusContinuousRuntime(journal, interval_ns=20_000_000)
+        try:
+            await runtime.start()
+            now = runtime.timestamp_ns()
+            runtime.publish(admitted(now, deadline=now+2_000_000_000), generation=runtime.generation)
+            wakeup, = runtime.pending(generation=runtime.generation)
+            future = ResearchResult(wakeup.wakeup_id, 'continuous-candidate', 'v1',
+                now+1_000_000_000, now+2_000_000_000, hashlib.sha256(b'research').hexdigest(), True)
+            with pytest.raises(ValueError, match='future research'):
+                runtime.complete(future, generation=runtime.generation)
+            assert journal.snapshot('continuous-candidate', 'v1').state is CandidateState.TRIGGERED
+            assert len(runtime.pending(generation=runtime.generation)) == 1
+        finally:
+            await runtime.shutdown()
+            journal.close()
+    asyncio.run(scenario())
+
+
+def test_native_startup_rejection_retains_fault_status(tmp_path):
+    async def scenario():
+        journals = [CandidateJournal(tmp_path / (name+'.sqlite')) for name in ('active', 'rejected')]
+        first, rejected = [module.NautilusContinuousRuntime(j, interval_ns=20_000_000) for j in journals]
+        try:
+            await first.start()
+            with pytest.raises(RuntimeError, match='LiveNode already exists'):
+                await rejected.start()
+            assert rejected.status()['runtime'] == 'FAULTED'
+            assert rejected.status()['error'] == 'RuntimeError'
+            assert first.status()['runtime'] == 'RUNNING'
+        finally:
+            await first.shutdown()
+            for journal in journals:
+                journal.close()
+    asyncio.run(scenario())
+
+
+def test_clock_regression_retains_root_fault_and_denies_readiness(tmp_path):
+    async def scenario():
+        journal = CandidateJournal(tmp_path / 'regression.sqlite')
+        runtime = module.NautilusContinuousRuntime(journal, interval_ns=20_000_000)
+        try:
+            await runtime.start()
+            journal.connection.execute('UPDATE replay_clock SET now_ns=?', (runtime.timestamp_ns()+10_000_000_000,))
+            await until(lambda: runtime.status()['runtime'] == 'FAULTED')
+            await until(lambda: runtime._task.done())
+            assert runtime.status()['error'] == 'CandidateJournalError'
+            assert runtime.status()['candidate_ready'] is False
+            assert runtime.status()['data_fresh'] is False
+        finally:
+            await runtime.shutdown()
+            journal.close()
+    asyncio.run(scenario())
+
+
+def test_cancelled_native_driver_shutdown_still_releases_node(tmp_path):
+    async def scenario():
+        journal = CandidateJournal(tmp_path / 'cancel.sqlite')
+        runtime = module.NautilusContinuousRuntime(journal, interval_ns=20_000_000)
+        await runtime.start()
+        handle = runtime._node.handle()
+        runtime._task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await runtime._task
+        await runtime.shutdown()
+        assert runtime.status()['runtime'] == 'FAULTED'
+        assert handle.is_running is False
+        count = runtime.status()['timer_callbacks']
+        await asyncio.sleep(.06)
+        assert runtime.status()['timer_callbacks'] == count
+        journal.close()
+    asyncio.run(scenario())
+    # Upstream retains its per-thread node guard while caller-held cancellation
+    # tracebacks reference run_async. Release that caller frame before rebuilding.
+    gc.collect()
+    async def replacement_scenario():
+        journal = CandidateJournal(tmp_path / 'replacement.sqlite')
+        replacement = module.NautilusContinuousRuntime(journal, interval_ns=20_000_000)
+        try:
+            await replacement.start()
+            assert replacement.status()['runtime'] == 'RUNNING'
+        finally:
+            await replacement.shutdown()
+            journal.close()
+    asyncio.run(replacement_scenario())
 
 
 def test_shutdown_cancels_real_live_timer_and_denies_late_inputs(tmp_path):

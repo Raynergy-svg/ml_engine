@@ -44,6 +44,31 @@ The initial two feature tests failed before implementation. An upstream rule
 requiring the old live node to be dropped before another can be built on the
 same thread was exposed by the second test and fixed before the seven-case run.
 
+## Fault verification checkpoint
+
+Twelve focused tests pass against the pinned Linux extension with warnings as
+errors (`12 passed in 3.90s`). Added active-lease denial before node creation,
+clock regression preserving the original fault, cancelled-driver cleanup,
+future research-result rejection, and native startup-failure status truth.
+Fault tests initially exposed three cleanup/status defects; the reviewed change
+preserves the first fault, cleans up after cancellation, and records startup
+failure as FAULTED. Future-dated research results cannot promote READY.
+
+The native per-thread node guard follows object lifetime. A separate direct
+upstream probe, without this adapter, showed that a caller-retained cancellation
+traceback retains that guard. After releasing the traceback, rebuilding succeeds.
+The cancellation test checks stopped runner/timers first, releases its exception
+frame, then checks same-thread rebuild. The adapter does not rewrite caller
+tracebacks or use garbage collection as a production recovery mechanism.
+Process termination and fresh-process recovery are independently tested.
+
+| Deliverable | Implemented | Tested | Independently reviewed | Mac |
+|---|---|---|---|---|
+| Preserved replay completion `479d868` | Yes | 1,453 cloud tests | Yes | Pending independent owner |
+| Isolated continuous observation runtime | Yes | 12 native Linux tests | Pending | Pending independent owner |
+| Exact native exclusion registration | Proposal only | Pending registration | Pending | Pending independent owner |
+| Owner transport / provider / production worker | No | No | Out of this slice | Not claimed |
+
 ## Remaining work and boundaries
 
 Independent review, additional fault/lease contention checks and final scoped
