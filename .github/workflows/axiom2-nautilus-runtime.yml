@@ -23,6 +23,9 @@ jobs:
   source-build-and-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      PYTHONPATH: ${{ github.workspace }}/nautilus/python:${{ github.workspace }}/axiom/src:${{ github.workspace }}/axiom
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
       - name: Check out Axiom branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -150,6 +153,11 @@ jobs:
           EXPORT_APPROVED_ARTIFACT: ${{ inputs.export_artifact }}
         run: python axiom/scripts/axiom2_restore_nautilus_artifact.py
 
+      - name: Recreate only the isolated test environment for the approved extension
+        if: inputs.reuse_only && steps.nautilus_cache.outputs.cache-hit != 'true'
+        working-directory: nautilus
+        run: make sync
+
       - name: Sync and build the unmodified upstream source
         if: steps.nautilus_cache.outputs.cache-hit != 'true' && !inputs.reuse_only
         working-directory: nautilus
@@ -245,15 +253,15 @@ jobs:
         working-directory: axiom
         env:
           NAUTILUS_SOURCE_REVISION: 4f021bafc2e99c5490cee204b0fc2bd2c83baab4
-          NAUTILUS_BUILD_MODE: exact pinned source build with verified cache
+          NAUTILUS_BUILD_MODE: approved unchanged Linux extension; exact matching source/toolchain manifest; isolated test environment
         run: ../nautilus/python/.venv/bin/python scripts/axiom2_nautilus_smoke.py
 
       - name: Run Nautilus-backed Axiom runtime tests
         if: ${{ always() }}
         working-directory: axiom
-        run: PYTHONPATH="$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_runtime_recovery.py
+        run: PYTHONPATH="$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_runtime_recovery.py
 
       - name: Run offline Nautilus order-lifecycle tests
         if: ${{ always() }}
         working-directory: axiom
-        run: PYTHONPATH="$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_order_lifecycle.py
+        run: PYTHONPATH="$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_order_lifecycle.py

@@ -98,7 +98,7 @@ def test_runtime_workflow_preserves_exact_build_and_runs_all_gates():
     assert "actions/cache/save@" in workflow
     assert "actions/upload-artifact@" in workflow
     assert "nautilus/.axiom2-nautilus-build-manifest.json" in workflow
-    assert "PYTHONPATH=\"$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom\"" in workflow
+    assert "PYTHONPATH=\"$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom\"" in workflow
     assert "test_runtime_recovery.py" in workflow
     assert "test_order_lifecycle.py" in workflow
     assert workflow.count("if: ${{ always() }}") == 4

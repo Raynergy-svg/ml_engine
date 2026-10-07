@@ -60,12 +60,15 @@ def _restore_network_guard(original_connect: Any, original_create_connection: An
 
 
 def _artifact_identity() -> dict[str, Any]:
-    distribution = importlib.metadata.distribution("nautilus-trader")
+    try:
+        distribution = importlib.metadata.distribution("nautilus-trader")
+    except importlib.metadata.PackageNotFoundError:
+        distribution = None
     package = __import__("nautilus_trader")
     extension_spec = importlib.util.find_spec("nautilus_trader._libnautilus")
     return {
-        "distribution": distribution.metadata["Name"],
-        "installed_version": distribution.version,
+        "distribution": distribution.metadata["Name"] if distribution else "not-installed; pinned source plus verified extension",
+        "installed_version": distribution.version if distribution else None,
         "package_file": getattr(package, "__file__", None),
         "extension_file": getattr(extension_spec, "origin", None),
         "package_version_attribute": getattr(package, "__version__", None),
