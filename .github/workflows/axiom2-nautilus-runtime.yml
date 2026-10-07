@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   source-build-and-smoke:
@@ -138,11 +139,11 @@ jobs:
             nautilus/.axiom2-nautilus-build-manifest.json
           key: ${{ steps.nautilus_manifest.outputs.cache_key }}
 
-      - name: Require the existing verified build for bounded verification
+      - name: Restore approved artifact when the exact branch cache is unavailable
         if: inputs.reuse_only && steps.nautilus_cache.outputs.cache-hit != 'true'
-        run: |
-          echo 'Exact build cache unavailable; bounded verification does not rebuild.'
-          exit 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python axiom/scripts/axiom2_restore_nautilus_artifact.py
 
       - name: Sync and build the unmodified upstream source
         if: steps.nautilus_cache.outputs.cache-hit != 'true' && !inputs.reuse_only
@@ -179,6 +180,7 @@ jobs:
           key: ${{ steps.nautilus_manifest.outputs.cache_key }}
 
       - name: Preserve exact Nautilus build package and manifest
+        if: steps.nautilus_cache.outputs.cache-hit != 'true' && !inputs.reuse_only
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: nautilus-build-${{ steps.nautilus_manifest.outputs.manifest_digest }}
@@ -189,6 +191,14 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           include-hidden-files: true
+
+      - name: Preserve small artifact reuse receipt
+        if: inputs.reuse_only && steps.nautilus_cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nautilus-reuse-receipt
+          path: ${{ runner.temp }}/nautilus-reuse-receipt.json
+          if-no-files-found: error
 
       - name: Install exact Axiom comparison test dependencies
         run: uv pip install --python nautilus/python/.venv/bin/python -r axiom/requirements-axiom2-nautilus-tests.txt

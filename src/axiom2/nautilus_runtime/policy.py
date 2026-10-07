@@ -115,9 +115,10 @@ class CandidateMonitor:
             observation.candidate_id, observation.candidate_version
         )
         previous = snapshot.state if snapshot is not None else None
-        if snapshot is not None and observation.observed_at_ns < snapshot.updated_at_ns:
-            raise ValueError("observation timestamp regressed")
         path = observation_state_path(previous, observation)
+        if (snapshot is not None and previous in {CandidateState.TRIGGERED, CandidateState.REVALIDATING, CandidateState.READY}
+                and snapshot.evidence_digest != observation.evidence_digest):
+            path = (CandidateState.INVALIDATED,)
         if path and any(
             not transition_allowed(
                 previous if index == 0 else path[index - 1], state

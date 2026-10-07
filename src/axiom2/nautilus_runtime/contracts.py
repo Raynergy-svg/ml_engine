@@ -51,6 +51,7 @@ def canonical_json(value: Any) -> str:
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+        allow_nan=False,
     )
 
 
@@ -81,7 +82,18 @@ def _immutable_facts(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
         return MappingProxyType({})
     if not isinstance(value, Mapping):
         raise ValueError("facts must be a mapping")
-    return MappingProxyType(dict(value))
+    def freeze(item: Any) -> Any:
+        if isinstance(item, Mapping):
+            if any(type(key) is not str for key in item):
+                raise ValueError("fact keys must be strings")
+            return MappingProxyType({key: freeze(val) for key, val in item.items()})
+        if isinstance(item, (list, tuple)):
+            return tuple(freeze(val) for val in item)
+        if item is None or type(item) in (str, int, bool, float):
+            canonical_json(item)
+            return item
+        raise ValueError("facts must contain JSON values")
+    return freeze(value)
 
 
 @dataclass(frozen=True, slots=True)

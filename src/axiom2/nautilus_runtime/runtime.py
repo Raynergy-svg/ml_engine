@@ -44,6 +44,7 @@ class NautilusReplayRuntime:
         self.journal = journal
         self.topic = topic
         self.clock = Clock.new_test()
+        self.clock.set_time(journal.now_ns)
         self.bus = MessageBus(TraderId(trader_id), clock=self.clock)
         self._started = False
         self._disposed = False
@@ -80,6 +81,7 @@ class NautilusReplayRuntime:
     def set_time(self, to_time_ns: int) -> None:
         if not self.is_running:
             raise RuntimeError("runtime must be running")
+        self.journal.advance_time(to_time_ns)
         self.clock.set_time(to_time_ns)
 
     def publish(self, observation: CandidateObservation) -> MaterialEvent | None:

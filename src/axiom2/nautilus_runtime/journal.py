@@ -19,7 +19,7 @@ from .contracts import (
     stable_digest,
     stable_id,
 )
-from .policy import ALLOWED_TRANSITIONS, transition_allowed
+from .policy import observation_state_path, transition_allowed
 
 
 class CandidateJournalError(RuntimeError):
@@ -84,6 +84,12 @@ class CandidateJournal:
     def _create_schema(self) -> None:
         self.connection.executescript(
             """
+            CREATE TABLE IF NOT EXISTS replay_clock (
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                now_ns INTEGER NOT NULL
+            );
+            INSERT OR IGNORE INTO replay_clock VALUES (1, 0);
+
             CREATE TABLE IF NOT EXISTS raw_observations (
                 observation_id TEXT PRIMARY KEY,
                 candidate_id TEXT NOT NULL,
@@ -156,6 +162,31 @@ class CandidateJournal:
             raise
         else:
             self.connection.execute("COMMIT")
+
+    def advance_time(self, now_ns: int) -> None:
+        if type(now_ns) is not int or now_ns < 0:
+            raise ValueError("now_ns must be non-negative")
+        with self._transaction():
+            if now_ns < self.now_ns:
+                raise CandidateJournalError("replay clock regressed")
+            self.connection.execute("UPDATE replay_clock SET now_ns = ?", (now_ns,))
+            rows = self.connection.execute("SELECT * FROM candidate_states").fetchall()
+            for row in rows:
+                current = self._snapshot_from_row(row)
+                if current.state not in TERMINAL_STATES and now_ns >= current.freshness_deadline_ns:
+                    self._terminate(current, CandidateState.EXPIRED, f"clock:{now_ns}", now_ns)
+
+    @property
+    def now_ns(self) -> int:
+        return self.connection.execute("SELECT now_ns FROM replay_clock").fetchone()[0]
+
+    def _terminate(self, current, state, cause, timestamp):
+        updated = self._append_state_event(current, candidate_id=current.candidate_id,
+            candidate_version=current.candidate_version, new_state=state,
+            cause_id=cause, occurred_at_ns=timestamp, payload={"cause": cause})
+        self.connection.execute("""UPDATE candidate_states SET state=?, state_sequence=?, updated_at_ns=?
+            WHERE candidate_id=? AND candidate_version=?""",
+            (state.value, updated.state_sequence, timestamp, current.candidate_id, current.candidate_version))
 
     def close(self) -> None:
         self.connection.close()
@@ -329,6 +360,23 @@ class CandidateJournal:
             )
             if current is not None and observation.observed_at_ns < current.updated_at_ns:
                 raise CandidateJournalError("observation timestamp regressed")
+            if current is None:
+                older = self.connection.execute("SELECT * FROM candidate_states WHERE candidate_id=?", (observation.candidate_id,)).fetchall()
+                if any(row["updated_at_ns"] > observation.observed_at_ns for row in older):
+                    raise CandidateJournalError("candidate version timestamp regressed")
+                for row in older:
+                    old = self._snapshot_from_row(row)
+                    if old.state not in TERMINAL_STATES:
+                        self._terminate(old, CandidateState.INVALIDATED, "superseded:"+observation.candidate_version, observation.observed_at_ns)
+            # Compute policy again under the write lock: another process may have advanced state.
+            previous = current.state if current else None
+            state_path = observation_state_path(previous, observation)
+            if current and previous in {CandidateState.TRIGGERED, CandidateState.REVALIDATING, CandidateState.READY} and current.evidence_digest != observation.evidence_digest:
+                state_path = (CandidateState.INVALIDATED,)
+            if previous not in TERMINAL_STATES and self.now_ns >= observation.freshness_deadline_ns:
+                state_path = (CandidateState.WATCHING, CandidateState.EXPIRED) if current is None else (CandidateState.EXPIRED,)
+            if CandidateState.TRIGGERED not in state_path:
+                material_event = wakeup = None
             self.connection.execute(
                 """
                 INSERT INTO raw_observations (
@@ -571,6 +619,8 @@ class CandidateJournal:
                 or row["candidate_version"] != result.candidate_version
             ):
                 raise CandidateJournalError("research result candidate version mismatch")
+            if row["result_digest"] is not None and row["result_digest"] != stable_digest(result.to_payload()):
+                raise ObservationConflictError("research result identity conflict")
             if row["status"] != "IN_PROGRESS":
                 return WakeupResult(
                     wakeup_id=result.wakeup_id,
@@ -599,13 +649,15 @@ class CandidateJournal:
                     state=current.state if current else None,
                 )
 
+            if current.evidence_digest != row["bound_evidence_digest"]:
+                raise CandidateJournalError("research result evidence changed")
             if current.updated_at_ns > result.completed_at_ns:
                 raise CandidateJournalError("research result timestamp regressed")
             if result.invalidated or not result.qualifies:
                 final_state = CandidateState.INVALIDATED
             elif (
-                result.completed_at_ns >= result.fresh_until_ns
-                or result.completed_at_ns >= current.freshness_deadline_ns
+                max(self.now_ns, result.completed_at_ns) >= result.fresh_until_ns
+                or max(self.now_ns, result.completed_at_ns) >= current.freshness_deadline_ns
             ):
                 final_state = CandidateState.EXPIRED
             else:
@@ -623,13 +675,14 @@ class CandidateJournal:
             self.connection.execute(
                 """
                 UPDATE candidate_states
-                SET state = ?, state_sequence = ?, updated_at_ns = ?
+                SET state = ?, state_sequence = ?, updated_at_ns = ?, freshness_deadline_ns = ?
                 WHERE candidate_id = ? AND candidate_version = ?
                 """,
                 (
                     updated.state.value,
                     updated.state_sequence,
                     updated.updated_at_ns,
+                    min(current.freshness_deadline_ns, result.fresh_until_ns),
                     updated.candidate_id,
                     updated.candidate_version,
                 ),
@@ -656,6 +709,11 @@ class CandidateJournal:
             )
 
     def consume_research_wakeup(self, result: ResearchResult) -> WakeupResult:
+        row = self._wakeup_row(result.wakeup_id)
+        if row["candidate_id"] != result.candidate_id or row["candidate_version"] != result.candidate_version:
+            raise CandidateJournalError("research result candidate version mismatch")
+        if row["result_digest"] is not None and row["result_digest"] != stable_digest(result.to_payload()):
+            raise ObservationConflictError("research result identity conflict")
         claimed = self.claim_research_wakeup(result.wakeup_id)
         if claimed.outcome != "CLAIMED":
             return claimed
