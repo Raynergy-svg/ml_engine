@@ -143,6 +143,8 @@ class NautilusContinuousRuntime:
         self._started = self._closing = False
         self._node = self._actor = self._bus = self._task = None
         self._last_material_event = None
+        self._local_fault = ''
+        journal.check_storage()
         self._connection.execute("""CREATE TABLE IF NOT EXISTS continuous_runtime (
             singleton INTEGER PRIMARY KEY CHECK(singleton=1), generation INTEGER NOT NULL,
             phase TEXT NOT NULL, heartbeat_ns INTEGER NOT NULL, lease_until_ns INTEGER NOT NULL,
@@ -156,6 +158,8 @@ class NautilusContinuousRuntime:
         return self._connection.execute("SELECT * FROM continuous_runtime WHERE singleton=1").fetchone()
 
     def _check_generation(self, generation=None):
+        if self._local_fault:
+            raise RuntimeError('runtime faulted')
         if generation is not None and (type(generation) is not int or generation != self.generation):
             raise RuntimeError("runtime generation fenced")
         row = self._row()
@@ -168,6 +172,7 @@ class NautilusContinuousRuntime:
         if self.generation != 0:
             raise RuntimeError("runtime can start only once; construct a new instance")
         self.journal.replay()
+        self.journal.check_storage()
         now = time.time_ns()
         self._connection.execute("BEGIN IMMEDIATE")
         try:
@@ -232,13 +237,22 @@ class NautilusContinuousRuntime:
             raise
 
     def _fault(self, reason):
-        self._connection.execute("UPDATE continuous_runtime SET phase='FAULTED',error=? WHERE generation=? AND phase!='FAULTED'",
-                                 (reason, self.generation))
-        if self._node is not None:
-            self._node.handle().stop()
+        self._local_fault = self._local_fault or reason
+        try:
+            self.journal.check_storage()
+            self._connection.execute("UPDATE continuous_runtime SET phase='FAULTED',error=? WHERE generation=? AND phase!='FAULTED'",
+                                     (self._local_fault, self.generation))
+        except Exception:
+            # Unwritable storage cannot prevent native stop or local denial.
+            # Persisted status is never proof of a current live handle.
+            pass
+        finally:
+            if self._node is not None:
+                self._node.handle().stop()
 
     def _tick(self):
         try:
+            self.journal.check_storage()
             self._check_generation()
             now = self.timestamp_ns()
             self.journal.advance_time(now)
@@ -289,6 +303,12 @@ class NautilusContinuousRuntime:
         return self.journal.consume_research_wakeup(result)
 
     def status(self):
+        if self._local_fault:
+            return dict(runtime='FAULTED', generation=self.generation,
+                timer_callbacks=0, heartbeat_ns=0, lease_until_ns=0, data_deadline_ns=0,
+                data_fresh=False, candidate_ready=False, input_scope='synthetic-or-injected-admitted-only',
+                live_feed_verified=False, owner_transport_verified=False,
+                execution_enabled=False, capital_authorized=False, error=self._local_fault)
         row = self._row()
         now = self.timestamp_ns()
         phase = row['phase'] if row else 'NOT_STARTED'
@@ -303,6 +323,8 @@ class NautilusContinuousRuntime:
         return dict(runtime=phase, generation=row['generation'] if row else 0,
             timer_callbacks=row['timer_callbacks'] if row else 0,
             heartbeat_ns=row['heartbeat_ns'] if row else 0, data_fresh=fresh,
+            lease_until_ns=row['lease_until_ns'] if row else 0,
+            data_deadline_ns=row['data_deadline_ns'] if row else 0,
             candidate_ready=bool(ready), input_scope='synthetic-or-injected-admitted-only',
             live_feed_verified=False, owner_transport_verified=False,
             execution_enabled=False, capital_authorized=False, error=row['error'] if row else '')
@@ -337,10 +359,16 @@ class NautilusContinuousRuntime:
             self._bus.dispose()
         if self._node is not None:
             self._node.dispose()
-        self._connection.execute("UPDATE continuous_runtime SET phase='STOPPED' WHERE generation=? AND phase!='FAULTED'",
-                                 (self.generation,))
-        self._started = False
-        self.journal.connection = self._connection
-        self._task = self._bus = self._actor = self._node = None
+        try:
+            self.journal.check_storage()
+            self._connection.execute("UPDATE continuous_runtime SET phase='STOPPED' WHERE generation=? AND phase!='FAULTED'",
+                                     (self.generation,))
+        except Exception as exc:
+            self._local_fault = self._local_fault or type(exc).__name__
+            failure = failure or exc
+        finally:
+            self._started = False
+            self.journal.connection = self._connection
+            self._task = self._bus = self._actor = self._node = None
         if failure is not None:
             raise failure

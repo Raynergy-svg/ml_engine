@@ -75,8 +75,19 @@ class CandidateJournal:
     makes no exactly-once delivery claim.
     """
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, max_storage_bytes: int | None = None) -> None:
         self.path = Path(path)
+        if max_storage_bytes is not None and (
+            type(max_storage_bytes) is not int or not 262_144 <= max_storage_bytes <= 64 * 1024 * 1024
+        ):
+            raise ValueError('journal limit must be 256KiB through 64MiB')
+        self.max_storage_bytes = max_storage_bytes
+        if max_storage_bytes is not None:
+            # Reserve three quarters for WAL frames, SHM and transaction overhead.
+            # Reject an existing oversized store before SQLite can mutate it.
+            if any(p.exists() and p.stat().st_size > max_storage_bytes // 4
+                   for p in self._storage_paths()):
+                raise CandidateJournalError('existing journal exceeds storage allocation')
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(
             self.path,
@@ -85,10 +96,48 @@ class CandidateJournal:
             check_same_thread=False,
         )
         self.connection.row_factory = sqlite3.Row
+        if max_storage_bytes is not None:
+            page_size = self.connection.execute('PRAGMA page_size').fetchone()[0]
+            page_limit = (max_storage_bytes // 4 - 65_536) // page_size
+            pages = self.connection.execute('PRAGMA page_count').fetchone()[0]
+            if page_limit < pages or page_limit < 1:
+                self.connection.close()
+                raise CandidateJournalError('existing journal exceeds page allocation')
+            self.connection.execute(f'PRAGMA max_page_count={page_limit}')
+            self.connection.execute('PRAGMA cache_spill=OFF')
+            self.connection.execute('PRAGMA wal_autocheckpoint=1')
+            self.connection.execute('PRAGMA busy_timeout=0')
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA synchronous = FULL")
         self._create_schema()
+        self.check_storage()
+
+    def _storage_paths(self):
+        return tuple(self.path.with_name(self.path.name + suffix) for suffix in ('', '-wal', '-shm'))
+
+    def storage_bytes(self) -> int:
+        return sum(p.stat().st_size for p in self._storage_paths() if p.exists())
+
+    def check_storage(self) -> None:
+        """Checkpoint before writes; never prune the coupled journal history.
+
+        With cache spill disabled, one transaction appends at most the capped
+        database's dirty pages. Starting from a truncated WAL leaves ample room
+        under the combined cap. A pinned reader denies further writes rather
+        than allowing WAL accumulation. The cap is a mechanics resource bound,
+        not protection against an owner changing SQLite or filesystem contents.
+        """
+        if self.max_storage_bytes is None:
+            return
+        if self.storage_bytes() > self.max_storage_bytes:
+            raise CandidateJournalError('journal storage budget exhausted')
+        if not self.connection.in_transaction:
+            busy, _, _ = self.connection.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
+            if busy:
+                raise CandidateJournalError('journal checkpoint blocked; writes denied')
+        if self.storage_bytes() > self.max_storage_bytes:
+            raise CandidateJournalError('journal storage budget exhausted')
 
     def _create_schema(self) -> None:
         self.connection.executescript(
@@ -163,6 +212,7 @@ class CandidateJournal:
 
     @contextmanager
     def _transaction(self):
+        self.check_storage()
         self.connection.execute("BEGIN IMMEDIATE")
         try:
             yield
