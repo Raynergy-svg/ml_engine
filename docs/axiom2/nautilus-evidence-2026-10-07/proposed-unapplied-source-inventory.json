@@ -1,0 +1,20 @@
+{
+  "preserved_boundary_file_sha256": {
+    "config/axiom2/execution_boundary.json": "2828c9df08fca548c61123dea963ec8eb65c8a4fe90a8ca5e26e03887c593f07",
+    "config/axiom2/portfolio_boundary.json": "dd46c62b1888d20ea08ecc9dca9320de0e9248a123958c3d96f8c26c88c6ba59",
+    "config/axiom2/research_boundary.json": "68a1fd9b932ad9c3324de931346b58afdaa7cbf9428d5bca1afcf9fa8dba07dd"
+  },
+  "purpose": "Independent review input for exact replay-only source exclusion; keep these files outside the research bundle; reject unknown source and digest drift. This file is not loaded by any gate.",
+  "schema": "axiom2.nautilus.proposed-source-exclusion.v1",
+  "source_sha256": {
+    "src/axiom2/nautilus_runtime/__init__.py": "42a3b7f5518a4e95f8e915934fd4b335c33165b387c3e0a76e5c98e1f6c03a17",
+    "src/axiom2/nautilus_runtime/contracts.py": "caf0d69c25fe4b6aeb0d5fe37c2b525f3d146bed0c37a3faf6892632ceeaa97e",
+    "src/axiom2/nautilus_runtime/journal.py": "c1cf49486c02617bca8419e76b7bbf449fa427fb268fbdbfcc4342ba2886605a",
+    "src/axiom2/nautilus_runtime/order_replay.py": "7456f8668bcb855085fb61919e930aa26733d1b74b6f5d1b8c306dfa8bb873ab",
+    "src/axiom2/nautilus_runtime/policy.py": "682a3c2e2474d12dc106379da6cf21af19c684b367ef8b73c7a6976544629daa",
+    "src/axiom2/nautilus_runtime/runtime.py": "55bc8618a1d8ca788c23a597e55371c46732e6de3e001061bb0f20373afa48af",
+    "src/axiom2/nautilus_runtime/wakeup.py": "4ace6d04cd8f8eec969c50f1e49fdd12f4dfe49efac80f970ed7a3e84b6c3437"
+  },
+  "status": "PROPOSED_UNAPPLIED_REQUIRES_EXPLICIT_AUTHORIZATION",
+  "tested_code_sha": "13f4e1e7fd6a7d91ec63dff075684eb3d53c5926"
+}

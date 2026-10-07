@@ -1,0 +1,36 @@
+{
+  "failures": [
+    {
+      "classname": "tests.axiom2.portfolio.test_boundary",
+      "message": "AssertionError: Research isolation FAIL: source inventory drift: missing or unreviewed files\n  \nassert 1 == 0\n +  where 1 = CompletedProcess(args=['/home/runner/work/ml_engine/ml_engine/axiom/../nautilus/python/.venv/bin/python', '-B', '-W', ...ip'], returncode=1, stdout='', stderr='Research isolation FAIL: source inventory drift: missing or unreviewed files\\n').returncode",
+      "name": "test_research_artifact_cannot_import_portfolio_or_execution"
+    },
+    {
+      "classname": "tests.axiom2.research.test_phase1_development",
+      "message": "ValueError: paired bound mismatch",
+      "name": "test_finite_five_arm_campaign_retains_signed_reports_and_history"
+    },
+    {
+      "classname": "tests.axiom2.research.test_phase1_development",
+      "message": "AssertionError: Regex pattern did not match.\n  Expected regex: 'primary'\n  Actual message: 'paired bound mismatch'",
+      "name": "test_report_verifier_recomputes_signed_derived_conclusions"
+    }
+  ],
+  "run_conclusion": "failure",
+  "run_id": 37562644230,
+  "test_suites": [
+    {
+      "errors": "0",
+      "failures": "3",
+      "hostname": "runnervm8df0l",
+      "name": "pytest",
+      "skipped": "0",
+      "tests": "1410",
+      "time": "221.022",
+      "timestamp": "2026-10-07T02:35:34.511805+00:00"
+    }
+  ],
+  "tested_code_sha": "13f4e1e7fd6a7d91ec63dff075684eb3d53c5926",
+  "verification_artifact_id": 11457224348,
+  "verification_artifact_zip_sha256": "70389af2700c72519082fec72095498245c3aba10ea316ee2200c963c5863d1d"
+}

@@ -121,3 +121,20 @@ and are outside this authorization.
 
 All production execution gates, approval requirements, capital limits, risk
 checks, and execution permissions remain unchanged.
+
+## Completion handoff — 2026-10-07
+
+The historical build and API findings above are preserved. The inherited
+checkpoint `9e996c8bd3e0a37fafed2793be1d1165d91209b3` was completed on isolated
+branch `codex/axiom2-nautilus-cloud-completion-2026-10-07`, preserving the
+original runtime branch and paused LEAN PR63. Final code checkpoint
+`13f4e1e7fd6a7d91ec63dff075684eb3d53c5926` implements durable replay freshness,
+monitor recovery and actual offline lifecycle projection/reconciliation consumers.
+
+See [final verification](NAUTILUS_RUNTIME_VERIFICATION_2026-10-06.md) for the
+exact implemented/tested/reviewed/Mac-pending table, three sequential passes,
+artifact receipts and blockers. The 58 focused cases and actual Linux smoke
+pass. Full checkout integration remains blocked by the unchanged source
+inventory gate and two independently reproduced inherited research verifier
+failures. No native rebuild or Mac equivalence is claimed. This is a reviewed
+replay implementation handoff, not a green full gate or production activation.

@@ -1,0 +1,32 @@
+{
+  "broker_actions": 0,
+  "capability": {
+    "advanced_order_coverage": "UNAVAILABLE",
+    "approval_setting": "UNKNOWN",
+    "auth_revocation_verified": false,
+    "blocked_prerequisites": [
+      "PROVIDER_SNAPSHOT_TIME_UNAVAILABLE",
+      "SETTLED_CASH_UNAVAILABLE",
+      "RESERVED_CASH_UNAVAILABLE",
+      "EXTERNAL_CASHFLOW_HISTORY_UNAVAILABLE",
+      "CORPORATE_ACTION_HISTORY_UNAVAILABLE",
+      "ADVANCED_ORDER_COVERAGE_UNAVAILABLE",
+      "APPROVAL_SETTING_UNAVAILABLE",
+      "REGULAR_SESSION_CALENDAR_UNAVAILABLE"
+    ],
+    "capital_authorized": false,
+    "declared_contract_sha256": "a8acfcc10e137fad609ef1467dd329b59e28d4122bd0173f52426c70b8e93be6",
+    "equity_read_bindings_configured": true,
+    "execution_enabled": false,
+    "live_connection_verified": false,
+    "provider": "official-robinhood-trading-mcp",
+    "provider_snapshot_time_available": false,
+    "regular_session_calendar": "UNAVAILABLE",
+    "schema_version": "1.0.0"
+  },
+  "live_connection_verified": false,
+  "live_nonempty_or_pagination_verified": false,
+  "operational_proof": false,
+  "scope": "offline-declared-contract-integrity-only",
+  "status": "PASS"
+}
