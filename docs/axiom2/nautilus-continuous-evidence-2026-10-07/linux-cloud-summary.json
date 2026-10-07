@@ -1,0 +1,32 @@
+{
+  "tests": 1465,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "time_seconds": 276.985,
+  "continuous_cases": [
+    "test_native_live_timer_revokes_ready_without_virtual_clock_advance",
+    "test_stale_and_future_injected_data_never_qualify",
+    "test_restart_preserves_idempotent_results_and_rejects_old_generation",
+    "test_generation_change_fences_existing_journal_transactions",
+    "test_frozen_host_dispatch_reports_stale_and_stops_fail_closed",
+    "test_sigkill_recovers_pending_wakeup_with_new_fenced_generation",
+    "test_active_lease_denies_second_worker_without_native_node_creation",
+    "test_future_research_result_cannot_promote_ready",
+    "test_native_startup_rejection_retains_fault_status",
+    "test_clock_regression_retains_root_fault_and_denies_readiness",
+    "test_cancelled_native_driver_shutdown_still_releases_node",
+    "test_shutdown_cancels_real_live_timer_and_denies_late_inputs"
+  ],
+  "run_id": 37568201717,
+  "run_url": "https://github.com/Raynergy-svg/ml_engine/actions/runs/37568201717",
+  "tested_sha": "933753a9675e750da805ba73b39a297aa7b3b902",
+  "artifact_id": 11459598755,
+  "artifact_zip_sha256": "66d545a504a96a8f1d357ab772fdd3785f4cc5d476627f5abea70661c3e4a682",
+  "conclusion": "success",
+  "rebuild_performed": false,
+  "reuse_receipt_artifact_id": 11459422043,
+  "reuse_receipt_zip_sha256": "07029ac9a42253007154872f1922149c7750d739152c0c65476a7d8b5c27ebb2",
+  "smoke_receipt_note": "Original artifact smoke stdout contains native log lines followed by JSON. Raw bytes preserved in linux-cloud-nautilus-smoke-stdout.log; JSON receipt extracted from the final object.",
+  "smoke_stdout_sha256": "2a8619d097664a93041328be5e71f803f4f10a0b616f2165f23fcfe3adae9f31"
+}
