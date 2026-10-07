@@ -4,10 +4,21 @@ on:
   push:
     branches:
       - codex/axiom2-nautilus-runtime-2026-10-06
+      - codex/axiom2-nautilus-cloud-completion-2026-10-07
+    paths:
+      - .github/workflows/axiom2-nautilus-runtime.yml
+      - src/axiom2/**
+      - config/axiom2/**
+      - scripts/axiom2*
+      - requirements-axiom2*
+      - tests/axiom2/**
+      - tests/evidence/**
+      - tests/test_evidence*
+      - tests/test_equity_research_evidence*
   workflow_dispatch:
     inputs:
       reuse_only:
-        description: Fail on cache miss instead of rebuilding the pinned source
+        description: Reuse approved cache or artifact without rebuilding the pinned source
         type: boolean
         default: true
       export_artifact:
@@ -26,6 +37,7 @@ jobs:
     env:
       PYTHONPATH: ${{ github.workspace }}/nautilus/python:${{ github.workspace }}/axiom/src:${{ github.workspace }}/axiom
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      NAUTILUS_REUSE_ONLY: ${{ inputs.reuse_only || (github.event_name == 'push' && github.ref == 'refs/heads/codex/axiom2-nautilus-cloud-completion-2026-10-07') }}
     steps:
       - name: Check out Axiom branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -147,19 +159,19 @@ jobs:
           key: ${{ steps.nautilus_manifest.outputs.cache_key }}
 
       - name: Restore approved artifact when the exact branch cache is unavailable
-        if: inputs.reuse_only && (steps.nautilus_cache.outputs.cache-hit != 'true' || inputs.export_artifact)
+        if: env.NAUTILUS_REUSE_ONLY == 'true' && (steps.nautilus_cache.outputs.cache-hit != 'true' || inputs.export_artifact)
         env:
           GH_TOKEN: ${{ github.token }}
           EXPORT_APPROVED_ARTIFACT: ${{ inputs.export_artifact }}
         run: python axiom/scripts/axiom2_restore_nautilus_artifact.py
 
       - name: Recreate only the isolated test environment for the approved extension
-        if: inputs.reuse_only && steps.nautilus_cache.outputs.cache-hit != 'true'
+        if: env.NAUTILUS_REUSE_ONLY == 'true' && steps.nautilus_cache.outputs.cache-hit != 'true'
         working-directory: nautilus
         run: make sync
 
       - name: Sync and build the unmodified upstream source
-        if: steps.nautilus_cache.outputs.cache-hit != 'true' && !inputs.reuse_only
+        if: steps.nautilus_cache.outputs.cache-hit != 'true' && env.NAUTILUS_REUSE_ONLY != 'true'
         working-directory: nautilus
         env:
           CI: "true"
@@ -194,7 +206,7 @@ jobs:
           key: ${{ steps.nautilus_manifest.outputs.cache_key }}
 
       - name: Preserve exact Nautilus build package and manifest
-        if: steps.nautilus_cache.outputs.cache-hit != 'true' && !inputs.reuse_only
+        if: steps.nautilus_cache.outputs.cache-hit != 'true' && env.NAUTILUS_REUSE_ONLY != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: nautilus-build-${{ steps.nautilus_manifest.outputs.manifest_digest }}
@@ -207,7 +219,7 @@ jobs:
           include-hidden-files: true
 
       - name: Preserve small artifact reuse receipt
-        if: inputs.reuse_only && (steps.nautilus_cache.outputs.cache-hit != 'true' || inputs.export_artifact)
+        if: env.NAUTILUS_REUSE_ONLY == 'true' && (steps.nautilus_cache.outputs.cache-hit != 'true' || inputs.export_artifact)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: nautilus-reuse-receipt
