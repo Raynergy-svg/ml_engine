@@ -174,6 +174,7 @@ jobs:
           test -x nautilus/python/.venv/bin/python
           extension="$(find nautilus/python/nautilus_trader -maxdepth 1 -type f -name '_libnautilus*.so' -print -quit)"
           test -n "$extension"
+          python axiom/scripts/axiom2_verify_nautilus_binary.py nautilus/python/nautilus_trader --receipt "$RUNNER_TEMP/nautilus-binary-receipt.json"
           test "$(sha256sum nautilus/.axiom2-nautilus-build-manifest.json | awk '{print $1}')" = "${{ steps.nautilus_manifest.outputs.manifest_digest }}"
           test "$(git -C nautilus rev-parse HEAD)" = "${{ steps.nautilus_manifest.outputs.source_revision }}"
           nautilus/python/.venv/bin/python - <<'PY'
@@ -246,7 +247,7 @@ jobs:
       - name: Run contract tests
         if: ${{ always() }}
         working-directory: axiom
-        run: python -m pytest -q tests/axiom2/test_nautilus_smoke_contract.py tests/axiom2/test_nautilus_artifact_redirect.py
+        run: python -m pytest -q tests/axiom2/test_nautilus_smoke_contract.py tests/axiom2/test_nautilus_artifact_redirect.py tests/axiom2/test_nautilus_binary_integrity.py
 
       - name: Run actual public-interface smoke harness
         if: ${{ always() }}
@@ -281,6 +282,7 @@ jobs:
           path: |
             ${{ runner.temp }}/axiom-scoped-tests.xml
             ${{ runner.temp }}/nautilus-smoke.json
+            ${{ runner.temp }}/nautilus-binary-receipt.json
             nautilus/.axiom2-nautilus-build-manifest.json
           include-hidden-files: true
           if-no-files-found: error
