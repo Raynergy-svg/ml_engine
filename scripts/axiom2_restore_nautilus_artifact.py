@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import urllib.request
+from urllib.parse import urlsplit
 import zipfile
 
 ARTIFACT_ID = 11454954090
@@ -14,6 +15,16 @@ AXIOM_SHA = '9e996c8bd3e0a37fafed2793be1d1165d91209b3'
 ARCHIVE_SHA256 = 'fad40bc654f5965a8bef2317036f1b9a20504138f30e2a516afcfa90414ec721'
 MANIFEST_SHA256 = '6eaefb9f2c089663e5d59aecb7ae91cd4685b7459588129e04a75bc7f8134270'
 API = 'https://api.github.com/repos/Raynergy-svg/ml_engine/actions/artifacts/'
+
+
+class ArtifactRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urlsplit(newurl)
+        if target.scheme != 'https' or not target.hostname.endswith('.blob.core.windows.net'):
+            raise ValueError('Unapproved artifact redirect')
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        redirected.remove_header('Authorization')
+        return redirected
 
 
 def main():
@@ -35,10 +46,16 @@ def main():
     request = urllib.request.Request(API+str(ARTIFACT_ID)+'/zip', headers={
         'Authorization': 'Bearer '+os.environ['GH_TOKEN']})
     archive = Path(os.environ['RUNNER_TEMP'])/'approved-nautilus.zip'
-    with urllib.request.urlopen(request, timeout=60) as response, archive.open('wb') as target:
+    opener = urllib.request.build_opener(ArtifactRedirect())
+    with opener.open(request, timeout=60) as response, archive.open('wb') as target:
         shutil.copyfileobj(response, target)
     if hashlib.sha256(archive.read_bytes()).hexdigest() != ARCHIVE_SHA256:
         raise SystemExit('Artifact ZIP digest mismatch')
+    if os.environ.get('EXPORT_APPROVED_ARTIFACT') == 'true':
+        blob = archive.read_bytes()
+        size = 24*1024*1024
+        for number, start in enumerate(range(0, len(blob), size), 1):
+            (archive.parent/f'approved-nautilus.part{number}').write_bytes(blob[start:start+size])
     with zipfile.ZipFile(archive) as bundle:
         names = bundle.namelist()
         if any(Path(name).is_absolute() or '..' in Path(name).parts for name in names):

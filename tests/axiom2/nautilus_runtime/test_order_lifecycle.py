@@ -271,3 +271,68 @@ def test_actual_nautilus_order_lifecycle_and_restart_recovery(tmp_path: Path) ->
         ).state
         == "HALTED"
     )
+
+
+def test_projection_consumes_actual_reports_and_reconciles(tmp_path):
+    replay = NautilusOrderReplay(tmp_path/'projection.sqlite')
+    replay.ingest('submit', submitted(1), received_at_ns=1)
+    replay.ingest('ack', accepted(2), received_at_ns=2)
+    replay.ingest('partial', filled(3, 'T1', 40), received_at_ns=3)
+    projection = replay.projection()
+    assert projection.lifecycle_state == 'PARTIALLY_FILLED'
+    assert projection.unresolved == ()
+    assert projection.fills[0].quantity == 40
+    assert projection.fills[0].fee_cents == 10
+    replay.ingest('cancel', canceled(4), received_at_ns=4)
+    replay.ingest('late', filled(5, 'T2', 60), received_at_ns=5)
+    projection = replay.projection()
+    assert projection.lifecycle_state == 'FILLED'
+    assert projection.unresolved == ()
+    ledger = Ledger('SIM-AXIOM2', 'observed', 200_000, (('AAPL.SIM',0),),
+        ('O-AXIOM2-REPLAY',), projection.fills, 200_000, 0)
+    account = Account('SIM-AXIOM2', 99_980, 99_980, (('AAPL.SIM',100),), True,
+        199_980, 0, valuation_marks_micros=(('AAPL.SIM',10_000_000),))
+    assert replay.compare_reconciliation(ledger, account,
+        Policy('a'*64, 0, 0)).state == 'MATCHED'
+    replay.ingest('partial', filled(6, 'T1', 40, price='10.01'), received_at_ns=6)
+    assert replay.projection().unresolved
+    assert replay.compare_reconciliation(ledger, account,
+        Policy('a'*64, 0, 0)).state != 'MATCHED'
+
+
+def test_order_seed_binding_and_raw_integrity_survive_restart(tmp_path):
+    from dataclasses import replace
+    import pytest
+    from axiom2.nautilus_runtime import OrderSeed, NautilusOrderReplayCorruption
+    path = tmp_path/'seed.sqlite'
+    replay = NautilusOrderReplay(path)
+    replay.ingest('submit', submitted(1), received_at_ns=1)
+    replay.close()
+    with pytest.raises(NautilusOrderReplayCorruption, match='seed'):
+        NautilusOrderReplay(path, seed=replace(OrderSeed(), quantity=200))
+    replay = NautilusOrderReplay(path)
+    replay.connection.execute("UPDATE raw_order_observations SET payload_json='{}'")
+    replay.close()
+    with pytest.raises(NautilusOrderReplayCorruption, match='digest'):
+        NautilusOrderReplay(path)
+
+
+def test_two_connections_rebuild_before_applying_report(tmp_path):
+    path = tmp_path/'two.sqlite'
+    first = NautilusOrderReplay(path)
+    second = NautilusOrderReplay(path)
+    first.ingest('submit', submitted(1), received_at_ns=1)
+    second.ingest('ack', accepted(2), received_at_ns=2)
+    first.ingest('partial', filled(3, 'T1', 40), received_at_ns=3)
+    second.ingest('rest', filled(4, 'T2', 60), received_at_ns=4)
+    assert first.snapshot().status == 'FILLED'
+    assert second.snapshot().filled_quantity_raw == 100
+
+
+def test_event_identity_dedupes_across_receipt_identities(tmp_path):
+    replay = NautilusOrderReplay(tmp_path/'ids.sqlite')
+    event = submitted(1)
+    replay.ingest('first', event, received_at_ns=1)
+    assert replay.ingest('second', event, received_at_ns=2).disposition == 'DUPLICATE'
+    assert replay.snapshot().event_count == 2
+    assert len(replay.raw_observations()) == 2

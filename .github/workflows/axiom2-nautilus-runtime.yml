@@ -10,6 +10,10 @@ on:
         description: Fail on cache miss instead of rebuilding the pinned source
         type: boolean
         default: true
+      export_artifact:
+        description: Export approved ZIP in transfer-sized parts for local Linux verification
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -140,9 +144,10 @@ jobs:
           key: ${{ steps.nautilus_manifest.outputs.cache_key }}
 
       - name: Restore approved artifact when the exact branch cache is unavailable
-        if: inputs.reuse_only && steps.nautilus_cache.outputs.cache-hit != 'true'
+        if: inputs.reuse_only && (steps.nautilus_cache.outputs.cache-hit != 'true' || inputs.export_artifact)
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPORT_APPROVED_ARTIFACT: ${{ inputs.export_artifact }}
         run: python axiom/scripts/axiom2_restore_nautilus_artifact.py
 
       - name: Sync and build the unmodified upstream source
@@ -193,12 +198,39 @@ jobs:
           include-hidden-files: true
 
       - name: Preserve small artifact reuse receipt
-        if: inputs.reuse_only && steps.nautilus_cache.outputs.cache-hit != 'true'
+        if: inputs.reuse_only && (steps.nautilus_cache.outputs.cache-hit != 'true' || inputs.export_artifact)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: nautilus-reuse-receipt
           path: ${{ runner.temp }}/nautilus-reuse-receipt.json
           if-no-files-found: error
+
+      - name: Export approved artifact part 1
+        if: inputs.export_artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: approved-nautilus-part1
+          path: ${{ runner.temp }}/approved-nautilus.part1
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Export approved artifact part 2
+        if: inputs.export_artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: approved-nautilus-part2
+          path: ${{ runner.temp }}/approved-nautilus.part2
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Export approved artifact part 3
+        if: inputs.export_artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: approved-nautilus-part3
+          path: ${{ runner.temp }}/approved-nautilus.part3
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Install exact Axiom comparison test dependencies
         run: uv pip install --python nautilus/python/.venv/bin/python -r axiom/requirements-axiom2-nautilus-tests.txt
