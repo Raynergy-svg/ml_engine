@@ -274,7 +274,7 @@ jobs:
       - name: Run Nautilus-backed Axiom runtime tests
         if: ${{ always() }}
         working-directory: axiom
-        run: PYTHONPATH="$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_runtime_recovery.py tests/axiom2/nautilus_runtime/test_candidate_monitor.py tests/axiom2/nautilus_runtime/test_monitor_completion.py tests/axiom2/nautilus_runtime/test_projection_contract.py
+        run: PYTHONPATH="$GITHUB_WORKSPACE/nautilus/python:$GITHUB_WORKSPACE/axiom/src:$GITHUB_WORKSPACE/axiom" ../nautilus/python/.venv/bin/python -m pytest -q tests/axiom2/nautilus_runtime/test_runtime_recovery.py tests/axiom2/nautilus_runtime/test_candidate_monitor.py tests/axiom2/nautilus_runtime/test_monitor_completion.py tests/axiom2/nautilus_runtime/test_projection_contract.py tests/axiom2/nautilus_runtime/test_continuous_runtime.py
 
       - name: Run offline Nautilus order-lifecycle tests
         if: ${{ always() }}

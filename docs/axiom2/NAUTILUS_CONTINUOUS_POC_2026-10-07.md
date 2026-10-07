@@ -65,17 +65,17 @@ Process termination and fresh-process recovery are independently tested.
 | Deliverable | Implemented | Tested | Independently reviewed | Mac |
 |---|---|---|---|---|
 | Preserved replay completion `479d868` | Yes | 1,453 cloud tests | Yes | Pending independent owner |
-| Isolated continuous observation runtime | Yes | 12 native Linux tests | Pending | Pending independent owner |
-| Exact native exclusion registration | Proposal only | Pending registration | Pending | Pending independent owner |
+| Isolated continuous observation runtime | Yes | 12 native Linux tests | Approved cb140d71 | Pending independent owner |
+| Exact native exclusion registration | Yes; exact reviewed runtime hash/imports | 179 focused/isolation tests | Approved proposal | Pending independent owner |
 | Owner transport / provider / production worker | No | No | Out of this slice | Not claimed |
 
 ## Remaining work and boundaries
 
-Independent review, additional fault/lease contention checks and final scoped
-verification remain pending. The native exclusion hash/import registration is
-deliberately unchanged pending that review; source drift is expected to block
-the full gate until exact reviewed registration. No research profile expansion
-or unrelated source repin is authorized.
+Independent review approved `cb140d715cb4f5b9839b69d4356c2df62af51a7a` and
+the exact runtime registration. The reviewer independently passed all 12 cases
+with warnings as errors. After applying that registration, 179 native runtime
+and research-isolation tests passed in 7.19s. Final scoped cloud verification
+remains pending. No research profile or unrelated source hash changed.
 
 These leases protect unsigned observation mechanics, not Axiom's signed
 production journal/fencing or authorization. Status never enables execution,

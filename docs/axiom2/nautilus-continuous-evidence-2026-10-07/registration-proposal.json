@@ -1,0 +1,17 @@
+{
+  "file": "src/axiom2/nautilus_runtime/runtime.py",
+  "sha256": "a3ad31d4a8762c932ad6fdde1a56d99c8ee8321da93c7c53e21cab18febae159",
+  "imports": [
+    "__future__",
+    "asyncio",
+    "nautilus_trader.common",
+    "nautilus_trader.live",
+    "nautilus_trader.model",
+    "src.axiom2.nautilus_runtime.contracts",
+    "src.axiom2.nautilus_runtime.journal",
+    "src.axiom2.nautilus_runtime.policy",
+    "time",
+    "typing"
+  ],
+  "unchanged": "Same seven-file exclusion. No research/portfolio/execution source hash or authority/profile change."
+}
