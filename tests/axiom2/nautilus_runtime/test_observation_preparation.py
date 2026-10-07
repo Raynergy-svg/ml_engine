@@ -143,9 +143,16 @@ def test_default_entrypoint_cannot_activate_or_create_state(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize('attack', ['symlink', 'public', 'parent-public', 'hardlink'])
+@pytest.mark.parametrize('attack', ['symlink', 'public', 'parent-public', 'ancestor-public', 'hardlink'])
 def test_child_rejects_unsafe_storage_namespace(tmp_path, attack):
-    root = tmp_path / 'observation_runtime'
+    evidence_root = tmp_path
+    if attack == 'ancestor-public':
+        shared = tmp_path / 'shared'
+        shared.mkdir()
+        shared.chmod(0o777)
+        evidence_root = shared / 'evidence'
+        evidence_root.mkdir(mode=0o700)
+    root = evidence_root / 'observation_runtime'
     if attack == 'symlink':
         target = tmp_path / 'target'
         target.mkdir()
@@ -155,14 +162,15 @@ def test_child_rejects_unsafe_storage_namespace(tmp_path, attack):
         root.chmod(0o755)
     elif attack == 'parent-public':
         tmp_path.chmod(0o777)
-    else:
+    elif attack == 'hardlink':
         root.mkdir(mode=0o700)
         original = tmp_path / 'original.sqlite'
         with sqlite3.connect(original) as db:
             db.execute('CREATE TABLE original (payload)')
+        original.chmod(0o600)
         os.link(original, root / 'candidates.sqlite')
     with (tmp_path / 'stderr').open('wb') as errors:
-        child = launch(tmp_path, errors)
+        child = launch(evidence_root, errors)
         child.communicate(timeout=5)
         assert child.returncode != 0
     assert b'unsafe storage namespace' in (tmp_path / 'stderr').read_bytes()

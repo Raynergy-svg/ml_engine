@@ -29,6 +29,11 @@ def private_namespace(evidence_root):
     for parent in [root.parent, *root.parent.parents]:
         if parent.is_symlink():
             raise ValueError('unsafe storage namespace: symlink')
+        parent_info = parent.stat()
+        if (parent_info.st_uid not in (0, os.getuid())
+                or (stat.S_IMODE(parent_info.st_mode) & 0o022
+                    and not parent_info.st_mode & stat.S_ISVTX)):
+            raise ValueError('unsafe storage namespace: ancestor can be replaced by another writer')
     if not root.parent.is_dir():
         raise ValueError('configured evidence root is missing')
     parent_mode = root.parent.stat()
