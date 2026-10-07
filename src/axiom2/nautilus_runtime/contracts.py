@@ -148,7 +148,7 @@ class CandidateObservation:
             "confirmation": self.confirmation,
             "invalidated": self.invalidated,
             "invalidation_reason": self.invalidation_reason,
-            "facts": dict(self.facts),
+            "facts": _jsonable(self.facts),
         }
 
 
@@ -248,5 +248,5 @@ class ResearchResult:
             "evidence_digest": self.evidence_digest,
             "qualifies": self.qualifies,
             "invalidated": self.invalidated,
-            "facts": dict(self.facts),
+            "facts": _jsonable(self.facts),
         }

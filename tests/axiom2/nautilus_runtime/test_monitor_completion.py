@@ -83,4 +83,64 @@ def test_immutable_nested_observation_facts():
     facts = {'nested': {'values': [1]}}
     admitted = replace(observation(), facts=facts)
     facts['nested']['values'].append(2)
-    assert admitted.to_payload()['facts']['nested']['values'] == (1,)
+    assert admitted.facts['nested']['values'] == (1,)
+
+
+@pytest.mark.parametrize('state', ['WAITING', 'TRIGGERED', 'REVALIDATING', 'READY'])
+def test_clock_expiration_from_each_persisted_state(tmp_path, state):
+    journal = CandidateJournal(tmp_path/'monitor.db')
+    monitor = CandidateMonitor(journal)
+    monitor.observe(replace(observation(deadline=10), confirmation=state != 'WAITING'))
+    if state == 'REVALIDATING':
+        journal.claim_research_wakeup(journal.pending_wakeups()[0].wakeup_id)
+    if state == 'READY':
+        monitor.revalidate(result(journal))
+    assert monitor.state('c', 'v1').value == state
+    journal.advance_time(10)
+    assert monitor.state('c', 'v1') is CandidateState.EXPIRED
+
+
+def test_replay_clock_cannot_go_backwards(tmp_path):
+    journal = CandidateJournal(tmp_path/'monitor.db')
+    journal.advance_time(10)
+    with pytest.raises(Exception, match='regressed'):
+        journal.advance_time(9)
+    assert journal.now_ns == 10
+
+
+def test_expired_observation_cannot_refresh_its_old_deadline(tmp_path):
+    journal = CandidateJournal(tmp_path/'monitor.db')
+    monitor = CandidateMonitor(journal)
+    monitor.observe(observation(deadline=10))
+    monitor.observe(observation('too-late', 11, deadline=100))
+    assert monitor.state('c', 'v1') is CandidateState.EXPIRED
+
+
+def test_nested_fact_payload_is_plain_json():
+    import json
+    admitted = replace(observation(), facts={'nested': {'values': [1]}})
+    assert json.loads(json.dumps(admitted.to_payload()))['facts'] == {'nested': {'values': [1]}}
+
+
+def test_raw_state_and_wakeup_rollback_together(tmp_path):
+    import sqlite3
+    path = tmp_path/'monitor.db'
+    journal = CandidateJournal(path)
+    journal.connection.execute("CREATE TRIGGER fail_outbox BEFORE INSERT ON research_wakeups BEGIN SELECT RAISE(ABORT, 'injected wakeup failure'); END")
+    with pytest.raises(sqlite3.IntegrityError, match='injected'):
+        CandidateMonitor(journal).observe(observation())
+    journal.close()
+    journal = CandidateJournal(path)
+    assert journal.raw_observation('trigger') is None
+    assert journal.snapshot('c', 'v1') is None
+    assert journal.pending_wakeups() == ()
+
+
+def test_separate_connections_do_not_duplicate_durable_trigger(tmp_path):
+    path = tmp_path/'monitor.db'
+    first = CandidateJournal(path)
+    second = CandidateJournal(path)
+    event = CandidateMonitor(first).observe(observation())
+    assert CandidateMonitor(second).observe(observation()) == event
+    assert len(second.pending_wakeups()) == 1
+    assert len(second.state_history('c', 'v1')) == 2

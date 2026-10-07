@@ -373,6 +373,8 @@ class CandidateJournal:
             state_path = observation_state_path(previous, observation)
             if current and previous in {CandidateState.TRIGGERED, CandidateState.REVALIDATING, CandidateState.READY} and current.evidence_digest != observation.evidence_digest:
                 state_path = (CandidateState.INVALIDATED,)
+            if current and previous not in TERMINAL_STATES and max(self.now_ns, observation.observed_at_ns) >= current.freshness_deadline_ns:
+                state_path = (CandidateState.EXPIRED,)
             if previous not in TERMINAL_STATES and self.now_ns >= observation.freshness_deadline_ns:
                 state_path = (CandidateState.WATCHING, CandidateState.EXPIRED) if current is None else (CandidateState.EXPIRED,)
             if CandidateState.TRIGGERED not in state_path:
