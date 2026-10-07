@@ -1,0 +1,26 @@
+[
+  {
+    "family": "research",
+    "registered_files": 30,
+    "policy_unchanged_from_green_handoff": true,
+    "all_source_bytes_match": true
+  },
+  {
+    "family": "portfolio",
+    "registered_files": 5,
+    "policy_unchanged_from_green_handoff": true,
+    "all_source_bytes_match": true
+  },
+  {
+    "family": "execution",
+    "registered_files": 22,
+    "policy_unchanged_from_green_handoff": true,
+    "all_source_bytes_match": true
+  },
+  {
+    "family": "nautilus",
+    "registered_files": 7,
+    "policy_unchanged_from_green_handoff": true,
+    "all_source_bytes_match": true
+  }
+]

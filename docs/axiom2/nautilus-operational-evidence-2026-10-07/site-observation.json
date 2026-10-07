@@ -1,0 +1,59 @@
+{
+  "kind": "sanitized-read-only-operational-contract-observation",
+  "site": {
+    "project_id": "appgprj_6abf2d73fac48191a2167664e6b15093",
+    "version_number": 71,
+    "source_commit": "6633d32a3b9884c7f8fa64ae6722bcee827f9b5d",
+    "archive_sha256": "4d71bfbcf802cddc8e8ff8eec6c12cd9ed766919d940fffa5d3fd71e68149d73",
+    "deployment_id": "appgdep_6ac2cc111f60819198e8e6e60d7d906a",
+    "deployment_status": "succeeded",
+    "has_mcp": true,
+    "access_mode": "custom",
+    "automations": [],
+    "archive_read": "download_file: file could not be authorized or resolved"
+  },
+  "read_native_read_status": {
+    "schema_version": 1,
+    "service": "axiom2-native-reads",
+    "state": "READ_VERIFIED",
+    "market_state": "VERIFIED",
+    "checked_at": "2026-10-07T03:57:54.921Z",
+    "sequence": 4134,
+    "emitted_at": "2026-10-07T03:57:00.108Z",
+    "session_expires_at": "2026-10-07T04:27:00.107Z",
+    "last_protected_read_at": "2026-10-07T03:57:00.107Z"
+  },
+  "axiom_research_status": {
+    "engine_version": "axiom-research-ledger-v1",
+    "engine_digest": "e95506692a15f36d3b5fdc2d7bb089218a58e37d8a2734c391fdaea65d457c9d",
+    "worker": {
+      "heartbeat_at": "2026-10-07T03:57:46.003Z",
+      "engine_digest": "e95506692a15f36d3b5fdc2d7bb089218a58e37d8a2734c391fdaea65d457c9d",
+      "state": "RECENT_HEARTBEAT"
+    },
+    "jobs_count": 4,
+    "execution_eligible": false
+  },
+  "axiom_research_health": {
+    "state": "REPORTED",
+    "health": {
+      "state": "PROVIDER_UNAVAILABLE",
+      "received_at": "2026-10-04T13:42:28.801Z",
+      "sequence": 2,
+      "next_due": "2026-10-05T10:15:00+00:00"
+    },
+    "execution_eligible": false,
+    "capital_authorized": false,
+    "promotion_eligible": false,
+    "training_eligible": false
+  },
+  "axiom_runtime_status": {
+    "schema_version": "axiom.analysis.v1",
+    "worker": "ON_DEMAND",
+    "engine_version": "sma20-50-next-open-v1",
+    "broker_refresh": "CALLER_DELIVERED",
+    "trained_model": "UNAVAILABLE",
+    "execution_eligible": false,
+    "capital_authorized": false
+  }
+}
