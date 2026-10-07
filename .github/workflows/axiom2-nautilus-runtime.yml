@@ -67,7 +67,8 @@ jobs:
           enabled_features = command("bash", "nautilus/scripts/cargo-features.bash")
           python_runtime = command("python", "--version")
           rust_version = command("rustc", "--version")
-          uv_version = command("uv", "--version")
+          uv_version_output = command("uv", "--version")
+          uv_version = uv_version_output.split()[1]
 
           if source_revision != expected["upstream"]["revision"]:
               raise SystemExit(
@@ -99,7 +100,7 @@ jobs:
                   "source_revision": source_revision,
                   "python_runtime": python_runtime,
                   "rust_version": rust_version,
-                  "uv_version_resolved": uv_version,
+                  "uv_version_resolved": uv_version_output,
                   "clang_version": first_line("clang", "--version"),
                   "lld_version": first_line("ld.lld", "--version"),
                   "runner_os": os.environ.get("RUNNER_OS", ""),
