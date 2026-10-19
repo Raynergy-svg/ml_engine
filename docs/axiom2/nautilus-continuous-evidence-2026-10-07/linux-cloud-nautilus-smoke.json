@@ -1,0 +1,72 @@
+{
+  "artifact": {
+    "build_mode": "approved unchanged Linux extension; exact matching source/toolchain manifest; isolated test environment",
+    "distribution": "not-installed; pinned source plus verified extension",
+    "extension_file": "/home/runner/work/ml_engine/ml_engine/nautilus/python/nautilus_trader/_libnautilus.cpython-312-x86_64-linux-gnu.so",
+    "installed_version": null,
+    "package_file": "/home/runner/work/ml_engine/ml_engine/nautilus/python/nautilus_trader/__init__.py",
+    "package_version_attribute": "unknown"
+  },
+  "enabled_features": "arrow,ffi,python,high-precision,streaming,defi",
+  "license": "LGPL-3.0-only",
+  "lifecycle": {
+    "component": "DataActor",
+    "dispose_called": true,
+    "final_state": "ComponentState.DISPOSED",
+    "hook_events": [
+      "start",
+      "stop"
+    ],
+    "lifecycle_driver": "BacktestEngine"
+  },
+  "order_events": {
+    "engine_integration_claim": false,
+    "note": "Constructor calls prove model API availability only; no live execution client or broker was created.",
+    "public_constructors_callable": [
+      "OrderAccepted",
+      "OrderCancelRejected",
+      "OrderCanceled",
+      "OrderFilled",
+      "OrderRejected",
+      "OrderSubmitted"
+    ]
+  },
+  "runtime": {
+    "deterministic_clock": {
+      "advanced_to_ns": 1000000000,
+      "callback_dispatch": {
+        "note": "Clock.set_time advances the virtual timestamp only; this revision exposes no public advance_time or callback-dispatch API.",
+        "observed_events": [],
+        "supported_by_public_python_clock": false
+      },
+      "start_ns": 0,
+      "timer_scheduling": {
+        "first_event_ns": 2000000000,
+        "next_timer_ns": 2000000000,
+        "registered": true,
+        "timer_count": 1,
+        "timer_start_ns": 1000000000
+      },
+      "timestamp_advance_verified": true
+    },
+    "event_delivery": {
+      "received": [
+        {
+          "event_id": "smoke-observation-1",
+          "kind": "admitted_observation"
+        }
+      ],
+      "topic": "axiom2.nautilus.smoke.observation"
+    }
+  },
+  "safety": {
+    "backtest_engine_created": true,
+    "broker_credentials_present": false,
+    "capital_authorized": false,
+    "execution_clients_created": false,
+    "external_network_attempts": [],
+    "live_feed": false,
+    "order_submitted": false
+  },
+  "source_revision": "4f021bafc2e99c5490cee204b0fc2bd2c83baab4"
+}

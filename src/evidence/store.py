@@ -734,3 +734,70 @@ class EvidenceStore:
                 return self.index_path.read_bytes()
             except OSError as exc:
                 raise EvidenceStoreError("current evidence index is unavailable") from exc
+
+    def _load_research_ledger_unlocked(self) -> tuple:
+        """Read the one global research stream, not an index or a second database."""
+        from .equity_research.experiment_registry import ResearchReceipt, reconstruct_research
+
+        directory = self.root / "research"
+        if directory.is_symlink():
+            raise StoreCorruptionError("research journal must not be a symlink")
+        if not directory.exists():
+            return ()
+        if not directory.is_dir():
+            raise StoreCorruptionError("research journal must be a directory")
+        receipts = []
+        for path in sorted(directory.iterdir()):
+            if path.is_symlink() or not path.is_file():
+                raise StoreCorruptionError("unexpected research journal entry")
+            if path.name.startswith(".") and ".tmp-" in path.name:
+                continue  # Unpublished atomic-create temporary left by a crash.
+            try:
+                raw = path.read_bytes()
+                receipt = ResearchReceipt.model_validate_json(raw, strict=True)
+                if canonical_bytes(receipt) != raw:
+                    raise ValueError("noncanonical research receipt")
+                sequence = receipt.envelope.payload["sequence"]
+                if type(sequence) is not int:
+                    raise ValueError("invalid research sequence")
+                expected_name = f"{sequence:020d}-{receipt.envelope.payload_digest}.json"
+                if path.name != expected_name:
+                    raise ValueError("research receipt address mismatch")
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                raise StoreCorruptionError(f"invalid research receipt: {path.name}") from exc
+            receipts.append(receipt)
+        result = tuple(receipts)
+        reconstruct_research(result, trust_store=self.trust_store, authorities=self.authorities)
+        return result
+
+    def load_research_ledger(self) -> tuple:
+        """Return the fully verified research journal using the store-wide lock."""
+        with self._locked():
+            return self._load_research_ledger_unlocked()
+
+    def append_research_event(self, envelope: SignedEnvelope, *, expected_head_digest: str | None) -> str:
+        """CAS-append one signed, authorized, semantically valid research event.
+
+        Every reader reconstructs authority from immutable receipts, so there is
+        no second mutable index to commit and no successful half-transaction.
+        A receipt committed before a lost response remains authoritative.
+        """
+        from .equity_research.experiment_registry import ResearchReceipt, reconstruct_research
+
+        # Copy/revalidate caller data before acquiring the commit lock.
+        detached = SignedEnvelope.model_validate_json(canonical_bytes(envelope), strict=True)
+        with self._locked():
+            ledger = self._load_research_ledger_unlocked()
+            actual_head = ledger[-1].envelope.payload_digest if ledger else None
+            if actual_head != expected_head_digest:
+                raise ConcurrentHeadError("research head changed")
+            receipt = ResearchReceipt(envelope=detached, received_at=self._trusted_clock())
+            reconstruct_research((*ledger, receipt), trust_store=self.trust_store, authorities=self.authorities)
+            directory = self.root / "research"
+            if not directory.exists():
+                directory.mkdir(mode=0o700)
+                self._fsync_directory(directory)
+                self._fsync_directory(self.root)
+            destination = directory / f"{len(ledger):020d}-{detached.payload_digest}.json"
+            self._atomic_create_bytes(destination, canonical_bytes(receipt))
+            return detached.payload_digest

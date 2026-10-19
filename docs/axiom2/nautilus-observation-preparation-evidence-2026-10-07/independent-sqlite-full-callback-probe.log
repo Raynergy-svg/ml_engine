@@ -1,0 +1,126 @@
+[1m2026-10-07T04:22:37.652878651Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653050418Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  NAUTILUS TRADER - Automated Algorithmic Trading Platform[0m
+[1m2026-10-07T04:22:37.653052221Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  by Nautech Systems Pty Ltd.[0m
+[1m2026-10-07T04:22:37.653052461Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  Copyright (C) 2015-2026. All rights reserved.[0m
+[1m2026-10-07T04:22:37.653052742Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653052902Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⡤⠤⠤⠤⠤⠤⠤⠤⢤⡀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653057138Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠚⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⠁⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653057298Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⢀⣠⠖⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡴⠚⠁⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653057448Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⢀⡴⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653057559Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⣠⠏⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠒⠒⠒⠒⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653057669Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⢀⡖⠋⣠⢴⢪⠞⣩⢟⡭⠵⢤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653057809Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⣦⡙⠦⣄⡀⠀⢀⣠⠴⠋⢠⡐⣇⢸⡘⢦⡇⣏⡴⣋⡭⠖⠮⢥⡀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653057979Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⢸⡉⠓⠦⠭⠭⠭⠴⣺⠃⠸⣷⢬⣓⣛⠒⠩⣌⢡⡷⢒⣫⠭⣝⡛⠆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653058170Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠙⠦⢤⣀⣠⠤⠞⣡⠞⡆⠺⣭⣭⡷⢇⣷⡻⠡⠾⣛⣒⠦⢤⡙⡆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653058280Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠈⠳⣖⠒⠒⠒⠋⠁⣠⠇⡼⢦⠀⣌⡉⢥⣄⣛⡻⢥⡈⠉⢳⡙⠇⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653058420Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠈⠙⣒⣒⣒⣋⡥⠞⠁⣸⠃⡇⠙⢦⢹⠀⠙⡆⢳⢀⡴⠃⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653058550Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⠀⠈⠙⠒⠦⠤⠴⣚⣡⠞⠁⣠⠏⡼⢀⣠⠇⠞⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653058670Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠉⠑⠚⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:22:37.653059211Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653059391Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  SYSTEM SPECIFICATION[0m
+[1m2026-10-07T04:22:37.653059552Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653060072Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: CPU architecture: AMD EPYC 9V74 80-Core Processor[0m
+[1m2026-10-07T04:22:37.653060904Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: CPU(s): 5 @ 2596 MHz[0m
+[1m2026-10-07T04:22:37.653061645Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: OS: kernel-6.18.44 Linux (Debian GNU/Linux 13)[0m
+[1m2026-10-07T04:22:37.653100362Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653100752Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  MEMORY USAGE[0m
+[1m2026-10-07T04:22:37.653100953Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653102865Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: RAM-Total: 17.59 GiB[0m
+[1m2026-10-07T04:22:37.653103346Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: RAM-Used: 1.35 GiB (7.68%)[0m
+[1m2026-10-07T04:22:37.653103787Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: RAM-Avail: 16.23 GiB (92.32%)[0m
+[1m2026-10-07T04:22:37.653104077Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: Swap: disabled[0m
+[1m2026-10-07T04:22:37.653105089Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653105269Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  IDENTIFIERS[0m
+[1m2026-10-07T04:22:37.653105429Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653109004Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: trader_id: AXIOM-CONTINUOUS-POC[0m
+[1m2026-10-07T04:22:37.653109415Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: machine_id: ce2fc6c29817[0m
+[1m2026-10-07T04:22:37.653110657Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: instance_id: 830a66dc-ce64-4c69-a1f1-04b3be882b22[0m
+[1m2026-10-07T04:22:37.653110947Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: PID: 7818[0m
+[1m2026-10-07T04:22:37.653111097Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653111258Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  VERSIONING[0m
+[1m2026-10-07T04:22:37.653111418Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.653120411Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: nautilus_trader: unknown[0m
+[1m2026-10-07T04:22:37.653120992Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: nautilus_core: 0.66.0[0m
+[1m2026-10-07T04:22:37.653124798Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: python: 3.12.14[0m
+[1m2026-10-07T04:22:37.653156975Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: git_commit: 4f021bafc2e9[0m
+[1m2026-10-07T04:22:37.653163395Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: rustc: 1.99.0 (b940084d7 2026-09-28)[0m
+[1m2026-10-07T04:22:37.653164035Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: target: x86_64-unknown-linux-gnu[0m
+[1m2026-10-07T04:22:37.653164466Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: profile: release[0m
+[1m2026-10-07T04:22:37.653164716Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: panic: abort[0m
+[1m2026-10-07T04:22:37.653165648Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: precision: high (128-bit, 16 dp)[0m
+[1m2026-10-07T04:22:37.653165898Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: allocator: mimalloc 0.1.52[0m
+[1m2026-10-07T04:22:37.653166409Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: libc_runtime: glibc 2.41[0m
+[1m2026-10-07T04:22:37.653166629Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: cargo_lock: f5b18476[0m
+[1m2026-10-07T04:22:37.653166900Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: libc_crate: 0.2.189[0m
+[1m2026-10-07T04:22:37.653167110Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: rust_decimal: 1.43.0[0m
+[1m2026-10-07T04:22:37.653167410Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: rustls: 0.23.45[0m
+[1m2026-10-07T04:22:37.653167841Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: aws_lc_rs: 1.18.1[0m
+[1m2026-10-07T04:22:37.653168272Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: tokio: 1.53.1[0m
+[1m2026-10-07T04:22:37.653168662Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: pyo3: 0.29.2[0m
+[1m2026-10-07T04:22:37.653168913Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: pyo3_async_runtimes: 0.29.0[0m
+[1m2026-10-07T04:22:37.688849985Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: numpy: 2.0.2[0m
+[1m2026-10-07T04:22:37.844960030Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: pandas: 2.3.3[0m
+[1m2026-10-07T04:22:37.845164351Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: pytz: 2026.5[0m
+[1m2026-10-07T04:22:37.845242106Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:22:37.845256948Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Building system kernel[0m
+[1m2026-10-07T04:22:37.845419777Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node::builder: Built successfully[0m
+[1m2026-10-07T04:22:37.845478925Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Ready[0m
+[1m2026-10-07T04:22:37.845495329Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::python::node: Registered Python actor AxiomObservationActor[0m
+[1m2026-10-07T04:22:37.846105147Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Event loop starting[0m
+[1m2026-10-07T04:22:37.846114591Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Starting[0m
+[1m2026-10-07T04:22:37.846116804Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::engine: Started[0m
+[1m2026-10-07T04:22:37.846118046Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_risk::engine: Started[0m
+[1m2026-10-07T04:22:37.846118416Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Initializing trader[0m
+[1m2026-10-07T04:22:37.846118917Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Started[0m
+[1m2026-10-07T04:22:37.846122062Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Connecting data clients...[0m
+[1m2026-10-07T04:22:37.846129733Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Connecting execution clients...[0m
+[1m2026-10-07T04:22:37.846130544Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Awaiting engine connections (0ns timeout)...[0m
+[1m2026-10-07T04:22:37.846132677Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: All engine clients connected[0m
+[1m2026-10-07T04:22:37.846137815Z[0m [94m[INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Starting execution state reconciliation...[0m
+[1m2026-10-07T04:22:37.846152667Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_portfolio::portfolio: Initialized 0 open orders[0m
+[1m2026-10-07T04:22:37.846161189Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_portfolio::portfolio: Initialized 0 open positions[0m
+[1m2026-10-07T04:22:37.846163843Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_portfolio::portfolio: Initialized 0 Wallet reservations[0m
+[1m2026-10-07T04:22:37.846165195Z[0m [94m[INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Startup reconciliation completed in 0.00s[0m
+[1m2026-10-07T04:22:37.846173648Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Starting trader...[0m
+[1m2026-10-07T04:22:37.846175460Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::order_emulator::emulator: Started[0m
+[1m2026-10-07T04:22:37.846176983Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Starting[0m
+[1m2026-10-07T04:22:37.846182160Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Starting[0m
+[1m2026-10-07T04:22:37.846221779Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Running[0m
+[1m2026-10-07T04:22:37.846227908Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Running[0m
+[1m2026-10-07T04:22:37.846228128Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Trader started[0m
+[1m2026-10-07T04:22:37.952106720Z[0m [1;31m[ERROR] AXIOM-CONTINUOUS-POC.nautilus_common::python::msgbus: Python handler <bound method NautilusContinuousRuntime._on_observation of <axiom2.nautilus_runtime.runtime.NautilusContinuousRuntime object at 0x7f59861d1ca0>> failed: OperationalError: cannot rollback - no transaction is active[0m
+[1m2026-10-07T04:22:38.247611982Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Received stop signal from handle[0m
+[1m2026-10-07T04:22:38.247630109Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Stopping trader...[0m
+[1m2026-10-07T04:22:38.247638081Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Stopping[0m
+[1m2026-10-07T04:22:38.247642808Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Stopping[0m
+[1m2026-10-07T04:22:38.247669136Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Stopped[0m
+[1m2026-10-07T04:22:38.247670709Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Stopped[0m
+[1m2026-10-07T04:22:38.247671440Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Awaiting residual events (0ns)...[0m
+[1m2026-10-07T04:22:38.248187250Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Disconnecting clients...[0m
+[1m2026-10-07T04:22:38.248202973Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Awaiting engine disconnections (0ns timeout)...[0m
+[1m2026-10-07T04:22:38.248204465Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: All engine clients disconnected[0m
+[1m2026-10-07T04:22:38.248208190Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::engine: Stopped[0m
+[1m2026-10-07T04:22:38.248209843Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_risk::engine: Stopped[0m
+[1m2026-10-07T04:22:38.248211004Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-07T04:22:38.248211726Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Stopped[0m
+[1m2026-10-07T04:22:38.248216242Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Event loop stopped[0m
+[1m2026-10-07T04:22:38.248372452Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_common::python::msgbus: Closed message bus[0m
+[1m2026-10-07T04:22:38.248386743Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Disposing[0m
+[1m2026-10-07T04:22:38.248388646Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Disposing[0m
+[1m2026-10-07T04:22:38.248390859Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Disposing[0m
+[1m2026-10-07T04:22:38.248403418Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Disposed[0m
+[1m2026-10-07T04:22:38.248406933Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Disposed[0m
+[1m2026-10-07T04:22:38.248416858Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::engine: Stopped[0m
+[1m2026-10-07T04:22:38.248417098Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_risk::engine: Stopped[0m
+[1m2026-10-07T04:22:38.248417258Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-07T04:22:38.248421935Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::engine: Disposed[0m
+[1m2026-10-07T04:22:38.248422296Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_risk::engine: Disposed[0m
+[1m2026-10-07T04:22:38.248424399Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::order_emulator::emulator: Disposed[0m
+[1m2026-10-07T04:22:38.248428064Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_common::cache: Reset cache[0m
+[1m2026-10-07T04:22:38.248436076Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Disposed[0m
+PROBE filled: OperationalError cannot rollback - no transaction is active
+PROBE pages/max: 48 48
+PROBE publish returned: None
+PROBE retained raw: None
+PROBE status: {"runtime": "RUNNING", "generation": 1, "timer_callbacks": 1, "heartbeat_ns": 1791346957948106779, "data_fresh": true, "lease_until_ns": 1791346958448106779, "data_deadline_ns": 1791346967948404808, "candidate_ready": true, "input_scope": "synthetic-or-injected-admitted-only", "live_feed_verified": false, "owner_transport_verified": false, "execution_enabled": false, "capital_authorized": false, "error": ""}
+PROBE status after ticks: {"runtime": "RUNNING", "generation": 1, "timer_callbacks": 3, "heartbeat_ns": 1791346958147487685, "data_fresh": true, "lease_until_ns": 1791346958647487685, "data_deadline_ns": 1791346967948404808, "candidate_ready": true, "input_scope": "synthetic-or-injected-admitted-only", "live_feed_verified": false, "owner_transport_verified": false, "execution_enabled": false, "capital_authorized": false, "error": ""}

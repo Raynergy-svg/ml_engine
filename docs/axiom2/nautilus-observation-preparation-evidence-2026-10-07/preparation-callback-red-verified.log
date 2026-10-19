@@ -1,0 +1,279 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_______ test_bounded_journal_denies_growth_and_retains_committed_records _______
+
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-55/test_bounded_journal_denies_gr0')
+
+    def test_bounded_journal_denies_growth_and_retains_committed_records(tmp_path):
+        journal = CandidateJournal(tmp_path / 'candidates.sqlite', max_storage_bytes=512 * 1024)
+        journal.connection.execute('CREATE TABLE quota_fixture (payload BLOB)')
+        journal.check_storage()
+        journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'kept',))
+        with pytest.raises(sqlite3.DatabaseError, match='database or disk is full'):
+            with journal._transaction():
+>               journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'x' * 512_000,))
+E               sqlite3.OperationalError: database or disk is full
+
+../nautilus-operational-bindings/tests/axiom2/nautilus_runtime/test_observation_preparation.py:28: OperationalError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-55/test_bounded_journal_denies_gr0')
+
+    def test_bounded_journal_denies_growth_and_retains_committed_records(tmp_path):
+        journal = CandidateJournal(tmp_path / 'candidates.sqlite', max_storage_bytes=512 * 1024)
+        journal.connection.execute('CREATE TABLE quota_fixture (payload BLOB)')
+        journal.check_storage()
+        journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'kept',))
+        with pytest.raises(sqlite3.DatabaseError, match='database or disk is full'):
+>           with journal._transaction():
+                 ^^^^^^^^^^^^^^^^^^^^^^
+
+../nautilus-operational-bindings/tests/axiom2/nautilus_runtime/test_observation_preparation.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/contextlib.py:158: in __exit__
+    self.gen.throw(value)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <axiom2.nautilus_runtime.journal.CandidateJournal object at 0x7f143e319a60>
+
+    @contextmanager
+    def _transaction(self):
+        self.check_storage()
+        self.connection.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+>           self.connection.execute("ROLLBACK")
+E           sqlite3.OperationalError: cannot rollback - no transaction is active
+
+src/axiom2/nautilus_runtime/journal.py:220: OperationalError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-55/test_bounded_journal_denies_gr0')
+
+    def test_bounded_journal_denies_growth_and_retains_committed_records(tmp_path):
+        journal = CandidateJournal(tmp_path / 'candidates.sqlite', max_storage_bytes=512 * 1024)
+        journal.connection.execute('CREATE TABLE quota_fixture (payload BLOB)')
+        journal.check_storage()
+        journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'kept',))
+>       with pytest.raises(sqlite3.DatabaseError, match='database or disk is full'):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'database or disk is full'
+E         Actual message: 'cannot rollback - no transaction is active'
+
+../nautilus-operational-bindings/tests/axiom2/nautilus_runtime/test_observation_preparation.py:26: AssertionError
+__ test_native_callback_sqlite_full_cannot_leave_ready_or_accept_invalidation __
+
+tmp_path = PosixPath('/tmp/pytest-of-agent/pytest-55/test_native_callback_sqlite_fu0')
+
+    def test_native_callback_sqlite_full_cannot_leave_ready_or_accept_invalidation(tmp_path):
+        async def scenario():
+            journal = CandidateJournal(tmp_path / 'candidates.sqlite', max_storage_bytes=1024 * 1024)
+            runtime = NautilusContinuousRuntime(journal)
+            try:
+                await runtime.start()
+                now = runtime.timestamp_ns()
+                digest = hashlib.sha256(b'fixture').hexdigest()
+                observation = CandidateObservation('fixture', 'v1', 'original', now, now+10_000_000_000,
+                                                   digest, digest, confirmation=True)
+                runtime.publish(observation, generation=runtime.generation)
+                wakeup, = runtime.pending(generation=runtime.generation)
+                runtime.complete(ResearchResult(wakeup.wakeup_id, 'fixture', 'v1', now,
+                                               now+10_000_000_000, digest, True), generation=runtime.generation)
+                assert runtime.status()['candidate_ready'] is True
+                journal.connection.execute('CREATE TABLE quota_fixture(payload BLOB)')
+                for _ in range(1000):
+                    try:
+                        with journal._transaction():
+                            journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'x'*1000,))
+                    except sqlite3.DatabaseError:
+                        break
+                else:
+                    pytest.fail('fixture did not reach the real SQLite page limit')
+                invalidation = CandidateObservation('fixture', 'v1', 'invalidation', now, now+10_000_000_000,
+                    digest, digest, invalidated=True, invalidation_reason='fixture invalidation',
+                    facts={'large_record': 'x'*20_000})
+                with pytest.raises(RuntimeError, match='callback failed closed'):
+                    runtime.publish(invalidation, generation=runtime.generation)
+                assert journal.raw_observation('invalidation') is None
+                assert runtime.status()['runtime'] == 'FAULTED'
+                assert runtime.status()['candidate_ready'] is False
+                assert journal.storage_bytes() <= 1024 * 1024
+            finally:
+                await runtime.shutdown()
+                journal.close()
+>       asyncio.run(scenario())
+
+../nautilus-operational-bindings/tests/axiom2/nautilus_runtime/test_observation_preparation.py:117: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/runners.py:195: in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    async def scenario():
+        journal = CandidateJournal(tmp_path / 'candidates.sqlite', max_storage_bytes=1024 * 1024)
+        runtime = NautilusContinuousRuntime(journal)
+        try:
+            await runtime.start()
+            now = runtime.timestamp_ns()
+            digest = hashlib.sha256(b'fixture').hexdigest()
+            observation = CandidateObservation('fixture', 'v1', 'original', now, now+10_000_000_000,
+                                               digest, digest, confirmation=True)
+            runtime.publish(observation, generation=runtime.generation)
+            wakeup, = runtime.pending(generation=runtime.generation)
+            runtime.complete(ResearchResult(wakeup.wakeup_id, 'fixture', 'v1', now,
+                                           now+10_000_000_000, digest, True), generation=runtime.generation)
+            assert runtime.status()['candidate_ready'] is True
+            journal.connection.execute('CREATE TABLE quota_fixture(payload BLOB)')
+            for _ in range(1000):
+                try:
+                    with journal._transaction():
+                        journal.connection.execute('INSERT INTO quota_fixture VALUES (?)', (b'x'*1000,))
+                except sqlite3.DatabaseError:
+                    break
+            else:
+                pytest.fail('fixture did not reach the real SQLite page limit')
+            invalidation = CandidateObservation('fixture', 'v1', 'invalidation', now, now+10_000_000_000,
+                digest, digest, invalidated=True, invalidation_reason='fixture invalidation',
+                facts={'large_record': 'x'*20_000})
+>           with pytest.raises(RuntimeError, match='callback failed closed'):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           Failed: DID NOT RAISE <class 'RuntimeError'>
+
+../nautilus-operational-bindings/tests/axiom2/nautilus_runtime/test_observation_preparation.py:108: Failed
+----------------------------- Captured stdout call -----------------------------
+[1m2026-10-07T04:25:10.963591951Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963609186Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  NAUTILUS TRADER - Automated Algorithmic Trading Platform[0m
+[1m2026-10-07T04:25:10.963609547Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  by Nautech Systems Pty Ltd.[0m
+[1m2026-10-07T04:25:10.963609687Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  Copyright (C) 2015-2026. All rights reserved.[0m
+[1m2026-10-07T04:25:10.963609807Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963609947Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⡤⠤⠤⠤⠤⠤⠤⠤⢤⡀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963611780Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠚⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⠁⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963611980Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⢀⣠⠖⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡴⠚⠁⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612070Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⢀⡴⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612191Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⣠⠏⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠒⠒⠒⠒⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612301Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⢀⡖⠋⣠⢴⢪⠞⣩⢟⡭⠵⢤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612391Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⣦⡙⠦⣄⡀⠀⢀⣠⠴⠋⢠⡐⣇⢸⡘⢦⡇⣏⡴⣋⡭⠖⠮⢥⡀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612481Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⢸⡉⠓⠦⠭⠭⠭⠴⣺⠃⠸⣷⢬⣓⣛⠒⠩⣌⢡⡷⢒⣫⠭⣝⡛⠆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612571Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠙⠦⢤⣀⣠⠤⠞⣡⠞⡆⠺⣭⣭⡷⢇⣷⡻⠡⠾⣛⣒⠦⢤⡙⡆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612661Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠈⠳⣖⠒⠒⠒⠋⠁⣠⠇⡼⢦⠀⣌⡉⢥⣄⣛⡻⢥⡈⠉⢳⡙⠇⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612771Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠈⠙⣒⣒⣒⣋⡥⠞⠁⣸⠃⡇⠙⢦⢹⠀⠙⡆⢳⢀⡴⠃⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612872Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⠀⠈⠙⠒⠦⠤⠴⣚⣡⠞⠁⣠⠏⡼⢀⣠⠇⠞⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963612972Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠉⠑⠚⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T04:25:10.963613112Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963613252Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  SYSTEM SPECIFICATION[0m
+[1m2026-10-07T04:25:10.963613362Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963613653Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: CPU architecture: AMD EPYC 9V74 80-Core Processor[0m
+[1m2026-10-07T04:25:10.963614214Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: CPU(s): 5 @ 2596 MHz[0m
+[1m2026-10-07T04:25:10.963614664Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: OS: kernel-6.18.44 Linux (Debian GNU/Linux 13)[0m
+[1m2026-10-07T04:25:10.963633021Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963633512Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  MEMORY USAGE[0m
+[1m2026-10-07T04:25:10.963633642Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963635615Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: RAM-Total: 17.59 GiB[0m
+[1m2026-10-07T04:25:10.963636036Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: RAM-Used: 1.05 GiB (6.00%)[0m
+[1m2026-10-07T04:25:10.963636356Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: RAM-Avail: 16.53 GiB (94.00%)[0m
+[1m2026-10-07T04:25:10.963636627Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: Swap: disabled[0m
+[1m2026-10-07T04:25:10.963637137Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963637257Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  IDENTIFIERS[0m
+[1m2026-10-07T04:25:10.963637358Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963639631Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: trader_id: AXIOM-CONTINUOUS-POC[0m
+[1m2026-10-07T04:25:10.963640012Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: machine_id: ce2fc6c29817[0m
+[1m2026-10-07T04:25:10.963641013Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: instance_id: a26917a1-e03f-4dcb-9fe5-fd73e4bdf9b5[0m
+[1m2026-10-07T04:25:10.963641213Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: PID: 8184[0m
+[1m2026-10-07T04:25:10.963641313Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963641454Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC:  VERSIONING[0m
+[1m2026-10-07T04:25:10.963641544Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:10.963648334Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: nautilus_trader: unknown[0m
+[1m2026-10-07T04:25:10.963649035Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: nautilus_core: 0.66.0[0m
+[1m2026-10-07T04:25:10.963652410Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: python: 3.12.14[0m
+[1m2026-10-07T04:25:10.963658479Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: git_commit: 4f021bafc2e9[0m
+[1m2026-10-07T04:25:10.963658689Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: rustc: 1.99.0 (b940084d7 2026-09-28)[0m
+[1m2026-10-07T04:25:10.963658949Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: target: x86_64-unknown-linux-gnu[0m
+[1m2026-10-07T04:25:10.963659140Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: profile: release[0m
+[1m2026-10-07T04:25:10.963659290Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: panic: abort[0m
+[1m2026-10-07T04:25:10.963659470Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: precision: high (128-bit, 16 dp)[0m
+[1m2026-10-07T04:25:10.963659701Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: allocator: mimalloc 0.1.52[0m
+[1m2026-10-07T04:25:10.963660131Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: libc_runtime: glibc 2.41[0m
+[1m2026-10-07T04:25:10.963660291Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: cargo_lock: f5b18476[0m
+[1m2026-10-07T04:25:10.963660472Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: libc_crate: 0.2.189[0m
+[1m2026-10-07T04:25:10.963660622Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: rust_decimal: 1.43.0[0m
+[1m2026-10-07T04:25:10.963660952Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: rustls: 0.23.45[0m
+[1m2026-10-07T04:25:10.963661193Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: aws_lc_rs: 1.18.1[0m
+[1m2026-10-07T04:25:10.963661924Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: tokio: 1.53.1[0m
+[1m2026-10-07T04:25:10.963662264Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: pyo3: 0.29.2[0m
+[1m2026-10-07T04:25:10.963662455Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: pyo3_async_runtimes: 0.29.0[0m
+[1m2026-10-07T04:25:11.016274677Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: numpy: 2.0.2[0m
+[1m2026-10-07T04:25:11.195401893Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: pandas: 2.3.3[0m
+[1m2026-10-07T04:25:11.195616810Z[0m [INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: pytz: 2026.5[0m
+[1m2026-10-07T04:25:11.195691931Z[0m [36m[INFO] AXIOM-CONTINUOUS-POC.AXIOM-OBSERVATION-POC: =================================================================[0m
+[1m2026-10-07T04:25:11.195702837Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Building system kernel[0m
+[1m2026-10-07T04:25:11.195857785Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node::builder: Built successfully[0m
+[1m2026-10-07T04:25:11.195905285Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Ready[0m
+[1m2026-10-07T04:25:11.195921619Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::python::node: Registered Python actor AxiomObservationActor[0m
+[1m2026-10-07T04:25:11.196524086Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Event loop starting[0m
+[1m2026-10-07T04:25:11.196532178Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Starting[0m
+[1m2026-10-07T04:25:11.196533410Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::engine: Started[0m
+[1m2026-10-07T04:25:11.196534141Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_risk::engine: Started[0m
+[1m2026-10-07T04:25:11.196534892Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Initializing trader[0m
+[1m2026-10-07T04:25:11.196535273Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Started[0m
+[1m2026-10-07T04:25:11.196537826Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Connecting data clients...[0m
+[1m2026-10-07T04:25:11.196543515Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Connecting execution clients...[0m
+[1m2026-10-07T04:25:11.196551637Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Awaiting engine connections (0ns timeout)...[0m
+[1m2026-10-07T04:25:11.196553049Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: All engine clients connected[0m
+[1m2026-10-07T04:25:11.196556884Z[0m [94m[INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Starting execution state reconciliation...[0m
+[1m2026-10-07T04:25:11.196561942Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_portfolio::portfolio: Initialized 0 open orders[0m
+[1m2026-10-07T04:25:11.196570975Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_portfolio::portfolio: Initialized 0 open positions[0m
+[1m2026-10-07T04:25:11.196573038Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_portfolio::portfolio: Initialized 0 Wallet reservations[0m
+[1m2026-10-07T04:25:11.196574290Z[0m [94m[INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Startup reconciliation completed in 0.00s[0m
+[1m2026-10-07T04:25:11.196583944Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Starting trader...[0m
+[1m2026-10-07T04:25:11.196585286Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::order_emulator::emulator: Started[0m
+[1m2026-10-07T04:25:11.196586718Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Starting[0m
+[1m2026-10-07T04:25:11.196590804Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Starting[0m
+[1m2026-10-07T04:25:11.196620328Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Running[0m
+[1m2026-10-07T04:25:11.196629361Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Running[0m
+[1m2026-10-07T04:25:11.196629732Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Trader started[0m
+[1m2026-10-07T04:25:11.398677849Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Received stop signal from handle[0m
+[1m2026-10-07T04:25:11.398694984Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Stopping trader...[0m
+[1m2026-10-07T04:25:11.398702054Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Stopping[0m
+[1m2026-10-07T04:25:11.398705560Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Stopping[0m
+[1m2026-10-07T04:25:11.398732429Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Stopped[0m
+[1m2026-10-07T04:25:11.398733391Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Stopped[0m
+[1m2026-10-07T04:25:11.398734362Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Awaiting residual events (0ns)...[0m
+[1m2026-10-07T04:25:11.400377402Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Disconnecting clients...[0m
+[1m2026-10-07T04:25:11.400392965Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Awaiting engine disconnections (0ns timeout)...[0m
+[1m2026-10-07T04:25:11.400394167Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: All engine clients disconnected[0m
+[1m2026-10-07T04:25:11.400397942Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::engine: Stopped[0m
+[1m2026-10-07T04:25:11.400399054Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_risk::engine: Stopped[0m
+[1m2026-10-07T04:25:11.400400266Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-07T04:25:11.400400917Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Stopped[0m
+[1m2026-10-07T04:25:11.400404031Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_live::node: Event loop stopped[0m
+[1m2026-10-07T04:25:11.400563476Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_common::python::msgbus: Closed message bus[0m
+[1m2026-10-07T04:25:11.400577497Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Disposing[0m
+[1m2026-10-07T04:25:11.400579329Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Disposing[0m
+[1m2026-10-07T04:25:11.400581392Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Disposing[0m
+[1m2026-10-07T04:25:11.400593170Z[0m [INFO] AXIOM-CONTINUOUS-POC.AxiomObservationActor: Disposed[0m
+[1m2026-10-07T04:25:11.400602163Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::trader: Disposed[0m
+[1m2026-10-07T04:25:11.400602553Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::engine: Stopped[0m
+[1m2026-10-07T04:25:11.400602894Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_risk::engine: Stopped[0m
+[1m2026-10-07T04:25:11.400603004Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-07T04:25:11.400606559Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::engine: Disposed[0m
+[1m2026-10-07T04:25:11.400612278Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_risk::engine: Disposed[0m
+[1m2026-10-07T04:25:11.400613990Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_execution::order_emulator::emulator: Disposed[0m
+[1m2026-10-07T04:25:11.400616694Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_common::cache: Reset cache[0m
+[1m2026-10-07T04:25:11.400618327Z[0m [INFO] AXIOM-CONTINUOUS-POC.nautilus_system::kernel: Disposed[0m
+----------------------------- Captured stderr call -----------------------------
+[1m2026-10-07T04:25:11.307410280Z[0m [1;31m[ERROR] AXIOM-CONTINUOUS-POC.nautilus_common::python::msgbus: Python handler <bound method NautilusContinuousRuntime._on_observation of <axiom2.nautilus_runtime.runtime.NautilusContinuousRuntime object at 0x7f143e337b00>> failed: OperationalError: cannot rollback - no transaction is active[0m
+=========================== short test summary info ============================
+FAILED ../nautilus-operational-bindings/tests/axiom2/nautilus_runtime/test_observation_preparation.py::test_bounded_journal_denies_growth_and_retains_committed_records
+FAILED ../nautilus-operational-bindings/tests/axiom2/nautilus_runtime/test_observation_preparation.py::test_native_callback_sqlite_full_cannot_leave_ready_or_accept_invalidation
+2 failed, 11 deselected in 0.67s

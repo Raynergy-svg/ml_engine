@@ -1,0 +1,65 @@
+{
+  "kind": "bounded-synthetic-admitted-observation-demo",
+  "tested_code": "933753a9675e750da805ba73b39a297aa7b3b902",
+  "upstream_source": "4f021bafc2e99c5490cee204b0fc2bd2c83baab4",
+  "snapshots": [
+    {
+      "runtime": "NOT_STARTED",
+      "generation": 0,
+      "timer_callbacks": 0,
+      "heartbeat_ns": 0,
+      "data_fresh": false,
+      "candidate_ready": false,
+      "input_scope": "synthetic-or-injected-admitted-only",
+      "live_feed_verified": false,
+      "owner_transport_verified": false,
+      "execution_enabled": false,
+      "capital_authorized": false,
+      "error": ""
+    },
+    {
+      "runtime": "RUNNING",
+      "generation": 1,
+      "timer_callbacks": 1,
+      "heartbeat_ns": 1791344731083218267,
+      "data_fresh": true,
+      "candidate_ready": true,
+      "input_scope": "synthetic-or-injected-admitted-only",
+      "live_feed_verified": false,
+      "owner_transport_verified": false,
+      "execution_enabled": false,
+      "capital_authorized": false,
+      "error": ""
+    },
+    {
+      "runtime": "RUNNING",
+      "generation": 1,
+      "timer_callbacks": 12,
+      "heartbeat_ns": 1791344731302884584,
+      "data_fresh": false,
+      "candidate_ready": false,
+      "input_scope": "synthetic-or-injected-admitted-only",
+      "live_feed_verified": false,
+      "owner_transport_verified": false,
+      "execution_enabled": false,
+      "capital_authorized": false,
+      "error": ""
+    },
+    {
+      "runtime": "STOPPED",
+      "generation": 1,
+      "timer_callbacks": 15,
+      "heartbeat_ns": 1791344731363529330,
+      "data_fresh": false,
+      "candidate_ready": false,
+      "input_scope": "synthetic-or-injected-admitted-only",
+      "live_feed_verified": false,
+      "owner_transport_verified": false,
+      "execution_enabled": false,
+      "capital_authorized": false,
+      "error": ""
+    }
+  ],
+  "provider_access": false,
+  "production_worker_installed": false
+}

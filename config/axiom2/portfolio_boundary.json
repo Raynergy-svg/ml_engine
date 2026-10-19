@@ -1,0 +1,13 @@
+{
+  "capital_authorized": false,
+  "execution_enabled": false,
+  "profile": "portfolio-risk-shadow-only",
+  "schema_version": 1,
+  "source_sha256": {
+    "src/axiom2/portfolio/__init__.py": "a260c97940265b8ee8a7f58ec9c23e7c2c0e9fd568e799814e1acc5ae9132250",
+    "src/axiom2/portfolio/authority.py": "f64ef4ba7c3f76ede2af94805b3a9ce72801d5cf6054819e0c445a4cab24efec",
+    "src/axiom2/portfolio/contracts.py": "49946b28da45abd6ccceb5d38a9669e13c7c35ac5c99951522671ca8b980a040",
+    "src/axiom2/contracts/equity_orders.py": "d6a289ac39b0dc7455f7fcf44c3590447e899ed8ad9931c6696bc31bfb36738c",
+    "src/axiom2/portfolio/intents.py": "666dc7744e8aaee8220d0cbdfedea46d7a0802f523f84e30294cfd3fc4456abe"
+  }
+}

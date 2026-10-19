@@ -1,0 +1,35 @@
+{
+  "approval_receipt": "Sentinel_ad84d8c8f8c8819193613c66de301f9f",
+  "approved_at_utc": "2026-10-07 04:07",
+  "source_commit": "6633d32a3b9884c7f8fa64ae6722bcee827f9b5d",
+  "site_archive_declared_sha256": "4d71bfbcf802cddc8e8ff8eec6c12cd9ed766919d940fffa5d3fd71e68149d73",
+  "site_archive_declared_files": 115,
+  "site_archive_declared_bytes": 2334720,
+  "server_source_bytes_verified": 0,
+  "library_route": "current skill bundled library_download.py; unchanged full list result; selection011013; consumer-localdestination",
+  "library_error": "library download request failed: hosted apps tools/list request failed with HTTP status 401",
+  "helper_exit_code": 1,
+  "transfers_started": 0,
+  "file_specific_permission_denial_confirmed": false,
+  "alternate_transfer_attempted_after_helper_failure": false,
+  "resolved_handoffs": [
+    {
+      "library_id": "libfile_8cb6ef2dfde88191bd421423873f9801",
+      "name": "axiom2-current-source-review-2026-10-05.tar.gz",
+      "bytes": 665111,
+      "content_verified": false,
+      "parent_reported_sha256": "c3007bcdaddc40d9acf5e38ad6c391ac009dd3fbd7488a96d58b2e51191def5c",
+      "parent_reported_missing_server_files": 31,
+      "missing_names_verified": false
+    },
+    {
+      "library_id": "libfile_fb8eec91cba88191a762c72d6e7acab9",
+      "name": "axiom2-market-canary-staged-2026-10-05.tar.gz",
+      "bytes": 23249,
+      "content_verified": false,
+      "complete_source": false
+    }
+  ],
+  "mac_source_bytes_verified_here": 0,
+  "required_action": "Restore existing consumer Library helper authentication or provide a complete authorized handoff through a supported healthy consumer; verify actual admission/ingress/publisher/store/supervision coverage."
+}

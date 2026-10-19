@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "upstream": {
+    "repository": "nautechsystems/nautilus_trader",
+    "revision": "4f021bafc2e99c5490cee204b0fc2bd2c83baab4",
+    "license": "LGPL-3.0-only"
+  },
+  "build": {
+    "runner_image": "ubuntu-24.04",
+    "python_version": "3.12",
+    "rust_toolchain": "1.99.0",
+    "uv_version": "0.12.23",
+    "enabled_features": "arrow,ffi,python,high-precision,streaming,defi",
+    "sync_command": "make sync",
+    "build_command": "make build",
+    "profile": "release",
+    "pyo3_python": "python/.venv/bin/python"
+  }
+}

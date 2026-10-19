@@ -1,0 +1,11 @@
+# Controlled execution preparation — HARD HUMAN GATE
+
+Task18 real broker proof remains unexecuted and capital **BLOCKED**. The preparation script contains no broker client, approval request, review, submit or cancel capability. Every invocation returns BLOCKED (exit 2). Caller readiness claims, fixture signatures and development evidence never authorize execution.
+
+Preparation JSON requires exact fields: account_alias, instrument_id, side (BUY), positive integer quantity, limit_price_cents, capital_cap_cents, UTC expires_at and nonempty kill_plan. No symbol, size or account is preselected. The descriptive principal cap excludes fees; later authenticated risk evaluation must reserve conservative costs within the authorized total capital cap. Expiry is descriptive and cannot authorize execution.
+
+Before any live action, independently verify signed artifact bytes and trust roles for genuine holdout promotion, exact promoted model/calibration, completed live shadow qualification, fresh complete account reconciliation, Task17 exact-build operational denials and approved deployment. Confirm dedicated allowlisted account and provider trade approvals ON. Require separate bounded operator authorization identifying exact account, intent/order digest, symbol, side, quantity, price, total capital including costs, expiry, regular-session interval, approved build and kill/revocation plan.
+
+Separate human approvals remain required before genuine holdout consumption, deployment, enabling trading and the exact broker order. Coding authorization satisfies none of these. This runbook does not request those approvals.
+
+An eventual separately authorized gateway must retain reviewed intent, durable submission reservation/idempotency identity, broker acknowledgement, actual fills/fees, cancellation races, final holdings/cash and authoritative reconciliation. Ambiguity halts new exposure; an empty query is not proof of absence. Kill stops new submissions; cancellation is only a request requiring reconciliation against broker truth. Disable/revoke proof authorization at completion and retain final kill/revocation receipt. Never auto-scale capital. No gateway execution path is implemented by this preparation.

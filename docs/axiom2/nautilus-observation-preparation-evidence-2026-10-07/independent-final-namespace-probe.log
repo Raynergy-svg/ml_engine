@@ -1,0 +1,5 @@
+Private evidence root beneath nonsticky0777 ancestor: rejected (unsafe storage namespace: ancestor can be replaced by another writer)
+Same layout with trusted sticky ancestor: accepted safely
+Owner0600 database hardlink: rejected (unsafe storage namespace: owner-only directory/files required)
+Normal private directory beneath mapped-root /tmp: accepted
+Filesystem-root UID: 65534 current UID: 1000

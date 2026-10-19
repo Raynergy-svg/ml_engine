@@ -1,0 +1,32 @@
+[
+  {
+    "profile": "research",
+    "registered_files": 30,
+    "changed_hashes": [],
+    "all_bytes_match": true,
+    "authority_fields_unchanged": true
+  },
+  {
+    "profile": "portfolio",
+    "registered_files": 5,
+    "changed_hashes": [],
+    "all_bytes_match": true,
+    "authority_fields_unchanged": true
+  },
+  {
+    "profile": "execution",
+    "registered_files": 22,
+    "changed_hashes": [],
+    "all_bytes_match": true,
+    "authority_fields_unchanged": true
+  },
+  {
+    "profile": "nautilus",
+    "registered_files": 7,
+    "changed_hashes": [
+      "src/axiom2/nautilus_runtime/runtime.py"
+    ],
+    "all_bytes_match": true,
+    "authority_fields_unchanged": true
+  }
+]

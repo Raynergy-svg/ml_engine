@@ -1,0 +1,20 @@
+{
+  "failures": [],
+  "run_conclusion": "success",
+  "run_id": 37563968612,
+  "test_suites": [
+    {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "runnervmmprz5",
+      "name": "pytest",
+      "skipped": "0",
+      "tests": "1453",
+      "time": "275.140",
+      "timestamp": "2026-10-07T02:52:14.337982+00:00"
+    }
+  ],
+  "tested_code_sha": "6fa68a036d468f0206fe6f0eae83704380892def",
+  "verification_artifact_id": 11458660699,
+  "verification_artifact_zip_sha256": "be35466b50aa5cee9fb62e765ec7566f7a0c279f2e8837f9e7e31d499052b5b8"
+}

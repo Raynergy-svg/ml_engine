@@ -1,0 +1,8 @@
+# Isolated Axiom research/evidence verification, not the legacy training stack.
+pytest==9.0.2
+pydantic==2.12.5
+cryptography==46.0.7
+pandas==2.3.3
+numpy==2.0.2
+lightgbm==4.7.0
+scikit-learn==1.7.2

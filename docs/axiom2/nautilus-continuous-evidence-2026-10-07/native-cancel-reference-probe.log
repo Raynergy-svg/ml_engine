@@ -1,0 +1,191 @@
+[1m2026-10-07T03:38:51.731864666Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731879588Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE:  NAUTILUS TRADER - Automated Algorithmic Trading Platform[0m
+[1m2026-10-07T03:38:51.731879969Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE:  by Nautech Systems Pty Ltd.[0m
+[1m2026-10-07T03:38:51.731880109Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE:  Copyright (C) 2015-2026. All rights reserved.[0m
+[1m2026-10-07T03:38:51.731880239Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731880390Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⡤⠤⠤⠤⠤⠤⠤⠤⢤⡀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731882773Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠚⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⠁⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731883023Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠀⠀⠀⢀⣠⠖⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡴⠚⠁⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731883254Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠀⢀⡴⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731883374Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⣠⠏⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠒⠒⠒⠒⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731883604Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⢀⡖⠋⣠⢴⢪⠞⣩⢟⡭⠵⢤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731883724Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⣦⡙⠦⣄⡀⠀⢀⣠⠴⠋⢠⡐⣇⢸⡘⢦⡇⣏⡴⣋⡭⠖⠮⢥⡀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731883855Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⢸⡉⠓⠦⠭⠭⠭⠴⣺⠃⠸⣷⢬⣓⣛⠒⠩⣌⢡⡷⢒⣫⠭⣝⡛⠆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731883955Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠙⠦⢤⣀⣠⠤⠞⣡⠞⡆⠺⣭⣭⡷⢇⣷⡻⠡⠾⣛⣒⠦⢤⡙⡆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731884055Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠈⠳⣖⠒⠒⠒⠋⠁⣠⠇⡼⢦⠀⣌⡉⢥⣄⣛⡻⢥⡈⠉⢳⡙⠇⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731884175Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠀⠀⠈⠙⣒⣒⣒⣋⡥⠞⠁⣸⠃⡇⠙⢦⢹⠀⠙⡆⢳⢀⡴⠃⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731884285Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠀⠀⠀⠀⠈⠙⠒⠦⠤⠴⣚⣡⠞⠁⣠⠏⡼⢀⣠⠇⠞⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731884405Z[0m [INFO] TRADER-001.REFERENCE-PROBE: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠉⠑⠚⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:51.731884736Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731884876Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE:  SYSTEM SPECIFICATION[0m
+[1m2026-10-07T03:38:51.731884986Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731885597Z[0m [INFO] TRADER-001.REFERENCE-PROBE: CPU architecture: AMD EPYC 9V74 80-Core Processor[0m
+[1m2026-10-07T03:38:51.731886358Z[0m [INFO] TRADER-001.REFERENCE-PROBE: CPU(s): 5 @ 2596 MHz[0m
+[1m2026-10-07T03:38:51.731886999Z[0m [INFO] TRADER-001.REFERENCE-PROBE: OS: kernel-6.18.44 Linux (Debian GNU/Linux 13)[0m
+[1m2026-10-07T03:38:51.731904936Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731905246Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE:  MEMORY USAGE[0m
+[1m2026-10-07T03:38:51.731905376Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731907109Z[0m [INFO] TRADER-001.REFERENCE-PROBE: RAM-Total: 17.59 GiB[0m
+[1m2026-10-07T03:38:51.731907600Z[0m [INFO] TRADER-001.REFERENCE-PROBE: RAM-Used: 0.94 GiB (5.32%)[0m
+[1m2026-10-07T03:38:51.731907910Z[0m [INFO] TRADER-001.REFERENCE-PROBE: RAM-Avail: 16.65 GiB (94.68%)[0m
+[1m2026-10-07T03:38:51.731908221Z[0m [INFO] TRADER-001.REFERENCE-PROBE: Swap: disabled[0m
+[1m2026-10-07T03:38:51.731908581Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731908731Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE:  IDENTIFIERS[0m
+[1m2026-10-07T03:38:51.731908851Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731911265Z[0m [INFO] TRADER-001.REFERENCE-PROBE: trader_id: TRADER-001[0m
+[1m2026-10-07T03:38:51.731911686Z[0m [INFO] TRADER-001.REFERENCE-PROBE: machine_id: ce2fc6c29817[0m
+[1m2026-10-07T03:38:51.731912737Z[0m [INFO] TRADER-001.REFERENCE-PROBE: instance_id: 7d8571ca-e375-41d2-957d-f6b82c08859e[0m
+[1m2026-10-07T03:38:51.731912967Z[0m [INFO] TRADER-001.REFERENCE-PROBE: PID: 5018[0m
+[1m2026-10-07T03:38:51.731913078Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731913218Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE:  VERSIONING[0m
+[1m2026-10-07T03:38:51.731913318Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.731918836Z[0m [INFO] TRADER-001.REFERENCE-PROBE: nautilus_trader: unknown[0m
+[1m2026-10-07T03:38:51.731919557Z[0m [INFO] TRADER-001.REFERENCE-PROBE: nautilus_core: 0.66.0[0m
+[1m2026-10-07T03:38:51.731923633Z[0m [INFO] TRADER-001.REFERENCE-PROBE: python: 3.12.14[0m
+[1m2026-10-07T03:38:51.731928931Z[0m [INFO] TRADER-001.REFERENCE-PROBE: git_commit: 4f021bafc2e9[0m
+[1m2026-10-07T03:38:51.731929271Z[0m [INFO] TRADER-001.REFERENCE-PROBE: rustc: 1.99.0 (b940084d7 2026-09-28)[0m
+[1m2026-10-07T03:38:51.731929892Z[0m [INFO] TRADER-001.REFERENCE-PROBE: target: x86_64-unknown-linux-gnu[0m
+[1m2026-10-07T03:38:51.731930093Z[0m [INFO] TRADER-001.REFERENCE-PROBE: profile: release[0m
+[1m2026-10-07T03:38:51.731930253Z[0m [INFO] TRADER-001.REFERENCE-PROBE: panic: abort[0m
+[1m2026-10-07T03:38:51.731930563Z[0m [INFO] TRADER-001.REFERENCE-PROBE: precision: high (128-bit, 16 dp)[0m
+[1m2026-10-07T03:38:51.731931044Z[0m [INFO] TRADER-001.REFERENCE-PROBE: allocator: mimalloc 0.1.52[0m
+[1m2026-10-07T03:38:51.731931375Z[0m [INFO] TRADER-001.REFERENCE-PROBE: libc_runtime: glibc 2.41[0m
+[1m2026-10-07T03:38:51.731931525Z[0m [INFO] TRADER-001.REFERENCE-PROBE: cargo_lock: f5b18476[0m
+[1m2026-10-07T03:38:51.731931695Z[0m [INFO] TRADER-001.REFERENCE-PROBE: libc_crate: 0.2.189[0m
+[1m2026-10-07T03:38:51.731932186Z[0m [INFO] TRADER-001.REFERENCE-PROBE: rust_decimal: 1.43.0[0m
+[1m2026-10-07T03:38:51.731932426Z[0m [INFO] TRADER-001.REFERENCE-PROBE: rustls: 0.23.45[0m
+[1m2026-10-07T03:38:51.731932616Z[0m [INFO] TRADER-001.REFERENCE-PROBE: aws_lc_rs: 1.18.1[0m
+[1m2026-10-07T03:38:51.731932777Z[0m [INFO] TRADER-001.REFERENCE-PROBE: tokio: 1.53.1[0m
+[1m2026-10-07T03:38:51.731933057Z[0m [INFO] TRADER-001.REFERENCE-PROBE: pyo3: 0.29.2[0m
+[1m2026-10-07T03:38:51.731933277Z[0m [INFO] TRADER-001.REFERENCE-PROBE: pyo3_async_runtimes: 0.29.0[0m
+[1m2026-10-07T03:38:51.776197781Z[0m [INFO] TRADER-001.REFERENCE-PROBE: numpy: 2.0.2[0m
+[1m2026-10-07T03:38:51.955823746Z[0m [INFO] TRADER-001.REFERENCE-PROBE: pandas: 2.3.3[0m
+[1m2026-10-07T03:38:51.955955670Z[0m [INFO] TRADER-001.REFERENCE-PROBE: pytz: 2026.5[0m
+[1m2026-10-07T03:38:51.956028958Z[0m [36m[INFO] TRADER-001.REFERENCE-PROBE: =================================================================[0m
+[1m2026-10-07T03:38:51.956038262Z[0m [INFO] TRADER-001.nautilus_system::kernel: Building system kernel[0m
+[1m2026-10-07T03:38:51.956206239Z[0m [INFO] TRADER-001.nautilus_live::node::builder: Built successfully[0m
+[1m2026-10-07T03:38:51.956756008Z[0m [INFO] TRADER-001.nautilus_live::node: Event loop starting[0m
+[1m2026-10-07T03:38:51.956764700Z[0m [INFO] TRADER-001.nautilus_system::kernel: Starting[0m
+[1m2026-10-07T03:38:51.956765932Z[0m [INFO] TRADER-001.nautilus_execution::engine: Started[0m
+[1m2026-10-07T03:38:51.956766493Z[0m [INFO] TRADER-001.nautilus_risk::engine: Started[0m
+[1m2026-10-07T03:38:51.956767344Z[0m [INFO] TRADER-001.nautilus_system::kernel: Initializing trader[0m
+[1m2026-10-07T03:38:51.956768025Z[0m [INFO] TRADER-001.nautilus_system::kernel: Started[0m
+[1m2026-10-07T03:38:51.956770799Z[0m [INFO] TRADER-001.nautilus_system::kernel: Connecting data clients...[0m
+[1m2026-10-07T03:38:51.956776347Z[0m [INFO] TRADER-001.nautilus_system::kernel: Connecting execution clients...[0m
+[1m2026-10-07T03:38:51.956776988Z[0m [INFO] TRADER-001.nautilus_live::node: Awaiting engine connections (0ns timeout)...[0m
+[1m2026-10-07T03:38:51.956778350Z[0m [INFO] TRADER-001.nautilus_live::node: All engine clients connected[0m
+[1m2026-10-07T03:38:51.956782497Z[0m [94m[INFO] TRADER-001.nautilus_live::node: Starting execution state reconciliation...[0m
+[1m2026-10-07T03:38:51.956790328Z[0m [INFO] TRADER-001.nautilus_portfolio::portfolio: Initialized 0 open orders[0m
+[1m2026-10-07T03:38:51.956793833Z[0m [INFO] TRADER-001.nautilus_portfolio::portfolio: Initialized 0 open positions[0m
+[1m2026-10-07T03:38:51.956795486Z[0m [INFO] TRADER-001.nautilus_portfolio::portfolio: Initialized 0 Wallet reservations[0m
+[1m2026-10-07T03:38:51.956796437Z[0m [94m[INFO] TRADER-001.nautilus_live::node: Startup reconciliation completed in 0.00s[0m
+[1m2026-10-07T03:38:51.956798700Z[0m [INFO] TRADER-001.nautilus_system::kernel: Starting trader...[0m
+[1m2026-10-07T03:38:51.956799902Z[0m [INFO] TRADER-001.nautilus_execution::order_emulator::emulator: Started[0m
+[1m2026-10-07T03:38:51.956801474Z[0m [INFO] TRADER-001.nautilus_system::trader: Starting[0m
+[1m2026-10-07T03:38:51.956802766Z[0m [INFO] TRADER-001.nautilus_system::trader: Running[0m
+[1m2026-10-07T03:38:51.956802947Z[0m [INFO] TRADER-001.nautilus_system::kernel: Trader started[0m
+[1m2026-10-07T03:38:51.968279245Z[0m [INFO] TRADER-001.nautilus_live::python::node: Hosted run cancelled, requesting graceful shutdown[0m
+[1m2026-10-07T03:38:52.058729955Z[0m [INFO] TRADER-001.nautilus_live::node: Received stop signal from handle[0m
+[1m2026-10-07T03:38:52.058746680Z[0m [INFO] TRADER-001.nautilus_system::kernel: Stopping trader...[0m
+[1m2026-10-07T03:38:52.058752819Z[0m [INFO] TRADER-001.nautilus_system::trader: Stopping[0m
+[1m2026-10-07T03:38:52.058754772Z[0m [INFO] TRADER-001.nautilus_system::trader: Stopped[0m
+[1m2026-10-07T03:38:52.058755893Z[0m [INFO] TRADER-001.nautilus_live::node: Awaiting residual events (0ns)...[0m
+[1m2026-10-07T03:38:52.059961777Z[0m [INFO] TRADER-001.nautilus_system::kernel: Disconnecting clients...[0m
+[1m2026-10-07T03:38:52.060212976Z[0m [INFO] TRADER-001.nautilus_live::node: Awaiting engine disconnections (0ns timeout)...[0m
+[1m2026-10-07T03:38:52.060222881Z[0m [INFO] TRADER-001.nautilus_live::node: All engine clients disconnected[0m
+[1m2026-10-07T03:38:52.060226396Z[0m [INFO] TRADER-001.nautilus_execution::engine: Stopped[0m
+[1m2026-10-07T03:38:52.060227077Z[0m [INFO] TRADER-001.nautilus_risk::engine: Stopped[0m
+[1m2026-10-07T03:38:52.060227768Z[0m [INFO] TRADER-001.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-07T03:38:52.060228910Z[0m [INFO] TRADER-001.nautilus_system::kernel: Stopped[0m
+[1m2026-10-07T03:38:52.060231934Z[0m [INFO] TRADER-001.nautilus_live::node: Event loop stopped[0m
+[1m2026-10-07T03:38:52.060420742Z[0m [INFO] TRADER-001.nautilus_system::kernel: Disposing[0m
+[1m2026-10-07T03:38:52.060431858Z[0m [INFO] TRADER-001.nautilus_system::trader: Disposing[0m
+[1m2026-10-07T03:38:52.060432890Z[0m [INFO] TRADER-001.nautilus_system::trader: Disposed[0m
+[1m2026-10-07T03:38:52.060433220Z[0m [INFO] TRADER-001.nautilus_execution::engine: Stopped[0m
+[1m2026-10-07T03:38:52.060433370Z[0m [INFO] TRADER-001.nautilus_risk::engine: Stopped[0m
+[1m2026-10-07T03:38:52.060433571Z[0m [INFO] TRADER-001.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-07T03:38:52.060438157Z[0m [INFO] TRADER-001.nautilus_execution::engine: Disposed[0m
+[1m2026-10-07T03:38:52.060438358Z[0m [INFO] TRADER-001.nautilus_risk::engine: Disposed[0m
+[1m2026-10-07T03:38:52.060440080Z[0m [INFO] TRADER-001.nautilus_execution::order_emulator::emulator: Disposed[0m
+[1m2026-10-07T03:38:52.060442904Z[0m [INFO] TRADER-001.nautilus_common::cache: Reset cache[0m
+[1m2026-10-07T03:38:52.060454582Z[0m [INFO] TRADER-001.nautilus_system::kernel: Disposed[0m
+[1m2026-10-07T03:38:52.103551866Z[0m [INFO] TRADER-001.nautilus_live::node::builder: Building LiveNode with 0 data clients and 0 execution clients[0m
+[1m2026-10-07T03:38:52.103959306Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.103977713Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED:  NAUTILUS TRADER - Automated Algorithmic Trading Platform[0m
+[1m2026-10-07T03:38:52.103978143Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED:  by Nautech Systems Pty Ltd.[0m
+[1m2026-10-07T03:38:52.103978354Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED:  Copyright (C) 2015-2026. All rights reserved.[0m
+[1m2026-10-07T03:38:52.103978664Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.103978915Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⡤⠤⠤⠤⠤⠤⠤⠤⢤⡀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103979235Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠚⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⠁⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103979586Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠀⠀⠀⢀⣠⠖⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡴⠚⠁⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103979936Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠀⢀⡴⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103980076Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⣠⠏⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠒⠒⠒⠒⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103980227Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⢀⡖⠋⣠⢴⢪⠞⣩⢟⡭⠵⢤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103980948Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⣦⡙⠦⣄⡀⠀⢀⣠⠴⠋⢠⡐⣇⢸⡘⢦⡇⣏⡴⣋⡭⠖⠮⢥⡀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103981108Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⢸⡉⠓⠦⠭⠭⠭⠴⣺⠃⠸⣷⢬⣓⣛⠒⠩⣌⢡⡷⢒⣫⠭⣝⡛⠆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103981248Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠙⠦⢤⣀⣠⠤⠞⣡⠞⡆⠺⣭⣭⡷⢇⣷⡻⠡⠾⣛⣒⠦⢤⡙⡆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103981498Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠈⠳⣖⠒⠒⠒⠋⠁⣠⠇⡼⢦⠀⣌⡉⢥⣄⣛⡻⢥⡈⠉⢳⡙⠇⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103981799Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠀⠀⠈⠙⣒⣒⣒⣋⡥⠞⠁⣸⠃⡇⠙⢦⢹⠀⠙⡆⢳⢀⡴⠃⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103982059Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠀⠀⠀⠀⠈⠙⠒⠦⠤⠴⣚⣡⠞⠁⣠⠏⡼⢀⣠⠇⠞⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103982360Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠉⠑⠚⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-07T03:38:52.103982620Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.103982900Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED:  SYSTEM SPECIFICATION[0m
+[1m2026-10-07T03:38:52.103983071Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.103983622Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: CPU architecture: AMD EPYC 9V74 80-Core Processor[0m
+[1m2026-10-07T03:38:52.103984433Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: CPU(s): 5 @ 2596 MHz[0m
+[1m2026-10-07T03:38:52.104005123Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: OS: kernel-6.18.44 Linux (Debian GNU/Linux 13)[0m
+[1m2026-10-07T03:38:52.104031161Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.104031432Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED:  MEMORY USAGE[0m
+[1m2026-10-07T03:38:52.104031612Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.104033645Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: RAM-Total: 17.59 GiB[0m
+[1m2026-10-07T03:38:52.104034496Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: RAM-Used: 0.97 GiB (5.50%)[0m
+[1m2026-10-07T03:38:52.104034997Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: RAM-Avail: 16.62 GiB (94.50%)[0m
+[1m2026-10-07T03:38:52.104035277Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: Swap: disabled[0m
+[1m2026-10-07T03:38:52.104035598Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.104035938Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED:  IDENTIFIERS[0m
+[1m2026-10-07T03:38:52.104036209Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.104037100Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: trader_id: TRADER-001[0m
+[1m2026-10-07T03:38:52.104037561Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: machine_id: ce2fc6c29817[0m
+[1m2026-10-07T03:38:52.104038993Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: instance_id: 360322f1-3f77-4408-9071-7a85dce5fadf[0m
+[1m2026-10-07T03:38:52.104040695Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: PID: 5018[0m
+[1m2026-10-07T03:38:52.104041026Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.104041336Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED:  VERSIONING[0m
+[1m2026-10-07T03:38:52.104041537Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.104046754Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: nautilus_trader: unknown[0m
+[1m2026-10-07T03:38:52.104047425Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: nautilus_core: 0.66.0[0m
+[1m2026-10-07T03:38:52.104052192Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: python: 3.12.14[0m
+[1m2026-10-07T03:38:52.104058381Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: git_commit: 4f021bafc2e9[0m
+[1m2026-10-07T03:38:52.104058692Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: rustc: 1.99.0 (b940084d7 2026-09-28)[0m
+[1m2026-10-07T03:38:52.104059343Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: target: x86_64-unknown-linux-gnu[0m
+[1m2026-10-07T03:38:52.104059583Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: profile: release[0m
+[1m2026-10-07T03:38:52.104059924Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: panic: abort[0m
+[1m2026-10-07T03:38:52.104060214Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: precision: high (128-bit, 16 dp)[0m
+[1m2026-10-07T03:38:52.104060595Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: allocator: mimalloc 0.1.52[0m
+[1m2026-10-07T03:38:52.104060815Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: libc_runtime: glibc 2.41[0m
+[1m2026-10-07T03:38:52.104061186Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: cargo_lock: f5b18476[0m
+[1m2026-10-07T03:38:52.104061436Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: libc_crate: 0.2.189[0m
+[1m2026-10-07T03:38:52.104061776Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: rust_decimal: 1.43.0[0m
+[1m2026-10-07T03:38:52.104062057Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: rustls: 0.23.45[0m
+[1m2026-10-07T03:38:52.104062337Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: aws_lc_rs: 1.18.1[0m
+[1m2026-10-07T03:38:52.104062558Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: tokio: 1.53.1[0m
+[1m2026-10-07T03:38:52.104062918Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: pyo3: 0.29.2[0m
+[1m2026-10-07T03:38:52.104063219Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: pyo3_async_runtimes: 0.29.0[0m
+[1m2026-10-07T03:38:52.104065862Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: numpy: 2.0.2[0m
+[1m2026-10-07T03:38:52.104068727Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: pandas: 2.3.3[0m
+[1m2026-10-07T03:38:52.104270784Z[0m [INFO] TRADER-001.REFERENCE-RELEASED: pytz: 2026.5[0m
+[1m2026-10-07T03:38:52.104342810Z[0m [36m[INFO] TRADER-001.REFERENCE-RELEASED: =================================================================[0m
+[1m2026-10-07T03:38:52.104355739Z[0m [INFO] TRADER-001.nautilus_system::kernel: Building system kernel[0m
+[1m2026-10-07T03:38:52.104461244Z[0m [INFO] TRADER-001.nautilus_live::node::builder: Built successfully[0m
+[1m2026-10-07T03:38:52.104487142Z[0m [INFO] TRADER-001.nautilus_system::kernel: Disposing[0m
+[1m2026-10-07T03:38:52.104490497Z[0m [INFO] TRADER-001.nautilus_system::trader: Disposing[0m
+[1m2026-10-07T03:38:52.104492540Z[0m [INFO] TRADER-001.nautilus_system::trader: Disposed[0m
+[1m2026-10-07T03:38:52.104494773Z[0m [INFO] TRADER-001.nautilus_execution::engine: Stopped[0m
+[1m2026-10-07T03:38:52.104495354Z[0m [INFO] TRADER-001.nautilus_risk::engine: Stopped[0m
+[1m2026-10-07T03:38:52.104496596Z[0m [INFO] TRADER-001.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-07T03:38:52.104501784Z[0m [INFO] TRADER-001.nautilus_execution::engine: Disposed[0m
+[1m2026-10-07T03:38:52.104509295Z[0m [INFO] TRADER-001.nautilus_risk::engine: Disposed[0m
+[1m2026-10-07T03:38:52.104510997Z[0m [INFO] TRADER-001.nautilus_execution::order_emulator::emulator: Disposed[0m
+[1m2026-10-07T03:38:52.104514322Z[0m [INFO] TRADER-001.nautilus_common::cache: Reset cache[0m
+[1m2026-10-07T03:38:52.104520611Z[0m [INFO] TRADER-001.nautilus_system::kernel: Disposed[0m
+PROBE retained traceback guard: A LiveNode already exists or is being built on this thread; drop it before building another
+PROBE after dropping traceback: rebuild succeeded; original handle running: False

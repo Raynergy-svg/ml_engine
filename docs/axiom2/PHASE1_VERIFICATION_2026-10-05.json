@@ -1,0 +1,24 @@
+{
+  "broker_authority_added": false,
+  "bundle_sha256": "483414965c480191e4b1491d081cce64947d198c8d7eedd47da5887c32f45bb0",
+  "capital_enabled": false,
+  "classification": "software-verification-not-empirical-qualification",
+  "empirical_blocker": "No independently audited development-only admission bundle and configured existing research-service history/authority context",
+  "empirical_campaign_registered": false,
+  "empirical_campaign_run": false,
+  "execution_enabled": false,
+  "genuine_holdout_accessed": false,
+  "isolation_status": "PASS",
+  "limitations": [
+    "Not repository-wide legacy test verification",
+    "No deployed service or real Unix-socket integration verification",
+    "Source truth requires independent review of actual historical provenance"
+  ],
+  "new_controls": 31,
+  "parent_commit": "6125da6f97cd59f5bb6cc4537f1482fda2416db9",
+  "research_kernel_complete": false,
+  "scope": "tests/axiom2; tests/evidence/equity_research; evidence contracts/store/equity research slice and no-authority regressions",
+  "test_exit_code": 0,
+  "test_log_sha256": "a925c42f890c7a91a0606007d894dd72c1a636e24f3512eaf5f7024d173f642a",
+  "test_result": "1350 passed in 182.81s"
+}

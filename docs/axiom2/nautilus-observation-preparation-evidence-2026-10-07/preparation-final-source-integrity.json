@@ -1,0 +1,337 @@
+{
+  "code_commit": "15d4fda039b4484e2d4c9050a83efe32a0aec831",
+  "registered_count": 64,
+  "all_match": true,
+  "source_files": {
+    "src/axiom2/portfolio/__init__.py": {
+      "expected": "a260c97940265b8ee8a7f58ec9c23e7c2c0e9fd568e799814e1acc5ae9132250",
+      "actual": "a260c97940265b8ee8a7f58ec9c23e7c2c0e9fd568e799814e1acc5ae9132250",
+      "match": true
+    },
+    "src/axiom2/portfolio/authority.py": {
+      "expected": "f64ef4ba7c3f76ede2af94805b3a9ce72801d5cf6054819e0c445a4cab24efec",
+      "actual": "f64ef4ba7c3f76ede2af94805b3a9ce72801d5cf6054819e0c445a4cab24efec",
+      "match": true
+    },
+    "src/axiom2/portfolio/contracts.py": {
+      "expected": "49946b28da45abd6ccceb5d38a9669e13c7c35ac5c99951522671ca8b980a040",
+      "actual": "49946b28da45abd6ccceb5d38a9669e13c7c35ac5c99951522671ca8b980a040",
+      "match": true
+    },
+    "src/axiom2/contracts/equity_orders.py": {
+      "expected": "d6a289ac39b0dc7455f7fcf44c3590447e899ed8ad9931c6696bc31bfb36738c",
+      "actual": "d6a289ac39b0dc7455f7fcf44c3590447e899ed8ad9931c6696bc31bfb36738c",
+      "match": true
+    },
+    "src/axiom2/portfolio/intents.py": {
+      "expected": "666dc7744e8aaee8220d0cbdfedea46d7a0802f523f84e30294cfd3fc4456abe",
+      "actual": "666dc7744e8aaee8220d0cbdfedea46d7a0802f523f84e30294cfd3fc4456abe",
+      "match": true
+    },
+    "src/axiom2/execution/__init__.py": {
+      "expected": "0fcf3346ce3f41b3ef3680922036a84afaf7b1344f8a9f1b1c03b250bb605075",
+      "actual": "0fcf3346ce3f41b3ef3680922036a84afaf7b1344f8a9f1b1c03b250bb605075",
+      "match": true
+    },
+    "src/axiom2/execution/admission.py": {
+      "expected": "1c14cc20d00cca351d9dc4359aa861b98099569713aae6af8b8cad42d95fc8b6",
+      "actual": "1c14cc20d00cca351d9dc4359aa861b98099569713aae6af8b8cad42d95fc8b6",
+      "match": true
+    },
+    "src/axiom2/execution/authority.py": {
+      "expected": "4eb7e7a3605ae189e44afbe26da07c40581d1ff334128b18799dd1288919cd56",
+      "actual": "4eb7e7a3605ae189e44afbe26da07c40581d1ff334128b18799dd1288919cd56",
+      "match": true
+    },
+    "src/axiom2/execution/authorization.py": {
+      "expected": "6ce4f26e671f88deb32c7ae3e34abffa4fea82067ef5a6b5194fd5a7c4921146",
+      "actual": "6ce4f26e671f88deb32c7ae3e34abffa4fea82067ef5a6b5194fd5a7c4921146",
+      "match": true
+    },
+    "src/axiom2/execution/costs.py": {
+      "expected": "15cbe41e24f86583df4f5494f76f0d66539242f78420ee0d88436b7b86beab45",
+      "actual": "15cbe41e24f86583df4f5494f76f0d66539242f78420ee0d88436b7b86beab45",
+      "match": true
+    },
+    "src/axiom2/execution/journal.py": {
+      "expected": "18b5d8e1b7489899ed50a7b2e3f578ea1f3a8c39f08a10a74861b3aa15fd01e5",
+      "actual": "18b5d8e1b7489899ed50a7b2e3f578ea1f3a8c39f08a10a74861b3aa15fd01e5",
+      "match": true
+    },
+    "src/axiom2/execution/reconciliation.py": {
+      "expected": "82b0a0fd5554eb29e6f6af1e67b358b1c44582ede0dae4393ebb21dc8cc1eb9a",
+      "actual": "82b0a0fd5554eb29e6f6af1e67b358b1c44582ede0dae4393ebb21dc8cc1eb9a",
+      "match": true
+    },
+    "src/axiom2/shadow/__init__.py": {
+      "expected": "c91edcd0568f7db55b637c05f12b953fcdf942b3576e9564442dcea5473f9e28",
+      "actual": "c91edcd0568f7db55b637c05f12b953fcdf942b3576e9564442dcea5473f9e28",
+      "match": true
+    },
+    "src/axiom2/shadow/engine.py": {
+      "expected": "eb48bf99653cccbe2ed0cb384a34488beddab8735d8173bc605576422f1e12a9",
+      "actual": "eb48bf99653cccbe2ed0cb384a34488beddab8735d8173bc605576422f1e12a9",
+      "match": true
+    },
+    "src/axiom2/shadow/fills.py": {
+      "expected": "04a029db3a0a06ef1827b3418564c044a75e4ec99b23233d8750b735334e94bb",
+      "actual": "04a029db3a0a06ef1827b3418564c044a75e4ec99b23233d8750b735334e94bb",
+      "match": true
+    },
+    "src/evidence/execution_shadow.py": {
+      "expected": "bfc62419d933d98da57f4b4381b01ea92f7b84083271ab696f623757f63694d9",
+      "actual": "bfc62419d933d98da57f4b4381b01ea92f7b84083271ab696f623757f63694d9",
+      "match": true
+    },
+    "src/axiom2/execution/lifecycle.py": {
+      "expected": "dc0a1246e0e2f020b2665fe5fa0d0443bbc5c7831d795404f065e59fd9703235",
+      "actual": "dc0a1246e0e2f020b2665fe5fa0d0443bbc5c7831d795404f065e59fd9703235",
+      "match": true
+    },
+    "src/axiom2/execution/resolution.py": {
+      "expected": "92bfea949abc2f36a63d9d57b04aa62e5e9766337b4b008cd29e8cb8fcf7975e",
+      "actual": "92bfea949abc2f36a63d9d57b04aa62e5e9766337b4b008cd29e8cb8fcf7975e",
+      "match": true
+    },
+    "src/axiom2/shadow/portfolio.py": {
+      "expected": "d7405208c028e9d9a6acb3d7b51dac9ee05caf2aae6913a57f368804ed1eb4ce",
+      "actual": "d7405208c028e9d9a6acb3d7b51dac9ee05caf2aae6913a57f368804ed1eb4ce",
+      "match": true
+    },
+    "src/axiom2/execution/fencing.py": {
+      "expected": "d7492372bac0c0b86579f956c77e5e1a1391497a784561bd0cab8880b60da85e",
+      "actual": "d7492372bac0c0b86579f956c77e5e1a1391497a784561bd0cab8880b60da85e",
+      "match": true
+    },
+    "src/axiom2/execution/artifacts.py": {
+      "expected": "9cae625846b24d1954494b70623d7ea3679281575ee4b0ed801f40156fb94a7d",
+      "actual": "9cae625846b24d1954494b70623d7ea3679281575ee4b0ed801f40156fb94a7d",
+      "match": true
+    },
+    "src/axiom2/brokers/__init__.py": {
+      "expected": "d1daabb62db902ca8d96ae9f25ffc0944363371785510d6192972924c29365c0",
+      "actual": "d1daabb62db902ca8d96ae9f25ffc0944363371785510d6192972924c29365c0",
+      "match": true
+    },
+    "src/axiom2/brokers/contracts.py": {
+      "expected": "2e428174743616e51253ddab41610cf891da42b1a794e108bec6504c380cb078",
+      "actual": "2e428174743616e51253ddab41610cf891da42b1a794e108bec6504c380cb078",
+      "match": true
+    },
+    "src/axiom2/brokers/robinhood_readonly.py": {
+      "expected": "5d5e8f84e4383f3f45b78834459318edd92fa844f2bf26f5e6362a43ea3e2267",
+      "actual": "5d5e8f84e4383f3f45b78834459318edd92fa844f2bf26f5e6362a43ea3e2267",
+      "match": true
+    },
+    "src/axiom2/brokers/service.py": {
+      "expected": "5bbdc93197f80917052633629d02bd9e7c35a3827a785fe8405eff0431a08dec",
+      "actual": "5bbdc93197f80917052633629d02bd9e7c35a3827a785fe8405eff0431a08dec",
+      "match": true
+    },
+    "src/axiom2/brokers/fake_execution.py": {
+      "expected": "228f633d86278086e75abd2f5fdb8d23cc8841f051e46cde35191117621670d0",
+      "actual": "228f633d86278086e75abd2f5fdb8d23cc8841f051e46cde35191117621670d0",
+      "match": true
+    },
+    "src/axiom2/execution/service.py": {
+      "expected": "9b7eeab603f2b8571e89936edf76dab950281eaa37c9736b71b0707a9601d2f8",
+      "actual": "9b7eeab603f2b8571e89936edf76dab950281eaa37c9736b71b0707a9601d2f8",
+      "match": true
+    },
+    "src/axiom2/nautilus_runtime/__init__.py": {
+      "expected": "42a3b7f5518a4e95f8e915934fd4b335c33165b387c3e0a76e5c98e1f6c03a17",
+      "actual": "42a3b7f5518a4e95f8e915934fd4b335c33165b387c3e0a76e5c98e1f6c03a17",
+      "match": true
+    },
+    "src/axiom2/nautilus_runtime/contracts.py": {
+      "expected": "caf0d69c25fe4b6aeb0d5fe37c2b525f3d146bed0c37a3faf6892632ceeaa97e",
+      "actual": "caf0d69c25fe4b6aeb0d5fe37c2b525f3d146bed0c37a3faf6892632ceeaa97e",
+      "match": true
+    },
+    "src/axiom2/nautilus_runtime/journal.py": {
+      "expected": "1bfeb84c67b980e9d16fcbc00c873ea6794f8e7038c2bb438b4ac8f103a57550",
+      "actual": "1bfeb84c67b980e9d16fcbc00c873ea6794f8e7038c2bb438b4ac8f103a57550",
+      "match": true
+    },
+    "src/axiom2/nautilus_runtime/order_replay.py": {
+      "expected": "7456f8668bcb855085fb61919e930aa26733d1b74b6f5d1b8c306dfa8bb873ab",
+      "actual": "7456f8668bcb855085fb61919e930aa26733d1b74b6f5d1b8c306dfa8bb873ab",
+      "match": true
+    },
+    "src/axiom2/nautilus_runtime/policy.py": {
+      "expected": "682a3c2e2474d12dc106379da6cf21af19c684b367ef8b73c7a6976544629daa",
+      "actual": "682a3c2e2474d12dc106379da6cf21af19c684b367ef8b73c7a6976544629daa",
+      "match": true
+    },
+    "src/axiom2/nautilus_runtime/runtime.py": {
+      "expected": "6ff0be3413a86bfd6de5eb6e353aace90e50663a26f695321ff83db53313fd3d",
+      "actual": "6ff0be3413a86bfd6de5eb6e353aace90e50663a26f695321ff83db53313fd3d",
+      "match": true
+    },
+    "src/axiom2/nautilus_runtime/wakeup.py": {
+      "expected": "4ace6d04cd8f8eec969c50f1e49fdd12f4dfe49efac80f970ed7a3e84b6c3437",
+      "actual": "4ace6d04cd8f8eec969c50f1e49fdd12f4dfe49efac80f970ed7a3e84b6c3437",
+      "match": true
+    },
+    "src/__init__.py": {
+      "expected": "40a2d1468e7b438edc98bb72e7ae77d4ede0a9deefef10662a94e311a0aa20d8",
+      "actual": "40a2d1468e7b438edc98bb72e7ae77d4ede0a9deefef10662a94e311a0aa20d8",
+      "match": true
+    },
+    "src/axiom2/__init__.py": {
+      "expected": "6e5184465aad8284aff60dad09af3e02b4a384dc34857a172bd5069236f68111",
+      "actual": "6e5184465aad8284aff60dad09af3e02b4a384dc34857a172bd5069236f68111",
+      "match": true
+    },
+    "src/axiom2/contracts/__init__.py": {
+      "expected": "c1e7c1cf91a1cbdaeea8ea5da5e90550ba40043dc0faf9bd102a88811ff6c8e1",
+      "actual": "c1e7c1cf91a1cbdaeea8ea5da5e90550ba40043dc0faf9bd102a88811ff6c8e1",
+      "match": true
+    },
+    "src/axiom2/contracts/research_proposal.py": {
+      "expected": "a4682406bcd3ee4c2c4a30cda0db22b84128af81881d962bf7acb15068a1410e",
+      "actual": "a4682406bcd3ee4c2c4a30cda0db22b84128af81881d962bf7acb15068a1410e",
+      "match": true
+    },
+    "src/axiom2/data/__init__.py": {
+      "expected": "f2470ac617aa88ff9726f0448aead889dda0a0cc5767134650eeee99ed146b92",
+      "actual": "f2470ac617aa88ff9726f0448aead889dda0a0cc5767134650eeee99ed146b92",
+      "match": true
+    },
+    "src/axiom2/data/temporal.py": {
+      "expected": "47ad2bdcdd350185cda947661963fcbdfaa87ddcd63fc073d43b0cb0b1a1509d",
+      "actual": "47ad2bdcdd350185cda947661963fcbdfaa87ddcd63fc073d43b0cb0b1a1509d",
+      "match": true
+    },
+    "src/axiom2/data/universe.py": {
+      "expected": "3e7efab8d584c5a3e37c633c131c629821497ab4709bcc62a4426a670960c5e4",
+      "actual": "3e7efab8d584c5a3e37c633c131c629821497ab4709bcc62a4426a670960c5e4",
+      "match": true
+    },
+    "src/axiom2/promotion/__init__.py": {
+      "expected": "04049e0d88fcfc628013ed3aa9992d02aa695be43b6fed128cf3eab47351d577",
+      "actual": "04049e0d88fcfc628013ed3aa9992d02aa695be43b6fed128cf3eab47351d577",
+      "match": true
+    },
+    "src/axiom2/promotion/authority.py": {
+      "expected": "c640a8603620762d9de351c7dd3008c6a27fca11a3db4aacf13d56a5d610b8e1",
+      "actual": "c640a8603620762d9de351c7dd3008c6a27fca11a3db4aacf13d56a5d610b8e1",
+      "match": true
+    },
+    "src/axiom2/research/__init__.py": {
+      "expected": "9a0230e28fb87ab3e1caee614183ce8b98d2c3c1f5705efdbfe1a28637286524",
+      "actual": "9a0230e28fb87ab3e1caee614183ce8b98d2c3c1f5705efdbfe1a28637286524",
+      "match": true
+    },
+    "src/axiom2/research/baselines.py": {
+      "expected": "29440885c2f646ea35331edda78d54c0fbd58a798e9599a9c1ce137ae299326a",
+      "actual": "29440885c2f646ea35331edda78d54c0fbd58a798e9599a9c1ce137ae299326a",
+      "match": true
+    },
+    "src/axiom2/research/development.py": {
+      "expected": "de6935ca014c234995e1c4424e80735282668db243d772359d523a5061a38300",
+      "actual": "de6935ca014c234995e1c4424e80735282668db243d772359d523a5061a38300",
+      "match": true
+    },
+    "src/axiom2/research/features.py": {
+      "expected": "630ad3dab159c5f3668fe434f4711e502b7835d43bb4517755d3d904a416b070",
+      "actual": "630ad3dab159c5f3668fe434f4711e502b7835d43bb4517755d3d904a416b070",
+      "match": true
+    },
+    "src/axiom2/research/labels.py": {
+      "expected": "656c05662661b2254e4f528744dfdb4bca7655487b3d6e92a1e947ab3e94ae45",
+      "actual": "656c05662661b2254e4f528744dfdb4bca7655487b3d6e92a1e947ab3e94ae45",
+      "match": true
+    },
+    "src/axiom2/research/ranker.py": {
+      "expected": "a53c55f732e6f93f659a9638918202424d6b1b8ac5df759ceee7980e3faed2fd",
+      "actual": "a53c55f732e6f93f659a9638918202424d6b1b8ac5df759ceee7980e3faed2fd",
+      "match": true
+    },
+    "src/axiom2/research/splits.py": {
+      "expected": "da063d8a8321eeb636ec4c5a098f2841af87057dcf8dcaff7dd187b4f21946b0",
+      "actual": "da063d8a8321eeb636ec4c5a098f2841af87057dcf8dcaff7dd187b4f21946b0",
+      "match": true
+    },
+    "src/evidence/__init__.py": {
+      "expected": "e434bac3893e5f05383f3d54edaa910ecb2e6039e01b72cb5d98ac5a30229525",
+      "actual": "e434bac3893e5f05383f3d54edaa910ecb2e6039e01b72cb5d98ac5a30229525",
+      "match": true
+    },
+    "src/evidence/canonical.py": {
+      "expected": "ad1459036171d8512dcab97bf03b658551b5c8d887cc7815ed36e7798bfe492c",
+      "actual": "ad1459036171d8512dcab97bf03b658551b5c8d887cc7815ed36e7798bfe492c",
+      "match": true
+    },
+    "src/evidence/contracts/__init__.py": {
+      "expected": "8f7f8bb6f3e3ecf2930b745c2be81bdacfeb082c4419bd66ed43305f4cf92009",
+      "actual": "8f7f8bb6f3e3ecf2930b745c2be81bdacfeb082c4419bd66ed43305f4cf92009",
+      "match": true
+    },
+    "src/evidence/contracts/base.py": {
+      "expected": "fa1187c3ec1caaccceb34f1a7bd42d5a4024dabc2bcf3ddfa40d625ff1344e7a",
+      "actual": "fa1187c3ec1caaccceb34f1a7bd42d5a4024dabc2bcf3ddfa40d625ff1344e7a",
+      "match": true
+    },
+    "src/evidence/contracts/models.py": {
+      "expected": "aa443d17238295d48d405dd865ffa3c10c41503fd46831594ca1d8e170f490e5",
+      "actual": "aa443d17238295d48d405dd865ffa3c10c41503fd46831594ca1d8e170f490e5",
+      "match": true
+    },
+    "src/evidence/equity_research/__init__.py": {
+      "expected": "df5c2ea31540c4e767e5bbcfeb2fc926ee22d26d72dbc4c857e856e14c3d6b7d",
+      "actual": "df5c2ea31540c4e767e5bbcfeb2fc926ee22d26d72dbc4c857e856e14c3d6b7d",
+      "match": true
+    },
+    "src/evidence/equity_research/experiment_registry.py": {
+      "expected": "78e80b93dbb4e012d1cf0a1019b0bac2e3eb49f7669cec638f6c6480c3f99795",
+      "actual": "78e80b93dbb4e012d1cf0a1019b0bac2e3eb49f7669cec638f6c6480c3f99795",
+      "match": true
+    },
+    "src/evidence/equity_research/holdout.py": {
+      "expected": "33c1309923530aa2b25133a2aedf14fb4a6c8c4a6dc84d200c7895e7911365e1",
+      "actual": "33c1309923530aa2b25133a2aedf14fb4a6c8c4a6dc84d200c7895e7911365e1",
+      "match": true
+    },
+    "src/evidence/equity_research/models.py": {
+      "expected": "c40e0d0986561bff54c404af829df5692bd5607ce2fe46f3adb49c91b2ae81a6",
+      "actual": "c40e0d0986561bff54c404af829df5692bd5607ce2fe46f3adb49c91b2ae81a6",
+      "match": true
+    },
+    "src/evidence/event_store.py": {
+      "expected": "b4bd46e404240bfe08ca83cbe453340c9c0621703e87096d8232656a8cfeb6c4",
+      "actual": "b4bd46e404240bfe08ca83cbe453340c9c0621703e87096d8232656a8cfeb6c4",
+      "match": true
+    },
+    "src/evidence/hashing.py": {
+      "expected": "0adadb27f51babed94c485732056b7f67afc97c66ff07c742fa0f694df5ac27b",
+      "actual": "0adadb27f51babed94c485732056b7f67afc97c66ff07c742fa0f694df5ac27b",
+      "match": true
+    },
+    "src/evidence/signing.py": {
+      "expected": "81d25cb8946ac783fd23d71237ae70e4c55a650c88ef0332bbe6202fdfbb446a",
+      "actual": "81d25cb8946ac783fd23d71237ae70e4c55a650c88ef0332bbe6202fdfbb446a",
+      "match": true
+    },
+    "src/evidence/store.py": {
+      "expected": "0d2564c49afc863cf4c27d511263d2be91752e2d3541c6407de81dc13ce5d900",
+      "actual": "0d2564c49afc863cf4c27d511263d2be91752e2d3541c6407de81dc13ce5d900",
+      "match": true
+    },
+    "src/evidence/transition_policy.py": {
+      "expected": "1993c64654671456b844270e825c8a0c7dc9732aa35e1c05c347368cfef6ab8c",
+      "actual": "1993c64654671456b844270e825c8a0c7dc9732aa35e1c05c347368cfef6ab8c",
+      "match": true
+    }
+  },
+  "worker_sha256": "abd0e3ee3bc002a6a684027f5f1a274723e4dd59d56f8fc74aebff8643f6848a",
+  "policies_changed": [
+    "config/axiom2/nautilus_boundary.json"
+  ],
+  "upstream_commit": "4f021bafc2e99c5490cee204b0fc2bd2c83baab4",
+  "upstream_source_diff": "",
+  "extension_sha256": "09832798c20e663d7917a72d427308960925f34594e0345f69351fc2b08df6fb",
+  "site_server_bytes_verified": 0,
+  "production_activated": false,
+  "build_manifest_sha256": "6eaefb9f2c089663e5d59aecb7ae91cd4685b7459588129e04a75bc7f8134270"
+}
